@@ -114,6 +114,7 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
     let mut scene = GpuScene::new();
     let clear = if args.page_only {
         let mut page = loader::load_input(args.target.as_deref().unwrap_or("about:newtab")).page;
+        loader::settle_fetches(&mut page);
         page.update(
             &mut text,
             Viewport {
@@ -135,7 +136,8 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
 fn main() -> Result<()> {
     let args = parse_args()?;
     if args.dump_dom {
-        let loaded = loader::load_input(args.target.as_deref().unwrap_or("about:newtab"));
+        let mut loaded = loader::load_input(args.target.as_deref().unwrap_or("about:newtab"));
+        loader::settle_fetches(&mut loaded.page);
         #[expect(clippy::print_stdout, reason = "sortie demandée par --dump-dom")]
         {
             print!("{}", loaded.page.document().dump());

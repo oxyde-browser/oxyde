@@ -247,6 +247,41 @@ fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
     Ok((response.url, response.body))
 }
 
+/// Exécute une requête `fetch` émise par un script. L'échec est décrit par
+/// un message destiné au script (`TypeError`).
+pub(crate) fn fetch_for_script(url: &Url) -> Result<oxyde_content::FetchResponse, String> {
+    // La page ne demande que du http(s) ; on le revérifie avant d'ouvrir une connexion.
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(format!("protocole « {} » refusé", url.scheme()));
+    }
+    let client = http_client().map_err(|e| e.message)?;
+    let response = client.get(url).map_err(|e| e.to_string())?;
+    Ok(oxyde_content::FetchResponse {
+        url: response.url,
+        status: response.status,
+        headers: response.headers,
+        body: response.body,
+    })
+}
+
+/// Exécute, l'une après l'autre, les requêtes `fetch` en attente de `page`
+/// jusqu'à ce qu'elle n'en émette plus (rendu hors écran : pas de boucle
+/// d'événements pour les traiter en arrière-plan).
+pub(crate) fn settle_fetches(page: &mut Page) {
+    /// Borne le nombre de vagues : une page qui relance sans fin est abandonnée.
+    const MAX_ROUNDS: usize = 16;
+    for _ in 0..MAX_ROUNDS {
+        let requests = page.take_fetches();
+        if requests.is_empty() {
+            break;
+        }
+        for request in requests {
+            page.complete_fetch(request.id, fetch_for_script(&request.url));
+        }
+    }
+    report_console(page);
+}
+
 /// Récupère la ressource `url` ; renvoie son adresse finale (après
 /// redirections) et ses octets.
 pub(crate) fn fetch(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
@@ -299,7 +334,24 @@ pub(crate) fn load(url: Url) -> Loaded {
             .and_then(|(_, bytes)| decode_image(&bytes));
         page.set_image(&image_url, image);
     }
+    for script_url in page.pending_scripts() {
+        // Un script indisponible est sauté ; les suivants s'exécutent quand même.
+        let source = fetch(&script_url).ok().map(|(_, bytes)| decode(&bytes));
+        page.set_script(&script_url, source);
+    }
+    page.run_scripts();
+    report_console(&mut page);
     Loaded { page, error: None }
+}
+
+/// Écrit sur la sortie d'erreur les messages de console de la page.
+///
+/// LIMITE : en attendant les outils de développement (jalon 9), la console
+/// des pages n'est visible que depuis le terminal qui a lancé Oxyde.
+pub(crate) fn report_console(page: &mut Page) {
+    for message in page.take_console() {
+        eprintln!("[console.{}] {}", message.level, message.text);
+    }
 }
 
 /// Charge ce que l'utilisateur a saisi (voir [`resolve_input`]).

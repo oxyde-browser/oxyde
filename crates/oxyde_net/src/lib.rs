@@ -150,6 +150,9 @@ pub struct Response {
     pub status: u16,
     /// Valeur de l'en-tête `Content-Type`, si présent.
     pub content_type: Option<String>,
+    /// En-têtes de la réponse : noms en minuscules, dans l'ordre reçu. Les
+    /// valeurs qui ne sont pas du texte lisible sont omises.
+    pub headers: Vec<(String, String)>,
     /// Corps.
     pub body: Vec<u8>,
 }
@@ -335,6 +338,13 @@ impl Client {
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
+        let headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
+            })
+            .collect();
         let mut body = Vec::new();
         let mut stream = response.into_body();
         while let Some(frame) = stream.frame().await {
@@ -349,6 +359,7 @@ impl Client {
             url: url.clone(),
             status: status.as_u16(),
             content_type,
+            headers,
             body,
         }))
     }

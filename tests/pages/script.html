@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Oxyde — page scriptée</title>
+<style>
+  body { margin: 0; background: #F5F6F8; color: #1B1F24; font-family: Inter, "Segoe UI", sans-serif; font-size: 16px; line-height: 26px; }
+  main { max-width: 640px; margin: 0 auto; padding: 40px 44px; }
+  h1 { margin: 0; font-size: 36px; line-height: 44px; font-weight: 600; }
+  h2 { margin: 28px 0 0 0; font-size: 20px; line-height: 28px; font-weight: 600; color: #0B6B57; }
+  p { margin: 12px 0 0 0; color: #353C46; }
+  .bouton { display: inline-block; padding: 8px 18px; border-radius: 10px; background: #4CC9A8; color: #06231C; font-weight: 600; }
+  .pastille { display: inline-block; margin: 4px 6px 0 0; padding: 2px 12px; border-radius: 12px; background: #E7EAEE; font-size: 14px; }
+  .pair { background: #12161C; color: #DCE1E7; }
+  .ligne { border-top: 1px solid #D9DDE3; padding: 8px 0; }
+  code { font-family: "JetBrains Mono", Consolas, monospace; font-size: 14px; background: #E7EAEE; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="titre">Sans JavaScript</h1>
+  <p id="intro">Ce paragraphe est remplacé par un script.</p>
+
+  <h2>Compteur</h2>
+  <p><span id="bouton" class="bouton">Cliquer : <span id="compte">0</span></span></p>
+  <p id="horloge">Minuteur : en attente…</p>
+
+  <h2>Éléments créés par script</h2>
+  <p id="pastilles"></p>
+
+  <h2>Calculs</h2>
+  <div id="calculs"></div>
+</main>
+<script>
+  class Compteur {
+    #valeur = 0;
+    constructor(element) { this.element = element; }
+    incrementer() { this.element.textContent = ++this.#valeur; return this.#valeur; }
+  }
+
+  document.getElementById('titre').textContent = 'Écrit par JavaScript';
+  document.getElementById('intro').innerHTML =
+    'Moteur <b>oxyde_js</b> : analyseur, bytecode à registres, interpréteur et ramasse-miettes, en Rust sûr.';
+
+  const compteur = new Compteur(document.getElementById('compte'));
+  const bouton = document.getElementById('bouton');
+  bouton.addEventListener('click', () => {
+    const n = compteur.incrementer();
+    bouton.style.backgroundColor = n % 2 ? '#E0A458' : '#4CC9A8';
+  });
+
+  const pastilles = document.getElementById('pastilles');
+  for (const [i, nom] of ['lexer', 'parser', 'compiler', 'vm', 'heap', 'builtins'].entries()) {
+    const span = document.createElement('span');
+    span.className = 'pastille' + (i % 2 ? '' : ' pair');
+    span.textContent = nom;
+    pastilles.appendChild(span);
+  }
+
+  const fib = n => (n < 2 ? n : fib(n - 1) + fib(n - 2));
+  const lignes = [
+    ['fib(20)', fib(20)],
+    ['[3, 1, 2].sort().join(" < ")', [3, 1, 2].sort().join(' < ')],
+    ['JSON.stringify({a: [1, 2]})', JSON.stringify({a: [1, 2]})],
+    ['new Map([["clé", 42]]).get("clé")', new Map([['clé', 42]]).get('clé')],
+    ['`${6 * 7} = ${(42).toString(2)}₂`', `${6 * 7} = ${(42).toString(2)}₂`],
+  ];
+  const calculs = document.getElementById('calculs');
+  calculs.innerHTML = lignes
+    .map(([source, resultat]) => `<div class="ligne"><code>${source}</code> → ${resultat}</div>`)
+    .join('');
+
+  let secondes = 0;
+  setInterval(() => {
+    document.getElementById('horloge').textContent = 'Minuteur : ' + (++secondes) + ' s';
+  }, 1000);
+  console.log('script exécuté :', document.querySelectorAll('.pastille').length, 'pastilles');
+</script>
+</body>
+</html>

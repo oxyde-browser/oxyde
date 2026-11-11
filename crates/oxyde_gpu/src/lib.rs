@@ -59,6 +59,16 @@ impl std::fmt::Debug for Gpu {
     }
 }
 
+/// Options du moteur Vello : seul l'anticrénelage par aire est compilé, car
+/// c'est le seul employé ; les variantes MSAA doubleraient le temps de
+/// compilation des shaders au démarrage.
+fn renderer_options() -> RendererOptions {
+    RendererOptions {
+        antialiasing_support: vello::AaSupport::area_only(),
+        ..RendererOptions::default()
+    }
+}
+
 impl Default for Gpu {
     fn default() -> Self {
         Self::new()
@@ -108,7 +118,7 @@ impl Gpu {
         if slot.is_none() {
             let device = &self.context.devices.get(dev_id).ok_or_else(unknown)?.device;
             *slot = Some(
-                Renderer::new(device, RendererOptions::default())
+                Renderer::new(device, renderer_options())
                     .map_err(|e| GpuError::Init(e.to_string()))?,
             );
         }

@@ -12,6 +12,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 oxyde_css.workspace = true
 oxyde_dom.workspace = true
 oxyde_html.workspace = true
+oxyde_js.workspace = true
 oxyde_layout.workspace = true
 oxyde_paint.workspace = true
 oxyde_text.workspace = true

@@ -2551,6 +2551,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxyde_bench"
+version = "0.1.0"
+dependencies = [
+ "oxyde_content",
+ "oxyde_css",
+ "oxyde_html",
+ "oxyde_net",
+ "oxyde_text",
+]
+
+[[package]]
 name = "oxyde_bindings"
 version = "0.1.0"
 
@@ -2566,6 +2577,7 @@ dependencies = [
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",
+ "oxyde_js",
  "oxyde_layout",
  "oxyde_paint",
  "oxyde_text",
@@ -2609,6 +2621,9 @@ version = "0.1.0"
 [[package]]
 name = "oxyde_js"
 version = "0.1.0"
+dependencies = [
+ "indexmap",
+]
 
 [[package]]
 name = "oxyde_layout"

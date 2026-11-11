@@ -618,8 +618,14 @@ impl Browser {
             }
             Hit::Pane(i) => {
                 self.activate(i);
-                let link = page_point
-                    .and_then(|(x, y)| self.tabs.get(i).and_then(|t| t.page.link_at(x, y)));
+                // Les scripts de la page voient le clic d'abord et peuvent
+                // annuler la navigation.
+                let link = page_point.and_then(|(x, y)| {
+                    let tab = self.tabs.get_mut(i)?;
+                    let link = tab.page.click(x, y);
+                    loader::report_console(&mut tab.page);
+                    link
+                });
                 match link {
                     Some(url) => self.load(i, url, true),
                     None => Vec::new(),
@@ -763,6 +769,52 @@ impl Browser {
             KeyPress::Ctrl(_) | KeyPress::CtrlShift(_) => {}
         }
         Vec::new()
+    }
+
+    /// Exécute les minuteurs échus de tous les onglets ; renvoie `true` si un
+    /// onglet doit être redessiné.
+    pub(crate) fn tick(&mut self, now: std::time::Instant) -> bool {
+        let mut redraw = false;
+        for tab in &mut self.tabs {
+            redraw |= tab.page.tick(now);
+            loader::report_console(&mut tab.page);
+        }
+        redraw
+    }
+
+    /// Requêtes `fetch` émises par les scripts des onglets : (onglet, requête).
+    pub(crate) fn take_fetches(&mut self) -> Vec<(u64, oxyde_content::FetchRequest)> {
+        self.tabs
+            .iter_mut()
+            .flat_map(|tab| {
+                let id = tab.id;
+                tab.page.take_fetches().into_iter().map(move |r| (id, r))
+            })
+            .collect()
+    }
+
+    /// Livre la réponse d'une requête `fetch` à l'onglet `tab`, s'il existe
+    /// encore ; renvoie `true` s'il doit être redessiné.
+    pub(crate) fn complete_fetch(
+        &mut self,
+        tab: u64,
+        id: u64,
+        result: Result<oxyde_content::FetchResponse, String>,
+    ) -> bool {
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
+            return false;
+        };
+        let redraw = tab.page.complete_fetch(id, result);
+        loader::report_console(&mut tab.page);
+        redraw
+    }
+
+    /// Instant du prochain minuteur à exécuter, tous onglets confondus.
+    pub(crate) fn next_wake(&mut self) -> Option<std::time::Instant> {
+        self.tabs
+            .iter_mut()
+            .filter_map(|tab| tab.page.next_wake())
+            .min()
     }
 
     /// Molette au-dessus du volet de l'onglet `index` ; renvoie `true` si le

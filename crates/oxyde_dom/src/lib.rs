@@ -255,6 +255,63 @@ impl Document {
         id
     }
 
+    /// Remplace le texte d'un nœud texte ou commentaire ; sans effet sur les autres nœuds.
+    pub fn set_text(&mut self, id: NodeId, text: &str) {
+        if let NodeData::Text(t) | NodeData::Comment(t) = &mut self.node_mut(id).data {
+            text.clone_into(t);
+        }
+    }
+
+    /// Fixe l'attribut `name` de l'élément `id` (créé s'il n'existe pas).
+    pub fn set_attr(&mut self, id: NodeId, name: &str, value: &str) {
+        if let Some(element) = self.element_mut(id) {
+            match element.attrs.iter_mut().find(|a| a.name == name) {
+                Some(attr) => value.clone_into(&mut attr.value),
+                None => element.attrs.push(Attribute {
+                    name: name.to_owned(),
+                    value: value.to_owned(),
+                }),
+            }
+        }
+    }
+
+    /// Retire l'attribut `name` de l'élément `id`.
+    pub fn remove_attr(&mut self, id: NodeId, name: &str) {
+        if let Some(element) = self.element_mut(id) {
+            element.attrs.retain(|a| a.name != name);
+        }
+    }
+
+    /// Détache tous les enfants de `id`.
+    pub fn remove_children(&mut self, id: NodeId) {
+        while let Some(child) = self.node(id).first_child {
+            self.detach(child);
+        }
+    }
+
+    /// Vrai si `ancestor` est `node` ou l'un de ses ancêtres.
+    #[must_use]
+    pub fn contains(&self, ancestor: NodeId, node: NodeId) -> bool {
+        ancestor == node || self.ancestors(node).any(|a| a == ancestor)
+    }
+
+    /// Copie dans ce document le sous-arbre `node` du document `source` ;
+    /// renvoie la racine de la copie, détachée.
+    pub fn import(&mut self, source: &Document, node: NodeId) -> NodeId {
+        // Parcours itératif : (nœud source, parent de la copie).
+        let root = self.push(source.node(node).data.clone());
+        let mut pending: Vec<(NodeId, NodeId)> = source.children(node).map(|c| (c, root)).collect();
+        pending.reverse();
+        while let Some((src, parent)) = pending.pop() {
+            let copy = self.push(source.node(src).data.clone());
+            self.append_child(parent, copy);
+            let before = pending.len();
+            pending.extend(source.children(src).map(|c| (c, copy)));
+            pending[before..].reverse();
+        }
+        root
+    }
+
     /// Crée un élément détaché.
     pub fn create_element(&mut self, name: &str, ns: Namespace, attrs: Vec<Attribute>) -> NodeId {
         self.push(NodeData::Element(ElementData {

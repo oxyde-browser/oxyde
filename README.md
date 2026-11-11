@@ -60,20 +60,21 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 |---|---|---|---|
 | `oxyde` | exécutable : fenêtre, onglets, espaces, chargements, accessibilité | `chrome/` | fonctionne, mono-processus |
 | `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur |
-| `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images | `content/renderer` | fonctionne |
+| `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images, DOM exposé aux scripts | `content/renderer` | fonctionne |
 | `oxyde_net` | HTTP/1.1, HTTP/2, TLS | `//net`, BoringSSL | GET, redirections ; voir limites |
 | `oxyde_html` | tokenizer + construction d'arbre WHATWG | analyseur HTML de Blink | l'essentiel du standard |
-| `oxyde_dom` | arbre de nœuds en arène | DOM de Blink | lecture seule (pas de script) |
+| `oxyde_dom` | arbre de nœuds en arène | DOM de Blink | modifiable par script |
 | `oxyde_css` | syntaxe, sélecteurs, cascade | moteur de style de Blink | ~40 propriétés |
 | `oxyde_layout` | blocs, flux en ligne, éléments remplacés, fragments | LayoutNG | bloc + en ligne ; voir limites |
 | `oxyde_text` | polices, mise en forme, coupure de lignes | HarfBuzz, ICU | via Parley / HarfRust / ICU4X |
 | `oxyde_paint` | liste d'affichage | paint de Blink | rectangles, bordures, texte, images |
 | `oxyde_gpu` | rastérisation | Skia, Dawn | Vello sur wgpu |
-| `oxyde_js` | moteur JavaScript | V8 | **réservé — jalon 4** |
+| `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes | V8 (Ignition) | **jalon 4 en cours** — sous-ensemble du langage, voir limites |
 | `oxyde_bindings` | liaisons Web IDL | bindings de Blink | **réservé — jalon 4** |
 | `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
 | `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
 | `oxyde_compositor` | calques, défilement, animations | cc, Viz | **réservé — jalon 6** |
+| `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
 | `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |
 
 ## Avertissements
@@ -82,8 +83,16 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   utiliser Oxyde pour naviguer sur des sites non fiables ni pour des données sensibles.
 - **TLS** : le fournisseur cryptographique `rustls-rustcrypto` est une préversion non auditée,
   retenue pour rester en Rust pur. À réévaluer avant toute diffusion.
-- **Pas de JavaScript** : les pages qui construisent leur contenu par script s'affichent vides
-  ou partiellement.
+- **JavaScript partiel** : `oxyde_js` exécute les scripts classiques (classes, fermetures,
+  déstructuration, `Map`/`Set`, JSON, `Symbol`, itérateurs, générateurs, `Promise`,
+  `async`/`await`, expressions rationnelles) et les pages peuvent modifier le DOM, écouter
+  `click`, poser des minuteurs et appeler `fetch` (`GET` seulement). Manquent encore les
+  modules, `XMLHttpRequest`, les formulaires et une grande partie du DOM : la plupart des sites
+  réels ne fonctionnent donc pas encore. Aucun taux test262 n'est mesuré à ce stade.
+- **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
+  pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
+  permanence après quelques images présentées. Le code d'Oxyde, lui, dort entre deux
+  événements ; cause exacte non élucidée.
 - **Rien n'est conservé d'une session à l'autre** : onglets épinglés, espaces et onglets fermés
   sont perdus à la fermeture (persistance prévue au jalon 7).
 
@@ -120,6 +129,16 @@ cargo test --workspace
 
 ```bash
 cargo deny check
+```
+
+## Bancs d'essai
+
+Performances de la chaîne de rendu, sécurité TLS (badssl.com), vie privée (en-têtes envoyés) et
+état des bancs publics (BrowserBench, APEXMark, Web Platform Tests, test262…) :
+**[docs/BANCS.md](docs/BANCS.md)**. Pour régénérer le rapport :
+
+```bash
+cargo run -p oxyde_bench --release -- tout --publier
 ```
 
 ## Jalons

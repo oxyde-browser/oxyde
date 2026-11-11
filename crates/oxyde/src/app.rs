@@ -12,7 +12,7 @@ use oxyde_ui::{Chrome, Hit, theme};
 use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
@@ -26,6 +26,8 @@ const WHEEL_STEP: f32 = 100.0;
 const RESIZE_BORDER: f32 = 5.0;
 /// Intervalle maximal entre deux clics d'un double-clic.
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// Durée minimale de sommeil entre deux passes de minuteurs.
+const MIN_TIMER_SLEEP: Duration = Duration::from_millis(4);
 /// Longueur maximale d'un texte collé dans la barre d'adresse.
 const MAX_PASTE_CHARS: usize = 8192;
 
@@ -37,6 +39,12 @@ pub(crate) enum UserEvent {
         tab: u64,
         loaded: Box<Loaded>,
         push_history: bool,
+    },
+    /// Réponse à une requête `fetch` d'un script.
+    Fetched {
+        tab: u64,
+        id: u64,
+        result: Box<Result<oxyde_content::FetchResponse, String>>,
     },
     Accessibility(accesskit_winit::Event),
 }
@@ -183,6 +191,28 @@ impl App {
                 loaded,
                 push_history: false,
             });
+        }
+    }
+
+    /// Lance sur des fils dédiés les requêtes `fetch` que les scripts viennent
+    /// d'émettre ; chaque réponse revient par un événement `Fetched`.
+    fn spawn_fetches(&mut self) {
+        for (tab, request) in self.browser.take_fetches() {
+            let proxy = self.proxy.clone();
+            let id = request.id;
+            let spawned = std::thread::Builder::new()
+                .name("oxyde-fetch".to_owned())
+                .spawn(move || {
+                    let result = Box::new(loader::fetch_for_script(&request.url));
+                    // La boucle d'événements peut s'être arrêtée entre-temps.
+                    let _ = proxy.send_event(UserEvent::Fetched { tab, id, result });
+                });
+            if let Err(e) = spawned {
+                let result = Box::new(Err(e.to_string()));
+                let _ = self
+                    .proxy
+                    .send_event(UserEvent::Fetched { tab, id, result });
+            }
         }
     }
 
@@ -386,6 +416,24 @@ impl ApplicationHandler<UserEvent> for App {
         self.window = Some(window);
     }
 
+    /// Avant de s'endormir : exécute les minuteurs des pages et programme le
+    /// réveil pour le prochain.
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        let now = Instant::now();
+        if self.browser.tick(now) {
+            if let Some(window) = &self.window {
+                window.set_title(&self.browser.window_title());
+            }
+            self.request_redraw();
+        }
+        self.spawn_fetches();
+        event_loop.set_control_flow(match self.browser.next_wake() {
+            // Jamais plus tôt que dans 4 ms : un minuteur en boucle ne monopolise pas le fil.
+            Some(wake) => ControlFlow::WaitUntil(wake.max(now + MIN_TIMER_SLEEP)),
+            None => ControlFlow::Wait,
+        });
+    }
+
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
         match event {
             UserEvent::Loaded {
@@ -395,6 +443,14 @@ impl ApplicationHandler<UserEvent> for App {
             } => {
                 self.browser.finish_load(tab, *loaded, push_history);
                 self.execute(event_loop, Vec::new());
+            }
+            UserEvent::Fetched { tab, id, result } => {
+                if self.browser.complete_fetch(tab, id, *result) {
+                    if let Some(window) = &self.window {
+                        window.set_title(&self.browser.window_title());
+                    }
+                    self.request_redraw();
+                }
             }
             UserEvent::Accessibility(event) => match event.window_event {
                 accesskit_winit::WindowEvent::InitialTreeRequested => self.update_accessibility(),
