@@ -94,6 +94,7 @@ struct FuncState {
     constants: Vec<Value>,
     string_constants: HashMap<JsStr, u32>,
     functions: Vec<Arc<FunctionProto>>,
+    templates: Vec<crate::bytecode::TemplateSite>,
     upvalues: Vec<(UpvalueDesc, BindKind)>,
     scopes: Vec<Scope>,
     next_reg: Reg,
@@ -449,6 +450,7 @@ impl Compiler {
             constants: Vec::new(),
             string_constants: HashMap::new(),
             functions: Vec::new(),
+            templates: Vec::new(),
             upvalues: Vec::new(),
             scopes: Vec::new(),
             next_reg: 0,
@@ -479,6 +481,7 @@ impl Compiler {
             code: state.code,
             constants: state.constants,
             functions: state.functions,
+            templates: state.templates,
             upvalues: state.upvalues.into_iter().map(|(desc, _)| desc).collect(),
             kind: state.kind,
             is_async: state.is_async,
@@ -2432,6 +2435,35 @@ impl Compiler {
                 self.free_to(mark);
                 Ok(dst)
             }
+            Expr::TaggedTemplate {
+                tag,
+                cooked,
+                raw,
+                exprs,
+            } => {
+                let dst = self.dst_or_alloc(dst)?;
+                let mark = self.mark();
+                let (func, this) = self.callee(tag)?;
+                let index = u32::try_from(self.f().templates.len()).unwrap_or(u32::MAX);
+                self.f().templates.push((cooked.clone(), raw.clone()));
+                // Arguments : l'objet des morceaux, puis les substitutions.
+                let first = self.alloc()?;
+                self.emit(Op::TemplateObject { dst: first, index });
+                for expr in exprs {
+                    let reg = self.alloc()?;
+                    self.expr(expr, Some(reg))?;
+                    self.free_to(reg + 1);
+                }
+                self.emit(Op::Call {
+                    dst,
+                    callee: func,
+                    this,
+                    first,
+                    argc: u16::try_from(exprs.len() + 1).unwrap_or(u16::MAX),
+                });
+                self.free_to(mark);
+                Ok(dst)
+            }
             Expr::Template { quasis, exprs } => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
@@ -2545,23 +2577,70 @@ impl Compiler {
                     self.patch(exit);
                     self.emit(Op::LoadUndefined { dst });
                 } else if *delegate {
-                    // `yield* it` : rend une à une les valeurs de l'itérable.
-                    let iter = self.alloc()?;
-                    self.emit(Op::IterStart {
-                        dst: iter,
-                        src: value,
+                    // `yield* it` : chaque reprise du générateur (`next`,
+                    // `throw`, `return`) est transmise à l'itérateur délégué.
+                    let base = self.alloc()?;
+                    for _ in 0..6 {
+                        self.alloc()?;
+                    }
+                    let (received, mode, result) = (base + 2, base + 3, base + 4);
+                    let (done, returning) = (base + 5, base + 6);
+                    self.emit(Op::DelegateStart { base, src: value });
+                    self.emit(Op::LoadUndefined { dst: received });
+                    let modes = [0.0, 1.0, 2.0].map(|mode| self.number(mode));
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[0],
                     });
-                    let item = self.alloc()?;
                     let head = self.here();
-                    let exit = self.emit(Op::IterNext {
-                        dst: item,
-                        iter,
-                        done: 0,
+                    self.emit(Op::DelegateStep { base });
+                    let to_return = self.emit(Op::JumpIfTrue {
+                        src: returning,
+                        target: 0,
                     });
-                    self.emit_yield(item, item, Some(iter))?;
+                    let to_done = self.emit(Op::JumpIfTrue {
+                        src: done,
+                        target: 0,
+                    });
+                    // Une exception arrivant au `yield` est un `throw()`.
+                    let handler = self.emit(Op::PushHandler {
+                        target: 0,
+                        reg: received,
+                    });
+                    self.emit(Op::Yield {
+                        dst: received,
+                        src: result,
+                    });
+                    let resumed = self.emit(Op::Jump { target: 0 });
+                    // Reprise par `return(v)` (voir `Vm::resume`).
+                    self.emit(Op::PopHandler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[2],
+                    });
                     self.emit(Op::Jump { target: head });
-                    self.patch(exit);
-                    self.emit(Op::LoadUndefined { dst });
+                    // Reprise par `next(v)`.
+                    self.patch(resumed);
+                    self.emit(Op::PopHandler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[0],
+                    });
+                    self.emit(Op::Jump { target: head });
+                    // Reprise par `throw(e)`.
+                    self.patch(handler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[1],
+                    });
+                    self.emit(Op::Jump { target: head });
+                    // Le délégué a honoré `return` : le générateur se termine.
+                    self.patch(to_return);
+                    self.unwind_exits(0)?;
+                    self.emit(Op::Return { src: result });
+                    // Le délégué est épuisé : sa valeur finale est celle de `yield*`.
+                    self.patch(to_done);
+                    self.emit(Op::Move { dst, src: result });
                 } else {
                     self.emit_yield(dst, value, None)?;
                 }

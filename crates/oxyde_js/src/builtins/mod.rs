@@ -409,6 +409,11 @@ pub(super) fn own_property_descriptor(vm: &mut Vm, id: ObjId, key: &PropertyKey)
     })
 }
 
+/// Fige `id` (`Object.freeze`).
+pub(crate) fn freeze(vm: &mut Vm, id: ObjId) -> JsResult<()> {
+    set_integrity(vm, id, true, "Object.freeze")
+}
+
 /// `SetIntegrityLevel` (ECMA-262 §7.3.15) : scelle ou fige `id`.
 fn set_integrity(vm: &mut Vm, id: ObjId, frozen: bool, what: &str) -> JsResult<()> {
     if !vm.prevent_extensions(id)? {

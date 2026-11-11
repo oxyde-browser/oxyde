@@ -156,6 +156,41 @@ fn string_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     }
 }
 
+/// `String.raw(template, ...substitutions)` (ECMA-262 §22.1.2.4).
+fn string_raw(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let cooked = vm.to_object(&arg(args, 0))?;
+    let raw = vm.get(&cooked, "raw")?;
+    let raw = vm.to_object(&raw)?;
+    let length = vm.get(&raw, "length")?;
+    let length = vm.to_number(&length)?;
+    let length = if length.is_nan() {
+        0.0
+    } else {
+        length.trunc().clamp(0.0, 9_007_199_254_740_991.0)
+    };
+    let mut out = String::new();
+    let mut index = 0_usize;
+    #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+    while (index as f64) < length {
+        vm.tick(1)?;
+        let part = vm.get(&raw, &index.to_string())?;
+        out.push_str(&vm.to_string(&part)?);
+        #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+        let last = (index + 1) as f64 >= length;
+        if last {
+            break;
+        }
+        if let Some(substitution) = args.get(index + 1) {
+            out.push_str(&vm.to_string(substitution)?);
+        }
+        if out.len() > MAX_STRING {
+            return Err(vm.error("RangeError", "chaîne trop longue"));
+        }
+        index += 1;
+    }
+    string(&out)
+}
+
 fn from_char_code(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let mut units = Vec::with_capacity(args.len());
     for value in args {
@@ -877,6 +912,7 @@ pub(super) fn install(vm: &mut Vm) {
     let ctor = constructor(vm, "String", 1, string_ctor, proto);
     vm.define_method(ctor, "fromCharCode", 1, from_char_code);
     vm.define_method(ctor, "fromCodePoint", 1, from_code_point);
+    vm.define_method(ctor, "raw", 1, string_raw);
     let methods: &[(&str, u32, NativeFn)] = &[
         ("charAt", 1, char_at_method),
         ("charCodeAt", 1, char_code_at),

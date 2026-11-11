@@ -41,9 +41,12 @@ pub(crate) enum Tok {
     Private(String),
     Num(f64),
     Str(String),
-    /// Morceau de gabarit ; `tail` est vrai pour le dernier.
+    /// Morceau de gabarit ; `tail` est vrai pour le dernier. `cooked` vaut
+    /// `None` si le morceau contient un échappement invalide, ce qui n'est
+    /// permis que dans un gabarit étiqueté ; `raw` est le texte du source.
     Template {
-        cooked: String,
+        cooked: Option<String>,
+        raw: String,
         tail: bool,
     },
     Regex {
@@ -579,27 +582,44 @@ impl Lexer {
     /// Lit un morceau de gabarit jusqu'à `${` ou la fermeture.
     fn template(&mut self, start: usize) -> Result<Tok, SyntaxError> {
         let mut cooked = String::new();
+        let mut valid = true;
+        let first = self.pos;
+        // Texte brut : le source entre les délimiteurs, fins de ligne
+        // normalisées en LF.
+        let raw = |lexer: &Self, end: usize| -> String {
+            let text: String = lexer.src[first..end].iter().collect();
+            text.replace("\r\n", "\n").replace('\r', "\n")
+        };
         loop {
             match self.peek(0) {
                 None => return Err(self.error_at(start, "gabarit non terminé")),
                 Some('`') => {
+                    let raw = raw(self, self.pos);
                     self.pos += 1;
-                    return Ok(Tok::Template { cooked, tail: true });
+                    return Ok(Tok::Template {
+                        cooked: valid.then_some(cooked),
+                        raw,
+                        tail: true,
+                    });
                 }
                 Some('$') if self.peek(1) == Some('{') => {
+                    let raw = raw(self, self.pos);
                     self.pos += 2;
                     return Ok(Tok::Template {
-                        cooked,
+                        cooked: valid.then_some(cooked),
+                        raw,
                         tail: false,
                     });
                 }
                 Some('\\') => {
                     self.pos += 1;
-                    self.escape(&mut cooked, start)?;
-                    if std::mem::take(&mut self.octal) {
-                        return Err(
-                            self.error_at(start, "échappement octal interdit dans un gabarit")
-                        );
+                    let after_backslash = self.pos;
+                    let escaped = self.escape(&mut cooked, start);
+                    if escaped.is_err() || std::mem::take(&mut self.octal) {
+                        // Échappement invalide : seul le texte brut compte ;
+                        // on passe le caractère qui suit la barre oblique.
+                        valid = false;
+                        self.pos = (after_backslash + 1).min(self.src.len());
                     }
                 }
                 Some('\r') => {
@@ -764,7 +784,8 @@ c" '😀'"#
         assert_eq!(
             lexer.next().expect("tête").tok,
             Tok::Template {
-                cooked: "a".into(),
+                cooked: Some("a".into()),
+                raw: "a".into(),
                 tail: false
             }
         );
@@ -773,7 +794,8 @@ c" '😀'"#
         assert_eq!(
             lexer.template_continue().expect("queue").tok,
             Tok::Template {
-                cooked: "b".into(),
+                cooked: Some("b".into()),
+                raw: "b".into(),
                 tail: true
             }
         );

@@ -168,6 +168,9 @@ pub struct Vm {
     pub(crate) regexp_originals: Vec<(JsStr, ObjId)>,
     /// Accesseur d'origine de `RegExp[Symbol.species]`.
     pub(crate) regexp_species: Option<ObjId>,
+    /// Objets des gabarits étiquetés déjà évalués, par fonction compilée et
+    /// index ; la fonction est gardée pour que son adresse reste la sienne.
+    template_objects: std::collections::HashMap<(usize, u32), (Arc<FunctionProto>, ObjId)>,
     /// Dernier texte préparé pour une recherche.
     pub(crate) regex_input: Option<(JsStr, Arc<crate::builtins::regexp::RegexInput>)>,
     /// Prototypes des tableaux typés, dans l'ordre de leurs types d'éléments.
@@ -304,6 +307,7 @@ impl Vm {
             regex_cache: std::collections::HashMap::new(),
             regexp_originals: Vec::new(),
             regexp_species: None,
+            template_objects: std::collections::HashMap::new(),
             regex_input: None,
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
@@ -464,6 +468,11 @@ impl Vm {
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
             .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
             .chain(self.pending_throw.iter().cloned())
+            .chain(
+                self.template_objects
+                    .values()
+                    .map(|(_, id)| Value::Object(*id)),
+            )
             .collect();
         let open: Vec<UpId> = self.open_upvalues.iter().map(|(_, id)| *id).collect();
         self.heap.collect(roots.into_iter(), &open);
@@ -724,6 +733,88 @@ impl Vm {
             scope,
         });
         Ok(())
+    }
+
+    /// Un pas de `yield*` (ECMA-262 §15.5.5) : transmet à l'itérateur délégué
+    /// la reprise reçue (`mode` : 0 `next`, 1 `throw`, 2 `return`). Rend la
+    /// valeur obtenue, si le délégué est terminé, et si le générateur doit
+    /// lui-même se terminer (`return` honoré).
+    fn delegate_step(
+        &mut self,
+        iterator: &Value,
+        next: &Value,
+        received: Value,
+        mode: &Value,
+    ) -> JsResult<(Value, bool, bool)> {
+        let returning = *mode == Value::Number(2.0);
+        let result = if *mode == Value::Number(1.0) {
+            let throw = self.get(iterator, "throw")?;
+            if throw.is_nullish() {
+                // Le délégué ne sait pas recevoir d'exception : on le ferme.
+                let close = self.get(iterator, "return")?;
+                if !close.is_nullish() {
+                    let closed = self.call(&close, iterator, &[])?;
+                    if closed.as_object().is_none() {
+                        return Err(self.type_error("le résultat de « return » doit être un objet"));
+                    }
+                }
+                return Err(self.type_error("l'itérateur délégué n'a pas de méthode « throw »"));
+            }
+            self.call(&throw, iterator, &[received])?
+        } else if returning {
+            let close = self.get(iterator, "return")?;
+            if close.is_nullish() {
+                return Ok((received, true, true));
+            }
+            self.call(&close, iterator, &[received])?
+        } else {
+            self.call(next, iterator, &[received])?
+        };
+        if result.as_object().is_none() {
+            return Err(self.type_error("le résultat d'un itérateur doit être un objet"));
+        }
+        let done = self.get(&result, "done")?.truthy();
+        let value = self.get(&result, "value")?;
+        Ok((value, done, done && returning))
+    }
+
+    /// `GetTemplateObject` (ECMA-262 §13.2.8.4) : tableau figé des morceaux
+    /// interprétés, portant le tableau figé `raw` des morceaux bruts. Un même
+    /// gabarit rend toujours le même objet.
+    fn template_object(&mut self, index: u32) -> JsResult {
+        let Some(proto) = self.frames.last().map(|f| Arc::clone(&f.proto)) else {
+            return Ok(Value::Undefined);
+        };
+        let key = (Arc::as_ptr(&proto) as usize, index);
+        if let Some((_, id)) = self.template_objects.get(&key) {
+            return Ok(Value::Object(*id));
+        }
+        let Some((cooked, raw)) = proto.templates.get(index as usize) else {
+            return Ok(Value::Undefined);
+        };
+        let cooked: Vec<Value> = cooked
+            .iter()
+            .map(|part| part.clone().map_or(Value::Undefined, Value::String))
+            .collect();
+        let raw: Vec<Value> = raw.iter().cloned().map(Value::String).collect();
+        let raw = self.new_array(raw);
+        let strings = self.new_array(cooked);
+        let (Some(raw_id), Some(id)) = (raw.as_object(), strings.as_object()) else {
+            return Ok(Value::Undefined);
+        };
+        crate::builtins::freeze(self, raw_id)?;
+        self.heap.get_mut(id).props.insert(
+            Arc::from("raw"),
+            Property {
+                slot: Slot::Data(raw),
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        );
+        crate::builtins::freeze(self, id)?;
+        self.template_objects.insert(key, (proto, id));
+        Ok(strings)
     }
 
     /// `this` d'une fonction en mode non strict (ECMA-262 §10.2.1.2) :
@@ -1234,6 +1325,35 @@ impl Vm {
             Op::CloseUpvalues { from } => {
                 let from = self.base() + usize::from(from);
                 self.close_upvalues(from);
+            }
+            Op::DelegateStart { base, src } => {
+                let source = self.reg(src);
+                let key = crate::value::PropertyKey::Symbol(self.well_known.iterator.clone());
+                let method = self.get_key(&source, &key)?;
+                if !crate::builtins::is_callable(self, &method) {
+                    let shown = self.display(&source);
+                    return Err(self.type_error(&format!("{shown} n'est pas itérable")));
+                }
+                let iterator = self.call(&method, &source, &[])?;
+                if iterator.as_object().is_none() {
+                    return Err(self.type_error("Symbol.iterator doit renvoyer un objet itérateur"));
+                }
+                let next = self.get(&iterator, "next")?;
+                self.set_reg(base, iterator);
+                self.set_reg(base + 1, next);
+            }
+            Op::DelegateStep { base } => {
+                let (iterator, next) = (self.reg(base), self.reg(base + 1));
+                let (received, mode) = (self.reg(base + 2), self.reg(base + 3));
+                let (value, done, returning) =
+                    self.delegate_step(&iterator, &next, received, &mode)?;
+                self.set_reg(base + 4, value);
+                self.set_reg(base + 5, Value::Bool(done));
+                self.set_reg(base + 6, Value::Bool(returning));
+            }
+            Op::TemplateObject { dst, index } => {
+                let object = self.template_object(index)?;
+                self.set_reg(dst, object);
             }
             Op::StrictEval => self.strict_eval = true,
             Op::ToObject { dst, src } => {

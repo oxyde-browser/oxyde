@@ -4,7 +4,7 @@
 //! réservés, noms privés, `super`, `new.target`, étiquettes) sont signalées
 //! ici ; les redéclarations le sont par le compilateur.
 //!
-//! LIMITES CONNUES : pas de gabarits étiquetés. Les parenthèses ne sont pas conservées : `(a) = 1` et `([a]) = 1`
+//! LIMITE CONNUE : Les parenthèses ne sont pas conservées : `(a) = 1` et `([a]) = 1`
 //! sont traités de la même façon.
 
 use std::sync::Arc;
@@ -2386,7 +2386,16 @@ impl Parser {
                     optional: false,
                 };
             } else if matches!(self.tok.tok, Tok::Template { .. }) {
-                return self.unsupported("les gabarits étiquetés");
+                if in_optional_chain {
+                    return self.error("gabarit étiqueté interdit dans une chaîne optionnelle");
+                }
+                let (cooked, raw, exprs) = self.template_parts()?;
+                expr = Expr::TaggedTemplate {
+                    tag: Box::new(expr),
+                    cooked,
+                    raw,
+                    exprs,
+                };
             } else {
                 break;
             }
@@ -2399,16 +2408,32 @@ impl Parser {
     }
 
     fn template(&mut self) -> PResult<Expr> {
-        let mut quasis = Vec::new();
+        let start = self.tok.start;
+        let (cooked, _, exprs) = self.template_parts()?;
+        // Sans étiquette, tout échappement doit être valide.
+        let Some(quasis) = cooked.into_iter().collect::<Option<Vec<_>>>() else {
+            return Err(self
+                .lexer
+                .error_at(start, "séquence d'échappement invalide dans un gabarit"));
+        };
+        Ok(Expr::Template { quasis, exprs })
+    }
+
+    /// Morceaux d'un gabarit (interprétés et bruts) et ses substitutions.
+    #[expect(clippy::type_complexity, reason = "triplet interne à l'analyseur")]
+    fn template_parts(&mut self) -> PResult<(Vec<Option<Arc<str>>>, Vec<Arc<str>>, Vec<Expr>)> {
+        let mut cooked_parts = Vec::new();
+        let mut raw_parts = Vec::new();
         let mut exprs = Vec::new();
         loop {
-            let Tok::Template { cooked, tail } = &self.tok.tok else {
+            let Tok::Template { cooked, raw, tail } = &self.tok.tok else {
                 return self.error("gabarit mal formé");
             };
-            quasis.push(Arc::from(cooked.as_str()));
+            cooked_parts.push(cooked.as_deref().map(Arc::from));
+            raw_parts.push(Arc::from(raw.as_str()));
             if *tail {
                 self.advance()?;
-                return Ok(Expr::Template { quasis, exprs });
+                return Ok((cooked_parts, raw_parts, exprs));
             }
             self.advance()?;
             exprs.push(self.expression()?);
@@ -2846,7 +2871,7 @@ mod tests {
 
     #[test]
     fn unsupported_syntax_says_so() {
-        for src in ["import x from 'y'", "export default 1", "tag`x`"] {
+        for src in ["import x from 'y'", "export default 1"] {
             let message = parse_program(src).expect_err("non pris en charge").message;
             assert!(
                 message.contains("non pris en charge"),

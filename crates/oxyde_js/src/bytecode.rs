@@ -140,6 +140,24 @@ pub(crate) enum Op {
     CloseUpvalues {
         from: Reg,
     },
+    /// Début d'un `yield*` : `base` reçoit l'itérateur de `src` et `base + 1`
+    /// sa méthode `next`.
+    DelegateStart {
+        base: Reg,
+        src: Reg,
+    },
+    /// Un pas de `yield*`, sur sept registres consécutifs à partir de `base` :
+    /// itérateur, `next`, valeur reçue, mode de reprise (0 `next`, 1 `throw`,
+    /// 2 `return`), résultat, « délégué terminé », « retour demandé ».
+    DelegateStep {
+        base: Reg,
+    },
+    /// Objet des morceaux d'un gabarit étiqueté : le même à chaque
+    /// évaluation du même gabarit.
+    TemplateObject {
+        dst: Reg,
+        index: u32,
+    },
     /// Précède l'appel `eval(…)` écrit dans du code strict : le code évalué
     /// hérite de ce mode.
     StrictEval,
@@ -432,6 +450,9 @@ impl Op {
     }
 }
 
+/// Morceaux d'un gabarit étiqueté : interprétés, puis bruts.
+pub(crate) type TemplateSite = (Vec<Option<JsStr>>, Vec<JsStr>);
+
 /// Fonction compilée, partagée par toutes les fermetures créées à partir d'elle.
 #[derive(Debug)]
 pub(crate) struct FunctionProto {
@@ -444,6 +465,9 @@ pub(crate) struct FunctionProto {
     /// Constantes : nombres et chaînes uniquement (aucune référence au tas).
     pub(crate) constants: Vec<Value>,
     pub(crate) functions: Vec<Arc<FunctionProto>>,
+    /// Gabarits étiquetés : morceaux interprétés (`None` : échappement
+    /// invalide) et bruts.
+    pub(crate) templates: Vec<TemplateSite>,
     pub(crate) upvalues: Vec<UpvalueDesc>,
     pub(crate) kind: FunctionKind,
     /// Fonction async : l'appel rend une promesse.

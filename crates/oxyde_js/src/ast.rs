@@ -100,6 +100,14 @@ pub(crate) enum Expr {
         quasis: Vec<Arc<str>>,
         exprs: Vec<Expr>,
     },
+    /// Gabarit étiqueté ``tag`…` `` : `cooked[i]` vaut `None` si le morceau
+    /// contient un échappement invalide.
+    TaggedTemplate {
+        tag: Box<Expr>,
+        cooked: Vec<Option<Arc<str>>>,
+        raw: Vec<Arc<str>>,
+        exprs: Vec<Expr>,
+    },
     Regex {
         pattern: Arc<str>,
         flags: Arc<str>,

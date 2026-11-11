@@ -2455,7 +2455,19 @@ fn console_and_unsupported_features() {
     );
     assert!(vm.take_console().is_empty());
 
-    assert!(matches!(vm.eval("tag`x`"), Err(EvalError::Syntax(_))));
+    assert!(matches!(vm.eval("`\\u{`"), Err(EvalError::Syntax(_))));
+    // Gabarits étiquetés : morceaux interprétés et bruts, objet figé et
+    // unique par gabarit, échappement invalide permis.
+    assert_eq!(
+        eval(
+            "function tag(s, ...v) { return s.join('|') + '/' + s.raw.join('|') + '/' + v.join(); }
+             function site() { return (s => s)`x`; }
+             var o = { m(s) { return this === o; } };
+             [tag`a${1}b\\n${2}`, site() === site(), Object.isFrozen(site()), Object.isFrozen(site().raw), o.m`x`,
+              (s => s[0] === undefined && s.raw[0] === '\\\\u{')`\\u{`, String.raw`a\\n${1}b`, String.raw({ raw: ['x', 'y'] }, 0, 1)].join()"
+        ),
+        "a|b\n|/a|b\\n|/1,2,true,true,true,true,true,a\\n1b,x0y"
+    );
     // `with` : l'objet fournit les variables, sauf celles que masque
     // `Symbol.unscopables` ; une fonction trouvée sur lui le reçoit pour `this`.
     assert_eq!(
