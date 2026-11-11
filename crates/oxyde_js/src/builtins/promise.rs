@@ -300,7 +300,7 @@ impl Vm {
         });
     }
 
-    fn run_job(&mut self, job: Job) {
+    pub(crate) fn run_job(&mut self, job: Job) {
         match job {
             Job::Import {
                 promise,

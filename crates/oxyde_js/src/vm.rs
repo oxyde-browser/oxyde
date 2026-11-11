@@ -163,6 +163,10 @@ pub struct Vm {
     pub(crate) modules: IndexMap<JsStr, crate::module::ModuleRecord>,
     /// Fonction de l'hôte qui fournit le texte des modules importés.
     pub(crate) module_loader: Option<crate::module::ModuleLoader>,
+    /// `Array.prototype[Symbol.iterator]` et `next` des itérateurs internes,
+    /// tels qu'installés : tant qu'ils sont en place, un tableau s'itère
+    /// sans passer par le protocole.
+    pub(crate) iteration_intrinsics: Option<(ObjId, ObjId)>,
     /// Identifiant des scripts classiques, référent de leurs `import()`.
     pub(crate) script_url: JsStr,
     /// Exception à lever à la prochaine instruction (reprise par `throw()`).
@@ -173,6 +177,8 @@ pub struct Vm {
     pub(crate) rejections: Vec<ObjId>,
     /// Vrai pendant l'appel d'un constructeur natif par `new`.
     pub(crate) constructing: bool,
+    /// Le prochain appel est un `eval(…)` écrit dans du code strict.
+    pub(crate) strict_eval: bool,
     /// Racines déclarées par l'hôte (écouteurs, minuteurs…).
     roots: Vec<Value>,
     /// Données de l'hôte accessibles aux fonctions natives.
@@ -280,11 +286,13 @@ impl Vm {
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
             module_loader: None,
+            iteration_intrinsics: None,
             script_url: Arc::from(""),
             pending_throw: None,
             jobs: VecDeque::new(),
             rejections: Vec::new(),
             constructing: false,
+            strict_eval: false,
             roots: Vec::new(),
             host: None,
             host_hooks: None,
@@ -1196,6 +1204,28 @@ impl Vm {
                 let from = self.base() + usize::from(from);
                 self.close_upvalues(from);
             }
+            Op::StrictEval => self.strict_eval = true,
+            Op::ToObject { dst, src } => {
+                let object = self.to_object(&self.reg(src))?;
+                self.set_reg(dst, object);
+            }
+            Op::WithHas { dst, obj, name } => {
+                let (object, name) = (self.reg(obj), self.name(name));
+                let mut found = false;
+                if let Some(id) = object.as_object() {
+                    let key = crate::value::PropertyKey::String(Arc::clone(&name));
+                    found = self.has_property_op(id, &key)?;
+                    if found {
+                        let unscopables =
+                            crate::value::PropertyKey::Symbol(self.well_known.unscopables.clone());
+                        let blocked = self.get_key(&object, &unscopables)?;
+                        if blocked.as_object().is_some() {
+                            found = !self.get(&blocked, &name)?.truthy();
+                        }
+                    }
+                }
+                self.set_reg(dst, Value::Bool(found));
+            }
             Op::CheckInit { src, name } => {
                 if self.reg(src) == Value::Hole {
                     let name = self.name(name);
@@ -1504,7 +1534,10 @@ impl Vm {
                 let (callee, this) = (self.reg(callee), self.reg(this));
                 let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
                 self.check_callable(&callee)?;
-                self.call_from_loop(dst, &callee, this, args)?;
+                let called = self.call_from_loop(dst, &callee, this, args);
+                // Consommé par `eval` ; sans objet pour toute autre fonction.
+                self.strict_eval = false;
+                called?;
             }
             Op::CallSpread {
                 dst,
@@ -1585,6 +1618,10 @@ impl Vm {
                 Some(value) => self.set_reg(dst, value),
                 None => self.jump(done),
             },
+            Op::IterClose { iter, quiet } => {
+                let iterator = self.reg(iter);
+                self.iterator_close(&iterator, quiet)?;
+            }
             Op::IterNextOrUndefined { dst, iter } => {
                 let value = self
                     .iterator_next(&self.reg(iter))?
@@ -1769,6 +1806,7 @@ impl Vm {
         scope: Option<ObjId>,
         this: Value,
     ) -> JsResult {
+        let is_async = proto.is_async;
         let closure = Closure {
             proto,
             upvalues: Vec::new(),
@@ -1782,6 +1820,10 @@ impl Vm {
             Some(self.intrinsics.function_proto),
             Kind::Closure(closure),
         ));
+        if is_async {
+            // Corps d'un module avec `await` : rend la promesse de sa fin.
+            return self.start_coroutine(id, this, Vec::new());
+        }
         let depth = self.frames.len();
         self.push_frame(id, this, Vec::new(), Value::Undefined, None, false)?;
         self.run_nested(depth)
@@ -1908,13 +1950,23 @@ impl Vm {
                 }
             }
             CoState::Suspended(saved) => {
-                // LIMITE : `return()` termine la coroutine sans exécuter ses
-                // blocs `finally` en attente.
-                if let Resume::Return(value) = mode {
-                    self.set_coroutine_state(coroutine, CoState::Done);
-                    return Ok(CoOutcome::Return(value));
-                }
-                let saved = *saved;
+                let mut saved = *saved;
+                // `return(v)` reprend le corps sur le chemin de retour que le
+                // compilateur place après chaque `yield` (un saut l'enjambe en
+                // reprise normale) : les blocs `finally` s'y exécutent.
+                let return_path = !saved.awaiting
+                    && matches!(saved.proto.code.get(saved.pc), Some(Op::Jump { .. }));
+                let mode = match mode {
+                    Resume::Return(value) if return_path => {
+                        saved.pc += 1;
+                        Resume::Next(value)
+                    }
+                    Resume::Return(value) => {
+                        self.set_coroutine_state(coroutine, CoState::Done);
+                        return Ok(CoOutcome::Return(value));
+                    }
+                    other => other,
+                };
                 let base = self.stack.len();
                 if self.frames.len() >= MAX_FRAMES || base + saved.registers.len() > MAX_STACK {
                     self.set_coroutine_state(coroutine, CoState::Done);

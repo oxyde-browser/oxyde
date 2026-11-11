@@ -11,7 +11,7 @@
 //! `import()` charge le module dans une microtâche : la promesse rendue
 //! n'est jamais réglée pendant l'appel.
 //!
-//! LIMITES CONNUES : pas d'`await` de premier niveau ni d'attributs
+//! LIMITES CONNUES : pas d'attributs
 //! d'importation (`with { type: "json" }`) ; une déclaration
 //! `export default function () {}` anonyme n'est pas hissée ; affecter une
 //! liaison importée est ignoré au lieu de lever `TypeError` ; deux
@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use crate::bytecode::FunctionProto;
-use crate::heap::{Kind, Object, Property, Slot};
+use crate::heap::{Kind, Object, PromiseState, Property, Slot};
 use crate::lexer::SyntaxError;
 use crate::value::{JsStr, ObjId, PropertyKey, Value};
 use crate::vm::{JsResult, Vm};
@@ -58,6 +58,9 @@ pub(crate) struct ModuleInfo {
     pub(crate) indirect_exports: Vec<(JsStr, usize, Option<JsStr>)>,
     /// Modules réexportés en bloc (`export * from`).
     pub(crate) star_exports: Vec<usize>,
+    /// Le module emploie `await` au premier niveau : son corps s'exécute
+    /// comme une fonction async.
+    pub(crate) has_top_level_await: bool,
 }
 
 impl ModuleInfo {
@@ -217,6 +220,38 @@ impl Vm {
         self.module_namespace(&id)
     }
 
+    /// Attend la fin d'un module qui emploie `await` au premier niveau :
+    /// `completion` est alors la promesse de son corps, et les microtâches
+    /// sont exécutées jusqu'à ce qu'elle soit réglée.
+    ///
+    /// LIMITE : les modules qui l'importent attendent sa fin, mais ses
+    /// modules frères aussi, alors que le standard les laisse s'exécuter.
+    fn await_module(&mut self, completion: &Value) -> JsResult<()> {
+        let Some(promise) = completion.as_object() else {
+            return Ok(());
+        };
+        if let Kind::Promise(data) = &mut self.heap.get_mut(promise).kind {
+            data.handled = true;
+        }
+        loop {
+            match &self.heap.get(promise).kind {
+                Kind::Promise(data) => match &data.state {
+                    PromiseState::Pending => {}
+                    PromiseState::Fulfilled(_) => return Ok(()),
+                    PromiseState::Rejected(reason) => return Err(reason.clone()),
+                },
+                _ => return Ok(()),
+            }
+            if self.is_interrupted() {
+                return Ok(());
+            }
+            let Some(job) = self.jobs.pop_front() else {
+                return Ok(());
+            };
+            self.without_gc(|vm| vm.run_job(job));
+        }
+    }
+
     /// Installe la fonction qui fournit le texte des modules importés.
     pub fn set_module_loader(&mut self, loader: ModuleLoader) {
         self.module_loader = Some(loader);
@@ -257,7 +292,8 @@ impl Vm {
             return Err(self.error("RangeError", "trop de modules imbriqués ou chargés"));
         }
         let parsed = parser::parse_module(source).and_then(|(body, info)| {
-            compiler::compile_script(&body, true).map(|proto| (proto, info))
+            compiler::compile_script(&body, true, info.has_top_level_await)
+                .map(|proto| (proto, info))
         });
         let (proto, info) = match parsed {
             Ok(parsed) => parsed,
@@ -537,7 +573,7 @@ impl Vm {
             // Dans un module, `this` vaut `undefined` au premier niveau.
             result = self
                 .run_top_level(proto, Some(scope), Value::Undefined)
-                .map(|_| ());
+                .and_then(|completion| self.await_module(&completion));
         }
         if let Some(record) = self.modules.get_mut(id) {
             record.state = match &result {

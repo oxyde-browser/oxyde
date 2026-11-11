@@ -77,8 +77,8 @@ impl Vm {
     /// si le script lève une exception non rattrapée.
     pub fn eval(&mut self, source: &str) -> Result<Value, EvalError> {
         let script = parser::parse_program(source).map_err(EvalError::Syntax)?;
-        let proto =
-            compiler::compile_script(&script.body, script.strict).map_err(EvalError::Syntax)?;
+        let proto = compiler::compile_script(&script.body, script.strict, false)
+            .map_err(EvalError::Syntax)?;
         let result = self.run_script(proto);
         // Fin de la tâche : les réactions de promesses en attente s'exécutent.
         self.run_microtasks();
@@ -91,9 +91,9 @@ impl Vm {
     /// Compile et exécute `source` comme un script global depuis du code en
     /// cours d'exécution (`eval`, `Function`). Une erreur de syntaxe devient
     /// une exception `SyntaxError`.
-    pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
-        let proto = parser::parse_eval(source)
-            .and_then(|script| compiler::compile_script(&script.body, script.strict))
+    pub(crate) fn eval_global(&mut self, source: &str, strict: bool) -> JsResult {
+        let proto = parser::parse_eval(source, strict)
+            .and_then(|script| compiler::compile_script(&script.body, script.strict, false))
             .map_err(|error| self.error("SyntaxError", &error.message))?;
         self.run_script(proto)
     }

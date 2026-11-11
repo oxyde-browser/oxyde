@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 34869 réussis sur 48795 (71.5 %).**
+**Total : 35620 réussis sur 48795 (73.0 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -19,7 +19,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 10 | 26.3 % |
 | `built-ins/AsyncFunction` | 18 | 10 | 55.6 % |
 | `built-ins/AsyncGeneratorFunction` | 23 | 8 | 34.8 % |
-| `built-ins/AsyncGeneratorPrototype` | 48 | 25 | 52.1 % |
+| `built-ins/AsyncGeneratorPrototype` | 48 | 28 | 58.3 % |
 | `built-ins/AsyncIteratorPrototype` | 13 | 0 | 0.0 % |
 | `built-ins/Atomics` | 389 | 0 | 0.0 % |
 | `built-ins/BigInt` | 77 | 74 | 96.1 % |
@@ -31,7 +31,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/FinalizationRegistry` | 47 | 0 | 0.0 % |
 | `built-ins/Function` | 509 | 363 | 71.3 % |
 | `built-ins/GeneratorFunction` | 23 | 8 | 34.8 % |
-| `built-ins/GeneratorPrototype` | 61 | 42 | 68.9 % |
+| `built-ins/GeneratorPrototype` | 61 | 47 | 77.0 % |
 | `built-ins/Infinity` | 6 | 2 | 33.3 % |
 | `built-ins/Iterator` | 684 | 13 | 1.9 % |
 | `built-ins/JSON` | 166 | 101 | 60.8 % |
@@ -42,8 +42,8 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/NativeErrors` | 94 | 82 | 87.2 % |
 | `built-ins/Number` | 340 | 295 | 86.8 % |
 | `built-ins/Object` | 3411 | 3323 | 97.4 % |
-| `built-ins/Promise` | 732 | 381 | 52.0 % |
-| `built-ins/Proxy` | 311 | 262 | 84.2 % |
+| `built-ins/Promise` | 732 | 383 | 52.3 % |
+| `built-ins/Proxy` | 311 | 271 | 87.1 % |
 | `built-ins/Reflect` | 153 | 152 | 99.3 % |
 | `built-ins/RegExp` | 1879 | 863 | 45.9 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 0 | 0.0 % |
@@ -51,14 +51,14 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 0 | 0.0 % |
-| `built-ins/String` | 1223 | 1095 | 89.5 % |
+| `built-ins/String` | 1223 | 1096 | 89.6 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 0 | 0.0 % |
 | `built-ins/Symbol` | 98 | 65 | 66.3 % |
 | `built-ins/Temporal` | 4614 | 0 | 0.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1213 | 83.5 % |
-| `built-ins/TypedArrayConstructors` | 738 | 628 | 85.1 % |
+| `built-ins/TypedArrayConstructors` | 738 | 631 | 85.5 % |
 | `built-ins/Uint8Array` | 70 | 8 | 11.4 % |
 | `built-ins/WeakMap` | 141 | 101 | 71.6 % |
 | `built-ins/WeakRef` | 29 | 0 | 0.0 % |
@@ -74,31 +74,31 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/parseFloat` | 54 | 54 | 100.0 % |
 | `built-ins/parseInt` | 55 | 55 | 100.0 % |
 | `built-ins/undefined` | 8 | 3 | 37.5 % |
-| `language/arguments-object` | 263 | 228 | 86.7 % |
+| `language/arguments-object` | 263 | 230 | 87.5 % |
 | `language/asi` | 102 | 102 | 100.0 % |
 | `language/block-scope` | 145 | 129 | 89.0 % |
-| `language/comments` | 52 | 51 | 98.1 % |
+| `language/comments` | 52 | 52 | 100.0 % |
 | `language/computed-property-names` | 48 | 44 | 91.7 % |
 | `language/destructuring` | 19 | 16 | 84.2 % |
-| `language/directive-prologue` | 62 | 58 | 93.5 % |
-| `language/eval-code` | 347 | 138 | 39.8 % |
+| `language/directive-prologue` | 62 | 62 | 100.0 % |
+| `language/eval-code` | 347 | 142 | 40.9 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 9571 | 85.8 % |
+| `language/expressions` | 11156 | 9735 | 87.3 % |
 | `language/function-code` | 217 | 216 | 99.5 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 26 | 61.9 % |
-| `language/identifier-resolution` | 14 | 8 | 57.1 % |
+| `language/identifier-resolution` | 14 | 13 | 92.9 % |
 | `language/identifiers` | 268 | 208 | 77.6 % |
 | `language/import` | 129 | 15 | 11.6 % |
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
-| `language/literals` | 536 | 527 | 98.3 % |
-| `language/module-code` | 599 | 295 | 49.2 % |
+| `language/literals` | 536 | 528 | 98.5 % |
+| `language/module-code` | 599 | 531 | 88.6 % |
 | `language/punctuators` | 11 | 11 | 100.0 % |
 | `language/reserved-words` | 27 | 27 | 100.0 % |
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 8055 | 85.7 % |
-| `language/types` | 113 | 104 | 92.0 % |
+| `language/statements` | 9399 | 8365 | 89.0 % |
+| `language/types` | 113 | 105 | 92.9 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

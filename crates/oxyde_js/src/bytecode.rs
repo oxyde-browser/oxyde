@@ -140,6 +140,22 @@ pub(crate) enum Op {
     CloseUpvalues {
         from: Reg,
     },
+    /// Précède l'appel `eval(…)` écrit dans du code strict : le code évalué
+    /// hérite de ce mode.
+    StrictEval,
+    /// `ToObject` : `TypeError` pour `null` et `undefined`.
+    ToObject {
+        dst: Reg,
+        src: Reg,
+    },
+    /// Dans un `with` : `dst` reçoit vrai si l'objet `obj` fournit la
+    /// liaison `name` (propriété présente et non masquée par
+    /// `Symbol.unscopables`).
+    WithHas {
+        dst: Reg,
+        obj: Reg,
+        name: u32,
+    },
     /// Lève `ReferenceError` si le registre est encore non initialisé.
     CheckInit {
         src: Reg,
@@ -333,6 +349,13 @@ pub(crate) enum Op {
     ForInStart {
         dst: Reg,
         obj: Reg,
+    },
+    /// `IteratorClose` : appelle `return()` sur un itérateur que l'on quitte
+    /// avant son épuisement. `quiet` : la sortie est due à une exception, les
+    /// erreurs de `return()` sont ignorées.
+    IterClose {
+        iter: Reg,
+        quiet: bool,
     },
     /// Itérateur sur les valeurs (`for…of`, déstructuration, décomposition).
     IterStart {

@@ -135,6 +135,12 @@ pub(crate) fn install(vm: &mut Vm) {
     regexp::install(vm);
     reflect::install(vm);
     proxy::install(vm);
+    let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
+    let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
+    let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");
+    if let (Ok(Value::Object(values)), Ok(Value::Object(next))) = (values, next) {
+        vm.iteration_intrinsics = Some((values, next));
+    }
 }
 
 // ---- Object ------------------------------------------------------------------
@@ -754,7 +760,10 @@ fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let body = texts.pop().unwrap_or_else(|| Arc::from(""));
     let params = texts.join(",");
     // Les sauts de ligne isolent un éventuel commentaire en fin de paramètres ou de corps.
-    vm.eval_global(&format!("(function anonymous({params}\n) {{\n{body}\n}})"))
+    vm.eval_global(
+        &format!("(function anonymous({params}\n) {{\n{body}\n}})"),
+        false,
+    )
 }
 
 /// `eval(code)`.
@@ -763,7 +772,10 @@ fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 /// indirect ») ; il ne voit pas les variables locales de l'appelant.
 fn global_eval(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     match arg(args, 0) {
-        Value::String(source) => vm.eval_global(&source),
+        Value::String(source) => {
+            let strict = std::mem::take(&mut vm.strict_eval);
+            vm.eval_global(&source, strict)
+        }
         other => Ok(other),
     }
 }

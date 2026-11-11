@@ -134,7 +134,12 @@ pub(crate) enum IterState {
     /// Valeurs figées (chaînes, `Map`, `Set`, itérables convertis).
     Values { values: Vec<Value>, index: usize },
     /// Objet respectant le protocole d'itération (`next()` → `{ value, done }`).
-    Protocol { iterator: Value, next: Value },
+    /// `done` : épuisé, ou fermé ; plus aucun appel ne lui sera fait.
+    Protocol {
+        iterator: Value,
+        next: Value,
+        done: bool,
+    },
     /// Propriétés indexées d'un objet de type tableau, relues à chaque tour
     /// (`Array.prototype.keys`, `values`, `entries`).
     Indexed {
@@ -641,7 +646,7 @@ impl Heap {
                     IterState::Values { values, .. } => {
                         values.iter().for_each(|v| push(v, &mut pending))
                     }
-                    IterState::Protocol { iterator, next } => {
+                    IterState::Protocol { iterator, next, .. } => {
                         push(iterator, &mut pending);
                         push(next, &mut pending);
                     }

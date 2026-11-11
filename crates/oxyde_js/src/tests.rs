@@ -1241,7 +1241,8 @@ fn modules() {
             ][..],
             "réexporte",
         ),
-        (&[("main", "await 1;")][..], "SyntaxError"),
+        (&[("main", "function f() { await 1; }")][..], "SyntaxError"),
+        (&[("main", "var await;")][..], "SyntaxError"),
         (&[("main", "new import('./m');")][..], "SyntaxError"),
         (&[("main", "import();")][..], "SyntaxError"),
     ] {
@@ -1275,6 +1276,36 @@ fn modules() {
             "out"
         ),
         "TypeError,SyntaxError,7,ok"
+    );
+    // `await` au premier niveau : le module qui l'importe attend sa fin.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    "import { valeur, trace } from './lent'; trace.push('main');
+                          const plus = await Promise.resolve(valeur + 1);
+                          for await (const x of [Promise.resolve(10)]) trace.push(x);
+                          globalThis.out = [plus, ...trace].join();"
+                ),
+                (
+                    "lent",
+                    "export const trace = ['début']; export const valeur = await new Promise(r => r(41)); trace.push('fin');"
+                ),
+            ],
+            "out"
+        ),
+        "42,début,fin,main,10"
+    );
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import './casse';"),
+                ("casse", "await Promise.reject(new RangeError('x'));")
+            ],
+            "1"
+        )
+        .contains("RangeError")
     );
     // Hors d'un module, `import` et `export` restent refusés.
     assert!(eval("import x from 'y'").contains("SyntaxError"));
@@ -1947,6 +1978,58 @@ fn early_errors() {
 }
 
 #[test]
+fn iterators_are_closed() {
+    // Quitter un itérateur avant son épuisement appelle `return()`.
+    assert_eq!(
+        eval(
+            "var log = [];
+             function it() { var i = 0; return { [Symbol.iterator]() { return this; },
+                 next() { return { value: i++, done: i > 5 }; }, return() { log.push('ret'); return {}; } }; }
+             for (var x of it()) { if (x == 1) break; }
+             log.push('|'); var [a, b] = it();
+             log.push('|'); try { for (var y of it()) throw 1; } catch (e) { log.push('c' + e); }
+             log.push('|'); for (var z of it()) {}
+             log.push('|'); (function () { for (var q of it()) return q; })();
+             log.push('|'); dehors: for (var m of [1, 2]) { for (var n of it()) continue dehors; }
+             log.push('|'); var [...tout] = it();
+             log.join('')"
+        ),
+        "ret|ret|retc1||ret|retret|"
+    );
+    // Une exception pendant la déstructuration ferme aussi l'itérateur.
+    assert_eq!(
+        eval(
+            "var ferme = 0; var source = { [Symbol.iterator]() { return { next() { return { value: 1, done: false }; }, return() { ferme++; return {}; } }; } };
+             try { var [u = (() => { throw 2; })()] = { [Symbol.iterator]() { return { next() { return { done: false }; }, return() { ferme++; return {}; } }; } }; } catch (e) {}
+             try { [{}.x.y] = source; } catch (e) {} ferme"
+        ),
+        "2"
+    );
+    // `Symbol.iterator` redéfini est respecté, même pour un tableau.
+    assert_eq!(
+        eval(
+            "var a = [1, 2]; a[Symbol.iterator] = function* () { yield 9; }; var [x] = a; var r = [x, [...a].join()];
+             delete Array.prototype[Symbol.iterator]; try { var [y] = [1]; } catch (e) { r.push(e.name); } r.join()"
+        ),
+        "9,9,TypeError"
+    );
+    // `return()` d'un générateur exécute ses blocs `finally`.
+    assert_eq!(
+        eval(
+            "var log = []; function* g() { try { yield 1; yield 2; } finally { log.push('fin'); } }
+             var it = g(); it.next(); log.push(JSON.stringify(it.return(5)), JSON.stringify(it.next()));
+             for (var x of g()) break; var [k] = g();
+             function* h() { try { yield 1; } finally { yield 7; } }
+             var j = h(); j.next(); log.push(JSON.stringify(j.return(5)), JSON.stringify(j.next()));
+             function* interne() { try { yield 1; } finally { log.push('i'); } }
+             function* externe() { try { yield* interne(); } finally { log.push('o'); } }
+             var e = externe(); e.next(); e.return(); log.join(' ')"
+        ),
+        "fin {\"value\":5,\"done\":true} {\"done\":true} fin fin {\"value\":7,\"done\":false} {\"value\":5,\"done\":true} i o"
+    );
+}
+
+#[test]
 fn property_descriptors() {
     // Un descripteur partiel ne touche que les attributs qu'il nomme.
     assert_eq!(
@@ -2240,7 +2323,20 @@ fn console_and_unsupported_features() {
     );
     assert!(vm.take_console().is_empty());
 
-    assert!(matches!(vm.eval("with (a) {}"), Err(EvalError::Syntax(_))));
+    assert!(matches!(vm.eval("tag`x`"), Err(EvalError::Syntax(_))));
+    // `with` : l'objet fournit les variables, sauf celles que masque
+    // `Symbol.unscopables` ; une fonction trouvée sur lui le reçoit pour `this`.
+    assert_eq!(
+        eval(
+            "var o = { a: 1, f() { return this === o; }, [Symbol.unscopables]: { cache: true }, cache: 0 };
+             var a = 5, b = 2, cache = 'dehors', r = [];
+             with (o) { r.push(a, b, f(), cache, typeof a, typeof inconnu); a = 7; b = 9; var g = function () { return a + b; }; }
+             r.push(o.a, a, b, g()); r.join()"
+        ),
+        "1,2,true,dehors,number,undefined,7,5,9,16"
+    );
+    assert!(eval("with (null) {}").contains("TypeError"));
+    assert!(eval("'use strict'; with ({}) {}").contains("SyntaxError"));
     assert!(eval("/(/.test('aa')").contains("SyntaxError"));
     assert_eq!(eval("new Function('a', 'b', 'return a + b')(2, 3)"), "5");
     assert!(eval("return 1").contains("SyntaxError"));

@@ -24,6 +24,14 @@ use crate::value::{JsStr, Value};
 
 type CResult<T> = Result<T, SyntaxError>;
 
+/// Préfixe du nom de la liaison cachée qui porte l'objet d'un `with` ; ce
+/// n'est pas un identifiant, aucun script ne peut la désigner.
+const WITH_PREFIX: &str = "%with";
+
+/// Nom du paramètre de reste du constructeur implicite d'une classe
+/// dérivée ; ce n'est pas un identifiant.
+const FORWARDED_ARGS: &str = "%args";
+
 fn error<T>(message: &str) -> CResult<T> {
     Err(SyntaxError {
         message: message.to_owned(),
@@ -60,6 +68,8 @@ struct Scope {
 enum Exit {
     Handler,
     Finally(Arc<Vec<Stmt>>),
+    /// Itérateur d'un `for…of` à fermer quand on sort de la boucle.
+    IterClose(Reg),
 }
 
 /// Cible de `break` / `continue`.
@@ -120,17 +130,29 @@ pub(crate) struct Compiler {
     /// Nom à donner à la prochaine fonction ou classe anonyme compilée
     /// (`const f = () => {}` nomme la fonction « f »).
     name_hint: Option<JsStr>,
+    /// Nombre d'instructions `with` qui entourent le code en cours de
+    /// compilation, fonctions englobantes comprises.
+    with_depth: usize,
+    /// Nombre d'instructions `with` compilées : numérote leurs liaisons.
+    with_count: usize,
 }
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
 /// est celle de la dernière instruction-expression de premier niveau.
-pub(crate) fn compile_script(body: &[Stmt], strict: bool) -> CResult<Arc<FunctionProto>> {
+pub(crate) fn compile_script(
+    body: &[Stmt],
+    strict: bool,
+    is_async: bool,
+) -> CResult<Arc<FunctionProto>> {
     let mut compiler = Compiler {
         funcs: Vec::new(),
         name_hint: None,
+        with_depth: 0,
+        with_count: 0,
     };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
     compiler.f().strict = strict;
+    compiler.f().is_async = is_async;
     compiler.push_scope();
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
@@ -251,7 +273,10 @@ fn var_names_in(stmt: &Stmt, out: &mut Vec<JsStr>) {
             }
             var_names_in(body, out);
         }
-        Stmt::While { body, .. } | Stmt::DoWhile { body, .. } | Stmt::Labeled(_, body) => {
+        Stmt::While { body, .. }
+        | Stmt::DoWhile { body, .. }
+        | Stmt::Labeled(_, body)
+        | Stmt::With(_, body) => {
             var_names_in(body, out);
         }
         Stmt::Try {
@@ -532,8 +557,68 @@ impl Compiler {
         })
     }
 
+    /// Liaisons cachées des instructions `with` situées entre le code courant
+    /// et la déclaration de `name`, de la plus interne à la plus externe :
+    /// chacun de ces objets peut fournir `name` à l'exécution.
+    fn with_chain(&self, name: &str) -> Vec<JsStr> {
+        let mut chain = Vec::new();
+        if self.with_depth == 0 {
+            return chain;
+        }
+        for state in self.funcs.iter().rev() {
+            for scope in state.scopes.iter().rev() {
+                for binding in scope.bindings.iter().rev() {
+                    if binding.name.starts_with(WITH_PREFIX) {
+                        chain.push(Arc::clone(&binding.name));
+                    } else if &*binding.name == name {
+                        return chain;
+                    }
+                }
+            }
+        }
+        chain
+    }
+
     /// Charge la variable `name` ; renvoie le registre qui contient sa valeur.
     fn load(&mut self, name: &JsStr, dst: Option<Reg>) -> CResult<Reg> {
+        let chain = self.with_chain(name);
+        if chain.is_empty() {
+            return self.load_plain(name, dst);
+        }
+        let dst = self.dst_or_alloc(dst)?;
+        let mark = self.mark();
+        let index = self.string(name);
+        let mut ends = Vec::new();
+        for with in &chain {
+            let obj = self.load_plain(with, None)?;
+            let flag = self.alloc()?;
+            self.emit(Op::WithHas {
+                dst: flag,
+                obj,
+                name: index,
+            });
+            let skip = self.emit(Op::JumpIfFalse {
+                src: flag,
+                target: 0,
+            });
+            self.emit(Op::GetProp {
+                dst,
+                obj,
+                name: index,
+            });
+            ends.push(self.emit(Op::Jump { target: 0 }));
+            self.patch(skip);
+            self.free_to(mark);
+        }
+        self.load_plain(name, Some(dst))?;
+        for end in ends {
+            self.patch(end);
+        }
+        Ok(dst)
+    }
+
+    /// Charge `name` sans consulter les objets des `with` englobants.
+    fn load_plain(&mut self, name: &JsStr, dst: Option<Reg>) -> CResult<Reg> {
         match self.resolve(name)? {
             Resolved::Local {
                 reg, needs_check, ..
@@ -576,6 +661,47 @@ impl Compiler {
 
     /// Écrit `src` dans la variable `name`. `init` : c'est sa déclaration.
     fn store(&mut self, name: &JsStr, src: Reg, init: bool) -> CResult<()> {
+        let chain = if init {
+            Vec::new()
+        } else {
+            self.with_chain(name)
+        };
+        if chain.is_empty() {
+            return self.store_plain(name, src, init);
+        }
+        let mark = self.mark();
+        let index = self.string(name);
+        let mut ends = Vec::new();
+        for with in &chain {
+            let obj = self.load_plain(with, None)?;
+            let flag = self.alloc()?;
+            self.emit(Op::WithHas {
+                dst: flag,
+                obj,
+                name: index,
+            });
+            let skip = self.emit(Op::JumpIfFalse {
+                src: flag,
+                target: 0,
+            });
+            self.emit(Op::SetProp {
+                obj,
+                name: index,
+                src,
+            });
+            ends.push(self.emit(Op::Jump { target: 0 }));
+            self.patch(skip);
+            self.free_to(mark);
+        }
+        self.store_plain(name, src, init)?;
+        for end in ends {
+            self.patch(end);
+        }
+        Ok(())
+    }
+
+    /// Écrit dans `name` sans consulter les objets des `with` englobants.
+    fn store_plain(&mut self, name: &JsStr, src: Reg, init: bool) -> CResult<()> {
         match self.resolve(name)? {
             Resolved::Local {
                 reg,
@@ -888,7 +1014,7 @@ impl Compiler {
             Some(constructor) => constructor.as_ref(),
             None => {
                 // Constructeur implicite : vide, ou `constructor(...args) { super(...args) }`.
-                let args: JsStr = Arc::from("args");
+                let args: JsStr = Arc::from(FORWARDED_ARGS);
                 synthesized = Function {
                     is_async: false,
                     is_generator: false,
@@ -1130,6 +1256,9 @@ impl Compiler {
                 Some(Exit::Handler) => {
                     self.emit(Op::PopHandler);
                 }
+                Some(Exit::IterClose(iter)) => {
+                    self.emit(Op::IterClose { iter, quiet: false });
+                }
                 Some(Exit::Finally(body)) => {
                     // Le bloc `finally` est recopié sur ce chemin de sortie ; pendant sa
                     // compilation, lui-même et les zones internes ne sont plus actifs.
@@ -1270,6 +1399,21 @@ impl Compiler {
                     self.statements(body)?;
                     self.pop_target(0);
                 }
+            }
+            Stmt::With(object, body) => {
+                self.push_scope();
+                // L'objet est évalué avant que sa liaison ne soit visible.
+                let reg = self.alloc()?;
+                self.expr(object, Some(reg))?;
+                self.emit(Op::ToObject { dst: reg, src: reg });
+                let name: JsStr = Arc::from(format!("{WITH_PREFIX}{}", self.with_count));
+                self.with_count += 1;
+                self.declare_at(&name, BindKind::Var, true, reg);
+                self.with_depth += 1;
+                let result = self.statement(body);
+                self.with_depth -= 1;
+                self.pop_scope();
+                result?;
             }
             Stmt::Labeled(label, body) => {
                 self.f().pending_labels.push(Arc::clone(label));
@@ -1477,6 +1621,20 @@ impl Compiler {
         });
         self.free_to(iter + 1);
         self.f().pending_labels = labels;
+        // `for…of` : l'itérateur est fermé si l'on quitte la boucle avant son
+        // épuisement, par un saut ou par une exception.
+        let closing = of && !is_await;
+        let mut on_throw = None;
+        if closing {
+            let exception = self.alloc()?;
+            let handler = self.emit(Op::PushHandler {
+                target: 0,
+                reg: exception,
+            });
+            self.f().exits.push(Exit::Handler);
+            self.f().exits.push(Exit::IterClose(iter));
+            on_throw = Some((handler, exception));
+        }
         self.push_target(true, true);
         let head = self.here();
         let value = self.alloc()?;
@@ -1509,8 +1667,28 @@ impl Compiler {
         self.statement(body)?;
         self.pop_scope();
         self.emit(Op::Jump { target: head });
-        self.patch(exit);
+        let Some((handler, exception)) = on_throw else {
+            self.patch(exit);
+            self.pop_target(head);
+            return Ok(());
+        };
+        // Arrivée d'un `break` : fermer l'itérateur.
         self.pop_target(head);
+        self.f().exits.pop();
+        self.f().exits.pop();
+        self.emit(Op::PopHandler);
+        self.emit(Op::IterClose { iter, quiet: false });
+        let after_break = self.emit(Op::Jump { target: 0 });
+        // Itérateur épuisé : rien à fermer.
+        self.patch(exit);
+        self.emit(Op::PopHandler);
+        let after_done = self.emit(Op::Jump { target: 0 });
+        // Exception levée dans la boucle : fermer, puis la relancer.
+        self.patch(handler);
+        self.emit(Op::IterClose { iter, quiet: true });
+        self.emit(Op::Throw { src: exception });
+        self.patch(after_break);
+        self.patch(after_done);
         Ok(())
     }
 
@@ -1791,6 +1969,13 @@ impl Compiler {
             Pattern::Array { elements, rest } => {
                 let iter = self.alloc()?;
                 self.emit(Op::IterStart { dst: iter, src });
+                // Une exception pendant la déstructuration ferme l'itérateur.
+                let exception = self.alloc()?;
+                let handler = self.emit(Op::PushHandler {
+                    target: 0,
+                    reg: exception,
+                });
+                self.f().exits.push(Exit::Handler);
                 for element in elements {
                     let inner = self.mark();
                     let value = self.alloc()?;
@@ -1805,6 +1990,14 @@ impl Compiler {
                     self.emit(Op::IterRest { dst: value, iter });
                     self.assign_pattern(rest, value, init)?;
                 }
+                self.f().exits.pop();
+                self.emit(Op::PopHandler);
+                self.emit(Op::IterClose { iter, quiet: false });
+                let done = self.emit(Op::Jump { target: 0 });
+                self.patch(handler);
+                self.emit(Op::IterClose { iter, quiet: true });
+                self.emit(Op::Throw { src: exception });
+                self.patch(done);
             }
         }
         self.free_to(mark);
@@ -1919,6 +2112,43 @@ impl Compiler {
                 let key = self.key_reg(key)?;
                 self.emit(Op::GetSuper { dst: func, key });
             }
+            // Dans un `with`, une fonction trouvée sur l'objet est appelée
+            // avec cet objet pour `this`.
+            Expr::Ident(name) if !self.with_chain(name).is_empty() => {
+                let chain = self.with_chain(name);
+                let index = self.string(name);
+                let mut ends = Vec::new();
+                for with in &chain {
+                    let obj = self.load_plain(with, None)?;
+                    let flag = self.alloc()?;
+                    self.emit(Op::WithHas {
+                        dst: flag,
+                        obj,
+                        name: index,
+                    });
+                    let skip = self.emit(Op::JumpIfFalse {
+                        src: flag,
+                        target: 0,
+                    });
+                    self.emit(Op::GetProp {
+                        dst: func,
+                        obj,
+                        name: index,
+                    });
+                    self.emit(Op::Move {
+                        dst: this,
+                        src: obj,
+                    });
+                    ends.push(self.emit(Op::Jump { target: 0 }));
+                    self.patch(skip);
+                    self.free_to(func + 1);
+                }
+                self.emit(Op::LoadUndefined { dst: this });
+                self.load_plain(name, Some(func))?;
+                for end in ends {
+                    self.patch(end);
+                }
+            }
             other => {
                 self.emit(Op::LoadUndefined { dst: this });
                 self.expr(other, Some(func))?;
@@ -1926,6 +2156,22 @@ impl Compiler {
         }
         self.free_to(func + 1);
         Ok((func, this))
+    }
+
+    /// Émet un `yield` qui rend `src` ; la valeur de reprise arrive dans
+    /// `dst`. Le chemin de retour qui suit sert à `return(v)` : il exécute les
+    /// blocs `finally` englobants, ferme l'itérateur délégué `inner`, puis
+    /// termine le générateur avec `v`.
+    fn emit_yield(&mut self, dst: Reg, src: Reg, inner: Option<Reg>) -> CResult<()> {
+        self.emit(Op::Yield { dst, src });
+        let resume = self.emit(Op::Jump { target: 0 });
+        if let Some(iter) = inner {
+            self.emit(Op::IterClose { iter, quiet: false });
+        }
+        self.unwind_exits(0)?;
+        self.emit(Op::Return { src: dst });
+        self.patch(resume);
+        Ok(())
     }
 
     /// Dans une chaîne optionnelle : saute à la fin si `src` est `null` ou `undefined`.
@@ -2108,10 +2354,7 @@ impl Compiler {
                     let head = self.here();
                     let item = self.alloc()?;
                     let exit = self.async_iter_next(iter, item)?;
-                    self.emit(Op::Yield {
-                        dst: item,
-                        src: item,
-                    });
+                    self.emit_yield(item, item, None)?;
                     self.emit(Op::Jump { target: head });
                     self.patch(exit);
                     self.emit(Op::LoadUndefined { dst });
@@ -2129,15 +2372,12 @@ impl Compiler {
                         iter,
                         done: 0,
                     });
-                    self.emit(Op::Yield {
-                        dst: item,
-                        src: item,
-                    });
+                    self.emit_yield(item, item, Some(iter))?;
                     self.emit(Op::Jump { target: head });
                     self.patch(exit);
                     self.emit(Op::LoadUndefined { dst });
                 } else {
-                    self.emit(Op::Yield { dst, src: value });
+                    self.emit_yield(dst, value, None)?;
                 }
                 self.free_to(mark);
                 Ok(dst)
@@ -2330,7 +2570,13 @@ impl Compiler {
                 if *optional {
                     self.optional_jump(func);
                 }
-                match self.arguments(args)? {
+                let direct_eval =
+                    matches!(&**callee, Expr::Ident(name) if &**name == "eval") && self.f().strict;
+                let arguments = self.arguments(args)?;
+                if direct_eval {
+                    self.emit(Op::StrictEval);
+                }
+                match arguments {
                     Ok((first, argc)) => self.emit(Op::Call {
                         dst,
                         callee: func,
@@ -2372,8 +2618,21 @@ impl Compiler {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
                 let array = self.alloc()?;
-                self.emit(Op::NewArray { dst: array });
-                for arg in args {
+                // Constructeur implicite : les arguments reçus sont transmis
+                // tels quels, sans passer par le protocole d'itération.
+                let forwarded = match args.as_slice() {
+                    [Expr::Spread(inner)] => {
+                        matches!(&**inner, Expr::Ident(name) if &**name == FORWARDED_ARGS)
+                            .then_some(inner)
+                    }
+                    _ => None,
+                };
+                if let Some(inner) = forwarded {
+                    self.expr(inner, Some(array))?;
+                } else {
+                    self.emit(Op::NewArray { dst: array });
+                }
+                for arg in args.iter().filter(|_| forwarded.is_none()) {
                     let inner = self.mark();
                     match arg {
                         Expr::Spread(inner_expr) => {
@@ -2505,8 +2764,41 @@ impl Compiler {
                 if let Expr::Ident(name) = arg
                     && matches!(self.resolve(name)?, Resolved::Global)
                 {
-                    let name = self.string(name);
-                    self.emit(Op::TypeofGlobal { dst, name });
+                    // Dans un `with`, l'objet peut fournir la variable.
+                    let chain = self.with_chain(name);
+                    let index = self.string(name);
+                    let mark = self.mark();
+                    let mut ends = Vec::new();
+                    for with in &chain {
+                        let obj = self.load_plain(with, None)?;
+                        let flag = self.alloc()?;
+                        self.emit(Op::WithHas {
+                            dst: flag,
+                            obj,
+                            name: index,
+                        });
+                        let skip = self.emit(Op::JumpIfFalse {
+                            src: flag,
+                            target: 0,
+                        });
+                        self.emit(Op::GetProp {
+                            dst: flag,
+                            obj,
+                            name: index,
+                        });
+                        self.emit(Op::Unary {
+                            op: UnaryKind::Typeof,
+                            dst,
+                            src: flag,
+                        });
+                        ends.push(self.emit(Op::Jump { target: 0 }));
+                        self.patch(skip);
+                        self.free_to(mark);
+                    }
+                    self.emit(Op::TypeofGlobal { dst, name: index });
+                    for end in ends {
+                        self.patch(end);
+                    }
                 } else {
                     let src = self.expr(arg, None)?;
                     self.emit(Op::Unary {

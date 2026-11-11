@@ -315,5 +315,7 @@ pub(crate) enum Stmt {
     },
     Block(Vec<Stmt>),
     Labeled(Arc<str>, Box<Stmt>),
+    /// `with (objet) instruction`.
+    With(Expr, Box<Stmt>),
     Empty,
 }

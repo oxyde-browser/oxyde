@@ -783,7 +783,7 @@ impl Vm {
                 index: 0,
             },
             Value::Object(id) => match &self.heap.get(*id).kind {
-                Kind::Array(_) => IterState::Array {
+                Kind::Array(_) if self.array_iteration_intact(*id) => IterState::Array {
                     target: *id,
                     index: 0,
                 },
@@ -818,11 +818,17 @@ impl Vm {
                             self.type_error("Symbol.iterator doit renvoyer un objet itérateur")
                         );
                     };
-                    if matches!(self.heap.get(iterator_id).kind, Kind::Iterator(_)) {
+                    if matches!(self.heap.get(iterator_id).kind, Kind::Iterator(_))
+                        && self.iterator_next_intact()
+                    {
                         return Ok(iterator);
                     }
                     let next = self.get(&iterator, "next")?;
-                    IterState::Protocol { iterator, next }
+                    IterState::Protocol {
+                        iterator,
+                        next,
+                        done: false,
+                    }
                 }
             },
             _ => {
@@ -831,6 +837,71 @@ impl Vm {
             }
         };
         Ok(self.new_iterator(state))
+    }
+
+    /// Vrai si `next` des itérateurs internes est la fonction d'origine.
+    fn iterator_next_intact(&self) -> bool {
+        let Some((_, next)) = self.iteration_intrinsics else {
+            return true;
+        };
+        matches!(
+            self.heap.get(self.intrinsics.iterator_proto).props.get("next"),
+            Some(Property { slot: Slot::Data(Value::Object(current)), .. }) if *current == next
+        )
+    }
+
+    /// Vrai si itérer le tableau `id` par le protocole donnerait exactement
+    /// ses éléments : ni lui ni `Array.prototype` ne redéfinissent
+    /// `Symbol.iterator`, et `next` est d'origine.
+    fn array_iteration_intact(&self, id: ObjId) -> bool {
+        let Some((values, _)) = self.iteration_intrinsics else {
+            return true;
+        };
+        let object = self.heap.get(id);
+        let array_proto = self.intrinsics.array_proto;
+        object.proto == Some(array_proto)
+            && object.symbols.is_empty()
+            && matches!(
+                self.heap.get(array_proto).symbols.get(&self.well_known.iterator),
+                Some(Property { slot: Slot::Data(Value::Object(current)), .. }) if *current == values
+            )
+            && self.iterator_next_intact()
+    }
+
+    /// `IteratorClose` (ECMA-262 §7.4.11) : prévient l'itérateur qu'on le
+    /// quitte avant son épuisement. `quiet` : la sortie est due à une
+    /// exception, qui l'emporte sur toute erreur de `return()`.
+    pub(crate) fn iterator_close(&mut self, iterator: &Value, quiet: bool) -> JsResult<()> {
+        let Some(id) = iterator.as_object() else {
+            return Ok(());
+        };
+        let Kind::Iterator(IterState::Protocol { iterator, done, .. }) =
+            &mut self.heap.get_mut(id).kind
+        else {
+            return Ok(());
+        };
+        if std::mem::replace(done, true) {
+            return Ok(());
+        }
+        let iterator = iterator.clone();
+        let method = self.get(&iterator, "return");
+        if quiet {
+            if let Ok(method) = method
+                && !method.is_nullish()
+            {
+                let _ = self.call(&method, &iterator, &[]);
+            }
+            return Ok(());
+        }
+        let method = method?;
+        if method.is_nullish() {
+            return Ok(());
+        }
+        let result = self.call(&method, &iterator, &[])?;
+        if result.as_object().is_none() {
+            return Err(self.type_error("le résultat de « return » doit être un objet"));
+        }
+        Ok(())
     }
 
     /// Valeur suivante d'un itérateur interne ; `None` quand il est épuisé.
@@ -858,13 +929,16 @@ impl Vm {
                 let Kind::Array(items) = &self.heap.get(target).kind else {
                     return Ok(None);
                 };
-                Ok(items.get(i).map(|v| {
-                    if *v == Value::Hole {
-                        Value::Undefined
-                    } else {
-                        v.clone()
+                match items.get(i).cloned() {
+                    // Un trou se lit comme une propriété : accesseur sur
+                    // l'index, ou valeur héritée du prototype.
+                    Some(Value::Hole) => {
+                        #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+                        let key = Value::Number(i as f64);
+                        self.get_element(&Value::Object(target), &key).map(Some)
                     }
-                }))
+                    other => Ok(other),
+                }
             }
             IterState::Indexed {
                 target,
@@ -901,18 +975,38 @@ impl Vm {
                     }
                 }))
             }
-            IterState::Protocol { iterator, next } => {
-                let (iterator, next) = (iterator.clone(), next.clone());
-                let result = self.call(&next, &iterator, &[])?;
-                if result.as_object().is_none() {
-                    return Err(self.type_error("le résultat d'un itérateur doit être un objet"));
-                }
-                if self.get(&result, "done")?.truthy() {
+            IterState::Protocol {
+                iterator,
+                next,
+                done,
+            } => {
+                if *done {
                     return Ok(None);
                 }
-                self.get(&result, "value").map(Some)
+                let (iterator, next) = (iterator.clone(), next.clone());
+                let outcome = self.protocol_step(&iterator, &next);
+                // Épuisé, ou en erreur : l'itérateur ne sera ni rappelé ni fermé.
+                if !matches!(outcome, Ok(Some(_)))
+                    && let Kind::Iterator(IterState::Protocol { done, .. }) =
+                        &mut self.heap.get_mut(id).kind
+                {
+                    *done = true;
+                }
+                outcome
             }
         }
+    }
+
+    /// Un pas du protocole d'itération : `next()` puis lecture du résultat.
+    fn protocol_step(&mut self, iterator: &Value, next: &Value) -> JsResult<Option<Value>> {
+        let result = self.call(next, iterator, &[])?;
+        if result.as_object().is_none() {
+            return Err(self.type_error("le résultat d'un itérateur doit être un objet"));
+        }
+        if self.get(&result, "done")?.truthy() {
+            return Ok(None);
+        }
+        self.get(&result, "value").map(Some)
     }
 
     /// Objet `{ value, done }` rendu par la méthode `next` d'un itérateur.
@@ -930,18 +1024,13 @@ impl Vm {
 
     /// Toutes les valeurs d'un itérable.
     pub(crate) fn iterate_to_vec(&mut self, source: &Value) -> JsResult<Vec<Value>> {
-        // Chemin rapide : tableau.
-        if let Some(Kind::Array(items)) = source.as_object().map(|id| &self.heap.get(id).kind) {
-            return Ok(items
-                .iter()
-                .map(|v| {
-                    if *v == Value::Hole {
-                        Value::Undefined
-                    } else {
-                        v.clone()
-                    }
-                })
-                .collect());
+        // Chemin rapide : tableau sans trou, itéré de la façon ordinaire.
+        if let Some(id) = source.as_object()
+            && let Kind::Array(items) = &self.heap.get(id).kind
+            && !items.contains(&Value::Hole)
+            && self.array_iteration_intact(id)
+        {
+            return Ok(items.clone());
         }
         let iterator = self.iterator_for(source)?;
         let mut values = Vec::new();

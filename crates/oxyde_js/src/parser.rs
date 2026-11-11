@@ -4,7 +4,7 @@
 //! réservés, noms privés, `super`, `new.target`, étiquettes) sont signalées
 //! ici ; les redéclarations le sont par le compilateur.
 //!
-//! LIMITES CONNUES : pas de gabarits étiquetés ni de `with`. Les parenthèses ne sont pas conservées : `(a) = 1` et `([a]) = 1`
+//! LIMITES CONNUES : pas de gabarits étiquetés. Les parenthèses ne sont pas conservées : `(a) = 1` et `([a]) = 1`
 //! sont traités de la même façon.
 
 use std::sync::Arc;
@@ -145,6 +145,8 @@ struct Parser {
     labels: Vec<Arc<str>>,
     /// Corps de classes en cours d'analyse, du plus externe au plus interne.
     private_scopes: Vec<PrivateScope>,
+    /// Le module emploie `await` au premier niveau.
+    top_level_await: bool,
     /// Position du premier `{ a = 1 }` (ou `__proto__` en double) qui n'est
     /// valide que si l'objet se révèle être un motif d'affectation.
     cover_init: Option<usize>,
@@ -164,21 +166,22 @@ pub(crate) struct Script {
 
 /// Analyse un script complet.
 pub(crate) fn parse_program(source: &str) -> PResult<Script> {
-    parse_script(source, false)
+    parse_script(source, false, false)
 }
 
 /// Analyse le source passé à `eval`. `new.target` et `super.x` y sont
 /// acceptés, faute de savoir ici d'où vient l'appel.
-pub(crate) fn parse_eval(source: &str) -> PResult<Script> {
-    parse_script(source, true)
+pub(crate) fn parse_eval(source: &str, strict: bool) -> PResult<Script> {
+    parse_script(source, true, strict)
 }
 
-fn parse_script(source: &str, in_function: bool) -> PResult<Script> {
+fn parse_script(source: &str, in_function: bool, strict: bool) -> PResult<Script> {
     let mut parser = Parser::new(source, false)?;
     parser.in_function = in_function;
     parser.super_property = in_function;
+    parser.strict = strict;
     let mut body = Vec::new();
-    let strict = parser.directives(&mut body)?;
+    let strict = parser.directives(&mut body)? || strict;
     while parser.tok.tok != Tok::Eof {
         body.push(parser.statement()?);
     }
@@ -196,6 +199,7 @@ pub(crate) fn parse_module(source: &str) -> PResult<(Vec<Stmt>, ModuleInfo)> {
     while parser.tok.tok != Tok::Eof {
         parser.module_item(&mut body, &mut info)?;
     }
+    info.has_top_level_await = parser.top_level_await;
     Ok((body, info))
 }
 
@@ -256,9 +260,11 @@ impl Parser {
             tok,
             depth: 0,
             no_in: false,
-            in_async: false,
+            // Au premier niveau d'un module, `await` est un opérateur.
+            in_async: module,
             in_generator: false,
             module,
+            top_level_await: false,
             strict: module,
             in_function: false,
             super_property: false,
@@ -1096,7 +1102,16 @@ impl Parser {
                 self.unsupported("les modules (import)")
             }
             "export" => self.unsupported("les modules (export)"),
-            "with" => self.unsupported("l'instruction with"),
+            "with" => {
+                if self.strict {
+                    return self.error("« with » est interdit en mode strict");
+                }
+                self.advance()?;
+                self.expect_punct("(")?;
+                let object = self.expression()?;
+                self.expect_punct(")")?;
+                Ok(Stmt::With(object, Box::new(self.substatement(false)?)))
+            }
             _ if !RESERVED.contains(&word.as_str()) && self.peek_is_punct(":")? => {
                 self.labeled_statement()
             }
@@ -1148,6 +1163,7 @@ impl Parser {
             if !self.in_async {
                 return self.error("« for await » n'est permis que dans une fonction async");
             }
+            self.top_level_await |= self.module && !self.in_function;
             self.advance()?;
         }
         self.expect_punct("(")?;
@@ -2163,6 +2179,7 @@ impl Parser {
             if self.in_params {
                 return self.error("« await » est interdit dans des paramètres");
             }
+            self.top_level_await |= self.module && !self.in_function;
             self.advance()?;
             let arg = self.unary()?;
             return Ok(Expr::Await(Box::new(arg)));
@@ -2825,12 +2842,7 @@ mod tests {
 
     #[test]
     fn unsupported_syntax_says_so() {
-        for src in [
-            "with (a) {}",
-            "import x from 'y'",
-            "export default 1",
-            "tag`x`",
-        ] {
+        for src in ["import x from 'y'", "export default 1", "tag`x`"] {
             let message = parse_program(src).expect_err("non pris en charge").message;
             assert!(
                 message.contains("non pris en charge"),
