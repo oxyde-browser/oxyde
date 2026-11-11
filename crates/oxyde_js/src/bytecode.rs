@@ -152,6 +152,16 @@ pub(crate) enum Op {
     DelegateStep {
         base: Reg,
     },
+    /// `CanDeclareGlobalFunction` : `TypeError` si l'objet global ne peut pas
+    /// recevoir la fonction `name`.
+    CheckGlobalFunction {
+        name: u32,
+    },
+    /// Déclaration d'une fonction globale.
+    InitGlobalFunction {
+        name: u32,
+        src: Reg,
+    },
     /// Objet des morceaux d'un gabarit étiqueté : le même à chaque
     /// évaluation du même gabarit.
     TemplateObject {
@@ -457,8 +467,11 @@ pub(crate) type TemplateSite = (Vec<Option<JsStr>>, Vec<JsStr>);
 #[derive(Debug)]
 pub(crate) struct FunctionProto {
     pub(crate) name: JsStr,
-    /// Nombre de paramètres formels (propriété `length`).
+    /// Nombre de paramètres formels.
     pub(crate) param_count: u16,
+    /// Propriété `length` : paramètres qui précèdent le premier paramètre à
+    /// valeur par défaut.
+    pub(crate) length: u16,
     /// Taille de la fenêtre de registres.
     pub(crate) registers: u16,
     pub(crate) code: Vec<Op>,

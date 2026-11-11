@@ -168,8 +168,8 @@ fn host_detach(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 /// Objet `$262` minimal exposé aux tests.
-const HOST_OBJECT: &str =
-    "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach };";
+const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach, \
+     evalScript: function (source) { return (0, eval)(source); } };";
 
 /// Chargeur de modules : lit le fichier désigné par `specifier`, relatif au
 /// module qui l'importe. L'identifiant d'un module est son chemin.

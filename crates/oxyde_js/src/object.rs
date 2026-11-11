@@ -118,7 +118,7 @@ impl Vm {
                     Some(Ok(Value::String(Arc::clone(&c.proto.name))))
                 }
                 "length" if self.closure_virtual(id, key) => {
-                    Some(Ok(Value::Number(f64::from(c.proto.param_count))))
+                    Some(Ok(Value::Number(f64::from(c.proto.length))))
                 }
                 "prototype" if !self.heap.get(id).props.contains_key("prototype") => {
                     self.function_prototype(id).map(Ok)

@@ -114,6 +114,10 @@ struct FuncState {
     top_scopes: usize,
     uses_arguments: bool,
     param_count: u16,
+    length: u16,
+    /// Paramètres pas encore liés pendant l'évaluation d'une valeur par
+    /// défaut : les lire lève `ReferenceError`.
+    dead_params: Vec<JsStr>,
     is_async: bool,
     is_generator: bool,
 }
@@ -163,7 +167,16 @@ pub(crate) fn compile_script(
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
-    check_declarations(body, true, &[])?;
+    check_declarations(body, true, &[], strict)?;
+    // Avant toute liaison : chaque fonction globale doit pouvoir être déclarée.
+    for stmt in body {
+        if let Stmt::Function(func) = stmt
+            && let Some(name) = &func.name
+        {
+            let name = compiler.string(name);
+            compiler.emit(Op::CheckGlobalFunction { name });
+        }
+    }
     compiler.hoist_vars(body, &[])?;
     compiler.declare_block(body)?;
     for stmt in body {
@@ -205,9 +218,12 @@ pub(crate) fn pattern_names(pattern: &Pattern, out: &mut Vec<JsStr>) {
 ///
 /// LIMITE : deux fonctions de même nom dans un bloc sont acceptées même en
 /// mode strict, faute de connaître ici le mode du code.
-fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr]) -> CResult<()> {
+fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr], strict: bool) -> CResult<()> {
     let mut lexical: Vec<JsStr> = Vec::new();
     let mut functions: Vec<JsStr> = Vec::new();
+    // Dans un bloc, deux fonctions de même nom ne sont tolérées que hors
+    // mode strict et si ce sont deux fonctions ordinaires (annexe B.3.2.4).
+    let mut plain: Vec<bool> = Vec::new();
     for stmt in body {
         match stmt {
             Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
@@ -216,7 +232,19 @@ fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr]) -> CResult<()> 
                 }
             }
             Stmt::Class(class) => lexical.extend(class.name.clone()),
-            Stmt::Function(func) => functions.extend(func.name.clone()),
+            Stmt::Function(func) => {
+                if let Some(name) = &func.name {
+                    let ordinary = !func.is_async && !func.is_generator;
+                    if !top
+                        && let Some(previous) = functions.iter().position(|f| f == name)
+                        && (strict || !ordinary || !plain[previous])
+                    {
+                        return error(&format!("« {name} » est déjà déclaré"));
+                    }
+                    functions.push(Arc::clone(name));
+                    plain.push(ordinary);
+                }
+            }
             _ => {}
         }
     }
@@ -465,6 +493,8 @@ impl Compiler {
             top_scopes: 0,
             uses_arguments: false,
             param_count: 0,
+            length: 0,
+            dead_params: Vec::new(),
             is_async: false,
             is_generator: false,
         });
@@ -477,6 +507,7 @@ impl Compiler {
         Ok(FunctionProto {
             name: state.name,
             param_count: state.param_count,
+            length: state.length,
             registers: state.max_reg.max(1),
             code: state.code,
             constants: state.constants,
@@ -738,6 +769,17 @@ impl Compiler {
 
     /// Charge `name` sans consulter les objets des `with` englobants.
     fn load_plain(&mut self, name: &JsStr, dst: Option<Reg>) -> CResult<Reg> {
+        if self.f().dead_params.contains(name) {
+            // Paramètre lu avant sa liaison : toujours une erreur.
+            let dst = self.dst_or_alloc(dst)?;
+            self.emit(Op::LoadHole { dst });
+            let index = self.string(name);
+            self.emit(Op::CheckInit {
+                src: dst,
+                name: index,
+            });
+            return Ok(dst);
+        }
         match self.resolve(name)? {
             Resolved::Local {
                 reg, needs_check, ..
@@ -959,7 +1001,13 @@ impl Compiler {
                 let tmp = self.alloc()?;
                 let index = self.function(func, FunctionKind::Normal, false)?;
                 self.emit(Op::Closure { dst: tmp, index });
-                self.store(name, tmp, true)?;
+                if script {
+                    // Fonction globale : la déclaration peut être refusée.
+                    let name = self.string(name);
+                    self.emit(Op::InitGlobalFunction { name, src: tmp });
+                } else {
+                    self.store(name, tmp, true)?;
+                }
                 self.free_to(mark);
             }
         }
@@ -994,20 +1042,26 @@ impl Compiler {
         let entry = self.emit(Op::Nop);
 
         // Les arguments arrivent dans les premiers registres.
-        let mut complex: Vec<(Reg, &Param)> = Vec::new();
-        for param in &func.params {
+        let mut complex: Vec<(usize, Reg, &Param)> = Vec::new();
+        for (position, param) in func.params.iter().enumerate() {
             let reg = self.alloc()?;
             match &param.pattern {
                 Pattern::Ident(name) => {
                     self.declare_at(name, BindKind::Var, true, reg);
                     if param.default.is_some() {
-                        complex.push((reg, param));
+                        complex.push((position, reg, param));
                     }
                 }
-                _ => complex.push((reg, param)),
+                _ => complex.push((position, reg, param)),
             }
         }
         self.f().param_count = u16::try_from(func.params.len()).unwrap_or(u16::MAX);
+        let length = func
+            .params
+            .iter()
+            .position(|param| param.default.is_some())
+            .unwrap_or(func.params.len());
+        self.f().length = u16::try_from(length).unwrap_or(u16::MAX);
         let rest = match &func.rest {
             Some(pattern) => {
                 let reg = self.alloc()?;
@@ -1028,13 +1082,21 @@ impl Compiler {
             let reg = self.declare(name, BindKind::Var, true)?;
             self.emit(Op::LoadCallee { dst: reg });
         }
-        for (reg, param) in complex {
+        for (position, reg, param) in complex {
             if let Some(default) = &param.default {
                 let skip = self.emit(Op::JumpIfNotUndefined {
                     src: reg,
                     target: 0,
                 });
-                self.expr(default, Some(reg))?;
+                // Ce paramètre et les suivants ne sont pas encore liés.
+                let mut dead = Vec::new();
+                for later in func.params.iter().skip(position) {
+                    pattern_names(&later.pattern, &mut dead);
+                }
+                self.f().dead_params = dead;
+                let compiled = self.expr(default, Some(reg));
+                self.f().dead_params.clear();
+                compiled?;
                 self.patch(skip);
             }
             if !matches!(param.pattern, Pattern::Ident(_)) {
@@ -1059,7 +1121,7 @@ impl Compiler {
         if let Some(rest) = &func.rest {
             pattern_names(rest, &mut param_names);
         }
-        check_declarations(&func.body, true, &param_names)?;
+        check_declarations(&func.body, true, &param_names, func.strict)?;
         self.hoist_vars(&func.body, &param_names)?;
         self.declare_block(&func.body)?;
         if func.is_generator {
@@ -1359,7 +1421,8 @@ impl Compiler {
     }
 
     fn statements(&mut self, body: &[Stmt]) -> CResult<()> {
-        check_declarations(body, false, &[])?;
+        let strict = self.f().strict;
+        check_declarations(body, false, &[], strict)?;
         self.push_scope();
         self.declare_block(body)?;
         for stmt in body {
@@ -1937,7 +2000,8 @@ impl Compiler {
             .iter()
             .flat_map(|(_, body)| body.iter().cloned())
             .collect();
-        check_declarations(&all, false, &[])?;
+        let strict = self.f().strict;
+        check_declarations(&all, false, &[], strict)?;
         self.push_target(false, true);
         self.push_scope();
         for (_, body) in cases {
@@ -2043,8 +2107,9 @@ impl Compiler {
                     .filter(|stmt| !matches!(stmt, Stmt::Function(_)))
                     .cloned()
                     .collect();
-                check_declarations(&lexical_only, false, &caught)?;
-                check_declarations(handler, false, &[])?;
+                let strict = self.f().strict;
+                check_declarations(&lexical_only, false, &caught, strict)?;
+                check_declarations(handler, false, &[], strict)?;
                 self.declare_block(handler)?;
                 for stmt in handler {
                     self.statement(stmt)?;

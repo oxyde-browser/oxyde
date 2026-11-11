@@ -1351,6 +1351,33 @@ impl Vm {
                 self.set_reg(base + 5, Value::Bool(done));
                 self.set_reg(base + 6, Value::Bool(returning));
             }
+            Op::InitGlobalFunction { name, src } => {
+                let (name, value) = (self.name(name), self.reg(src));
+                let scope = self.scope();
+                self.heap
+                    .get_mut(scope)
+                    .props
+                    .insert(name, Property::data(value));
+            }
+            Op::CheckGlobalFunction { name } => {
+                let name = self.name(name);
+                let scope = self.scope();
+                let object = self.heap.get(scope);
+                let allowed = match object.props.get(&name) {
+                    None => object.extensible,
+                    Some(existing) if existing.configurable => true,
+                    Some(existing) => {
+                        matches!(existing.slot, Slot::Data(_))
+                            && existing.writable
+                            && existing.enumerable
+                    }
+                };
+                if !allowed {
+                    return Err(self.type_error(&format!(
+                        "impossible de déclarer la fonction globale « {name} »"
+                    )));
+                }
+            }
             Op::TemplateObject { dst, index } => {
                 let object = self.template_object(index)?;
                 self.set_reg(dst, object);

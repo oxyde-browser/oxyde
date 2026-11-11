@@ -1168,6 +1168,7 @@ impl Parser {
         }
         self.expect_punct("(")?;
         let mut init = None;
+        let mut for_in_init = None;
         if !self.is_punct(";") {
             let decl_kind = match &self.tok.tok {
                 Tok::Ident(_) if self.tok.escaped => None,
@@ -1196,10 +1197,27 @@ impl Parser {
                 self.advance()?;
                 let target = match parsed {
                     ForInit::Decl(kind, mut decls) => {
-                        if decls.len() != 1 || decls[0].1.is_some() {
+                        if decls.len() != 1 {
                             return self.error("déclaration invalide dans for…in / for…of");
                         }
-                        ForTarget::Decl(kind, decls.remove(0).0)
+                        let (pattern, init) = decls.remove(0);
+                        if let Some(init) = init {
+                            // Annexe B.3.5 : `for (var x = init in obj)`, hors
+                            // mode strict seulement ; l'initialiseur s'évalue
+                            // avant la boucle.
+                            let allowed = !of
+                                && !self.strict
+                                && kind == VarKind::Var
+                                && matches!(pattern, Pattern::Ident(_));
+                            if !allowed {
+                                return self.error("déclaration invalide dans for…in / for…of");
+                            }
+                            for_in_init = Some(Stmt::VarDecl(
+                                VarKind::Var,
+                                vec![(pattern.clone(), Some(init))],
+                            ));
+                        }
+                        ForTarget::Decl(kind, pattern)
                     }
                     ForInit::Expr(expr) => {
                         // `for ({ a = 1 } of xs)` : l'objet est bien un motif.
@@ -1218,12 +1236,16 @@ impl Parser {
                 if is_await && !of {
                     return self.error("« for await » exige la forme « of »");
                 }
-                return Ok(Stmt::ForIn {
+                let looped = Stmt::ForIn {
                     target,
                     object,
                     body: Box::new(self.substatement(false)?),
                     of,
                     is_await,
+                };
+                return Ok(match for_in_init {
+                    Some(init) => Stmt::Block(vec![init, looped]),
+                    None => looped,
                 });
             }
             if is_await {

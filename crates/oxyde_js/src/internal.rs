@@ -367,7 +367,7 @@ impl Vm {
                         let value = if &**name == "name" {
                             Value::String(Arc::clone(&c.proto.name))
                         } else {
-                            Value::Number(f64::from(c.proto.param_count))
+                            Value::Number(f64::from(c.proto.length))
                         };
                         return Some(Descriptor::data(value, false, false, true));
                     }
