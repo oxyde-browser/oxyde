@@ -76,7 +76,14 @@ pub(crate) struct Intrinsics {
     pub(crate) set_proto: ObjId,
     pub(crate) symbol_proto: ObjId,
     /// `%IteratorPrototype%` : ancêtre de tous les itérateurs intégrés.
+    /// Prototype des itérateurs internes (porte `next`).
     pub(crate) iterator_proto: ObjId,
+    /// `Iterator.prototype`, racine de tous les itérateurs.
+    pub(crate) iterator_root: ObjId,
+    pub(crate) iterator_helper_proto: ObjId,
+    pub(crate) wrap_iterator_proto: ObjId,
+    /// Le constructeur `Iterator` (provisoire jusqu'à son installation).
+    pub(crate) iterator_ctor: ObjId,
     pub(crate) generator_proto: ObjId,
     pub(crate) promise_proto: ObjId,
     pub(crate) regexp_proto: ObjId,
@@ -177,6 +184,8 @@ pub struct Vm {
     pub(crate) rejections: Vec<ObjId>,
     /// Vrai pendant l'appel d'un constructeur natif par `new`.
     pub(crate) constructing: bool,
+    /// `new.target` du constructeur natif en cours d'appel.
+    pub(crate) native_new_target: Value,
     /// Le prochain appel est un `eval(…)` écrit dans du code strict.
     pub(crate) strict_eval: bool,
     /// Racines déclarées par l'hôte (écouteurs, minuteurs…).
@@ -243,6 +252,10 @@ impl Vm {
             set_proto: proto(&mut heap, Kind::Ordinary),
             symbol_proto: proto(&mut heap, Kind::Ordinary),
             iterator_proto: proto(&mut heap, Kind::Ordinary),
+            iterator_root: proto(&mut heap, Kind::Ordinary),
+            iterator_helper_proto: proto(&mut heap, Kind::Ordinary),
+            wrap_iterator_proto: proto(&mut heap, Kind::Ordinary),
+            iterator_ctor: object_proto,
             generator_proto: proto(&mut heap, Kind::Ordinary),
             promise_proto: proto(&mut heap, Kind::Ordinary),
             regexp_proto: proto(&mut heap, Kind::Ordinary),
@@ -292,6 +305,7 @@ impl Vm {
             jobs: VecDeque::new(),
             rejections: Vec::new(),
             constructing: false,
+            native_new_target: Value::Undefined,
             strict_eval: false,
             roots: Vec::new(),
             host: None,
@@ -398,6 +412,10 @@ impl Vm {
             intr.set_proto,
             intr.symbol_proto,
             intr.iterator_proto,
+            intr.iterator_root,
+            intr.iterator_helper_proto,
+            intr.wrap_iterator_proto,
+            intr.iterator_ctor,
             intr.generator_proto,
             intr.promise_proto,
             intr.regexp_proto,
@@ -842,7 +860,10 @@ impl Vm {
                 let func = *func;
                 self.enter_native()?;
                 let saved = std::mem::replace(&mut self.constructing, true);
+                let saved_target =
+                    std::mem::replace(&mut self.native_new_target, new_target.clone());
                 let result = func(self, &Value::Undefined, args);
+                self.native_new_target = saved_target;
                 self.constructing = saved;
                 self.native_depth -= 1;
                 let result = result?;
@@ -1335,6 +1356,16 @@ impl Vm {
                     .map(|id| &mut self.heap.get_mut(id).kind)
                 {
                     items.extend(values);
+                }
+            }
+            Op::SetProto { obj, src } => {
+                let proto = match self.reg(src) {
+                    Value::Object(proto) => Some(Some(proto)),
+                    Value::Null => Some(None),
+                    _ => None,
+                };
+                if let (Some(id), Some(proto)) = (self.reg(obj).as_object(), proto) {
+                    self.heap.get_mut(id).proto = proto;
                 }
             }
             Op::ObjectSpread { obj, src } => {

@@ -149,8 +149,12 @@ pub(super) fn install(vm: &mut Vm) {
     // Protocole d'itération.
     let iterator_proto = vm.intrinsics.iterator_proto;
     vm.define_method(iterator_proto, "next", 0, iterator_next);
+    // `[Symbol.iterator]() { return this; }` vit sur `Iterator.prototype`,
+    // dont héritent tous les itérateurs.
+    let root = vm.intrinsics.iterator_root;
+    vm.heap.get_mut(iterator_proto).proto = Some(root);
     let this_fn = vm.new_function("[Symbol.iterator]", 0, iterator_self);
-    vm.define_hidden_symbol(iterator_proto, &known.iterator, Value::Object(this_fn));
+    vm.define_hidden_symbol(root, &known.iterator, Value::Object(this_fn));
 
     let intr = vm.intrinsics;
     for (proto, method) in [

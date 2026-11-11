@@ -1,7 +1,6 @@
 //! Objets générateurs : `next`, `return`, `throw`.
 //!
-//! LIMITES CONNUES : `return()` sur un générateur suspendu n'exécute pas ses
-//! blocs `finally` ; `yield*` ne transmet au générateur délégué ni les valeurs
+//! LIMITES CONNUES : `yield*` ne transmet au générateur délégué ni les valeurs
 //! envoyées par `next(v)` ni `throw()`, et vaut `undefined` ; tous les
 //! générateurs partagent un même prototype (`f.prototype` n'est pas consulté).
 
@@ -33,9 +32,9 @@ fn generator_throw(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 pub(super) fn install(vm: &mut Vm) {
     let proto = vm.intrinsics.generator_proto;
-    // Un générateur est un itérateur : il hérite de `%IteratorPrototype%`
+    // Un générateur est un itérateur : il hérite de `Iterator.prototype`
     // (et donc de `[Symbol.iterator]() { return this; }`).
-    vm.heap.get_mut(proto).proto = Some(vm.intrinsics.iterator_proto);
+    vm.heap.get_mut(proto).proto = Some(vm.intrinsics.iterator_root);
     let methods: &[(&str, u32, NativeFn)] = &[
         ("next", 1, generator_next),
         ("return", 1, generator_return),

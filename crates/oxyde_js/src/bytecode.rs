@@ -143,6 +143,12 @@ pub(crate) enum Op {
     /// Précède l'appel `eval(…)` écrit dans du code strict : le code évalué
     /// hérite de ce mode.
     StrictEval,
+    /// `{ __proto__: src }` : `src` devient le prototype de `obj` s'il est un
+    /// objet ou `null` ; toute autre valeur est ignorée.
+    SetProto {
+        obj: Reg,
+        src: Reg,
+    },
     /// `ToObject` : `TypeError` pour `null` et `undefined`.
     ToObject {
         dst: Reg,

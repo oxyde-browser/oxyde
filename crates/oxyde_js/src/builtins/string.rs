@@ -93,6 +93,10 @@ fn byte_of_unit(s: &str, unit: usize) -> usize {
 fn string_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let value = match args.first() {
         None => Value::string(""),
+        // Appelé comme fonction, `String` décrit un symbole au lieu de lever.
+        Some(Value::Symbol(symbol)) if !vm.constructing => {
+            Value::string(&format!("Symbol({})", symbol.description().unwrap_or("")))
+        }
         Some(v) => Value::String(vm.to_string(v)?),
     };
     if vm.constructing {

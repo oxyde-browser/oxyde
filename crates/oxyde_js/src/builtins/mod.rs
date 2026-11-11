@@ -9,6 +9,7 @@ pub(crate) mod bigint;
 mod collections;
 mod date;
 mod generator;
+mod iterator;
 mod json;
 pub(crate) mod promise;
 pub(crate) mod proxy;
@@ -126,6 +127,7 @@ pub(crate) fn install(vm: &mut Vm) {
     json::install(vm);
     collections::install(vm);
     symbol::install(vm);
+    iterator::install(vm);
     bigint::install(vm);
     date::install(vm);
     typed_array::install(vm);

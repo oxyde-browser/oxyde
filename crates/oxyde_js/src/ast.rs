@@ -76,6 +76,8 @@ pub(crate) enum PropKind {
     Setter(Arc<Function>),
     /// `...objet`
     Spread(Expr),
+    /// `__proto__: valeur` : fixe le prototype de l'objet créé.
+    Proto(Expr),
 }
 
 #[derive(Clone, Debug)]

@@ -1922,8 +1922,10 @@ fn early_errors() {
         "1,2,3"
     );
     assert_eq!(
-        eval("var p, q; ({ __proto__: p, __proto__: q } = { __proto__: 5 }); q"),
-        "5"
+        eval(
+            "var p, q; ({ __proto__: p, __proto__: q } = { __proto__: { v: 5 } }); q.v + ({ __proto__: 1 }).toString.name"
+        ),
+        "5toString"
     );
     assert_eq!(
         eval("var yield = 1, await = 2, let = 3, static = 4; yield + await + let + static"),
@@ -2027,6 +2029,60 @@ fn iterators_are_closed() {
         ),
         "fin {\"value\":5,\"done\":true} {\"done\":true} fin fin {\"value\":7,\"done\":false} {\"value\":5,\"done\":true} i o"
     );
+}
+
+#[test]
+fn iterator_helpers_and_set_operations() {
+    assert_eq!(
+        eval(
+            "function* nombres() { let i = 1; while (true) yield i++; }
+             var r = [];
+             r.push(nombres().filter(n => n % 2).map((n, i) => n * 10 + i).drop(1).take(3).toArray().join('|'));
+             r.push(nombres().take(4).reduce((a, b) => a + b), nombres().take(3).reduce((a, b) => a + b, 10));
+             r.push(nombres().some(n => n > 3), nombres().take(3).every(n => n < 3), nombres().find(n => n * n > 20));
+             r.push([1, 2].values().flatMap(n => [n, n * 2]).toArray().join('|'));
+             var vus = []; [7, 8].values().forEach((v, i) => vus.push(i + ':' + v)); r.push(vus.join('|'));
+             r.push(Iterator.concat([1], new Set([2]), ['a']).toArray().join('|'));
+             r.push(Iterator.from({ next() { return { done: true }; } }) instanceof Iterator, typeof Iterator.prototype.map);
+             r.push(Object.prototype.toString.call(nombres().map(x => x)), nombres() instanceof Iterator);
+             r.join()"
+        ),
+        "31|52|73,10,16,true,false,5,1|2|2|4,0:7|1:8,1|2|a,true,function,[object Iterator Helper],true"
+    );
+    // Abandonner une aide ferme l'itérateur sous-jacent ; `Iterator` est abstrait.
+    assert_eq!(
+        eval(
+            "var ferme = 0; var source = { __proto__: Iterator.prototype, next() { return { value: 1, done: false }; }, return() { ferme++; return {}; } };
+             var aide = source.map(x => x); aide.next(); aide.return(); aide.return();
+             source.find(x => true); try { source.map(1); } catch (e) { ferme += e.name; }
+             class Mien extends Iterator {} var erreur; try { new Iterator(); } catch (e) { erreur = e.name; }
+             [ferme, JSON.stringify(aide.next()), new Mien() instanceof Iterator, erreur].join()"
+        ),
+        "3TypeError,{\"done\":true},true,TypeError"
+    );
+    assert!(eval("[1].values().take(-1)").contains("RangeError"));
+    assert!(
+        eval("[1].values().reduce((a, b) => a).x; [].values().reduce((a, b) => a)")
+            .contains("TypeError")
+    );
+    // Opérations ensemblistes.
+    assert_eq!(
+        eval(
+            "var a = new Set([1, 2, 3]), b = new Set([3, 4]);
+             var comme = { size: 2, has(v) { return v === 1 || v === 9; }, keys() { return [1, 9].values(); } };
+             [[...a.union(b)].join(''), [...a.intersection(b)].join(''), [...a.difference(b)].join(''),
+              [...a.symmetricDifference(b)].join(''), new Set([3]).isSubsetOf(a), a.isSupersetOf(b), a.isDisjointFrom(new Set([7])),
+              [...a.union(comme)].join(''), [...a.intersection(comme)].join(''), a.isDisjointFrom(comme)].join()"
+        ),
+        "1234,3,12,124,true,false,true,1239,1,false"
+    );
+    assert!(eval("new Set().union([1])").contains("TypeError"));
+    assert!(eval("new Set().union({ size: -1, has() {}, keys() {} })").contains("RangeError"));
+    assert_eq!(
+        eval("String(Symbol('a')) + String(Symbol.iterator)"),
+        "Symbol(a)Symbol(Symbol.iterator)"
+    );
+    assert!(eval("'' + Symbol('a')").contains("TypeError"));
 }
 
 #[test]

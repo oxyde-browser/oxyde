@@ -1839,7 +1839,7 @@ impl Parser {
                 let mut rest = None;
                 for property in properties {
                     match property.kind {
-                        PropKind::Value(value) => {
+                        PropKind::Value(value) | PropKind::Proto(value) => {
                             let (pattern, default) = self.to_pattern_with_default(value)?;
                             props.push((property.key, pattern, default));
                         }
@@ -2669,10 +2669,14 @@ impl Parser {
             return self.error("« ( » attendu");
         }
         if self.eat_punct(":")? {
-            return Ok(Property {
-                key,
-                kind: PropKind::Value(self.assignment()?),
-            });
+            let value = self.assignment()?;
+            let is_proto = matches!(&key, PropKey::Name(name) if &**name == "__proto__");
+            let kind = if is_proto {
+                PropKind::Proto(value)
+            } else {
+                PropKind::Value(value)
+            };
+            return Ok(Property { key, kind });
         }
         let Some(name) = shorthand else {
             return self.error("« : » attendu");

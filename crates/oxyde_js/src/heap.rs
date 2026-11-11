@@ -340,6 +340,44 @@ pub(crate) enum Kind {
     /// Objet `arguments` : ses éléments et sa longueur sont des propriétés
     /// ordinaires.
     Arguments,
+    /// Objet rendu par une aide d'itérateur (`map`, `filter`, `Iterator.from`…).
+    IteratorHelper(Box<IteratorHelper>),
+}
+
+/// Nature d'une aide d'itérateur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HelperKind {
+    Map,
+    Filter,
+    Take,
+    Drop,
+    FlatMap,
+    /// `Iterator.concat` : parcourt `sources` l'une après l'autre.
+    Concat,
+    /// Enveloppe de `Iterator.from` autour d'un itérateur étranger.
+    Wrap,
+}
+
+/// État d'une aide d'itérateur.
+#[derive(Clone, Debug)]
+pub(crate) struct IteratorHelper {
+    pub(crate) kind: HelperKind,
+    /// Itérateur sous-jacent et sa méthode `next`.
+    pub(crate) iterator: Value,
+    pub(crate) next: Value,
+    /// Fonction de rappel (`map`, `filter`, `flatMap`).
+    pub(crate) func: Value,
+    /// Nombre de valeurs déjà passées à la fonction de rappel.
+    pub(crate) counter: f64,
+    /// Valeurs restant à prendre (`take`) ou à sauter (`drop`).
+    pub(crate) remaining: f64,
+    /// Itérateur interne en cours (`flatMap`, `concat`) et son `next`.
+    pub(crate) inner: Option<(Value, Value)>,
+    /// `concat` : (méthode d'itération, itérable) restant à parcourir.
+    pub(crate) sources: Vec<(Value, Value)>,
+    pub(crate) started: bool,
+    pub(crate) running: bool,
+    pub(crate) done: bool,
 }
 
 /// Cible et gestionnaire d'un `Proxy` ; `None` une fois le proxy révoqué.
@@ -585,6 +623,15 @@ impl Heap {
                 Kind::Proxy(proxy) => {
                     pending.extend(proxy.target);
                     pending.extend(proxy.handler);
+                }
+                Kind::IteratorHelper(helper) => {
+                    for value in [&helper.iterator, &helper.next, &helper.func] {
+                        push(value, &mut pending);
+                    }
+                    for (a, b) in helper.inner.iter().chain(&helper.sources) {
+                        push(a, &mut pending);
+                        push(b, &mut pending);
+                    }
                 }
                 Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),
                 Kind::Coroutine(coroutine) => {

@@ -2674,6 +2674,10 @@ impl Compiler {
                     let src = self.expr(value, None)?;
                     self.emit(Op::ObjectSpread { obj, src });
                 }
+                PropKind::Proto(value) => {
+                    let src = self.expr(value, None)?;
+                    self.emit(Op::SetProto { obj, src });
+                }
                 PropKind::Value(value) => {
                     let is_method = matches!(value, Expr::Function(f) if f.is_method);
                     match &prop.key {

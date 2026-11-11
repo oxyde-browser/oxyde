@@ -861,7 +861,8 @@ impl Vm {
         if object.proto == proto {
             return Ok(true);
         }
-        if !object.extensible {
+        // `Object.prototype` a un prototype immuable (ECMA-262 §10.4.7).
+        if !object.extensible || id == self.intrinsics.object_proto {
             return Ok(false);
         }
         let mut current = proto;
