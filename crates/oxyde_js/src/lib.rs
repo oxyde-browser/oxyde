@@ -90,7 +90,7 @@ impl Vm {
     /// cours d'exécution (`eval`, `Function`). Une erreur de syntaxe devient
     /// une exception `SyntaxError`.
     pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
-        let proto = parser::parse_program(source)
+        let proto = parser::parse_eval(source)
             .and_then(|program| compiler::compile_script(&program))
             .map_err(|error| self.error("SyntaxError", &error.message))?;
         self.run_script(proto)

@@ -4,12 +4,12 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 28064 réussis sur 48795 (57.5 %).**
+**Total : 32944 réussis sur 48795 (67.5 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
 | `annexB/built-ins` | 241 | 52 | 21.6 % |
-| `annexB/language` | 845 | 408 | 48.3 % |
+| `annexB/language` | 845 | 410 | 48.5 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 0 | 0.0 % |
 | `built-ins/Array` | 3083 | 2570 | 83.4 % |
@@ -29,7 +29,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/DisposableStack` | 93 | 0 | 0.0 % |
 | `built-ins/Error` | 93 | 44 | 47.3 % |
 | `built-ins/FinalizationRegistry` | 47 | 0 | 0.0 % |
-| `built-ins/Function` | 509 | 301 | 59.1 % |
+| `built-ins/Function` | 509 | 306 | 60.1 % |
 | `built-ins/GeneratorFunction` | 23 | 5 | 21.7 % |
 | `built-ins/GeneratorPrototype` | 61 | 42 | 68.9 % |
 | `built-ins/Infinity` | 6 | 2 | 33.3 % |
@@ -45,7 +45,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Promise` | 732 | 375 | 51.2 % |
 | `built-ins/Proxy` | 311 | 0 | 0.0 % |
 | `built-ins/Reflect` | 153 | 130 | 85.0 % |
-| `built-ins/RegExp` | 1879 | 708 | 37.7 % |
+| `built-ins/RegExp` | 1879 | 857 | 45.6 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 0 | 0.0 % |
 | `built-ins/Set` | 383 | 204 | 53.3 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
@@ -67,38 +67,38 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/decodeURIComponent` | 56 | 53 | 94.6 % |
 | `built-ins/encodeURI` | 31 | 25 | 80.6 % |
 | `built-ins/encodeURIComponent` | 31 | 25 | 80.6 % |
-| `built-ins/eval` | 10 | 8 | 80.0 % |
+| `built-ins/eval` | 10 | 9 | 90.0 % |
 | `built-ins/global` | 29 | 27 | 93.1 % |
 | `built-ins/isFinite` | 15 | 15 | 100.0 % |
 | `built-ins/isNaN` | 15 | 15 | 100.0 % |
 | `built-ins/parseFloat` | 54 | 54 | 100.0 % |
 | `built-ins/parseInt` | 55 | 55 | 100.0 % |
 | `built-ins/undefined` | 8 | 3 | 37.5 % |
-| `language/arguments-object` | 263 | 176 | 66.9 % |
+| `language/arguments-object` | 263 | 197 | 74.9 % |
 | `language/asi` | 102 | 102 | 100.0 % |
-| `language/block-scope` | 145 | 48 | 33.1 % |
-| `language/comments` | 52 | 43 | 82.7 % |
-| `language/computed-property-names` | 48 | 40 | 83.3 % |
+| `language/block-scope` | 145 | 129 | 89.0 % |
+| `language/comments` | 52 | 51 | 98.1 % |
+| `language/computed-property-names` | 48 | 41 | 85.4 % |
 | `language/destructuring` | 19 | 16 | 84.2 % |
-| `language/directive-prologue` | 62 | 28 | 45.2 % |
-| `language/eval-code` | 347 | 132 | 38.0 % |
+| `language/directive-prologue` | 62 | 40 | 64.5 % |
+| `language/eval-code` | 347 | 137 | 39.5 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 7015 | 62.9 % |
+| `language/expressions` | 11156 | 9401 | 84.3 % |
 | `language/function-code` | 217 | 160 | 73.7 % |
-| `language/future-reserved-words` | 55 | 39 | 70.9 % |
-| `language/global-code` | 42 | 15 | 35.7 % |
+| `language/future-reserved-words` | 55 | 55 | 100.0 % |
+| `language/global-code` | 42 | 26 | 61.9 % |
 | `language/identifier-resolution` | 14 | 8 | 57.1 % |
-| `language/identifiers` | 268 | 154 | 57.5 % |
-| `language/import` | 129 | 14 | 10.9 % |
+| `language/identifiers` | 268 | 208 | 77.6 % |
+| `language/import` | 129 | 15 | 11.6 % |
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
-| `language/literals` | 536 | 294 | 54.9 % |
-| `language/module-code` | 599 | 246 | 41.1 % |
+| `language/literals` | 536 | 527 | 98.3 % |
+| `language/module-code` | 599 | 274 | 45.7 % |
 | `language/punctuators` | 11 | 11 | 100.0 % |
-| `language/reserved-words` | 27 | 26 | 96.3 % |
+| `language/reserved-words` | 27 | 27 | 100.0 % |
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 6093 | 64.8 % |
+| `language/statements` | 9399 | 7958 | 84.7 % |
 | `language/types` | 113 | 98 | 86.7 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

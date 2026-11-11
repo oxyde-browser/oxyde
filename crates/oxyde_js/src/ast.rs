@@ -166,6 +166,8 @@ pub(crate) enum Expr {
     /// `super(...)`
     SuperCall(Vec<Expr>),
     NewTarget,
+    /// `import(spécificateur)` et son second argument éventuel (options).
+    ImportCall(Box<Expr>, Option<Box<Expr>>),
     /// `yield expr`, `yield* expr` (dans un générateur seulement).
     Yield {
         arg: Option<Box<Expr>>,
@@ -173,6 +175,16 @@ pub(crate) enum Expr {
     },
     /// `await expr` (dans une fonction async seulement).
     Await(Box<Expr>),
+    /// Nom privé (`#x`) : vaut la clé du membre privé, liée dans le corps de
+    /// la classe qui le déclare. N'apparaît que comme index (`obj.#x`) ou à
+    /// gauche de `in`.
+    PrivateName(Arc<str>),
+    /// Initialisation d'un champ d'instance : définit la propriété `key` de
+    /// `this` (sans passer par un mutateur hérité).
+    FieldInit {
+        key: PropKey,
+        value: Box<Expr>,
+    },
 }
 
 /// Cible d'affectation ou de déclaration.
@@ -226,6 +238,9 @@ pub(crate) enum ClassMemberKind {
     Getter(Arc<Function>),
     Setter(Arc<Function>),
     Field(Option<Expr>),
+    /// Bloc `static { … }` : une méthode sans paramètre, appelée une fois sur
+    /// la classe.
+    StaticBlock(Arc<Function>),
 }
 
 #[derive(Clone, Debug)]

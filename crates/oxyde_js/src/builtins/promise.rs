@@ -11,7 +11,7 @@
 
 use super::{arg, constructor, is_callable};
 use crate::heap::{Kind, Object, PromiseData, PromiseState, Reaction};
-use crate::value::{ObjId, Value};
+use crate::value::{JsStr, ObjId, Value};
 use crate::vm::{CoOutcome, JsResult, NativeFn, Resume, Vm};
 
 /// Microtâche en attente.
@@ -30,6 +30,12 @@ pub(crate) enum Job {
         promise: ObjId,
         thenable: Value,
         then: Value,
+    },
+    /// `import()` : charge et évalue le module, puis règle `promise`.
+    Import {
+        promise: ObjId,
+        specifier: JsStr,
+        referrer: JsStr,
     },
 }
 
@@ -56,6 +62,7 @@ impl Job {
                 out.push(thenable.clone());
                 out.push(then.clone());
             }
+            Self::Import { promise, .. } => out.push(Value::Object(*promise)),
         }
     }
 }
@@ -295,6 +302,11 @@ impl Vm {
 
     fn run_job(&mut self, job: Job) {
         match job {
+            Job::Import {
+                promise,
+                specifier,
+                referrer,
+            } => self.run_import(promise, &specifier, &referrer),
             Job::Reaction {
                 handler,
                 argument,

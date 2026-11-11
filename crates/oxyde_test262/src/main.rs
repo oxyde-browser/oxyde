@@ -3,6 +3,7 @@
 //! ```text
 //! cargo run -p oxyde_test262 --release -- [--suite DOSSIER] [--filtre TEXTE]
 //!                                         [--echecs N] [--publier]
+//! cargo run -p oxyde_test262 --release -- --evaluer "1 + 1" [--evaluer …]
 //! ```
 //!
 //! Chaque test s'exécute dans une machine neuve, précédé des fichiers du
@@ -220,8 +221,10 @@ fn run_once(
         vm.set_budget(Some(BUDGET));
     }
 
+    // Les scripts aussi peuvent importer, par `import()`.
+    vm.set_module_loader(file_loader);
+    vm.set_script_url(&path.to_string_lossy());
     let result = if meta.has("module") {
-        vm.set_module_loader(file_loader);
         vm.eval_module(source, &path.to_string_lossy())
             .map(|()| Value::Undefined)
     } else if strict {
@@ -335,6 +338,8 @@ struct Args {
     filter: Option<String>,
     failures: usize,
     publish: bool,
+    /// Sources à évaluer une à une au lieu de lancer la suite (diagnostic).
+    evaluate: Vec<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -343,6 +348,7 @@ fn parse_args() -> Result<Args, String> {
         filter: None,
         failures: 0,
         publish: false,
+        evaluate: Vec::new(),
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -356,6 +362,7 @@ fn parse_args() -> Result<Args, String> {
                     .map_err(|_| "--echecs attend un nombre".to_owned())?;
             }
             "--publier" => args.publish = true,
+            "--evaluer" => args.evaluate.push(value("--evaluer")?),
             other => return Err(format!("option inconnue : {other}")),
         }
     }
@@ -421,6 +428,28 @@ fn report(groups: &BTreeMap<String, Count>, total: Count, revision: &str) -> Str
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args()?;
+    if !args.evaluate.is_empty() {
+        #[expect(
+            clippy::print_stdout,
+            reason = "sortie de l'outil en ligne de commande"
+        )]
+        for source in &args.evaluate {
+            let mut vm = Vm::new();
+            vm.set_budget(Some(BUDGET));
+            match vm.eval(source) {
+                Ok(value) => println!(
+                    "{source}
+    => {}",
+                    vm.display(&value)
+                ),
+                Err(error) => println!(
+                    "{source}
+    !! {error}"
+                ),
+            }
+        }
+        return Ok(());
+    }
     if !args.suite.join("test").is_dir() {
         return Err(format!(
             "suite introuvable dans {} : la cloner avec « git clone --depth 1 \

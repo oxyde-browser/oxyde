@@ -155,6 +155,8 @@ pub struct Vm {
     pub(crate) modules: IndexMap<JsStr, crate::module::ModuleRecord>,
     /// Fonction de l'hôte qui fournit le texte des modules importés.
     pub(crate) module_loader: Option<crate::module::ModuleLoader>,
+    /// Identifiant des scripts classiques, référent de leurs `import()`.
+    pub(crate) script_url: JsStr,
     /// Exception à lever à la prochaine instruction (reprise par `throw()`).
     pending_throw: Option<Value>,
     /// File des microtâches (réactions de promesses).
@@ -262,6 +264,7 @@ impl Vm {
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
             module_loader: None,
+            script_url: Arc::from(""),
             pending_throw: None,
             jobs: VecDeque::new(),
             rejections: Vec::new(),
@@ -972,6 +975,12 @@ impl Vm {
         frame.pc += 1;
         match op {
             Op::Nop => {}
+            Op::PrivateSymbol { dst, name } => {
+                let name = self.name(name);
+                let id = self.next_symbol;
+                self.next_symbol = self.next_symbol.saturating_add(1);
+                self.set_reg(dst, Value::Symbol(Symbol::new_private(id, name)));
+            }
             Op::AsyncIterStart { dst, src } => {
                 let iterator = self.async_iterator_for(&self.reg(src))?;
                 self.set_reg(dst, iterator);
@@ -1045,6 +1054,12 @@ impl Vm {
                     .last()
                     .map_or(Value::Undefined, |f| f.new_target.clone());
                 self.set_reg(dst, value);
+            }
+            Op::ImportCall { dst, src } => {
+                let specifier = self.reg(src).clone();
+                let scope = self.frames.last().and_then(|f| f.scope);
+                let promise = self.dynamic_import(&specifier, scope);
+                self.set_reg(dst, promise);
             }
             Op::LoadCallee { dst } => {
                 let value = self

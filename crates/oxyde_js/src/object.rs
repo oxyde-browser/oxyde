@@ -264,6 +264,12 @@ impl Vm {
                 None => current = object.proto,
             }
         }
+        if symbol.is_private() {
+            return Err(self.type_error(&format!(
+                "l'objet n'a pas de membre privé {}",
+                symbol.description().unwrap_or("")
+            )));
+        }
         Ok(Value::Undefined)
     }
 
@@ -356,6 +362,13 @@ impl Vm {
                 None => current = object.proto,
             }
         }
+        // Un membre privé n'est jamais créé par affectation.
+        if symbol.is_private() {
+            return Err(self.type_error(&format!(
+                "l'objet n'a pas de membre privé {}",
+                symbol.description().unwrap_or("")
+            )));
+        }
         let object = self.heap.get_mut(id);
         if object.extensible {
             object.symbols.insert(symbol.clone(), Property::data(value));
@@ -389,7 +402,7 @@ impl Vm {
             .get(id)
             .symbols
             .iter()
-            .filter(|(_, p)| !only_enumerable || p.enumerable)
+            .filter(|(s, p)| !s.is_private() && (!only_enumerable || p.enumerable))
             .map(|(s, _)| s.clone())
             .collect()
     }

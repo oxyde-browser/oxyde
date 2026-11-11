@@ -4,8 +4,8 @@
 //! `/` ouvre une expression rationnelle et quand reprendre un gabarit après
 //! une substitution `${…}`.
 //!
-//! LIMITES CONNUES : pas d'échappements Unicode dans les identifiants ni de
-//! commentaires HTML (`<!--`).
+//! LIMITES CONNUES : pas de commentaires HTML (`<!--`) ; les débuts et suites
+//! d'identifiants Unicode sont reconnus par approximation (pas de table).
 
 /// Erreur de syntaxe, avec sa position dans le source.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,6 +61,12 @@ pub(crate) struct Token {
     pub(crate) start: usize,
     /// Vrai si un saut de ligne précède le jeton (insertion automatique de `;`).
     pub(crate) newline_before: bool,
+    /// Vrai si l'identifiant est écrit avec un échappement : ce n'est alors
+    /// jamais un mot-clé.
+    pub(crate) escaped: bool,
+    /// Vrai si le jeton contient un littéral ou un échappement octal hérité
+    /// (`010`, `"\1"`), interdit en mode strict.
+    pub(crate) legacy_octal: bool,
 }
 
 /// Ponctuations, de la plus longue à la plus courte.
@@ -71,12 +77,50 @@ const PUNCTUATORS: &[&str] = &[
     "&", "|", "^", "!", "~", "?", ":", "=", ".", "@",
 ];
 
+/// Début d'identifiant (`ID_Start`, plus `$` et `_`).
+///
+/// LIMITE : sans table Unicode, `ID_Start` est approché par « alphabétique »
+/// plus les quelques caractères que le standard y ajoute.
 fn is_id_start(c: char) -> bool {
-    c == '$' || c == '_' || c.is_alphabetic()
+    c == '$'
+        || c == '_'
+        || c.is_alphabetic()
+        || matches!(c, '\u{2118}' | '\u{212e}' | '\u{309b}' | '\u{309c}')
 }
 
+/// Suite d'identifiant (`ID_Continue`, plus `$`, ZWNJ et ZWJ) ; même
+/// approximation que [`is_id_start`], les marques combinantes étant reconnues
+/// par blocs.
 fn is_id_part(c: char) -> bool {
-    is_id_start(c) || c.is_numeric() || c == '\u{200c}' || c == '\u{200d}'
+    is_id_start(c)
+        || c.is_numeric()
+        || matches!(
+            c,
+            '\u{200c}'
+                | '\u{200d}'
+                | '\u{b7}'
+                | '\u{387}'
+                | '\u{203f}'
+                | '\u{2040}'
+                | '\u{2054}'
+                | '\u{fe33}'
+                | '\u{fe34}'
+                | '\u{fe4d}'..='\u{fe4f}'
+                | '\u{ff3f}'
+                | '\u{300}'..='\u{36f}'
+                | '\u{483}'..='\u{487}'
+                | '\u{591}'..='\u{5bd}'
+                | '\u{610}'..='\u{61a}'
+                | '\u{64b}'..='\u{669}'
+                | '\u{900}'..='\u{903}'
+                | '\u{93a}'..='\u{94f}'
+                | '\u{1ab0}'..='\u{1aff}'
+                | '\u{1dc0}'..='\u{1dff}'
+                | '\u{20d0}'..='\u{20f0}'
+                | '\u{fe00}'..='\u{fe0f}'
+                | '\u{fe20}'..='\u{fe2f}'
+                | '\u{e0100}'..='\u{e01ef}'
+        )
 }
 
 fn is_line_terminator(c: char) -> bool {
@@ -87,6 +131,10 @@ fn is_line_terminator(c: char) -> bool {
 pub(crate) struct Lexer {
     src: std::sync::Arc<[char]>,
     pub(crate) pos: usize,
+    /// Le jeton en cours de lecture contient un échappement d'identifiant.
+    escaped: bool,
+    /// Le jeton en cours de lecture contient une forme octale héritée.
+    octal: bool,
 }
 
 impl Lexer {
@@ -94,6 +142,8 @@ impl Lexer {
         Self {
             src: source.chars().collect::<Vec<char>>().into(),
             pos: 0,
+            escaped: false,
+            octal: false,
         }
     }
 
@@ -122,6 +172,12 @@ impl Lexer {
     /// Saute blancs et commentaires ; renvoie vrai si un saut de ligne a été franchi.
     fn skip_trivia(&mut self) -> Result<bool, SyntaxError> {
         let mut newline = false;
+        // Ligne « hashbang » (`#!/usr/bin/env node`), permise en tête de source.
+        if self.pos == 0 && self.peek(0) == Some('#') && self.peek(1) == Some('!') {
+            while self.peek(0).is_some_and(|c| !is_line_terminator(c)) {
+                self.pos += 1;
+            }
+        }
         loop {
             match self.peek(0) {
                 Some(c) if is_line_terminator(c) => {
@@ -160,12 +216,14 @@ impl Lexer {
     pub(crate) fn next(&mut self) -> Result<Token, SyntaxError> {
         let newline_before = self.skip_trivia()?;
         let start = self.pos;
+        self.escaped = false;
+        self.octal = false;
         let tok = match self.peek(0) {
             None => Tok::Eof,
-            Some(c) if is_id_start(c) => Tok::Ident(self.identifier()),
-            Some('#') if self.peek(1).is_some_and(is_id_start) => {
+            Some(c) if is_id_start(c) || c == '\\' => Tok::Ident(self.identifier()?),
+            Some('#') if self.peek(1).is_some_and(|c| is_id_start(c) || c == '\\') => {
                 self.pos += 1;
-                Tok::Private(self.identifier())
+                Tok::Private(self.identifier()?)
             }
             Some(c) if c.is_ascii_digit() => self.number()?,
             Some('.') if self.peek(1).is_some_and(|c| c.is_ascii_digit()) => self.number()?,
@@ -183,10 +241,74 @@ impl Lexer {
             tok,
             start,
             newline_before,
+            escaped: self.escaped,
+            legacy_octal: self.octal,
         })
     }
 
-    fn identifier(&mut self) -> String {
+    /// Lit un identifiant, échappements `\uXXXX` et `\u{…}` compris.
+    ///
+    /// Un mot écrit avec un échappement (`l\u0065t`) est signalé par
+    /// [`Token::escaped`] : l'analyseur ne le prend jamais pour un mot-clé.
+    fn identifier(&mut self) -> Result<String, SyntaxError> {
+        let mut out = String::new();
+        loop {
+            let c = match self.peek(0) {
+                Some('\\') => {
+                    let start = self.pos;
+                    let bad = |lexer: &Self| {
+                        lexer.error_at(start, "échappement invalide dans un identifiant")
+                    };
+                    if self.peek(1) != Some('u') {
+                        return Err(bad(self));
+                    }
+                    self.escaped = true;
+                    self.pos += 2;
+                    let code = if self.peek(0) == Some('{') {
+                        self.pos += 1;
+                        let mut value = 0_u32;
+                        let mut count = 0;
+                        while let Some(digit) = self.peek(0).and_then(|c| c.to_digit(16)) {
+                            value = value.saturating_mul(16).saturating_add(digit);
+                            self.pos += 1;
+                            count += 1;
+                        }
+                        if count == 0 || self.peek(0) != Some('}') {
+                            return Err(bad(self));
+                        }
+                        self.pos += 1;
+                        value
+                    } else {
+                        self.hex(4).ok_or_else(|| bad(self))?
+                    };
+                    let c = char::from_u32(code).ok_or_else(|| bad(self))?;
+                    let valid = if out.is_empty() {
+                        is_id_start(c)
+                    } else {
+                        is_id_part(c)
+                    };
+                    if !valid {
+                        return Err(bad(self));
+                    }
+                    c
+                }
+                Some(c) if out.is_empty() && is_id_start(c) => {
+                    self.pos += 1;
+                    c
+                }
+                Some(c) if !out.is_empty() && is_id_part(c) => {
+                    self.pos += 1;
+                    c
+                }
+                _ => break,
+            };
+            out.push(c);
+        }
+        Ok(out)
+    }
+
+    /// Lettres et chiffres qui suivent (drapeaux d'une expression rationnelle).
+    fn identifier_part(&mut self) -> String {
         let start = self.pos;
         while self.peek(0).is_some_and(is_id_part) {
             self.pos += 1;
@@ -213,17 +335,29 @@ impl Lexer {
         ))
     }
 
-    fn digits(&mut self, radix: u32) -> String {
+    /// Chiffres en base `radix`. Un séparateur `_` n'est permis qu'entre
+    /// deux chiffres.
+    fn digits(&mut self, radix: u32) -> Result<String, SyntaxError> {
         let mut out = String::new();
-        while let Some(c) = self.peek(0) {
-            if c.is_digit(radix) {
-                out.push(c);
-            } else if c != '_' {
-                break;
+        let mut after_separator = true;
+        loop {
+            match self.peek(0) {
+                Some(c) if c.is_digit(radix) => {
+                    out.push(c);
+                    after_separator = false;
+                }
+                Some('_') if !after_separator => after_separator = true,
+                Some('_') => {
+                    return Err(self.error_at(self.pos, "séparateur numérique mal placé"));
+                }
+                _ => break,
             }
             self.pos += 1;
         }
-        out
+        if after_separator && !out.is_empty() {
+            return Err(self.error_at(self.pos, "séparateur numérique mal placé"));
+        }
+        Ok(out)
     }
 
     fn number(&mut self) -> Result<Tok, SyntaxError> {
@@ -239,7 +373,7 @@ impl Lexer {
         let mut integer: Option<(String, u32)> = None;
         let value = if let Some(radix) = radix {
             self.pos += 2;
-            let digits = self.digits(radix);
+            let digits = self.digits(radix)?;
             if digits.is_empty() {
                 return Err(self.error_at(start, "littéral numérique invalide"));
             }
@@ -250,17 +384,34 @@ impl Lexer {
                 .filter_map(|c| c.to_digit(radix))
                 .fold(0.0_f64, |acc, d| acc * f64::from(radix) + f64::from(d))
         } else {
-            let mut text = self.digits(10);
+            let mut text = self.digits(10)?;
             if text == "0" || !text.starts_with('0') {
                 integer = Some((text.clone(), 10));
             }
-            if self.peek(0) == Some('.') {
+            // Zéro de tête : forme héritée (`010` vaut 8, `08` vaut 8), sans
+            // séparateur, et interdite en mode strict.
+            let legacy = text.len() > 1 && text.starts_with('0');
+            if legacy {
+                if self.pos - start != text.len() {
+                    return Err(self.error_at(start, "séparateur numérique mal placé"));
+                }
+                self.octal = true;
+            }
+            let legacy_octal = legacy && text.chars().all(|c| c < '8');
+            if legacy_octal {
+                let value = text
+                    .chars()
+                    .filter_map(|c| c.to_digit(8))
+                    .fold(0.0_f64, |acc, d| acc * 8.0 + f64::from(d));
+                text = value.to_string();
+            }
+            if self.peek(0) == Some('.') && !legacy_octal {
                 integer = None;
                 self.pos += 1;
                 text.push('.');
-                text.push_str(&self.digits(10));
+                text.push_str(&self.digits(10)?);
             }
-            if matches!(self.peek(0), Some('e' | 'E')) {
+            if matches!(self.peek(0), Some('e' | 'E')) && !legacy_octal {
                 let sign = usize::from(matches!(self.peek(1), Some('+' | '-')));
                 if self.peek(1 + sign).is_some_and(|c| c.is_ascii_digit()) {
                     integer = None;
@@ -269,7 +420,7 @@ impl Lexer {
                         text.push(self.src[self.pos + 1]);
                     }
                     self.pos += 1 + sign;
-                    text.push_str(&self.digits(10));
+                    text.push_str(&self.digits(10)?);
                 }
             }
             if text.starts_with('.') {
@@ -329,6 +480,24 @@ impl Lexer {
             'f' => out.push('\u{c}'),
             'v' => out.push('\u{b}'),
             '0' if !self.peek(0).is_some_and(|c| c.is_ascii_digit()) => out.push('\0'),
+            // Échappements octaux hérités : `\1` à `\377`.
+            '0'..='7' => {
+                self.octal = true;
+                let mut value = c.to_digit(8).unwrap_or(0);
+                let more = if c <= '3' { 2 } else { 1 };
+                for _ in 0..more {
+                    let Some(digit) = self.peek(0).and_then(|d| d.to_digit(8)) else {
+                        break;
+                    };
+                    value = value * 8 + digit;
+                    self.pos += 1;
+                }
+                out.push(char::from_u32(value).unwrap_or('\u{fffd}'));
+            }
+            '8' | '9' => {
+                self.octal = true;
+                out.push(c);
+            }
             'x' => {
                 let code = self.hex(2).ok_or_else(|| bad(self))?;
                 out.push(char::from_u32(code).unwrap_or('\u{fffd}'));
@@ -427,6 +596,11 @@ impl Lexer {
                 Some('\\') => {
                     self.pos += 1;
                     self.escape(&mut cooked, start)?;
+                    if std::mem::take(&mut self.octal) {
+                        return Err(
+                            self.error_at(start, "échappement octal interdit dans un gabarit")
+                        );
+                    }
                 }
                 Some('\r') => {
                     // Les fins de ligne d'un gabarit sont normalisées en LF.
@@ -452,6 +626,8 @@ impl Lexer {
             tok,
             start,
             newline_before: false,
+            escaped: false,
+            legacy_octal: false,
         })
     }
 
@@ -489,11 +665,17 @@ impl Lexer {
                 }
             }
         }
-        let flags = self.identifier();
+        let flags = if self.peek(0).is_some_and(is_id_part) {
+            self.identifier_part()
+        } else {
+            String::new()
+        };
         Ok(Token {
             tok: Tok::Regex { pattern, flags },
             start,
             newline_before: false,
+            escaped: false,
+            legacy_octal: false,
         })
     }
 }

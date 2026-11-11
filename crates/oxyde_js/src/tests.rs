@@ -268,7 +268,7 @@ fn classes() {
          Object.keys(d).join('+')].join('|')";
     assert_eq!(
         eval(source),
-        "Rex fait du bruit : ouaf|REX|4|chien|1|true|x|function|#secret+legs+name+sound+kind"
+        "Rex fait du bruit : ouaf|REX|4|chien|1|true|x|function|legs+name+sound+kind"
     );
     assert_eq!(
         eval("class A {} class B extends A {} new B() instanceof A"),
@@ -1242,11 +1242,40 @@ fn modules() {
             "réexporte",
         ),
         (&[("main", "await 1;")][..], "SyntaxError"),
-        (&[("main", "import('./m');")][..], "SyntaxError"),
+        (&[("main", "new import('./m');")][..], "SyntaxError"),
+        (&[("main", "import();")][..], "SyntaxError"),
     ] {
         let result = eval_modules(modules, "1");
         assert!(result.contains(expected), "{modules:?} → {result}");
     }
+    // `import()` : une promesse de l'espace de noms, réglée après le code
+    // synchrone ; le module n'est évalué qu'une fois.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "const trace = []; const p = import('./m'); trace.push(typeof p.then);
+                          p.then(ns => import('./m').then(again => {
+                              globalThis.out = [...trace, ns.a, ns === again, globalThis.evaluations].join();
+                          }));
+                          trace.push('fin');"),
+                ("m", "export const a = 1; globalThis.evaluations = (globalThis.evaluations || 0) + 1;"),
+            ],
+            "out"
+        ),
+        "function,fin,1,true,1"
+    );
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "Promise.allSettled([import('./absent'), import('./casse'), import({ toString() { throw 7; } }), import('./m', {})])
+                              .then(r => { globalThis.out = r.map(x => x.status === 'fulfilled' ? 'ok' : (x.reason.name || x.reason)).join(); });"),
+                ("casse", "export const a = ;"),
+                ("m", "export default 1;"),
+            ],
+            "out"
+        ),
+        "TypeError,SyntaxError,7,ok"
+    );
     // Hors d'un module, `import` et `export` restent refusés.
     assert!(eval("import x from 'y'").contains("SyntaxError"));
     assert!(eval("export const a = 1").contains("SyntaxError"));
@@ -1707,6 +1736,214 @@ fn dates() {
         eval("new Date(NaN).toJSON() + Object.prototype.toString.call(new Date())"),
         "null[object Date]"
     );
+}
+
+#[test]
+fn private_members_and_escaped_identifiers() {
+    assert_eq!(
+        eval(
+            "class C {
+               #x = 1; static #compte = 0; #m() { return this.#x * 2; } static #s() { return 'statique'; }
+               get #g() { return 'lu'; } set #g(v) { this.#x = v; }
+               static creer() { C.#compte++; return new C(); }
+               tout() { this.#x += 10; this.#g = this.#x + 1; return [this.#x, this.#m(), this.#g, C.#s(), C.#compte, #x in this, #x in {}].join(); }
+               static a(o) { return #x in o; }
+             }
+             const c = C.creer();
+             [c.tout(), Object.keys(c).length, Object.getOwnPropertyNames(C).includes('#s'), Reflect.ownKeys(c).length,
+              JSON.stringify(c), Object.getOwnPropertySymbols(c).length, C.a(c), C.a(new (class {})())].join('|')"
+        ),
+        "12,24,lu,statique,1,true,false|0|false|0|{}|0|true|false"
+    );
+    // Chaque classe a ses propres clés : un nom identique ne donne pas accès.
+    assert!(
+        eval("class A { #x = 1; static lire(o) { return o.#x; } } class B { #x = 2; } A.lire(new B())").contains("TypeError")
+    );
+    assert!(
+        eval("class A { #x; static ecrire(o) { o.#x = 1; } } A.ecrire({})").contains("TypeError")
+    );
+    assert!(eval("class A { m() { return #x; } }").contains("SyntaxError"));
+    // Une classe interne voit les noms privés de la classe englobante.
+    assert_eq!(
+        eval(
+            "class Ext { #v = 7; interne() { const self = this; return new (class { lire() { return self.#v; } })().lire(); } } new Ext().interne()"
+        ),
+        "7"
+    );
+    // Les champs sont définis, sans passer par un mutateur hérité.
+    assert_eq!(
+        eval(
+            "let appels = 0; class P { set x(v) { appels++; } } class E extends P { x = 1; f = () => 2; } const e = new E(); [appels, e.x, e.f.name, Object.hasOwn(e, 'x')].join()"
+        ),
+        "0,1,f,true"
+    );
+    // Identifiants écrits avec des échappements Unicode.
+    assert_eq!(
+        eval(
+            "var \\u0061b = 2; var \\u{63}d = 3; ab + cd + (() => { let cl\\u0065 = 1; return cle; })()"
+        ),
+        "6"
+    );
+    assert_eq!(
+        eval(
+            "class U { #\\u{6F} = 4; static l(u) { return u.#o; } } U.l(new U()) + ({ \\u0078: 1 }).x"
+        ),
+        "5"
+    );
+    assert_eq!(eval("var ℘ = 1, a\u{200c}b = 2; ℘ + a\u{200c}b"), "3");
+    assert!(eval("var \\u0031a = 1").contains("SyntaxError"));
+    assert!(eval("var a\\x41 = 1").contains("SyntaxError"));
+    assert_eq!(eval("#!/usr/bin/env oxyde\n1 + 1"), "2");
+}
+
+#[test]
+fn early_errors() {
+    // Chaque source est une erreur de syntaxe, signalée avant toute exécution.
+    let rejected = [
+        // Redéclarations.
+        "let a; let a;",
+        "let a; var a;",
+        "{ let b; { var b; } }",
+        "a => { let a; }",
+        "switch (0) { case 1: let a; case 2: let a; }",
+        "try {} catch (e) { let e; }",
+        "{ function f() {} var f; }",
+        // Mode strict.
+        "'use strict'; 010",
+        "'use strict'; '\\1'",
+        "'use strict'; var eval;",
+        "'use strict'; arguments = 1;",
+        "'use strict'; eval++;",
+        "'use strict'; delete x;",
+        "'use strict'; var static;",
+        "'use strict'; if (1) function f() {}",
+        "function f() { 'use strict'; var yield; }",
+        "function f(a, a) { 'use strict'; }",
+        "function eval() { 'use strict'; }",
+        "function f(a = 1) { 'use strict'; }",
+        "'\\01'; 'use strict';",
+        "class C { m() { var let; } }",
+        // Mots réservés selon le contexte.
+        "function* g() { var yield; }",
+        "async function f() { var await; }",
+        "function* g(x = yield) {}",
+        "(function* yield() {})",
+        "let let = 1",
+        "v\\u0061r x = 1",
+        "var x = tru\\u0065",
+        "cl\\u0061ss C {}",
+        // Noms privés.
+        "class C { #a; #a; }",
+        "class C { get #a() {} get #a() {} }",
+        "class C { m() { this.#b } }",
+        "this.#x",
+        "class C { #constructor }",
+        "class C { #a; m() { delete this.#a } }",
+        // `super`, `new.target`, classes.
+        "super.x",
+        "function f() { super.x }",
+        "class C { constructor() { super(); } }",
+        "new.target",
+        "class C { get constructor() {} }",
+        "class C { static prototype() {} }",
+        "class C { constructor() {} constructor() {} }",
+        "class C { x = arguments; }",
+        "class C { static { return; } }",
+        "class C { static { await; } }",
+        "class C { static { var arguments; } }",
+        // Instructions et étiquettes.
+        "x: x: 1",
+        "if (1) class C {}",
+        "while (1) function f() {}",
+        "if (1) let x;",
+        "for (;;) const a = 1;",
+        // Littéraux.
+        "({ a = 1 })",
+        "f({ a = 1 })",
+        "({ __proto__: 1, __proto__: 2 })",
+        "({ get a(x) {} })",
+        "({ set a() {} })",
+        "1_000_",
+        "1__0",
+        "0x_1",
+        "0_1",
+        "`\\07`",
+        "/(?<a>.)(?<a>.)/",
+        "/a**/",
+        "(a, a) => 1",
+        "-a ** 2",
+    ];
+    for source in rejected {
+        assert!(
+            eval(source).contains("SyntaxError"),
+            "devrait être refusé : {source}"
+        );
+    }
+    // Ce qui y ressemble mais reste valide.
+    assert_eq!(
+        eval("var a; var a; function f(a, a) { return a } f(1, 2)"),
+        "2"
+    );
+    assert_eq!(eval("010 + 1 + '\\101' + 08"), "9A8");
+    assert_eq!(eval("if (1) function f() { return 1 } 1"), "1");
+    assert_eq!(
+        eval("({ a = 1 } = {}); [{ b = 2 }] = [{}]; for ({ c = 3 } of [{}]) ; [a, b, c].join()"),
+        "1,2,3"
+    );
+    assert_eq!(
+        eval("var p, q; ({ __proto__: p, __proto__: q } = { __proto__: 5 }); q"),
+        "5"
+    );
+    assert_eq!(
+        eval("var yield = 1, await = 2, let = 3, static = 4; yield + await + let + static"),
+        "10"
+    );
+    assert_eq!(
+        eval("function f() { return new.target } String(f())"),
+        "undefined"
+    );
+    assert_eq!(eval("l: for (;;) { break l; } m: 1; m: 2"), "2");
+    assert_eq!(eval("try {} catch (e) { var e; } 1"), "1");
+    assert_eq!(eval("1_000.5_5e1_0"), "10005500000000");
+    assert_eq!(
+        eval("var o = { eval: 1, static: 2, v\\u0061r: 3 }; o.eval + o.static + o.var"),
+        "6"
+    );
+    assert_eq!(
+        eval(
+            "class A { #a = 1; get #b() { return this.#a } set #b(v) {} static #b2; static t(o) { return o.#b } } A.t(new A)"
+        ),
+        "1"
+    );
+    assert_eq!(
+        eval(
+            "class B extends Object { constructor() { super(); this.x = () => super.toString; } } typeof new B().x"
+        ),
+        "function"
+    );
+    assert_eq!(
+        eval("function g() { 'use strict' } function h(a, a) {} 0o17"),
+        "15"
+    );
+    assert_eq!(eval("(-2) ** 2 + 2 ** -1"), "4.5");
+    // Membres statiques : générateurs, blocs, ordre d'évaluation et `this`.
+    assert_eq!(
+        eval(
+            "class C { static *g() { yield 1 } static async *h() {} static x = this.name + 1;
+               static { C.y = this.x + '!'; } static z = C.y; static f = function () {}; static a = () => this }
+             [C.g().next().value, C.x, C.y, C.z, C.f.name, C.a() === C].join()"
+        ),
+        "1,C1,C1!,C1!,f,true"
+    );
+    assert_eq!(
+        eval(
+            "var log = []; class D { static a = log.push('a'); m() {} static { log.push('b') }
+               static [(log.push('k'), 'c')] = log.push('c'); static #p = 5; static r() { return D.#p } }
+             log.join() + D.c + D.r()"
+        ),
+        "k,a,b,c45"
+    );
+    assert_eq!(eval("let\nx = 1; if (0) let\nx; x"), "1");
 }
 
 #[test]

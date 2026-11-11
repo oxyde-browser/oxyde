@@ -1,8 +1,11 @@
 //! Analyse syntaxique d'ECMAScript : descente récursive et priorités d'opérateurs.
 //!
-//! LIMITES CONNUES : pas d'`import()` dynamique, de gabarits étiquetés ni de `with`. Les noms privés
-//! (`#x`) sont traités comme des propriétés ordinaires nommées `#x`. Le mode
-//! strict n'est pas distingué du mode normal.
+//! Les erreurs précoces qui tiennent à la grammaire (mode strict, mots
+//! réservés, noms privés, `super`, `new.target`, étiquettes) sont signalées
+//! ici ; les redéclarations le sont par le compilateur.
+//!
+//! LIMITES CONNUES : pas de gabarits étiquetés ni de `with`. Les parenthèses ne sont pas conservées : `(a) = 1` et `([a]) = 1`
+//! sont traités de la même façon.
 
 use std::sync::Arc;
 
@@ -56,7 +59,56 @@ const RESERVED: &[&str] = &[
     "with",
 ];
 
+/// Mots réservés en mode strict seulement.
+const STRICT_RESERVED: &[&str] = &[
+    "implements",
+    "interface",
+    "let",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "static",
+    "yield",
+];
+
 type PResult<T> = Result<T, SyntaxError>;
+
+/// Nature d'un membre privé de classe.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PrivateKind {
+    Field,
+    Method,
+    Getter,
+    Setter,
+}
+
+/// Noms privés d'un corps de classe en cours d'analyse.
+#[derive(Default)]
+struct PrivateScope {
+    /// Membres déclarés : nom (sans `#`), nature, statique ou non.
+    declared: Vec<(Arc<str>, PrivateKind, bool)>,
+    /// Noms employés, avec leur position, à vérifier en fin de classe.
+    used: Vec<(Arc<str>, usize)>,
+}
+
+/// Contexte d'analyse propre à une fonction, mis de côté pendant l'analyse
+/// d'une fonction imbriquée.
+struct FnState {
+    no_in: bool,
+    in_async: bool,
+    in_generator: bool,
+    strict: bool,
+    in_function: bool,
+    super_property: bool,
+    super_call: bool,
+    in_field_init: bool,
+    in_static_block: bool,
+    no_return: bool,
+    in_params: bool,
+    labels: Vec<Arc<str>>,
+    cover_init: Option<usize>,
+}
 
 struct Parser {
     lexer: Lexer,
@@ -70,6 +122,32 @@ struct Parser {
     in_generator: bool,
     /// Vrai pendant l'analyse d'un module : `import.meta` y est permis.
     module: bool,
+    /// Vrai dans du code en mode strict.
+    strict: bool,
+    /// Vrai dans une fonction non fléchée (ou une fléchée qui y est
+    /// imbriquée) : `new.target` y est permis.
+    in_function: bool,
+    /// Vrai dans une méthode : `super.x` y est permis.
+    super_property: bool,
+    /// Vrai dans le constructeur d'une classe dérivée : `super()` y est permis.
+    super_call: bool,
+    /// La prochaine fonction analysée est le constructeur d'une classe dérivée.
+    derived_ctor: bool,
+    /// Vrai dans l'initialiseur d'un champ de classe : `arguments` y est interdit.
+    in_field_init: bool,
+    /// Vrai dans un bloc `static { }` : `await` y est réservé.
+    in_static_block: bool,
+    /// Vrai directement dans un bloc `static { }` : `return` y est interdit.
+    no_return: bool,
+    /// Vrai pendant l'analyse de paramètres : `yield` et `await` y sont interdits.
+    in_params: bool,
+    /// Étiquettes des instructions englobantes de la fonction courante.
+    labels: Vec<Arc<str>>,
+    /// Corps de classes en cours d'analyse, du plus externe au plus interne.
+    private_scopes: Vec<PrivateScope>,
+    /// Position du premier `{ a = 1 }` (ou `__proto__` en double) qui n'est
+    /// valide que si l'objet se révèle être un motif d'affectation.
+    cover_init: Option<usize>,
 }
 
 /// Nom de la liaison locale qui porte la valeur de `export default <expression>`.
@@ -78,18 +156,21 @@ pub(crate) const DEFAULT_EXPORT: &str = "*default*";
 
 /// Analyse un script complet.
 pub(crate) fn parse_program(source: &str) -> PResult<Vec<Stmt>> {
-    let mut lexer = Lexer::new(source);
-    let tok = lexer.next()?;
-    let mut parser = Parser {
-        lexer,
-        tok,
-        depth: 0,
-        no_in: false,
-        in_async: false,
-        in_generator: false,
-        module: false,
-    };
+    parse_script(source, false)
+}
+
+/// Analyse le source passé à `eval`. `new.target` et `super.x` y sont
+/// acceptés, faute de savoir ici d'où vient l'appel.
+pub(crate) fn parse_eval(source: &str) -> PResult<Vec<Stmt>> {
+    parse_script(source, true)
+}
+
+fn parse_script(source: &str, in_function: bool) -> PResult<Vec<Stmt>> {
+    let mut parser = Parser::new(source, false)?;
+    parser.in_function = in_function;
+    parser.super_property = in_function;
     let mut body = Vec::new();
+    parser.directives(&mut body)?;
     while parser.tok.tok != Tok::Eof {
         body.push(parser.statement()?);
     }
@@ -100,17 +181,8 @@ pub(crate) fn parse_program(source: &str) -> PResult<Vec<Stmt>> {
 /// `export` sont ramenées à des déclarations ordinaires) et ce qu'il importe
 /// et exporte.
 pub(crate) fn parse_module(source: &str) -> PResult<(Vec<Stmt>, ModuleInfo)> {
-    let mut lexer = Lexer::new(source);
-    let tok = lexer.next()?;
-    let mut parser = Parser {
-        lexer,
-        tok,
-        depth: 0,
-        no_in: false,
-        in_async: false,
-        in_generator: false,
-        module: true,
-    };
+    // Un module est toujours du code strict.
+    let mut parser = Parser::new(source, true)?;
     let mut body = Vec::new();
     let mut info = ModuleInfo::default();
     while parser.tok.tok != Tok::Eof {
@@ -168,6 +240,68 @@ fn assign_op(p: &str) -> Option<AssignOp> {
 }
 
 impl Parser {
+    fn new(source: &str, module: bool) -> PResult<Self> {
+        let mut lexer = Lexer::new(source);
+        let tok = lexer.next()?;
+        Ok(Self {
+            lexer,
+            tok,
+            depth: 0,
+            no_in: false,
+            in_async: false,
+            in_generator: false,
+            module,
+            strict: module,
+            in_function: false,
+            super_property: false,
+            super_call: false,
+            derived_ctor: false,
+            in_field_init: false,
+            in_static_block: false,
+            no_return: false,
+            in_params: false,
+            labels: Vec::new(),
+            private_scopes: Vec::new(),
+            cover_init: None,
+        })
+    }
+
+    /// Met de côté le contexte de la fonction courante ; les étiquettes et
+    /// l'initialiseur en attente repartent de zéro.
+    fn take_state(&mut self) -> FnState {
+        FnState {
+            no_in: self.no_in,
+            in_async: self.in_async,
+            in_generator: self.in_generator,
+            strict: self.strict,
+            in_function: self.in_function,
+            super_property: self.super_property,
+            super_call: self.super_call,
+            in_field_init: self.in_field_init,
+            in_static_block: self.in_static_block,
+            no_return: self.no_return,
+            in_params: self.in_params,
+            labels: std::mem::take(&mut self.labels),
+            cover_init: self.cover_init.take(),
+        }
+    }
+
+    fn restore_state(&mut self, state: FnState) {
+        self.no_in = state.no_in;
+        self.in_async = state.in_async;
+        self.in_generator = state.in_generator;
+        self.strict = state.strict;
+        self.in_function = state.in_function;
+        self.super_property = state.super_property;
+        self.super_call = state.super_call;
+        self.in_field_init = state.in_field_init;
+        self.in_static_block = state.in_static_block;
+        self.no_return = state.no_return;
+        self.in_params = state.in_params;
+        self.labels = state.labels;
+        self.cover_init = state.cover_init.or(self.cover_init);
+    }
+
     // ---- Modules ---------------------------------------------------------
 
     fn module_item(&mut self, body: &mut Vec<Stmt>, info: &mut ModuleInfo) -> PResult<()> {
@@ -411,6 +545,11 @@ impl Parser {
 
     fn advance(&mut self) -> PResult<Token> {
         let next = self.lexer.next()?;
+        if self.strict && next.legacy_octal {
+            return Err(self
+                .lexer
+                .error_at(next.start, "forme octale interdite en mode strict"));
+        }
         Ok(std::mem::replace(&mut self.tok, next))
     }
 
@@ -434,8 +573,9 @@ impl Parser {
         }
     }
 
+    /// Vrai si le jeton courant est le mot `k`, écrit sans échappement.
     fn is_kw(&self, k: &str) -> bool {
-        matches!(&self.tok.tok, Tok::Ident(name) if name == k)
+        !self.tok.escaped && matches!(&self.tok.tok, Tok::Ident(name) if name == k)
     }
 
     fn eat_kw(&mut self, k: &str) -> PResult<bool> {
@@ -463,15 +603,166 @@ impl Parser {
         Ok(matches!(self.peek()?.tok, Tok::Punct(q) if q == p))
     }
 
-    /// Identifiant de liaison (pas un mot réservé).
+    /// Identifiant de liaison : ni mot réservé, ni `eval` ou `arguments` en
+    /// mode strict.
     fn binding_ident(&mut self) -> PResult<Arc<str>> {
-        match &self.tok.tok {
-            Tok::Ident(name) if !RESERVED.contains(&name.as_str()) => {
-                let name: Arc<str> = Arc::from(name.as_str());
-                self.advance()?;
-                Ok(name)
+        self.identifier(true)
+    }
+
+    /// Identifiant (pas un mot réservé) ; `binding` dit s'il nomme une liaison.
+    fn identifier(&mut self, binding: bool) -> PResult<Arc<str>> {
+        let name: Arc<str> = match &self.tok.tok {
+            Tok::Ident(name) if !RESERVED.contains(&name.as_str()) => Arc::from(name.as_str()),
+            _ => return self.error("identifiant attendu"),
+        };
+        self.check_identifier(&name, binding)?;
+        self.advance()?;
+        Ok(name)
+    }
+
+    /// Étiquette : un identifiant, `arguments` compris même là où la
+    /// variable est interdite.
+    fn label(&mut self) -> PResult<Arc<str>> {
+        let saved = std::mem::replace(&mut self.in_field_init, false);
+        let label = self.identifier(false);
+        self.in_field_init = saved;
+        label
+    }
+
+    /// Nom facultatif d'une expression de fonction. Il se lit dans le
+    /// contexte de la fonction elle-même : `yield` peut nommer une fonction
+    /// ordinaire imbriquée dans un générateur, pas un générateur.
+    fn function_expression_name(
+        &mut self,
+        is_async: bool,
+        is_generator: bool,
+    ) -> PResult<Option<Arc<str>>> {
+        if self.is_punct("(") {
+            return Ok(None);
+        }
+        let saved = (self.in_async, self.in_generator);
+        (self.in_async, self.in_generator) = (is_async, is_generator);
+        let name = self.binding_ident();
+        (self.in_async, self.in_generator) = saved;
+        name.map(Some)
+    }
+
+    /// Refuse les mots qui ne sont réservés que selon le contexte.
+    fn check_identifier(&self, name: &str, binding: bool) -> PResult<()> {
+        if self.strict && STRICT_RESERVED.contains(&name) {
+            return self.error(format!("« {name} » est réservé en mode strict"));
+        }
+        if binding && self.strict && (name == "eval" || name == "arguments") {
+            return self.error(format!("« {name} » ne peut pas être lié en mode strict"));
+        }
+        if name == "yield" && self.in_generator {
+            return self.error("« yield » est réservé dans un générateur");
+        }
+        if name == "await" && (self.in_async || self.module || self.in_static_block) {
+            return self.error("« await » est réservé ici");
+        }
+        if !binding && name == "arguments" && self.in_field_init {
+            return self.error("« arguments » est interdit dans un initialiseur de champ");
+        }
+        Ok(())
+    }
+
+    /// Refuse `eval` et `arguments` comme cibles d'affectation en mode strict.
+    fn check_assignable(&self, name: &str) -> PResult<()> {
+        if self.strict && (name == "eval" || name == "arguments") {
+            return self.error(format!(
+                "« {name} » ne peut pas être affecté en mode strict"
+            ));
+        }
+        Ok(())
+    }
+
+    // ---- Noms privés -------------------------------------------------------
+
+    fn declare_private(
+        &mut self,
+        name: Arc<str>,
+        kind: PrivateKind,
+        is_static: bool,
+        start: usize,
+    ) -> PResult<()> {
+        if &*name == "constructor" {
+            return Err(self.lexer.error_at(start, "« #constructor » est interdit"));
+        }
+        let Some(scope) = self.private_scopes.last_mut() else {
+            return Ok(());
+        };
+        // Seule paire permise sous un même nom : un accesseur de chaque sorte.
+        let clash = scope
+            .declared
+            .iter()
+            .any(|(other, other_kind, other_static)| {
+                *other == name
+                    && !(*other_static == is_static
+                        && matches!(
+                            (*other_kind, kind),
+                            (PrivateKind::Getter, PrivateKind::Setter)
+                                | (PrivateKind::Setter, PrivateKind::Getter)
+                        ))
+            });
+        if clash {
+            return Err(self
+                .lexer
+                .error_at(start, format!("« #{name} » est déclaré deux fois")));
+        }
+        scope.declared.push((name, kind, is_static));
+        Ok(())
+    }
+
+    fn use_private(&mut self, name: &str, start: usize) -> PResult<()> {
+        match self.private_scopes.last_mut() {
+            Some(scope) => {
+                scope.used.push((Arc::from(name), start));
+                Ok(())
             }
-            _ => self.error("identifiant attendu"),
+            None => Err(self
+                .lexer
+                .error_at(start, format!("nom privé « #{name} » hors d'une classe"))),
+        }
+    }
+
+    /// Vérifie, en fin de classe, que chaque nom privé employé est déclaré par
+    /// elle ou le sera par une classe englobante.
+    fn close_private_scope(&mut self, scope: PrivateScope) -> PResult<()> {
+        for (name, start) in scope.used {
+            if scope
+                .declared
+                .iter()
+                .any(|(declared, ..)| *declared == name)
+            {
+                continue;
+            }
+            match self.private_scopes.last_mut() {
+                Some(outer) => outer.used.push((name, start)),
+                None => {
+                    return Err(self
+                        .lexer
+                        .error_at(start, format!("nom privé « #{name} » non déclaré")));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Accès `object.name`. Un nom privé (`#x`) devient un accès indexé par
+    /// la clé privée, que la classe englobante lie sous ce nom.
+    fn member(object: Expr, name: Arc<str>, optional: bool) -> Expr {
+        if name.starts_with('#') {
+            return Expr::Index {
+                object: Box::new(object),
+                index: Box::new(Expr::PrivateName(name)),
+                optional,
+            };
+        }
+        Expr::Member {
+            object: Box::new(object),
+            name,
+            optional,
         }
     }
 
@@ -479,7 +770,11 @@ impl Parser {
     fn property_name(&mut self) -> PResult<Arc<str>> {
         let name: Arc<str> = match &self.tok.tok {
             Tok::Ident(name) => Arc::from(name.as_str()),
-            Tok::Private(name) => Arc::from(format!("#{name}")),
+            Tok::Private(name) => {
+                let name = name.clone();
+                self.use_private(&name, self.tok.start)?;
+                Arc::from(format!("#{name}"))
+            }
             _ => return self.error("nom de propriété attendu"),
         };
         self.advance()?;
@@ -511,7 +806,122 @@ impl Parser {
         self.enter()?;
         let result = self.statement_inner();
         self.depth -= 1;
+        if result.is_ok()
+            && let Some(start) = self.cover_init.take()
+        {
+            return Err(self
+                .lexer
+                .error_at(start, "littéral objet invalide hors d'un motif"));
+        }
         result
+    }
+
+    /// Prologue de directives d'un script ou d'un corps de fonction : passe en
+    /// mode strict sur `"use strict"` et dit si cette directive est présente.
+    fn directives(&mut self, body: &mut Vec<Stmt>) -> PResult<bool> {
+        let mut found = false;
+        let mut octal = false;
+        while let Tok::Str(text) = &self.tok.tok {
+            let next = self.peek()?;
+            let ends = match &next.tok {
+                Tok::Eof | Tok::Punct(";" | "}") => true,
+                Tok::Punct(_) | Tok::Template { .. } => false,
+                Tok::Ident(word) if word == "in" || word == "instanceof" => false,
+                _ => next.newline_before,
+            };
+            if !ends {
+                break;
+            }
+            octal |= self.tok.legacy_octal;
+            // Sans échappement ni continuation : dix caractères entre guillemets.
+            if text == "use strict" && self.lexer.pos - self.tok.start == 12 {
+                found = true;
+                self.strict = true;
+            }
+            body.push(self.statement()?);
+        }
+        if found && octal {
+            return self.error("forme octale interdite en mode strict");
+        }
+        Ok(found)
+    }
+
+    /// Corps de fonction entre accolades ; l'accolade fermante reste le jeton
+    /// courant, pour être consommée une fois le mode strict du corps quitté.
+    /// Le booléen dit si le corps porte la directive `"use strict"`.
+    fn function_body(&mut self) -> PResult<(Vec<Stmt>, bool)> {
+        self.expect_punct("{")?;
+        let mut body = Vec::new();
+        let directive = self.directives(&mut body)?;
+        while !self.is_punct("}") {
+            if self.tok.tok == Tok::Eof {
+                return self.error("« } » attendu");
+            }
+            body.push(self.statement()?);
+        }
+        Ok((body, directive))
+    }
+
+    /// Instruction en position de corps (`if`, boucle) : les déclarations y
+    /// sont interdites, sauf une fonction ordinaire après `if` hors mode strict.
+    fn substatement(&mut self, allow_function: bool) -> PResult<Stmt> {
+        if let Tok::Ident(word) = &self.tok.tok
+            && !self.tok.escaped
+        {
+            match word.as_str() {
+                "class" | "const" => return self.error("déclaration interdite ici"),
+                "function" => {
+                    if !allow_function || self.strict || self.peek_is_punct("*")? {
+                        return self.error("déclaration de fonction interdite ici");
+                    }
+                }
+                "async" if self.async_function_follows()? => {
+                    return self.error("déclaration de fonction interdite ici");
+                }
+                "let" => {
+                    let next = self.peek()?;
+                    match next.tok {
+                        Tok::Punct("[") => return self.error("déclaration interdite ici"),
+                        // `let` puis un saut de ligne : l'identifiant `let`.
+                        Tok::Ident(_) | Tok::Punct("{") if next.newline_before => {
+                            return self.expression_statement();
+                        }
+                        Tok::Ident(_) | Tok::Punct("{") => {
+                            return self.error("déclaration interdite ici");
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+        let statement = self.statement()?;
+        let mut inner = &statement;
+        let mut labeled = false;
+        while let Stmt::Labeled(_, body) = inner {
+            inner = body;
+            labeled = true;
+        }
+        if labeled && matches!(inner, Stmt::Function(_)) {
+            return self.error("déclaration de fonction interdite ici");
+        }
+        Ok(statement)
+    }
+
+    /// `étiquette: instruction` ; le jeton courant est l'étiquette.
+    fn labeled_statement(&mut self) -> PResult<Stmt> {
+        let label = self.label()?;
+        if self.labels.contains(&label) {
+            return self.error(format!("étiquette « {label} » déjà employée"));
+        }
+        self.advance()?;
+        if self.is_kw("function") && (self.strict || self.peek_is_punct("*")?) {
+            return self.error("déclaration de fonction interdite ici");
+        }
+        self.labels.push(Arc::clone(&label));
+        let body = self.statement();
+        self.labels.pop();
+        Ok(Stmt::Labeled(label, Box::new(body?)))
     }
 
     fn block(&mut self) -> PResult<Vec<Stmt>> {
@@ -537,6 +947,13 @@ impl Parser {
             }
             return self.expression_statement();
         };
+        if self.tok.escaped {
+            // Un mot écrit avec un échappement n'est jamais un mot-clé.
+            if !RESERVED.contains(&word.as_str()) && self.peek_is_punct(":")? {
+                return self.labeled_statement();
+            }
+            return self.expression_statement();
+        }
         match word.as_str() {
             "var" | "const" => {
                 let kind = if word == "var" {
@@ -587,9 +1004,9 @@ impl Parser {
                 self.expect_punct("(")?;
                 let test = self.expression()?;
                 self.expect_punct(")")?;
-                let then = Box::new(self.statement()?);
+                let then = Box::new(self.substatement(true)?);
                 let otherwise = if self.eat_kw("else")? {
-                    Some(Box::new(self.statement()?))
+                    Some(Box::new(self.substatement(true)?))
                 } else {
                     None
                 };
@@ -607,12 +1024,12 @@ impl Parser {
                 self.expect_punct(")")?;
                 Ok(Stmt::While {
                     test,
-                    body: Box::new(self.statement()?),
+                    body: Box::new(self.substatement(false)?),
                 })
             }
             "do" => {
                 self.advance()?;
-                let body = Box::new(self.statement()?);
+                let body = Box::new(self.substatement(false)?);
                 self.expect_kw("while")?;
                 self.expect_punct("(")?;
                 let test = self.expression()?;
@@ -621,6 +1038,9 @@ impl Parser {
                 Ok(Stmt::DoWhile { body, test })
             }
             "return" => {
+                if self.no_return {
+                    return self.error("« return » interdit dans un bloc statique");
+                }
                 self.advance()?;
                 let value = if self.is_punct(";")
                     || self.is_punct("}")
@@ -638,7 +1058,7 @@ impl Parser {
                 let is_break = word == "break";
                 self.advance()?;
                 let label = match &self.tok.tok {
-                    Tok::Ident(_) if !self.tok.newline_before => Some(self.binding_ident()?),
+                    Tok::Ident(_) if !self.tok.newline_before => Some(self.label()?),
                     _ => None,
                 };
                 self.semicolon()?;
@@ -670,9 +1090,7 @@ impl Parser {
             "export" => self.unsupported("les modules (export)"),
             "with" => self.unsupported("l'instruction with"),
             _ if !RESERVED.contains(&word.as_str()) && self.peek_is_punct(":")? => {
-                let label = self.binding_ident()?;
-                self.advance()?;
-                Ok(Stmt::Labeled(label, Box::new(self.statement()?)))
+                self.labeled_statement()
             }
             _ => self.expression_statement(),
         }
@@ -688,6 +1106,13 @@ impl Parser {
         let mut decls = Vec::new();
         loop {
             let pattern = self.binding_pattern()?;
+            if kind != VarKind::Var {
+                let mut names = Vec::new();
+                crate::compiler::pattern_names(&pattern, &mut names);
+                if names.iter().any(|name| &**name == "let") {
+                    return self.error("« let » ne peut pas nommer une liaison lexicale");
+                }
+            }
             let init = if self.eat_punct("=")? {
                 Some(self.assignment()?)
             } else {
@@ -721,6 +1146,7 @@ impl Parser {
         let mut init = None;
         if !self.is_punct(";") {
             let decl_kind = match &self.tok.tok {
+                Tok::Ident(_) if self.tok.escaped => None,
                 Tok::Ident(w) if w == "var" => Some(VarKind::Var),
                 Tok::Ident(w) if w == "const" => Some(VarKind::Const),
                 Tok::Ident(w)
@@ -751,7 +1177,13 @@ impl Parser {
                         }
                         ForTarget::Decl(kind, decls.remove(0).0)
                     }
-                    ForInit::Expr(expr) => ForTarget::Pattern(self.to_pattern(expr)?),
+                    ForInit::Expr(expr) => {
+                        // `for ({ a = 1 } of xs)` : l'objet est bien un motif.
+                        if matches!(expr, Expr::Object(_) | Expr::Array(_)) {
+                            self.cover_init = None;
+                        }
+                        ForTarget::Pattern(self.to_pattern(expr)?)
+                    }
                 };
                 let object = if of {
                     self.assignment()?
@@ -765,7 +1197,7 @@ impl Parser {
                 return Ok(Stmt::ForIn {
                     target,
                     object,
-                    body: Box::new(self.statement()?),
+                    body: Box::new(self.substatement(false)?),
                     of,
                     is_await,
                 });
@@ -801,7 +1233,7 @@ impl Parser {
             init,
             test,
             update,
-            body: Box::new(self.statement()?),
+            body: Box::new(self.substatement(false)?),
         })
     }
 
@@ -871,6 +1303,13 @@ impl Parser {
 
     /// Paramètres entre parenthèses (la parenthèse ouvrante est le jeton courant).
     fn params(&mut self) -> PResult<(Vec<Param>, Option<Pattern>)> {
+        let saved = std::mem::replace(&mut self.in_params, true);
+        let result = self.params_inner();
+        self.in_params = saved;
+        result
+    }
+
+    fn params_inner(&mut self) -> PResult<(Vec<Param>, Option<Pattern>)> {
         self.expect_punct("(")?;
         let mut params = Vec::new();
         let mut rest = None;
@@ -907,13 +1346,25 @@ impl Parser {
         is_async: bool,
         is_generator: bool,
     ) -> PResult<Function> {
-        let saved = (self.in_async, self.in_generator, self.no_in);
-        (self.in_async, self.in_generator, self.no_in) = (is_async, is_generator, false);
-        let parsed = self
-            .params()
-            .and_then(|(params, rest)| self.block().map(|body| (params, rest, body)));
-        (self.in_async, self.in_generator, self.no_in) = saved;
+        let super_call = std::mem::take(&mut self.derived_ctor);
+        let saved = self.take_state();
+        let was_strict = saved.strict;
+        self.no_in = false;
+        self.in_async = is_async;
+        self.in_generator = is_generator;
+        self.in_function = true;
+        self.super_property = is_method;
+        self.super_call = super_call;
+        self.in_field_init = false;
+        self.in_static_block = false;
+        self.no_return = false;
+        self.in_params = false;
+        let checked_name = if is_method { None } else { name.as_deref() };
+        let parsed = self.function_parts(checked_name, is_method, was_strict);
+        self.restore_state(saved);
         let (params, rest, body) = parsed?;
+        // L'accolade fermante, lue hors du mode strict éventuel du corps.
+        self.advance()?;
         Ok(Function {
             name,
             params,
@@ -926,10 +1377,136 @@ impl Parser {
         })
     }
 
+    /// Paramètres puis corps d'une fonction ; l'accolade fermante reste le
+    /// jeton courant.
+    fn function_parts(
+        &mut self,
+        name: Option<&str>,
+        unique: bool,
+        was_strict: bool,
+    ) -> PResult<(Vec<Param>, Option<Pattern>, Vec<Stmt>)> {
+        let (params, rest) = self.params()?;
+        let (body, directive) = self.function_body()?;
+        self.check_params(name, &params, rest.as_ref(), unique, directive, was_strict)?;
+        Ok((params, rest, body))
+    }
+
+    /// Erreurs précoces sur les paramètres, connues une fois le corps lu :
+    /// doublons, noms interdits par un corps strict, directive `"use strict"`
+    /// avec des paramètres non simples.
+    fn check_params(
+        &self,
+        name: Option<&str>,
+        params: &[Param],
+        rest: Option<&Pattern>,
+        unique: bool,
+        directive: bool,
+        was_strict: bool,
+    ) -> PResult<()> {
+        let simple = rest.is_none()
+            && params
+                .iter()
+                .all(|p| p.default.is_none() && matches!(p.pattern, Pattern::Ident(_)));
+        if directive && !simple {
+            return self.error("« use strict » interdit avec des paramètres non simples");
+        }
+        let mut names = Vec::new();
+        for param in params {
+            crate::compiler::pattern_names(&param.pattern, &mut names);
+        }
+        if let Some(rest) = rest {
+            crate::compiler::pattern_names(rest, &mut names);
+        }
+        if unique || !simple || self.strict {
+            for (i, name) in names.iter().enumerate() {
+                if names[..i].contains(name) {
+                    return self.error(format!("paramètre « {name} » en double"));
+                }
+            }
+        }
+        if self.strict && !was_strict {
+            // Le corps vient de passer en mode strict : ses règles valent
+            // aussi pour le nom et les paramètres, déjà lus.
+            for bound in names.iter().map(|n| &**n).chain(name) {
+                if bound == "eval" || bound == "arguments" || STRICT_RESERVED.contains(&bound) {
+                    return self.error(format!("« {bound} » ne peut pas être lié en mode strict"));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Vrai si le jeton courant `async` est suivi, sur la même ligne, de `function`.
     fn async_function_follows(&self) -> PResult<bool> {
+        if self.tok.escaped {
+            return Ok(false);
+        }
         let after = self.peek()?;
-        Ok(!after.newline_before && matches!(after.tok, Tok::Ident(ref w) if w == "function"))
+        Ok(!after.newline_before
+            && !after.escaped
+            && matches!(after.tok, Tok::Ident(ref w) if w == "function"))
+    }
+
+    /// Un accesseur `get` n'a aucun paramètre, un `set` exactement un.
+    fn check_accessor(&self, func: &Function, is_getter: bool) -> PResult<()> {
+        let valid = if is_getter {
+            func.params.is_empty() && func.rest.is_none()
+        } else {
+            func.params.len() == 1 && func.rest.is_none()
+        };
+        if valid {
+            Ok(())
+        } else if is_getter {
+            self.error("un accesseur « get » n'a pas de paramètre")
+        } else {
+            self.error("un accesseur « set » a exactement un paramètre")
+        }
+    }
+
+    /// Bloc `static { … }` d'une classe ; le jeton courant est l'accolade ouvrante.
+    fn static_block(&mut self) -> PResult<Function> {
+        let saved = self.take_state();
+        self.no_in = false;
+        self.in_async = false;
+        self.in_generator = false;
+        self.in_function = true;
+        self.super_property = true;
+        self.super_call = false;
+        self.in_field_init = true;
+        self.in_static_block = true;
+        self.no_return = true;
+        self.in_params = false;
+        let body = self.function_body();
+        self.restore_state(saved);
+        let (body, _) = body?;
+        self.advance()?;
+        Ok(Function {
+            name: None,
+            params: Vec::new(),
+            rest: None,
+            body,
+            is_arrow: false,
+            is_method: true,
+            is_async: false,
+            is_generator: false,
+        })
+    }
+
+    /// Initialiseur d'un champ de classe : s'évalue comme le corps d'une méthode.
+    fn field_initializer(&mut self) -> PResult<Expr> {
+        let saved = self.take_state();
+        self.no_in = false;
+        self.in_async = false;
+        self.in_generator = false;
+        self.in_function = true;
+        self.super_property = true;
+        self.super_call = false;
+        self.in_field_init = true;
+        self.in_static_block = false;
+        self.in_params = false;
+        let value = self.assignment();
+        self.restore_state(saved);
+        value
     }
 
     /// Modificateurs `async` et `*` placés devant le nom d'une méthode.
@@ -988,8 +1565,20 @@ impl Parser {
     }
 
     fn class_rest(&mut self, name_required: bool) -> PResult<Class> {
+        // Une définition de classe est toujours du code strict.
+        let was_strict = std::mem::replace(&mut self.strict, true);
+        let parsed = self.class_tail(name_required);
+        self.strict = was_strict;
+        let class = parsed?;
+        // L'accolade fermante, lue hors du mode strict de la classe.
+        self.advance()?;
+        Ok(class)
+    }
+
+    /// Nom, parent et corps d'une classe ; l'accolade fermante reste le jeton courant.
+    fn class_tail(&mut self, name_required: bool) -> PResult<Class> {
         let name = match &self.tok.tok {
-            Tok::Ident(w) if w != "extends" => Some(self.binding_ident()?),
+            Tok::Ident(w) if w != "extends" || self.tok.escaped => Some(self.binding_ident()?),
             _ if name_required => return self.error("nom de classe attendu"),
             _ => None,
         };
@@ -999,19 +1588,45 @@ impl Parser {
             None
         };
         self.expect_punct("{")?;
+        self.private_scopes.push(PrivateScope::default());
+        let body = self.class_body(parent.is_some());
+        let scope = self.private_scopes.pop().unwrap_or_default();
+        let (constructor, members) = body?;
+        self.close_private_scope(scope)?;
+        Ok(Class {
+            name,
+            parent,
+            constructor,
+            members,
+        })
+    }
+
+    fn class_body(&mut self, derived: bool) -> PResult<(Option<Arc<Function>>, Vec<ClassMember>)> {
         let mut constructor = None;
         let mut members = Vec::new();
-        while !self.eat_punct("}")? {
+        while !self.is_punct("}") {
             if self.eat_punct(";")? {
                 continue;
             }
-            let is_static = self.is_kw("static") && self.is_modifier()?;
+            if self.is_kw("static") && self.peek_is_punct("{")? {
+                self.advance()?;
+                members.push(ClassMember {
+                    key: PropKey::Name(Arc::from("")),
+                    is_static: true,
+                    kind: ClassMemberKind::StaticBlock(Arc::new(self.static_block()?)),
+                });
+                continue;
+            }
+            let is_static =
+                self.is_kw("static") && (self.is_modifier()? || self.peek_is_punct("*")?);
             if is_static {
                 self.advance()?;
             }
             let (is_async, is_generator) = self.method_modifiers()?;
             let accessor = match &self.tok.tok {
-                Tok::Ident(w) if (w == "get" || w == "set") && self.is_modifier()? => {
+                Tok::Ident(w)
+                    if !self.tok.escaped && (w == "get" || w == "set") && self.is_modifier()? =>
+                {
                     Some(w == "get")
                 }
                 _ => None,
@@ -1019,17 +1634,42 @@ impl Parser {
             if accessor.is_some() {
                 self.advance()?;
             }
+            let private = match &self.tok.tok {
+                Tok::Private(name) => Some((Arc::<str>::from(name.as_str()), self.tok.start)),
+                _ => None,
+            };
             let key = self.property_key()?;
-            let kind = if self.is_punct("(") {
+            let named = |wanted: &str| matches!(&key, PropKey::Name(n) if &**n == wanted);
+            let named_constructor = named("constructor");
+            let named_prototype = named("prototype");
+            let is_method = self.is_punct("(");
+            if let Some((name, start)) = private {
+                let kind = match (is_method, accessor) {
+                    (false, _) => PrivateKind::Field,
+                    (true, Some(true)) => PrivateKind::Getter,
+                    (true, Some(false)) => PrivateKind::Setter,
+                    (true, None) => PrivateKind::Method,
+                };
+                self.declare_private(name, kind, is_static, start)?;
+            }
+            let kind = if is_method {
+                if is_static && named_prototype {
+                    return self.error("une méthode statique ne peut pas se nommer « prototype »");
+                }
+                let is_constructor = !is_static && named_constructor;
+                if is_constructor && (accessor.is_some() || is_async || is_generator) {
+                    return self.error("le constructeur est une méthode ordinaire");
+                }
+                self.derived_ctor = is_constructor && derived;
                 let func = Arc::new(self.function_with(
                     Self::method_name(&key),
                     true,
                     is_async,
                     is_generator,
                 )?);
-                let is_constructor = !is_static
-                    && accessor.is_none()
-                    && matches!(&key, PropKey::Name(n) if &**n == "constructor");
+                if let Some(is_getter) = accessor {
+                    self.check_accessor(&func, is_getter)?;
+                }
                 if is_constructor {
                     if constructor.replace(func).is_some() {
                         return self.error("une classe n'a qu'un constructeur");
@@ -1045,8 +1685,11 @@ impl Parser {
                 if accessor.is_some() || is_async || is_generator {
                     return self.error("« ( » attendu");
                 }
+                if named_constructor || (is_static && named_prototype) {
+                    return self.error("nom de champ interdit");
+                }
                 let value = if self.eat_punct("=")? {
-                    Some(self.assignment()?)
+                    Some(self.field_initializer()?)
                 } else {
                     None
                 };
@@ -1059,12 +1702,7 @@ impl Parser {
                 kind,
             });
         }
-        Ok(Class {
-            name,
-            parent,
-            constructor,
-            members,
-        })
+        Ok((constructor, members))
     }
 
     // ---- Motifs ------------------------------------------------------------
@@ -1093,6 +1731,7 @@ impl Parser {
                 } else {
                     match &key {
                         PropKey::Name(name) if is_plain_ident && !RESERVED.contains(&&**name) => {
+                            self.check_identifier(name, true)?;
                             Pattern::Ident(Arc::clone(name))
                         }
                         _ => return self.error("« : » attendu"),
@@ -1143,7 +1782,10 @@ impl Parser {
     /// couverture : `[a, b] = …`, `({x} = …)`, paramètres de fonction fléchée).
     fn to_pattern(&self, expr: Expr) -> PResult<Pattern> {
         Ok(match expr {
-            Expr::Ident(name) => Pattern::Ident(name),
+            Expr::Ident(name) => {
+                self.check_assignable(&name)?;
+                Pattern::Ident(name)
+            }
             Expr::Member {
                 optional: false, ..
             }
@@ -1215,20 +1857,37 @@ impl Parser {
         rest: Option<Pattern>,
         is_async: bool,
     ) -> PResult<Expr> {
-        let saved = (self.in_async, self.in_generator, self.no_in);
-        (self.in_async, self.in_generator, self.no_in) = (is_async, false, false);
-        let body = if self.is_punct("{") {
-            self.block()
+        // Une fonction fléchée hérite de `super`, `new.target` et du mode
+        // strict de la fonction qui l'entoure.
+        let saved = self.take_state();
+        let was_strict = saved.strict;
+        self.no_in = false;
+        self.in_async = is_async;
+        self.in_generator = false;
+        self.in_params = false;
+        self.no_return = false;
+        let block = self.is_punct("{");
+        let body = if block {
+            self.function_body().and_then(|(body, directive)| {
+                self.check_params(None, &params, rest.as_ref(), true, directive, was_strict)?;
+                Ok(body)
+            })
         } else {
-            self.assignment()
+            self.check_params(None, &params, rest.as_ref(), true, false, was_strict)
+                .and_then(|()| self.assignment())
                 .map(|value| vec![Stmt::Return(Some(value))])
         };
-        (self.in_async, self.in_generator, self.no_in) = saved;
+        self.restore_state(saved);
+        let body = body?;
+        if block {
+            // L'accolade fermante, lue hors du mode strict éventuel du corps.
+            self.advance()?;
+        }
         Ok(Expr::Function(Arc::new(Function {
             name: None,
             params,
             rest,
-            body: body?,
+            body,
             is_arrow: true,
             is_method: false,
             is_async,
@@ -1242,7 +1901,7 @@ impl Parser {
         if self.peek()?.newline_before {
             return Ok(None);
         }
-        let saved = (self.lexer.clone(), self.tok.clone());
+        let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
         self.advance()?;
         let attempt: PResult<Option<(Vec<Param>, Option<Pattern>)>> = match &self.tok.tok {
             Tok::Ident(name) if !RESERVED.contains(&name.as_str()) => {
@@ -1271,7 +1930,7 @@ impl Parser {
                 self.arrow_body(params, rest, true).map(Some)
             }
             _ => {
-                (self.lexer, self.tok) = saved;
+                (self.lexer, self.tok, self.cover_init) = saved;
                 Ok(None)
             }
         }
@@ -1279,6 +1938,9 @@ impl Parser {
 
     /// `yield`, `yield expr` ou `yield* expr` ; le jeton courant est `yield`.
     fn yield_expression(&mut self) -> PResult<Expr> {
+        if self.in_params {
+            return self.error("« yield » est interdit dans des paramètres");
+        }
         self.advance()?;
         let delegate = !self.tok.newline_before && self.eat_punct("*")?;
         let ends = self.tok.newline_before
@@ -1296,7 +1958,7 @@ impl Parser {
 
     /// Tente de lire `(params) =>` ; restaure l'état et renvoie `None` si ce n'en est pas un.
     fn try_arrow(&mut self) -> PResult<Option<Expr>> {
-        let saved = (self.lexer.clone(), self.tok.clone());
+        let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
         let attempt = self
             .params()
             .map(|parsed| (self.is_punct("=>") && !self.tok.newline_before).then_some(parsed));
@@ -1306,7 +1968,7 @@ impl Parser {
                 self.arrow_body(params, rest, false).map(Some)
             }
             _ => {
-                (self.lexer, self.tok) = saved;
+                (self.lexer, self.tok, self.cover_init) = saved;
                 Ok(None)
             }
         }
@@ -1335,6 +1997,9 @@ impl Parser {
                 if !RESERVED.contains(&name.as_str()) && self.peek_is_punct("=>")? =>
             {
                 let name = self.binding_ident()?;
+                if self.tok.newline_before {
+                    return self.error("saut de ligne interdit avant « => »");
+                }
                 self.advance()?;
                 return self.arrow_body(
                     vec![Param {
@@ -1369,16 +2034,28 @@ impl Parser {
             }
             _ => {}
         }
+        // Un `{ a = 1 }` lu ici n'est valide que si l'expression se révèle
+        // être un motif d'affectation ; sinon il reste en attente d'une erreur.
+        let outer_cover = self.cover_init.take();
         let left = self.conditional()?;
-        let Tok::Punct(p) = &self.tok.tok else {
+        let op = match &self.tok.tok {
+            Tok::Punct(p) => assign_op(p),
+            _ => None,
+        };
+        let Some(op) = op else {
+            self.cover_init = outer_cover.or(self.cover_init);
             return Ok(left);
         };
-        let Some(op) = assign_op(p) else {
-            return Ok(left);
-        };
+        if op == AssignOp::Assign && matches!(left, Expr::Object(_) | Expr::Array(_)) {
+            self.cover_init = None;
+        }
+        self.cover_init = outer_cover.or(self.cover_init);
         let target = match (op, left) {
             (AssignOp::Assign, left) => self.to_pattern(left)?,
-            (_, Expr::Ident(name)) => Pattern::Ident(name),
+            (_, Expr::Ident(name)) => {
+                self.check_assignable(&name)?;
+                Pattern::Ident(name)
+            }
             (
                 _,
                 left @ (Expr::Member {
@@ -1424,6 +2101,7 @@ impl Parser {
             Tok::Punct("||") => Some((2, Err(LogicalOp::Or))),
             Tok::Punct("&&") => Some((3, Err(LogicalOp::And))),
             Tok::Punct(p) => binary_op(p).map(|(prec, op)| (prec, Ok(op))),
+            Tok::Ident(_) if self.tok.escaped => None,
             Tok::Ident(w) if w == "instanceof" => Some((8, Ok(BinaryOp::Instanceof))),
             Tok::Ident(w) if w == "in" && !self.no_in => Some((8, Ok(BinaryOp::In))),
             _ => None,
@@ -1469,6 +2147,9 @@ impl Parser {
 
     fn unary_inner(&mut self) -> PResult<Expr> {
         if self.in_async && self.is_kw("await") {
+            if self.in_params {
+                return self.error("« await » est interdit dans des paramètres");
+            }
             self.advance()?;
             let arg = self.unary()?;
             return Ok(Expr::Await(Box::new(arg)));
@@ -1478,6 +2159,7 @@ impl Parser {
             Tok::Punct("~") => Some(UnaryOp::BitNot),
             Tok::Punct("+") => Some(UnaryOp::Plus),
             Tok::Punct("-") => Some(UnaryOp::Neg),
+            Tok::Ident(_) if self.tok.escaped => None,
             Tok::Ident(w) if w == "typeof" => Some(UnaryOp::Typeof),
             Tok::Ident(w) if w == "void" => Some(UnaryOp::Void),
             Tok::Ident(w) if w == "delete" => Some(UnaryOp::Delete),
@@ -1486,6 +2168,20 @@ impl Parser {
         if let Some(op) = op {
             self.advance()?;
             let arg = self.unary()?;
+            if op == UnaryOp::Delete {
+                match &arg {
+                    Expr::Ident(_) if self.strict => {
+                        return self.error("« delete » d'une variable interdit en mode strict");
+                    }
+                    Expr::Index { index, .. } if matches!(**index, Expr::PrivateName(_)) => {
+                        return self.error("« delete » d'un membre privé interdit");
+                    }
+                    _ => {}
+                }
+            }
+            if self.is_punct("**") {
+                return self.error("opérande unaire interdit à gauche de « ** »");
+            }
             return Ok(Expr::Unary {
                 op,
                 arg: Box::new(arg),
@@ -1521,6 +2217,9 @@ impl Parser {
         ) {
             return self.error("cible d'incrémentation invalide");
         }
+        if let Expr::Ident(name) = &target {
+            self.check_assignable(name)?;
+        }
         Ok(Expr::Update {
             increment,
             prefix,
@@ -1550,22 +2249,23 @@ impl Parser {
             self.advance()?;
             if self.eat_punct(".")? {
                 self.expect_kw("target")?;
+                if !self.in_function {
+                    return self.error("« new.target » hors d'une fonction");
+                }
                 Expr::NewTarget
             } else {
                 self.enter()?;
                 // Le constructeur est une expression membre sans appel.
                 let mut callee = if self.is_kw("new") {
                     self.left_hand_side()?
+                } else if self.is_kw("import") && self.peek_is_punct("(")? {
+                    return self.error("« new import() » est interdit");
                 } else {
                     self.primary()?
                 };
                 loop {
                     if self.eat_punct(".")? {
-                        callee = Expr::Member {
-                            object: Box::new(callee),
-                            name: self.property_name()?,
-                            optional: false,
-                        };
+                        callee = Self::member(callee, self.property_name()?, false);
                     } else if self.eat_punct("[")? {
                         let index = self.expression()?;
                         self.expect_punct("]")?;
@@ -1592,8 +2292,16 @@ impl Parser {
         } else if self.is_kw("super") {
             self.advance()?;
             if self.is_punct("(") {
+                if !self.super_call {
+                    return self.error("« super() » hors du constructeur d'une classe dérivée");
+                }
                 Expr::SuperCall(self.arguments()?)
+            } else if !self.super_property {
+                return self.error("« super » hors d'une méthode");
             } else if self.eat_punct(".")? {
+                if matches!(self.tok.tok, Tok::Private(_)) {
+                    return self.error("nom privé interdit après « super. »");
+                }
                 Expr::SuperMember(PropKey::Name(self.property_name()?))
             } else if self.eat_punct("[")? {
                 let index = self.expression()?;
@@ -1608,11 +2316,7 @@ impl Parser {
         let mut in_optional_chain = false;
         loop {
             if self.eat_punct(".")? {
-                expr = Expr::Member {
-                    object: Box::new(expr),
-                    name: self.property_name()?,
-                    optional: false,
-                };
+                expr = Self::member(expr, self.property_name()?, false);
             } else if self.eat_punct("?.")? {
                 in_optional_chain = true;
                 if self.is_punct("(") {
@@ -1630,11 +2334,7 @@ impl Parser {
                         optional: true,
                     };
                 } else {
-                    expr = Expr::Member {
-                        object: Box::new(expr),
-                        name: self.property_name()?,
-                        optional: true,
-                    };
+                    expr = Self::member(expr, self.property_name()?, true);
                 }
             } else if self.eat_punct("[")? {
                 let saved_no_in = std::mem::replace(&mut self.no_in, false);
@@ -1702,6 +2402,17 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::BigInt(big))
             }
+            // `#x in obj` : seul emploi d'un nom privé hors d'un accès.
+            Tok::Private(name) => {
+                let bare = name.clone();
+                self.use_private(&bare, self.tok.start)?;
+                let name: Arc<str> = Arc::from(format!("#{bare}"));
+                self.advance()?;
+                if !self.is_kw("in") {
+                    return self.error("nom privé inattendu");
+                }
+                Ok(Expr::PrivateName(name))
+            }
             Tok::Str(s) => {
                 let s: Arc<str> = Arc::from(s.as_str());
                 self.advance()?;
@@ -1713,6 +2424,14 @@ impl Parser {
                 let Tok::Regex { pattern, flags } = &self.tok.tok else {
                     return self.error("expression rationnelle mal formée");
                 };
+                // Une expression rationnelle mal formée est une erreur
+                // précoce ; ce que le moteur ne sait pas encore traiter n'est
+                // signalé qu'à l'exécution.
+                if let Err(message) = crate::regexp::compile(pattern, flags)
+                    && !message.contains("non pris en charge")
+                {
+                    return self.error(message);
+                }
                 let expr = Expr::Regex {
                     pattern: Arc::from(pattern.as_str()),
                     flags: Arc::from(flags.as_str()),
@@ -1743,6 +2462,9 @@ impl Parser {
                 Ok(Expr::Object(props?))
             }
             Tok::Ident(word) => match word.as_str() {
+                w if self.tok.escaped && RESERVED.contains(&w) => {
+                    self.error(format!("mot-clé « {w} » écrit avec un échappement"))
+                }
                 "true" | "false" => {
                     let value = word == "true";
                     self.advance()?;
@@ -1759,11 +2481,7 @@ impl Parser {
                 "function" => {
                     self.advance()?;
                     let is_generator = self.eat_punct("*")?;
-                    let name = if self.is_punct("(") {
-                        None
-                    } else {
-                        Some(self.binding_ident()?)
-                    };
+                    let name = self.function_expression_name(false, is_generator)?;
                     Ok(Expr::Function(Arc::new(self.function_with(
                         name,
                         false,
@@ -1775,11 +2493,7 @@ impl Parser {
                     self.advance()?;
                     self.advance()?;
                     let is_generator = self.eat_punct("*")?;
-                    let name = if self.is_punct("(") {
-                        None
-                    } else {
-                        Some(self.binding_ident()?)
-                    };
+                    let name = self.function_expression_name(true, is_generator)?;
                     Ok(Expr::Function(Arc::new(self.function_with(
                         name,
                         false,
@@ -1791,6 +2505,15 @@ impl Parser {
                     self.advance()?;
                     Ok(Expr::Class(Box::new(self.class_rest(false)?)))
                 }
+                "import" if self.peek_is_punct("(")? => {
+                    self.advance()?;
+                    self.advance()?;
+                    let saved_no_in = std::mem::replace(&mut self.no_in, false);
+                    let parsed = self.import_arguments();
+                    self.no_in = saved_no_in;
+                    let (specifier, options) = parsed?;
+                    Ok(Expr::ImportCall(Box::new(specifier), options.map(Box::new)))
+                }
                 "import" if self.module && self.peek_is_punct(".")? => {
                     self.advance()?;
                     self.advance()?;
@@ -1801,11 +2524,24 @@ impl Parser {
                     Ok(Expr::Ident(Arc::from("import.meta")))
                 }
                 w if RESERVED.contains(&w) => self.error(format!("« {w} » inattendu")),
-                _ => Ok(Expr::Ident(self.binding_ident()?)),
+                _ => Ok(Expr::Ident(self.identifier(false)?)),
             },
             Tok::Eof => self.error("fin de script inattendue"),
             _ => self.error("expression attendue"),
         }
+    }
+
+    /// Arguments de `import(…)` après la parenthèse ouvrante : le
+    /// spécificateur, puis des options facultatives.
+    fn import_arguments(&mut self) -> PResult<(Expr, Option<Expr>)> {
+        let specifier = self.assignment()?;
+        let mut options = None;
+        if self.eat_punct(",")? && !self.is_punct(")") {
+            options = Some(self.assignment()?);
+            self.eat_punct(",")?;
+        }
+        self.expect_punct(")")?;
+        Ok((specifier, options))
     }
 
     fn array_items(&mut self) -> PResult<Vec<Option<Expr>>> {
@@ -1829,6 +2565,7 @@ impl Parser {
 
     fn object_properties(&mut self) -> PResult<Vec<Property>> {
         let mut props = Vec::new();
+        let mut has_proto = false;
         while !self.eat_punct("}")? {
             if self.eat_punct("...")? {
                 let value = self.assignment()?;
@@ -1837,6 +2574,13 @@ impl Parser {
                     kind: PropKind::Spread(value),
                 });
             } else {
+                // `__proto__: valeur` ne peut figurer qu'une fois, sauf dans
+                // un motif d'affectation.
+                let is_proto = matches!(&self.tok.tok, Tok::Ident(n) | Tok::Str(n) if n == "__proto__")
+                    && self.peek_is_punct(":")?;
+                if is_proto && std::mem::replace(&mut has_proto, true) {
+                    self.cover_init.get_or_insert(self.tok.start);
+                }
                 props.push(self.object_property()?);
             }
             if !self.is_punct("}") {
@@ -1849,13 +2593,18 @@ impl Parser {
     fn object_property(&mut self) -> PResult<Property> {
         let (is_async, is_generator) = self.method_modifiers()?;
         let accessor = match &self.tok.tok {
-            Tok::Ident(w) if (w == "get" || w == "set") && self.is_modifier()? => Some(w == "get"),
+            Tok::Ident(w)
+                if !self.tok.escaped && (w == "get" || w == "set") && self.is_modifier()? =>
+            {
+                Some(w == "get")
+            }
             _ => None,
         };
         if let Some(is_getter) = accessor {
             self.advance()?;
             let key = self.property_key()?;
             let func = Arc::new(self.function_rest(Self::method_name(&key), true)?);
+            self.check_accessor(&func, is_getter)?;
             let kind = if is_getter {
                 PropKind::Getter(func)
             } else {
@@ -1869,6 +2618,10 @@ impl Parser {
             }
             _ => None,
         };
+        let key_start = self.tok.start;
+        if matches!(self.tok.tok, Tok::Private(_)) {
+            return self.error("nom privé interdit dans un littéral objet");
+        }
         let key = self.property_key()?;
         if self.is_punct("(") {
             let func = Arc::new(self.function_with(
@@ -1894,8 +2647,11 @@ impl Parser {
         let Some(name) = shorthand else {
             return self.error("« : » attendu");
         };
+        self.check_identifier(&name, false)?;
         // `{ a }` ou, dans un motif, `{ a = défaut }`.
         let value = if self.eat_punct("=")? {
+            self.check_assignable(&name)?;
+            self.cover_init.get_or_insert(key_start);
             let default = self.assignment()?;
             Expr::Assign {
                 op: AssignOp::Assign,
@@ -1949,9 +2705,9 @@ mod tests {
              (a, b) => a + b; x => ({ y: x }); () => {}; ({ a, b = 1, ...c }) => a; ([a, [b]]) => b;
              `a${b}c${`d${e}`}`; /re[/]+/gi.test(s); a / b / c; x = /=/;
              o = { a, b: 1, 'c': 2, 3: 4, [k]: 5, m() {}, get g() { return 1 }, set g(v) {}, get: 1, set, ...p };
-             typeof a === 'undefined'; delete a.b; void 0; -a ** 2 === 0 || !b; a++ + ++b; i in o; a instanceof B;
+             typeof a === 'undefined'; delete a.b; void 0; (-a) ** 2 === 0 || !b; a++ + ++b; i in o; a instanceof B;
              [a, b] = [b, a]; ({ a, b: [c] } = o); a ||= b; a.b ??= c; a[b] **= 2;
-             (function () {})(); (function named() {}); (class {}); new.target",
+             (function () {})(); (function named() {}); (class {}); function nt() { new.target }",
         );
     }
 

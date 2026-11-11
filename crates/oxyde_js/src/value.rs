@@ -24,11 +24,32 @@ pub struct Symbol(Arc<SymbolData>);
 struct SymbolData {
     id: u64,
     description: Option<JsStr>,
+    /// Nom privé de classe (`#x`) : invisible de toute énumération.
+    private: bool,
 }
 
 impl Symbol {
     pub(crate) fn new(id: u64, description: Option<JsStr>) -> Self {
-        Self(Arc::new(SymbolData { id, description }))
+        Self(Arc::new(SymbolData {
+            id,
+            description,
+            private: false,
+        }))
+    }
+
+    /// Symbole servant de clé à un membre privé de classe.
+    pub(crate) fn new_private(id: u64, name: JsStr) -> Self {
+        Self(Arc::new(SymbolData {
+            id,
+            description: Some(name),
+            private: true,
+        }))
+    }
+
+    /// Vrai pour la clé d'un membre privé de classe.
+    #[must_use]
+    pub fn is_private(&self) -> bool {
+        self.0.private
     }
 
     /// Identifiant unique du symbole dans sa machine virtuelle.

@@ -132,6 +132,7 @@ pub(crate) fn compile_script(body: &[Stmt]) -> CResult<Arc<FunctionProto>> {
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
+    check_declarations(body, true, &[])?;
     compiler.hoist_vars(body)?;
     compiler.declare_block(body)?;
     for stmt in body {
@@ -166,6 +167,52 @@ pub(crate) fn pattern_names(pattern: &Pattern, out: &mut Vec<JsStr>) {
 }
 
 /// Noms déclarés par `var` dans `stmts`, sans entrer dans les fonctions.
+/// Erreurs précoces de redéclaration dans une liste d'instructions
+/// (ECMA-262 §14.2.1, §15.2.1, §16.1.1). `top` désigne un corps de fonction ou
+/// de script, où les fonctions se déclarent comme des `var` ; `outer` porte
+/// les noms déjà liés dans la même portée (paramètres, paramètre de `catch`).
+///
+/// LIMITE : deux fonctions de même nom dans un bloc sont acceptées même en
+/// mode strict, faute de connaître ici le mode du code.
+fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr]) -> CResult<()> {
+    let mut lexical: Vec<JsStr> = Vec::new();
+    let mut functions: Vec<JsStr> = Vec::new();
+    for stmt in body {
+        match stmt {
+            Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
+                for (pattern, _) in decls {
+                    pattern_names(pattern, &mut lexical);
+                }
+            }
+            Stmt::Class(class) => lexical.extend(class.name.clone()),
+            Stmt::Function(func) => functions.extend(func.name.clone()),
+            _ => {}
+        }
+    }
+    if lexical.is_empty() && (top || functions.is_empty()) {
+        return Ok(());
+    }
+    let mut vars = Vec::new();
+    var_names(body, &mut vars);
+    for (i, name) in lexical.iter().enumerate() {
+        if lexical[..i].contains(name)
+            || outer.contains(name)
+            || functions.contains(name)
+            || vars.contains(name)
+        {
+            return error(&format!("« {name} » est déjà déclaré"));
+        }
+    }
+    if !top {
+        for name in &functions {
+            if vars.contains(name) || outer.contains(name) {
+                return error(&format!("« {name} » est déjà déclaré"));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn var_names(stmts: &[Stmt], out: &mut Vec<JsStr>) {
     for stmt in stmts {
         var_names_in(stmt, out);
@@ -742,6 +789,14 @@ impl Compiler {
             }
         }
 
+        let mut param_names = Vec::new();
+        for param in &func.params {
+            pattern_names(&param.pattern, &mut param_names);
+        }
+        if let Some(rest) = &func.rest {
+            pattern_names(rest, &mut param_names);
+        }
+        check_declarations(&func.body, true, &param_names)?;
         self.hoist_vars(&func.body)?;
         self.declare_block(&func.body)?;
         for stmt in &func.body {
@@ -793,6 +848,25 @@ impl Compiler {
             }
             None => None,
         };
+        // Une clé par nom privé déclaré, liée sous ce nom dans le corps de la
+        // classe : `obj.#x` la retrouve comme une variable ordinaire.
+        let mut private_names: Vec<&JsStr> = Vec::new();
+        for member in &class.members {
+            if let PropKey::Name(name) = &member.key
+                && name.starts_with('#')
+                && !private_names.contains(&name)
+            {
+                private_names.push(name);
+            }
+        }
+        for name in private_names {
+            let reg = self.declare(name, BindKind::Const, true)?;
+            let index = self.string(name);
+            self.emit(Op::PrivateSymbol {
+                dst: reg,
+                name: index,
+            });
+        }
         let mark = self.mark();
         let parent = match &class.parent {
             Some(parent) => {
@@ -845,11 +919,17 @@ impl Compiler {
         });
 
         let mut fields: Vec<Stmt> = Vec::new();
+        // Champs et blocs statiques, évalués une fois les méthodes définies
+        // et la classe liée à son nom : registre de la clé (champ) et corps.
+        let mut statics: Vec<(Option<Reg>, Arc<Function>)> = Vec::new();
         for member in &class.members {
             let member_mark = self.mark();
             let home = if member.is_static { ctor } else { proto };
             let key = self.alloc()?;
             match &member.key {
+                PropKey::Name(name) if name.starts_with('#') => {
+                    self.load(name, Some(key))?;
+                }
                 PropKey::Name(name) => {
                     let index = self.string(name);
                     self.emit(Op::LoadConst { dst: key, index });
@@ -888,42 +968,48 @@ impl Compiler {
                     });
                 }
                 ClassMemberKind::Field(value) if member.is_static => {
-                    let reg = self.alloc()?;
-                    match value {
-                        Some(value) => {
-                            self.expr(value, Some(reg))?;
-                        }
-                        None => {
-                            self.emit(Op::LoadUndefined { dst: reg });
-                        }
-                    }
-                    self.emit(Op::InitElem {
-                        obj: ctor,
-                        key,
-                        src: reg,
-                    });
-                }
-                ClassMemberKind::Field(value) => {
-                    // Champ d'instance : `this[clé] = valeur`, exécuté à la construction.
-                    let target = match &member.key {
-                        PropKey::Name(name) => Expr::Member {
-                            object: Box::new(Expr::This),
-                            name: Arc::clone(name),
-                            optional: false,
-                        },
-                        PropKey::Computed(expr) => Expr::Index {
-                            object: Box::new(Expr::This),
-                            index: expr.clone(),
-                            optional: false,
-                        },
-                    };
+                    // L'initialiseur s'évalue comme une méthode de la classe :
+                    // `this` y désigne la classe. Le registre de la clé, déjà
+                    // évaluée, reste réservé jusque-là.
                     let value = value.clone().unwrap_or(Expr::Unary {
                         op: UnaryOp::Void,
                         arg: Box::new(Expr::Number(0.0)),
                     });
-                    fields.push(Stmt::Expr(Expr::Assign {
-                        op: AssignOp::Assign,
-                        target: Box::new(Pattern::Expr(target)),
+                    // Clé littérale : le champ se définit sur `this` comme un
+                    // champ d'instance (une fonction anonyme en reçoit le nom).
+                    let computed = matches!(member.key, PropKey::Computed(_));
+                    let body = if computed {
+                        Stmt::Return(Some(value))
+                    } else {
+                        Stmt::Expr(Expr::FieldInit {
+                            key: member.key.clone(),
+                            value: Box::new(value),
+                        })
+                    };
+                    let initializer = Function {
+                        name: None,
+                        params: Vec::new(),
+                        rest: None,
+                        body: vec![body],
+                        is_arrow: false,
+                        is_method: true,
+                        is_async: false,
+                        is_generator: false,
+                    };
+                    statics.push((computed.then_some(key), Arc::new(initializer)));
+                    if computed {
+                        continue;
+                    }
+                }
+                ClassMemberKind::StaticBlock(func) => statics.push((None, Arc::clone(func))),
+                ClassMemberKind::Field(value) => {
+                    // Champ d'instance : défini sur `this` à la construction.
+                    let value = value.clone().unwrap_or(Expr::Unary {
+                        op: UnaryOp::Void,
+                        arg: Box::new(Expr::Number(0.0)),
+                    });
+                    fields.push(Stmt::Expr(Expr::FieldInit {
+                        key: member.key.clone(),
                         value: Box::new(value),
                     }));
                 }
@@ -953,6 +1039,32 @@ impl Compiler {
         if let Some(name) = inner_name {
             self.store(name, ctor, true)?;
         }
+        for (key, func) in statics {
+            let static_mark = self.mark();
+            let callee = self.alloc()?;
+            let index = self.function(&func, FunctionKind::Method, false)?;
+            self.emit(Op::Closure { dst: callee, index });
+            self.emit(Op::SetHome {
+                func: callee,
+                home: ctor,
+            });
+            let result = self.alloc()?;
+            self.emit(Op::Call {
+                dst: result,
+                callee,
+                this: ctor,
+                first: result,
+                argc: 0,
+            });
+            if let Some(key) = key {
+                self.emit(Op::InitElem {
+                    obj: ctor,
+                    key,
+                    src: result,
+                });
+            }
+            self.free_to(static_mark);
+        }
         self.emit(Op::Move { dst, src: ctor });
         self.free_to(mark);
         self.pop_scope();
@@ -962,6 +1074,7 @@ impl Compiler {
     // ---- Instructions ------------------------------------------------------
 
     fn statements(&mut self, body: &[Stmt]) -> CResult<()> {
+        check_declarations(body, false, &[])?;
         self.push_scope();
         self.declare_block(body)?;
         for stmt in body {
@@ -1443,6 +1556,12 @@ impl Compiler {
         let value = self.alloc()?;
         self.expr(discriminant, Some(value))?;
         self.f().pending_labels = labels;
+        // Les clauses d'un `switch` partagent une seule portée.
+        let all: Vec<Stmt> = cases
+            .iter()
+            .flat_map(|(_, body)| body.iter().cloned())
+            .collect();
+        check_declarations(&all, false, &[])?;
         self.push_target(false, true);
         self.push_scope();
         for (_, body) in cases {
@@ -1536,10 +1655,20 @@ impl Compiler {
                     None => None,
                 };
                 self.push_scope();
+                let mut caught = Vec::new();
                 if let Some(param) = param {
+                    pattern_names(param, &mut caught);
                     self.declare_pattern(param, BindKind::Let)?;
                     self.assign_pattern(param, exception, true)?;
                 }
+                // `catch (e) { function e() {} }` reste permis (annexe B).
+                let lexical_only: Vec<Stmt> = handler
+                    .iter()
+                    .filter(|stmt| !matches!(stmt, Stmt::Function(_)))
+                    .cloned()
+                    .collect();
+                check_declarations(&lexical_only, false, &caught)?;
+                check_declarations(handler, false, &[])?;
                 self.declare_block(handler)?;
                 for stmt in handler {
                     self.statement(stmt)?;
@@ -1848,6 +1977,20 @@ impl Compiler {
                 self.emit(Op::LoadNewTarget { dst });
                 Ok(dst)
             }
+            Expr::ImportCall(specifier, options) => {
+                let dst = self.dst_or_alloc(dst)?;
+                let mark = self.mark();
+                let src = self.alloc()?;
+                self.expr(specifier, Some(src))?;
+                if let Some(options) = options {
+                    // Évaluées pour leurs effets ; les attributs sont ignorés.
+                    let ignored = self.alloc()?;
+                    self.expr(options, Some(ignored))?;
+                }
+                self.emit(Op::ImportCall { dst, src });
+                self.free_to(mark);
+                Ok(dst)
+            }
             Expr::Template { quasis, exprs } => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
@@ -1987,6 +2130,45 @@ impl Compiler {
                 } else {
                     self.emit(Op::Yield { dst, src: value });
                 }
+                self.free_to(mark);
+                Ok(dst)
+            }
+            Expr::PrivateName(name) => self.load(name, dst),
+            Expr::FieldInit { key, value } => {
+                let dst = self.dst_or_alloc(dst)?;
+                let mark = self.mark();
+                let object = self.alloc()?;
+                self.emit(Op::LoadThis { dst: object });
+                let key_reg = self.alloc()?;
+                match key {
+                    PropKey::Name(name) if name.starts_with('#') => {
+                        self.load(name, Some(key_reg))?;
+                    }
+                    PropKey::Name(name) => {
+                        let index = self.string(name);
+                        self.emit(Op::LoadConst {
+                            dst: key_reg,
+                            index,
+                        });
+                    }
+                    PropKey::Computed(expr) => {
+                        self.expr(expr, Some(key_reg))?;
+                        self.emit(Op::ToPropertyKey {
+                            dst: key_reg,
+                            src: key_reg,
+                        });
+                    }
+                }
+                // Une fonction anonyme prend le nom du champ.
+                match key {
+                    PropKey::Name(name) => self.expr_named(value, name, Some(dst))?,
+                    PropKey::Computed(_) => self.expr(value, Some(dst))?,
+                };
+                self.emit(Op::InitElem {
+                    obj: object,
+                    key: key_reg,
+                    src: dst,
+                });
                 self.free_to(mark);
                 Ok(dst)
             }

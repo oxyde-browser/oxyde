@@ -8,8 +8,11 @@
 //!
 //! L'hôte fournit le texte des modules par un [`ModuleLoader`].
 //!
-//! LIMITES CONNUES : pas de `import()` dynamique, d'`await` de premier niveau
-//! ni d'attributs d'importation (`with { type: "json" }`) ; une déclaration
+//! `import()` charge le module dans une microtâche : la promesse rendue
+//! n'est jamais réglée pendant l'appel.
+//!
+//! LIMITES CONNUES : pas d'`await` de premier niveau ni d'attributs
+//! d'importation (`with { type: "json" }`) ; une déclaration
 //! `export default function () {}` anonyme n'est pas hissée ; affecter une
 //! liaison importée est ignoré au lieu de lever `TypeError` ; deux
 //! `export *` qui fournissent le même nom ne sont pas signalés comme ambigus.
@@ -134,6 +137,86 @@ fn import_getter(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
 }
 
 impl Vm {
+    /// Fixe l'identifiant des scripts classiques : c'est le référent passé au
+    /// chargeur de modules pour leurs `import()`.
+    pub fn set_script_url(&mut self, url: &str) {
+        self.script_url = Arc::from(url);
+    }
+
+    /// `import(specifier)` depuis du code dont la portée de module est
+    /// `scope` (`None` : script classique). Rend la promesse de l'espace de
+    /// noms ; le chargement se fait dans une microtâche.
+    pub(crate) fn dynamic_import(&mut self, specifier: &Value, scope: Option<ObjId>) -> Value {
+        let promise = self.new_promise();
+        let meta = scope.and_then(|scope| {
+            match self
+                .heap
+                .get(scope)
+                .props
+                .get("import.meta")
+                .map(|p| &p.slot)
+            {
+                Some(Slot::Data(meta)) => Some(meta.clone()),
+                _ => None,
+            }
+        });
+        let url = match meta {
+            Some(meta) => self.get(&meta, "url").ok(),
+            None => None,
+        };
+        let referrer = match url {
+            Some(Value::String(url)) => url,
+            _ => Arc::clone(&self.script_url),
+        };
+        match self.to_string(specifier) {
+            Ok(specifier) => self.jobs.push_back(crate::builtins::promise::Job::Import {
+                promise,
+                specifier,
+                referrer,
+            }),
+            Err(thrown) => self.settle(promise, true, thrown),
+        }
+        Value::Object(promise)
+    }
+
+    /// Microtâche d'un `import()` : règle `promise` avec l'espace de noms du
+    /// module, ou la rejette avec l'erreur de chargement ou d'évaluation.
+    pub(crate) fn run_import(&mut self, promise: ObjId, specifier: &JsStr, referrer: &JsStr) {
+        match self.import_namespace(specifier, referrer) {
+            Ok(namespace) => self.resolve_promise(promise, Value::Object(namespace)),
+            Err(thrown) => self.settle(promise, true, thrown),
+        }
+    }
+
+    fn import_namespace(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<ObjId> {
+        let Some(loader) = self.module_loader else {
+            return Err(self.type_error(&format!(
+                "module « {specifier} » introuvable : aucun chargeur de modules"
+            )));
+        };
+        let (id, source) = match loader(self, specifier, referrer) {
+            Ok(loaded) => loaded,
+            Err(message) => {
+                return Err(
+                    self.type_error(&format!("module « {specifier} » introuvable : {message}"))
+                );
+            }
+        };
+        let id: JsStr = Arc::from(id);
+        // Un chargement ou une liaison qui échoue ne laisse aucun module à
+        // moitié chargé : les importations suivantes repartent d'un état sain.
+        let before = self.modules.len();
+        let loaded = self
+            .load_module(&id, &source, 0)
+            .and_then(|()| self.link_modules());
+        if let Err(thrown) = loaded {
+            self.modules.truncate(before);
+            return Err(thrown);
+        }
+        self.evaluate_module(&id, 0)?;
+        self.module_namespace(&id)
+    }
+
     /// Installe la fonction qui fournit le texte des modules importés.
     pub fn set_module_loader(&mut self, loader: ModuleLoader) {
         self.module_loader = Some(loader);

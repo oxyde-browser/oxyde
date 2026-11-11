@@ -63,6 +63,11 @@ pub(crate) enum Op {
         src: Reg,
         increment: bool,
     },
+    /// Nouvelle clé de membre privé (`#x`), propre à cette évaluation de la classe.
+    PrivateSymbol {
+        dst: Reg,
+        name: u32,
+    },
     /// Itérateur asynchrone de `src` (`for await`, `yield*` async).
     AsyncIterStart {
         dst: Reg,
@@ -95,6 +100,11 @@ pub(crate) enum Op {
     },
     LoadNewTarget {
         dst: Reg,
+    },
+    /// `import(src)` : promesse de l'espace de noms du module demandé.
+    ImportCall {
+        dst: Reg,
+        src: Reg,
     },
     /// Fonction en cours d'exécution (nom d'une expression de fonction nommée).
     LoadCallee {
