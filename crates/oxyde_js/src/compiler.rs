@@ -2185,7 +2185,14 @@ impl Compiler {
             }
             Pattern::Expr(_) => return error("cible d'affectation invalide"),
             Pattern::Object { props, rest } => {
-                // Déstructurer `null` ou `undefined` est une erreur : l'accès ci-dessous la lève.
+                // Déstructurer `null` ou `undefined` est une erreur, même sans
+                // aucune propriété à lire.
+                let coercible = self.alloc()?;
+                self.emit(Op::ToObject {
+                    dst: coercible,
+                    src,
+                });
+                self.free_to(coercible);
                 let mut used_keys = Vec::new();
                 for (key, target, default) in props {
                     let inner = self.mark();
@@ -2628,19 +2635,79 @@ impl Compiler {
                     }
                 };
                 if *delegate && self.f().is_async {
-                    // `yield* it` dans un générateur async : comme `for await`.
-                    let iter = self.alloc()?;
-                    self.emit(Op::AsyncIterStart {
-                        dst: iter,
-                        src: value,
+                    // `yield* it` dans un générateur async : comme ci-dessous,
+                    // mais chaque résultat de l'itérateur délégué est attendu.
+                    let base = self.alloc()?;
+                    for _ in 0..6 {
+                        self.alloc()?;
+                    }
+                    let (received, mode, result) = (base + 2, base + 3, base + 4);
+                    let (done, returning) = (base + 5, base + 6);
+                    self.emit(Op::DelegateStartAsync { base, src: value });
+                    self.emit(Op::LoadUndefined { dst: received });
+                    let modes = [0.0, 1.0, 2.0].map(|mode| self.number(mode));
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[0],
                     });
                     let head = self.here();
-                    let item = self.alloc()?;
-                    let exit = self.async_iter_next(iter, item)?;
-                    self.emit_yield(item, item, None)?;
+                    self.emit(Op::DelegateCall { base });
+                    // `return` absent : la valeur reçue est attendue puis rendue.
+                    let no_return = self.emit(Op::JumpIfTrue {
+                        src: returning,
+                        target: 0,
+                    });
+                    self.emit(Op::Await {
+                        dst: result,
+                        src: result,
+                    });
+                    self.emit(Op::DelegateFinish { base });
+                    let to_return = self.emit(Op::JumpIfTrue {
+                        src: returning,
+                        target: 0,
+                    });
+                    let to_done = self.emit(Op::JumpIfTrue {
+                        src: done,
+                        target: 0,
+                    });
+                    let handler = self.emit(Op::PushHandler {
+                        target: 0,
+                        reg: received,
+                    });
+                    self.emit(Op::Yield {
+                        dst: received,
+                        src: result,
+                    });
+                    let resumed = self.emit(Op::Jump { target: 0 });
+                    self.emit(Op::PopHandler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[2],
+                    });
                     self.emit(Op::Jump { target: head });
-                    self.patch(exit);
-                    self.emit(Op::LoadUndefined { dst });
+                    self.patch(resumed);
+                    self.emit(Op::PopHandler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[0],
+                    });
+                    self.emit(Op::Jump { target: head });
+                    self.patch(handler);
+                    self.emit(Op::LoadConst {
+                        dst: mode,
+                        index: modes[1],
+                    });
+                    self.emit(Op::Jump { target: head });
+                    self.patch(no_return);
+                    self.emit(Op::Await {
+                        dst: result,
+                        src: result,
+                    });
+                    self.patch(to_return);
+                    self.unwind_exits(0)?;
+                    self.emit(Op::Return { src: result });
+                    self.patch(to_done);
+                    self.emit(Op::Move { dst, src: result });
                 } else if *delegate {
                     // `yield* it` : chaque reprise du générateur (`next`,
                     // `throw`, `return`) est transmise à l'itérateur délégué.

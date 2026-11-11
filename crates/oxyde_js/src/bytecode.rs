@@ -146,6 +146,22 @@ pub(crate) enum Op {
         base: Reg,
         src: Reg,
     },
+    /// Comme `DelegateStart`, pour un générateur async : l'itérateur est
+    /// asynchrone (ou un itérateur synchrone adapté).
+    DelegateStartAsync {
+        base: Reg,
+        src: Reg,
+    },
+    /// Première moitié d'un pas de `yield*` async : appelle la méthode de
+    /// l'itérateur délégué ; le résultat (une promesse) va dans `base + 4`.
+    /// `base + 5` et `base + 6` sont vrais si `return` est absent.
+    DelegateCall {
+        base: Reg,
+    },
+    /// Seconde moitié : interprète le résultat attendu, comme `DelegateStep`.
+    DelegateFinish {
+        base: Reg,
+    },
     /// Un pas de `yield*`, sur sept registres consécutifs à partir de `base` :
     /// itérateur, `next`, valeur reçue, mode de reprise (0 `next`, 1 `throw`,
     /// 2 `return`), résultat, « délégué terminé », « retour demandé ».

@@ -4,19 +4,19 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 37782 réussis sur 48795 (77.4 %).**
+**Total : 38290 réussis sur 48795 (78.5 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
 | `annexB/built-ins` | 241 | 177 | 73.4 % |
-| `annexB/language` | 845 | 769 | 91.0 % |
+| `annexB/language` | 845 | 787 | 93.1 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 0 | 0.0 % |
 | `built-ins/Array` | 3083 | 2795 | 90.7 % |
 | `built-ins/ArrayBuffer` | 221 | 164 | 74.2 % |
 | `built-ins/ArrayIteratorPrototype` | 27 | 23 | 85.2 % |
 | `built-ins/AsyncDisposableStack` | 104 | 0 | 0.0 % |
-| `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 10 | 26.3 % |
+| `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 32 | 84.2 % |
 | `built-ins/AsyncFunction` | 18 | 10 | 55.6 % |
 | `built-ins/AsyncGeneratorFunction` | 23 | 8 | 34.8 % |
 | `built-ins/AsyncGeneratorPrototype` | 48 | 28 | 58.3 % |
@@ -51,7 +51,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 0 | 0.0 % |
-| `built-ins/String` | 1223 | 1139 | 93.1 % |
+| `built-ins/String` | 1223 | 1164 | 95.2 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 0 | 0.0 % |
 | `built-ins/Symbol` | 98 | 67 | 68.4 % |
@@ -76,17 +76,17 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/undefined` | 8 | 3 | 37.5 % |
 | `language/arguments-object` | 263 | 232 | 88.2 % |
 | `language/asi` | 102 | 102 | 100.0 % |
-| `language/block-scope` | 145 | 129 | 89.0 % |
+| `language/block-scope` | 145 | 145 | 100.0 % |
 | `language/comments` | 52 | 52 | 100.0 % |
 | `language/computed-property-names` | 48 | 44 | 91.7 % |
-| `language/destructuring` | 19 | 16 | 84.2 % |
+| `language/destructuring` | 19 | 18 | 94.7 % |
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 142 | 40.9 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10201 | 91.4 % |
+| `language/expressions` | 11156 | 10451 | 93.7 % |
 | `language/function-code` | 217 | 216 | 99.5 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
-| `language/global-code` | 42 | 26 | 61.9 % |
+| `language/global-code` | 42 | 29 | 69.0 % |
 | `language/identifier-resolution` | 14 | 13 | 92.9 % |
 | `language/identifiers` | 268 | 208 | 77.6 % |
 | `language/import` | 129 | 15 | 11.6 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 8677 | 92.3 % |
+| `language/statements` | 9399 | 8849 | 94.1 % |
 | `language/types` | 113 | 105 | 92.9 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

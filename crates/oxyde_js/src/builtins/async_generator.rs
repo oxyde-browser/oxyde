@@ -129,10 +129,28 @@ impl Vm {
                 return Ok(iterator);
             }
         }
-        let iterator = self.iterator_for(source)?;
+        // `CreateAsyncFromSyncIterator` : l'itérateur synchrone de `source`,
+        // habillé pour rendre des promesses.
+        let key = PropertyKey::Symbol(self.well_known.iterator.clone());
+        let method = self.get_key(source, &key)?;
+        if !is_callable(self, &method) {
+            let shown = self.display(source);
+            return Err(self.type_error(&format!("{shown} n'est pas itérable")));
+        }
+        let iterator = self.call(&method, source, &[])?;
+        if iterator.as_object().is_none() {
+            return Err(self.type_error("Symbol.iterator doit renvoyer un objet itérateur"));
+        }
+        let next = self.get(&iterator, "next")?;
         let wrapper = self.new_object();
-        let next = self.new_native_data(sync_next, vec![iterator]);
-        self.define_hidden(wrapper, "next", next);
+        for (name, function) in [
+            ("next", sync_next as crate::vm::NativeDataFn),
+            ("return", sync_return),
+            ("throw", sync_throw),
+        ] {
+            let function = self.new_native_data(function, vec![iterator.clone(), next.clone()]);
+            self.define_hidden(wrapper, name, function);
+        }
         Ok(Value::Object(wrapper))
     }
 }
@@ -197,29 +215,103 @@ fn agen_returned(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> 
     Ok(Value::Undefined)
 }
 
-/// `next` d'un itérateur synchrone habillé en itérateur asynchrone :
-/// `data[0]` est l'itérateur interne.
-fn sync_next(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {
-    let iterator = data.first().cloned().unwrap_or(Value::Undefined);
-    Ok(match vm.iterator_next(&iterator) {
-        Err(thrown) => vm.promise_rejected(thrown),
-        Ok(None) => {
-            let result = vm.iter_result(Value::Undefined, true);
-            vm.promise_resolved(result)
-        }
-        Ok(Some(value)) => {
-            // Chaque valeur est attendue avant d'être remise à la boucle.
-            let awaited = vm.promise_resolve(&value);
-            let target = vm.new_promise();
-            let wrap = vm.new_native_data(sync_result, Vec::new());
-            vm.promise_then(awaited, wrap, Value::Undefined, Some(target));
-            Value::Object(target)
-        }
-    })
+/// Itérateur synchrone habillé (`data[0]`) et sa méthode `next` (`data[1]`).
+fn sync_parts(data: &[Value]) -> (Value, Value) {
+    (
+        data.first().cloned().unwrap_or(Value::Undefined),
+        data.get(1).cloned().unwrap_or(Value::Undefined),
+    )
 }
 
-fn sync_result(vm: &mut Vm, _data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
-    Ok(vm.iter_result(arg(args, 0), false))
+/// Appelle `return` sur l'itérateur synchrone, sans tenir compte du résultat.
+fn sync_close(vm: &mut Vm, iterator: &Value) {
+    if let Ok(method) = vm.get(iterator, "return")
+        && !method.is_nullish()
+    {
+        let _ = vm.call(&method, iterator, &[]);
+    }
+}
+
+/// `AsyncFromSyncIteratorContinuation` (ECMA-262 §27.1.6.4) : attend la
+/// valeur du résultat synchrone et rend la promesse de `{ value, done }`.
+/// `close` : fermer l'itérateur synchrone si la valeur est rejetée.
+fn sync_continuation(vm: &mut Vm, iterator: &Value, result: JsResult, close: bool) -> Value {
+    let step = (|| {
+        let result = result?;
+        if result.as_object().is_none() {
+            return Err(vm.type_error("le résultat d'un itérateur doit être un objet"));
+        }
+        let done = vm.get(&result, "done")?.truthy();
+        let value = vm.get(&result, "value")?;
+        Ok((done, value))
+    })();
+    let (done, value) = match step {
+        Ok(step) => step,
+        Err(thrown) => return vm.promise_rejected(thrown),
+    };
+    let awaited = vm.promise_resolve(&value);
+    let target = vm.new_promise();
+    let wrap = vm.new_native_data(sync_result, vec![Value::Bool(done)]);
+    let on_rejected = if close && !done {
+        vm.new_native_data(sync_rejected, vec![iterator.clone()])
+    } else {
+        Value::Undefined
+    };
+    vm.promise_then(awaited, wrap, on_rejected, Some(target));
+    Value::Object(target)
+}
+
+/// `next` de l'itérateur synchrone habillé.
+fn sync_next(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let (iterator, next) = sync_parts(data);
+    let result = vm.call(&next, &iterator, args.get(..1).unwrap_or(&[]));
+    Ok(sync_continuation(vm, &iterator, result, true))
+}
+
+/// `return` de l'itérateur synchrone habillé.
+fn sync_return(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let (iterator, _) = sync_parts(data);
+    let method = match vm.get(&iterator, "return") {
+        Ok(method) => method,
+        Err(thrown) => return Ok(vm.promise_rejected(thrown)),
+    };
+    if method.is_nullish() {
+        let result = vm.iter_result(arg(args, 0), true);
+        return Ok(vm.promise_resolved(result));
+    }
+    let result = vm.call(&method, &iterator, args.get(..1).unwrap_or(&[]));
+    Ok(sync_continuation(vm, &iterator, result, false))
+}
+
+/// `throw` de l'itérateur synchrone habillé.
+fn sync_throw(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let (iterator, _) = sync_parts(data);
+    let method = match vm.get(&iterator, "throw") {
+        Ok(method) => method,
+        Err(thrown) => return Ok(vm.promise_rejected(thrown)),
+    };
+    if method.is_nullish() {
+        // L'itérateur ne sait pas recevoir d'exception : on le ferme.
+        sync_close(vm, &iterator);
+        let error = vm.type_error("l'itérateur n'a pas de méthode « throw »");
+        return Ok(vm.promise_rejected(error));
+    }
+    let result = vm.call(&method, &iterator, args.get(..1).unwrap_or(&[]));
+    Ok(sync_continuation(vm, &iterator, result, true))
+}
+
+/// Résultat `{ value, done }` une fois la valeur attendue ; `data[0]` : `done`.
+fn sync_result(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let done = data.first() == Some(&Value::Bool(true));
+    Ok(vm.iter_result(arg(args, 0), done))
+}
+
+/// La valeur attendue est rejetée : ferme l'itérateur synchrone `data[0]`
+/// et propage le rejet.
+fn sync_rejected(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let iterator = data.first().cloned().unwrap_or(Value::Undefined);
+    sync_close(vm, &iterator);
+    Err(arg(args, 0))
 }
 
 /// Met une requête en file et rend sa promesse.

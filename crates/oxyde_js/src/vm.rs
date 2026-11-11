@@ -735,17 +735,17 @@ impl Vm {
         Ok(())
     }
 
-    /// Un pas de `yield*` (ECMA-262 §15.5.5) : transmet à l'itérateur délégué
-    /// la reprise reçue (`mode` : 0 `next`, 1 `throw`, 2 `return`). Rend la
-    /// valeur obtenue, si le délégué est terminé, et si le générateur doit
-    /// lui-même se terminer (`return` honoré).
-    fn delegate_step(
+    /// Première moitié d'un pas de `yield*` (ECMA-262 §15.5.5) : transmet à
+    /// l'itérateur délégué la reprise reçue (`mode` : 0 `next`, 1 `throw`,
+    /// 2 `return`). Rend le résultat de l'appel ; le booléen est vrai si
+    /// `return` est absent, auquel cas le résultat est la valeur reçue.
+    fn delegate_call(
         &mut self,
         iterator: &Value,
         next: &Value,
         received: Value,
         mode: &Value,
-    ) -> JsResult<(Value, bool, bool)> {
+    ) -> JsResult<(Value, bool)> {
         let returning = *mode == Value::Number(2.0);
         let result = if *mode == Value::Number(1.0) {
             let throw = self.get(iterator, "throw")?;
@@ -764,17 +764,25 @@ impl Vm {
         } else if returning {
             let close = self.get(iterator, "return")?;
             if close.is_nullish() {
-                return Ok((received, true, true));
+                return Ok((received, true));
             }
             self.call(&close, iterator, &[received])?
         } else {
             self.call(next, iterator, &[received])?
         };
+        Ok((result, false))
+    }
+
+    /// Seconde moitié : lit `done` et `value` du résultat. Rend la valeur, si
+    /// le délégué est terminé, et si le générateur doit lui-même se terminer
+    /// (`return` honoré).
+    fn delegate_finish(&mut self, result: &Value, mode: &Value) -> JsResult<(Value, bool, bool)> {
+        let returning = *mode == Value::Number(2.0);
         if result.as_object().is_none() {
             return Err(self.type_error("le résultat d'un itérateur doit être un objet"));
         }
-        let done = self.get(&result, "done")?.truthy();
-        let value = self.get(&result, "value")?;
+        let done = self.get(result, "done")?.truthy();
+        let value = self.get(result, "value")?;
         Ok((value, done, done && returning))
     }
 
@@ -1342,11 +1350,36 @@ impl Vm {
                 self.set_reg(base, iterator);
                 self.set_reg(base + 1, next);
             }
+            Op::DelegateStartAsync { base, src } => {
+                let iterator = self.async_iterator_for(&self.reg(src))?;
+                let next = self.get(&iterator, "next")?;
+                self.set_reg(base, iterator);
+                self.set_reg(base + 1, next);
+            }
             Op::DelegateStep { base } => {
                 let (iterator, next) = (self.reg(base), self.reg(base + 1));
                 let (received, mode) = (self.reg(base + 2), self.reg(base + 3));
-                let (value, done, returning) =
-                    self.delegate_step(&iterator, &next, received, &mode)?;
+                let (result, absent) = self.delegate_call(&iterator, &next, received, &mode)?;
+                let (value, done, returning) = if absent {
+                    (result, true, true)
+                } else {
+                    self.delegate_finish(&result, &mode)?
+                };
+                self.set_reg(base + 4, value);
+                self.set_reg(base + 5, Value::Bool(done));
+                self.set_reg(base + 6, Value::Bool(returning));
+            }
+            Op::DelegateCall { base } => {
+                let (iterator, next) = (self.reg(base), self.reg(base + 1));
+                let (received, mode) = (self.reg(base + 2), self.reg(base + 3));
+                let (result, absent) = self.delegate_call(&iterator, &next, received, &mode)?;
+                self.set_reg(base + 4, result);
+                self.set_reg(base + 5, Value::Bool(absent));
+                self.set_reg(base + 6, Value::Bool(absent));
+            }
+            Op::DelegateFinish { base } => {
+                let (result, mode) = (self.reg(base + 4), self.reg(base + 3));
+                let (value, done, returning) = self.delegate_finish(&result, &mode)?;
                 self.set_reg(base + 4, value);
                 self.set_reg(base + 5, Value::Bool(done));
                 self.set_reg(base + 6, Value::Bool(returning));
