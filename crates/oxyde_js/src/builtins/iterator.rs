@@ -149,6 +149,7 @@ fn helper_mut(vm: &mut Vm, id: ObjId) -> Option<&mut IteratorHelper> {
 fn this_helper(vm: &mut Vm, this: &Value, wrap: bool) -> JsResult<ObjId> {
     if let Some(id) = this.as_object()
         && let Kind::IteratorHelper(helper) = &vm.heap.get(id).kind
+        && helper.kind != HelperKind::RegExpString
         && (helper.kind == HelperKind::Wrap) == wrap
     {
         return Ok(id);
@@ -273,7 +274,7 @@ fn advance(vm: &mut Vm, id: ObjId) -> JsResult<Option<Value>> {
                 helper.inner = Some((inner_iterator, inner_next));
             }
         },
-        HelperKind::Wrap => Ok(None),
+        HelperKind::Wrap | HelperKind::RegExpString => Ok(None),
     }
 }
 

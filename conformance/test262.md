@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 37503 réussis sur 48795 (76.9 %).**
+**Total : 37782 réussis sur 48795 (77.4 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -43,18 +43,18 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Number` | 340 | 295 | 86.8 % |
 | `built-ins/Object` | 3411 | 3328 | 97.6 % |
 | `built-ins/Promise` | 732 | 383 | 52.3 % |
-| `built-ins/Proxy` | 311 | 271 | 87.1 % |
+| `built-ins/Proxy` | 311 | 272 | 87.5 % |
 | `built-ins/Reflect` | 153 | 152 | 99.3 % |
-| `built-ins/RegExp` | 1879 | 863 | 45.9 % |
-| `built-ins/RegExpStringIteratorPrototype` | 17 | 0 | 0.0 % |
+| `built-ins/RegExp` | 1879 | 1082 | 57.6 % |
+| `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 357 | 93.2 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 0 | 0.0 % |
-| `built-ins/String` | 1223 | 1098 | 89.8 % |
+| `built-ins/String` | 1223 | 1139 | 93.1 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 0 | 0.0 % |
-| `built-ins/Symbol` | 98 | 66 | 67.3 % |
+| `built-ins/Symbol` | 98 | 67 | 68.4 % |
 | `built-ins/Temporal` | 4614 | 0 | 0.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1217 | 83.8 % |

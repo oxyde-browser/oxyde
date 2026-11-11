@@ -2122,6 +2122,46 @@ fn generator_parameters_and_block_functions() {
 }
 
 #[test]
+fn regexp_symbol_methods() {
+    // Les méthodes de String délèguent aux méthodes symboles de l'argument.
+    assert_eq!(
+        eval(
+            "var faux = { [Symbol.replace](s, r) { return s + '|' + r; }, [Symbol.split](s, l) { return ['découpé', l]; },
+                          [Symbol.match](s) { return 'm:' + s; }, [Symbol.search](s) { return 42; } };
+             ['abc'.replace(faux, 'z'), 'a,b'.split(faux, 3).join(), 'x'.match(faux), 'x'.search(faux)].join()"
+        ),
+        "abc|z,découpé,3,m:x,42"
+    );
+    // Une expression modifiée par le script passe par `exec` redéfini.
+    assert_eq!(
+        eval(
+            "var appels = 0; var re = /a/g; re.exec = function (s) { appels++; return null; };
+             class Mienne extends RegExp { exec(s) { appels += 10; return super.exec(s); } }
+             ['aaa'.replace(re, 'b'), appels, 'a1b2'.replace(new Mienne('\\\\d', 'g'), '#'), appels].join()"
+        ),
+        "aaa,1,a#b#,31"
+    );
+    // Comportement ordinaire inchangé.
+    assert_eq!(
+        eval(
+            "['a-b_c'.split(/[-_]/).join(), 'abc'.search(/c/), 'aXbX'.replace(/x/gi, '$&$&'), 'abc'.match(/(?<l>b)/).groups.l,
+              [...'a1b22'.matchAll(/\\d+/g)].map(m => m[0] + '@' + m.index).join('|'), 'aaa'.replaceAll('a', 'b'),
+              Object.prototype.toString.call('a'.matchAll(/a/g)), /a/gi.flags, RegExp.prototype.source, RegExp[Symbol.species] === RegExp,
+              'a1'.replace(/(?<n>\\d)/, '<$<n>>'), 'abc'.split('').length].join()"
+        ),
+        "a,b,c,2,aXXbXX,b,1@1|22@3,bbb,[object RegExp String Iterator],gi,(?:),true,a<1>,3"
+    );
+    for source in [
+        "'a'.matchAll(/a/)",
+        "'a'.replaceAll(/a/, 'b')",
+        "var r = /a/y; Object.defineProperty(r, 'lastIndex', { writable: false }); r.exec('b')",
+        "RegExp.prototype[Symbol.match].call(1, 'a')",
+    ] {
+        assert!(eval(source).contains("TypeError"), "{source}");
+    }
+}
+
+#[test]
 fn property_descriptors() {
     // Un descripteur partiel ne touche que les attributs qu'il nomme.
     assert_eq!(

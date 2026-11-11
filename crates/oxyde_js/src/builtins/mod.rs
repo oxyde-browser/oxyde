@@ -15,6 +15,7 @@ pub(crate) mod promise;
 pub(crate) mod proxy;
 mod reflect;
 pub(crate) mod regexp;
+mod regexp_symbols;
 mod string;
 pub(crate) mod symbol;
 mod typed_array;
@@ -135,6 +136,7 @@ pub(crate) fn install(vm: &mut Vm) {
     async_generator::install(vm);
     promise::install(vm);
     regexp::install(vm);
+    regexp_symbols::install(vm);
     reflect::install(vm);
     proxy::install(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());

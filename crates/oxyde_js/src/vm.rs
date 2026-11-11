@@ -82,6 +82,7 @@ pub(crate) struct Intrinsics {
     pub(crate) iterator_root: ObjId,
     pub(crate) iterator_helper_proto: ObjId,
     pub(crate) wrap_iterator_proto: ObjId,
+    pub(crate) regexp_string_iterator_proto: ObjId,
     /// Le constructeur `Iterator` (provisoire jusqu'à son installation).
     pub(crate) iterator_ctor: ObjId,
     pub(crate) generator_proto: ObjId,
@@ -162,6 +163,11 @@ pub struct Vm {
     native_depth: usize,
     /// Expressions rationnelles compilées, par (motif, drapeaux).
     pub(crate) regex_cache: std::collections::HashMap<(JsStr, JsStr), Arc<crate::regexp::Regex>>,
+    /// Méthodes et accesseurs d'origine de `RegExp.prototype` : tant qu'ils
+    /// sont en place, les méthodes symboles prennent un raccourci.
+    pub(crate) regexp_originals: Vec<(JsStr, ObjId)>,
+    /// Accesseur d'origine de `RegExp[Symbol.species]`.
+    pub(crate) regexp_species: Option<ObjId>,
     /// Dernier texte préparé pour une recherche.
     pub(crate) regex_input: Option<(JsStr, Arc<crate::builtins::regexp::RegexInput>)>,
     /// Prototypes des tableaux typés, dans l'ordre de leurs types d'éléments.
@@ -255,6 +261,7 @@ impl Vm {
             iterator_root: proto(&mut heap, Kind::Ordinary),
             iterator_helper_proto: proto(&mut heap, Kind::Ordinary),
             wrap_iterator_proto: proto(&mut heap, Kind::Ordinary),
+            regexp_string_iterator_proto: proto(&mut heap, Kind::Ordinary),
             iterator_ctor: object_proto,
             generator_proto: proto(&mut heap, Kind::Ordinary),
             promise_proto: proto(&mut heap, Kind::Ordinary),
@@ -295,6 +302,8 @@ impl Vm {
             symbol_registry: IndexMap::new(),
             native_depth: 0,
             regex_cache: std::collections::HashMap::new(),
+            regexp_originals: Vec::new(),
+            regexp_species: None,
             regex_input: None,
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
@@ -415,6 +424,7 @@ impl Vm {
             intr.iterator_root,
             intr.iterator_helper_proto,
             intr.wrap_iterator_proto,
+            intr.regexp_string_iterator_proto,
             intr.iterator_ctor,
             intr.generator_proto,
             intr.promise_proto,

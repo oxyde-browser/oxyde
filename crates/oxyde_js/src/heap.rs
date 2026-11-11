@@ -356,6 +356,9 @@ pub(crate) enum HelperKind {
     Concat,
     /// Enveloppe de `Iterator.from` autour d'un itérateur étranger.
     Wrap,
+    /// Itérateur de `String.prototype.matchAll` : `iterator` est
+    /// l'expression, `next` le texte, `func` le drapeau global.
+    RegExpString,
 }
 
 /// État d'une aide d'itérateur.

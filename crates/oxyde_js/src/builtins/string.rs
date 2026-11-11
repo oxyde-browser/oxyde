@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use crate::object::char_at;
-use crate::value::{JsStr, Value, number_to_string, to_int32, to_uint32, utf16_len};
+use crate::value::{
+    JsStr, PropertyKey, Symbol, Value, number_to_string, to_int32, to_uint32, utf16_len,
+};
 use crate::vm::{JsResult, NativeFn, Vm};
 
 use super::{
@@ -391,15 +393,87 @@ fn concat(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     string(&out)
 }
 
+/// `RequireObjectCoercible(this)`.
+fn coercible(vm: &mut Vm, this: &Value) -> JsResult<()> {
+    if this.is_nullish() {
+        return Err(vm.type_error("méthode de chaîne appelée sur null ou undefined"));
+    }
+    Ok(())
+}
+
+/// Méthode `symbol` de `value`, si c'est un objet qui en a une (`GetMethod`).
+fn symbol_method(vm: &mut Vm, value: &Value, symbol: &Symbol) -> JsResult<Option<Value>> {
+    if value.as_object().is_none() {
+        return Ok(None);
+    }
+    let method = vm.get_key(value, &PropertyKey::Symbol(symbol.clone()))?;
+    if method.is_nullish() {
+        return Ok(None);
+    }
+    if !is_callable(vm, &method) {
+        return Err(vm.type_error(&format!(
+            "{} n'est pas une fonction",
+            symbol.description().unwrap_or("la méthode")
+        )));
+    }
+    Ok(Some(method))
+}
+
+/// `IsRegExp` (ECMA-262 §7.2.8).
+fn is_regexp(vm: &mut Vm, value: &Value) -> JsResult<bool> {
+    if value.as_object().is_none() {
+        return Ok(false);
+    }
+    let key = PropertyKey::Symbol(vm.well_known.match_.clone());
+    let matcher = vm.get_key(value, &key)?;
+    if matcher != Value::Undefined {
+        return Ok(matcher.truthy());
+    }
+    Ok(vm.regexp_parts(value).is_some())
+}
+
+/// `matchAll` et `replaceAll` refusent une expression rationnelle non globale.
+fn require_global(vm: &mut Vm, regexp: &Value, method: &str) -> JsResult<()> {
+    if !is_regexp(vm, regexp)? {
+        return Ok(());
+    }
+    let flags = vm.get(regexp, "flags")?;
+    if flags.is_nullish() || !vm.to_string(&flags)?.contains('g') {
+        return Err(vm.type_error(&format!(
+            "{method} exige une expression rationnelle globale (drapeau g)"
+        )));
+    }
+    Ok(())
+}
+
+/// `Invoke(RegExpCreate(pattern, flags), symbol, « text »)`.
+fn invoke_regexp(
+    vm: &mut Vm,
+    pattern: &Value,
+    flags: &str,
+    symbol: &Symbol,
+    text: JsStr,
+) -> JsResult {
+    let source: JsStr = match pattern {
+        Value::Undefined => Arc::from(""),
+        other => vm.to_string(other)?,
+    };
+    let regexp = vm.new_regexp(&source, &Arc::from(flags))?;
+    let method = vm.get_key(&regexp, &PropertyKey::Symbol(symbol.clone()))?;
+    vm.call(&method, &regexp, &[Value::String(text)])
+}
+
 fn split(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
+    coercible(vm, this)?;
+    let split_symbol = vm.well_known.split.clone();
+    if let Some(splitter) = symbol_method(vm, &arg(args, 0), &split_symbol)? {
+        return vm.call(&splitter, &arg(args, 0), &[this.clone(), arg(args, 1)]);
+    }
+    let s = vm.to_string(this)?;
     let limit = match arg(args, 1) {
         Value::Undefined => usize::MAX,
         other => to_uint32(vm.to_number(&other)?) as usize,
     };
-    if let Some((_, regex)) = vm.regexp_parts(&arg(args, 0)) {
-        return super::regexp::string_split(vm, &s, &regex, limit);
-    }
     let parts: Vec<Value> = match arg(args, 0) {
         Value::Undefined => vec![Value::String(Arc::clone(&s))],
         separator => {
@@ -462,12 +536,26 @@ fn replacement(
 }
 
 fn replace_impl(vm: &mut Vm, this: &Value, args: &[Value], all: bool) -> JsResult {
-    let s = this_str(vm, this)?;
+    coercible(vm, this)?;
+    let search_value = arg(args, 0);
     let replacer = arg(args, 1);
-    if let Some((regexp, regex)) = vm.regexp_parts(&arg(args, 0)) {
-        return super::regexp::string_replace(vm, &s, regexp, &regex, &replacer, all);
+    if search_value.as_object().is_some() {
+        if all {
+            require_global(vm, &search_value, "replaceAll")?;
+        }
+        let replace_symbol = vm.well_known.replace.clone();
+        if let Some(method) = symbol_method(vm, &search_value, &replace_symbol)? {
+            return vm.call(&method, &search_value, &[this.clone(), replacer]);
+        }
     }
-    let pattern = vm.to_string(&arg(args, 0))?;
+    let s = vm.to_string(this)?;
+    let pattern = vm.to_string(&search_value)?;
+    // La valeur de remplacement est convertie une seule fois, avant la recherche.
+    let replacer = if is_callable(vm, &replacer) {
+        replacer
+    } else {
+        Value::String(vm.to_string(&replacer)?)
+    };
     let mut out = String::new();
     let mut cursor = 0;
     while let Some(found) = s.get(cursor..).and_then(|rest| rest.find(&*pattern)) {
@@ -503,18 +591,37 @@ fn replace_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn match_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_match(vm, &s, args)
+    coercible(vm, this)?;
+    let symbol = vm.well_known.match_.clone();
+    if let Some(matcher) = symbol_method(vm, &arg(args, 0), &symbol)? {
+        return vm.call(&matcher, &arg(args, 0), std::slice::from_ref(this));
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &arg(args, 0), "", &symbol, s)
 }
 
 fn match_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_match_all(vm, &s, args)
+    coercible(vm, this)?;
+    let regexp = arg(args, 0);
+    let symbol = vm.well_known.match_all.clone();
+    if regexp.as_object().is_some() {
+        require_global(vm, &regexp, "matchAll")?;
+        if let Some(matcher) = symbol_method(vm, &regexp, &symbol)? {
+            return vm.call(&matcher, &regexp, std::slice::from_ref(this));
+        }
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &regexp, "g", &symbol, s)
 }
 
 fn search(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_search(vm, &s, args)
+    coercible(vm, this)?;
+    let symbol = vm.well_known.search.clone();
+    if let Some(searcher) = symbol_method(vm, &arg(args, 0), &symbol)? {
+        return vm.call(&searcher, &arg(args, 0), std::slice::from_ref(this));
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &arg(args, 0), "", &symbol, s)
 }
 
 fn locale_compare(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
