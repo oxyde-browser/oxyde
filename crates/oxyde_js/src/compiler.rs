@@ -115,12 +115,18 @@ enum Resolved {
 
 pub(crate) struct Compiler {
     funcs: Vec<FuncState>,
+    /// Nom à donner à la prochaine fonction ou classe anonyme compilée
+    /// (`const f = () => {}` nomme la fonction « f »).
+    name_hint: Option<JsStr>,
 }
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
 /// est celle de la dernière instruction-expression de premier niveau.
 pub(crate) fn compile_script(body: &[Stmt]) -> CResult<Arc<FunctionProto>> {
-    let mut compiler = Compiler { funcs: Vec::new() };
+    let mut compiler = Compiler {
+        funcs: Vec::new(),
+        name_hint: None,
+    };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
     compiler.push_scope();
     // Registre 0 : valeur d'achèvement du script.
@@ -653,8 +659,23 @@ impl Compiler {
     // ---- Fonctions ---------------------------------------------------------
 
     /// Compile `func` et renvoie son index dans les fonctions de la fonction courante.
+    /// Compile `value` ; si c'est une fonction ou une classe anonyme, elle
+    /// reçoit le nom `name` (ECMA-262, « NamedEvaluation »).
+    fn expr_named(&mut self, value: &Expr, name: &JsStr, dst: Option<Reg>) -> CResult<Reg> {
+        let anonymous = match value {
+            Expr::Function(func) => func.name.is_none(),
+            Expr::Class(class) => class.name.is_none(),
+            _ => false,
+        };
+        if anonymous {
+            self.name_hint = Some(Arc::clone(name));
+        }
+        self.expr(value, dst)
+    }
+
     fn function(&mut self, func: &Function, kind: FunctionKind, bind_self: bool) -> CResult<u32> {
-        let name = func.name.clone().unwrap_or_else(|| Arc::from(""));
+        let hint = self.name_hint.take();
+        let name = func.name.clone().or(hint).unwrap_or_else(|| Arc::from(""));
         self.push_function(kind, name, false);
         self.f().is_async = func.is_async;
         self.f().is_generator = func.is_generator;
@@ -754,6 +775,9 @@ impl Compiler {
     }
 
     fn class(&mut self, class: &Class, dst: Option<Reg>) -> CResult<Reg> {
+        // Pris tout de suite : une fonction anonyme de la clause `extends` ne
+        // doit pas hériter du nom destiné à la classe.
+        let name_hint = self.name_hint.take();
         let dst = match dst {
             Some(dst) => dst,
             None => self.alloc()?,
@@ -804,7 +828,7 @@ impl Compiler {
             }
         };
         let mut ctor_ast = constructor.clone();
-        ctor_ast.name.clone_from(&class.name);
+        ctor_ast.name = class.name.clone().or(name_hint);
         let ctor = self.alloc()?;
         let index = self.function(&ctor_ast, FunctionKind::ClassConstructor { derived }, false)?;
         self.emit(Op::Closure { dst: ctor, index });
@@ -1045,7 +1069,7 @@ impl Compiler {
             let mark = self.mark();
             match (pattern, value) {
                 (Pattern::Ident(name), Some(value)) => {
-                    let reg = self.expr(value, None)?;
+                    let reg = self.expr_named(value, name, None)?;
                     self.store(name, reg, init)?;
                 }
                 (Pattern::Ident(name), None) => {
@@ -1602,7 +1626,10 @@ impl Compiler {
                 src: value,
                 target: 0,
             });
-            self.expr(default, Some(value))?;
+            match target {
+                Pattern::Ident(name) => self.expr_named(default, name, Some(value))?,
+                _ => self.expr(default, Some(value))?,
+            };
             self.patch(skip);
         }
         self.assign_pattern(target, value, init)
@@ -2117,7 +2144,8 @@ impl Compiler {
                     let is_method = matches!(value, Expr::Function(f) if f.is_method);
                     match &prop.key {
                         PropKey::Name(name) => {
-                            let src = self.expr_to_temp(value)?;
+                            let src = self.alloc()?;
+                            self.expr_named(value, name, Some(src))?;
                             if is_method {
                                 self.emit(Op::SetHome {
                                     func: src,
@@ -2315,7 +2343,8 @@ impl Compiler {
         let mark = self.mark();
         match (op, target) {
             (AssignOp::Assign, Pattern::Ident(name)) => {
-                let src = self.expr_to_temp(value)?;
+                let src = self.alloc()?;
+                self.expr_named(value, name, Some(src))?;
                 self.store(name, src, false)?;
                 self.emit(Op::Move { dst, src });
             }

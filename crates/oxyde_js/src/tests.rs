@@ -982,6 +982,77 @@ fn regular_expressions() {
 }
 
 #[test]
+fn eval_reflect_and_function_names() {
+    // `eval` évalue dans la portée globale.
+    assert_eq!(
+        eval("eval('1 + 2') + eval(4) + eval('var créé = 10; créé')"),
+        "17"
+    );
+    assert_eq!(eval("eval('var x = 5'); x"), "5");
+    assert!(eval("eval('var = 1')").contains("SyntaxError"));
+    assert_eq!(
+        eval("try { eval('('); } catch (e) { e instanceof SyntaxError }"),
+        "true"
+    );
+    assert_eq!(
+        eval("const f = new Function('return 40 + 2'); f() + Function('x', 'return x * 2')(4)"),
+        "50"
+    );
+    assert_eq!(eval("function f() { return eval('1 + 1'); } f()"), "2");
+
+    // Noms inférés des fonctions et classes anonymes.
+    assert_eq!(
+        eval(
+            "const fleche = () => {}; let fn = function () {}; var cls = class {}; let autre; autre = function* () {};
+             const o = { methode() {}, prop: () => {}, [Symbol.iterator]: function () {} };
+             const { defaut = () => {} } = {}; const nommee = function interne() {};
+             [fleche.name, fn.name, cls.name, autre.name, o.methode.name, o.prop.name, defaut.name, nommee.name, (() => {}).name].join()"
+        ),
+        "fleche,fn,cls,autre,methode,prop,defaut,interne,"
+    );
+    assert_eq!(
+        eval("const C = class extends (function () {}) {}; C.name + Object.getPrototypeOf(C).name"),
+        "C"
+    );
+    assert_eq!(
+        eval(
+            "const d = Object.getOwnPropertyDescriptor(function f(a, b) {}, 'length'); [d.value, d.writable, d.enumerable, d.configurable].join()"
+        ),
+        "2,false,false,true"
+    );
+
+    // Reflect.
+    assert_eq!(
+        eval(
+            "const o = { a: 1 }; const s = Symbol('s');
+             [Reflect.has(o, 'a'), Reflect.get(o, 'a'), Reflect.set(o, 'b', 2), o.b, Reflect.defineProperty(o, s, { value: 3 }),
+              Reflect.ownKeys(o).length, Reflect.deleteProperty(o, 'a'), 'a' in o, Reflect.getPrototypeOf(o) === Object.prototype,
+              Reflect.isExtensible(o), Reflect.preventExtensions(o), Reflect.isExtensible(o), Reflect.setPrototypeOf(o, null)].join()"
+        ),
+        "true,1,true,2,true,3,true,false,true,true,true,false,false"
+    );
+    assert_eq!(
+        eval(
+            "Reflect.apply(Math.max, null, [1, 5, 3]) + Reflect.apply(function () { return this.v; }, { v: 10 }, [])"
+        ),
+        "15"
+    );
+    assert_eq!(
+        eval(
+            "class A { constructor(x) { this.x = x; } } class B extends A {} const b = Reflect.construct(A, [7], B); b.x + ':' + (b instanceof B)"
+        ),
+        "7:true"
+    );
+    assert_eq!(
+        eval("Reflect.get({ get v() { return this.w; } }, 'v', { w: 9 })"),
+        "9"
+    );
+    assert!(eval("Reflect.construct(() => {}, [])").contains("TypeError"));
+    assert!(eval("Reflect.get(1, 'a')").contains("TypeError"));
+    assert_eq!(eval("String(Reflect)"), "[object Reflect]");
+}
+
+#[test]
 fn garbage_collection_reclaims_memory() {
     let mut vm = Vm::new();
     let before = vm.live_objects();
@@ -1066,7 +1137,7 @@ fn console_and_unsupported_features() {
         Err(EvalError::Syntax(_))
     ));
     assert!(eval("/(/.test('aa')").contains("SyntaxError"));
-    assert!(eval("new Function('return 1')").contains("EvalError"));
+    assert_eq!(eval("new Function('a', 'b', 'return a + b')(2, 3)"), "5");
     assert!(eval("return 1").contains("SyntaxError"));
 }
 

@@ -88,7 +88,8 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   `async`/`await`, expressions rationnelles) et les pages peuvent modifier le DOM, écouter
   `click`, poser des minuteurs et appeler `fetch` (`GET` seulement). Manquent encore les
   modules, `XMLHttpRequest`, les formulaires et une grande partie du DOM : la plupart des sites
-  réels ne fonctionnent donc pas encore. Aucun taux test262 n'est mesuré à ce stade.
+  réels ne fonctionnent donc pas encore. Conformité mesurée : 41,1 % de test262
+  ([conformance/test262.md](conformance/test262.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
   permanence après quelques images présentées. Le code d'Oxyde, lui, dort entre deux
