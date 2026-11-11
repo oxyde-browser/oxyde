@@ -1,0 +1,88 @@
+/* Feuille de style par défaut d'Oxyde, d'après html.css de Blink (sous-ensemble). */
+
+html, body, address, blockquote, center, dialog, div, figure, figcaption, footer, form,
+header, hr, legend, listing, main, p, plaintext, pre, search, xmp, article, aside, h1, h2,
+h3, h4, h5, h6, hgroup, nav, section, dir, dd, dl, dt, menu, ol, ul, fieldset, details,
+summary, optgroup, option {
+  display: block;
+}
+
+head, link, meta, script, style, title, template, base, area, datalist, param, source,
+track, noembed, noframes, rp, [hidden] {
+  display: none;
+}
+
+body { margin: 8px; }
+
+p, blockquote, figure, listing, plaintext, pre, xmp, dl, dir, menu, ol, ul {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+blockquote, figure { margin-left: 40px; margin-right: 40px; }
+dd { margin-left: 40px; }
+dir, menu, ol, ul { padding-left: 40px; }
+ol ol, ol ul, ul ol, ul ul, dl dl, dl ol, dl ul, ol dl, ul dl {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+h1 { font-size: 2em; margin-top: 0.67em; margin-bottom: 0.67em; font-weight: bold; }
+h2 { font-size: 1.5em; margin-top: 0.83em; margin-bottom: 0.83em; font-weight: bold; }
+h3 { font-size: 1.17em; margin-top: 1em; margin-bottom: 1em; font-weight: bold; }
+h4 { margin-top: 1.33em; margin-bottom: 1.33em; font-weight: bold; }
+h5 { font-size: 0.83em; margin-top: 1.67em; margin-bottom: 1.67em; font-weight: bold; }
+h6 { font-size: 0.67em; margin-top: 2.33em; margin-bottom: 2.33em; font-weight: bold; }
+
+li { display: list-item; }
+ul, menu, dir { list-style-type: disc; }
+ol { list-style-type: decimal; }
+ul ul, ol ul { list-style-type: circle; }
+ul ul ul, ol ul ul, ul ol ul, ol ol ul { list-style-type: square; }
+
+b, strong, th { font-weight: bold; }
+i, cite, em, var, dfn, address { font-style: italic; }
+code, kbd, samp, tt, pre, listing, plaintext, xmp { font-family: monospace; font-size: 13px; }
+pre, listing, plaintext, xmp { white-space: pre; }
+small { font-size: smaller; }
+big { font-size: larger; }
+sub, sup { font-size: smaller; }
+u, ins { text-decoration: underline; }
+s, strike, del { text-decoration: line-through; }
+mark { background-color: yellow; color: black; }
+center { text-align: center; }
+nobr { white-space: nowrap; }
+
+a:link { color: #0000ee; text-decoration: underline; }
+
+hr {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+  margin-left: auto;
+  margin-right: auto;
+  border: 1px solid gray;
+  color: gray;
+}
+
+table { display: table; border-color: gray; }
+caption { display: table-caption; text-align: center; }
+thead { display: table-header-group; }
+tbody { display: table-row-group; }
+tfoot { display: table-footer-group; }
+tr { display: table-row; }
+td, th { display: table-cell; padding: 1px; }
+th { text-align: center; }
+col { display: table-column; }
+colgroup { display: table-column-group; }
+
+img, button, input, select, textarea, video, canvas, iframe, object, embed, svg {
+  display: inline-block;
+}
+button, input, select, textarea {
+  font-size: 13.333px;
+  color: black;
+  background-color: #efefef;
+  border: 1px solid #767676;
+  padding: 1px 6px;
+}
+input, textarea, select { background-color: white; }
+fieldset { margin-left: 2px; margin-right: 2px; padding: 0.35em 0.75em 0.625em; border: 2px groove silver; }

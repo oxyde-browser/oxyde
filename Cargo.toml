@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90"
+license = "BSD-3-Clause"
+repository = "https://github.com/oxyde-browser/oxyde"
+publish = false
+
+[workspace.dependencies]
+oxyde_dom = { path = "crates/oxyde_dom" }
+oxyde_html = { path = "crates/oxyde_html" }
+oxyde_css = { path = "crates/oxyde_css" }
+oxyde_layout = { path = "crates/oxyde_layout" }
+oxyde_paint = { path = "crates/oxyde_paint" }
+oxyde_text = { path = "crates/oxyde_text" }
+oxyde_net = { path = "crates/oxyde_net" }
+oxyde_gpu = { path = "crates/oxyde_gpu" }
+oxyde_ui = { path = "crates/oxyde_ui" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 4
