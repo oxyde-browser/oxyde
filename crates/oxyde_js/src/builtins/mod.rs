@@ -8,6 +8,7 @@ mod async_generator;
 pub(crate) mod bigint;
 mod collections;
 mod date;
+mod extras;
 mod generator;
 mod iterator;
 mod json;
@@ -19,6 +20,7 @@ mod regexp_symbols;
 mod string;
 pub(crate) mod symbol;
 mod typed_array;
+mod weak;
 
 use std::sync::Arc;
 
@@ -127,6 +129,7 @@ pub(crate) fn install(vm: &mut Vm) {
     string::install(vm);
     json::install(vm);
     collections::install(vm);
+    weak::install(vm);
     symbol::install(vm);
     iterator::install(vm);
     bigint::install(vm);
@@ -139,6 +142,7 @@ pub(crate) fn install(vm: &mut Vm) {
     regexp_symbols::install(vm);
     reflect::install(vm);
     proxy::install(vm);
+    extras::install(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
     let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
     let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");

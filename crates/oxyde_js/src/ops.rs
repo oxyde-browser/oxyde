@@ -314,7 +314,7 @@ impl Vm {
         }
         let key = PropertyKey::Symbol(self.well_known.has_instance.clone());
         let method = self.get_key(constructor, &key)?;
-        if !method.is_nullish() {
+        if !method.is_nullish() && method.as_object() != self.has_instance_function {
             if !crate::builtins::is_callable(self, &method) {
                 return Err(self.type_error("Symbol.hasInstance n'est pas une fonction"));
             }

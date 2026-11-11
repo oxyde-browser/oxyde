@@ -90,7 +90,7 @@ fn clamp_u8(n: f64) -> u8 {
 
 /// Bits du demi-flottant (binary16) le plus proche de `value`, les demis
 /// arrondis vers le pair.
-fn f64_to_f16_bits(value: f64) -> u16 {
+pub(super) fn f64_to_f16_bits(value: f64) -> u16 {
     let bits = value.to_bits();
     let sign = if bits >> 63 == 1 { 0x8000_u16 } else { 0 };
     if value.is_nan() {
@@ -136,7 +136,7 @@ fn f64_to_f16_bits(value: f64) -> u16 {
     }
 }
 
-fn f16_bits_to_f64(bits: u16) -> f64 {
+pub(super) fn f16_bits_to_f64(bits: u16) -> f64 {
     let sign = if bits & 0x8000 == 0 { 1.0 } else { -1.0 };
     let exponent = i32::from((bits >> 10) & 0x1f);
     let fraction = f64::from(bits & 0x3ff);

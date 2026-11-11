@@ -201,6 +201,9 @@ pub struct Vm {
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
     pub(crate) native_new_target: Value,
+    /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
+    /// passe et applique directement la règle ordinaire.
+    pub(crate) has_instance_function: Option<ObjId>,
     /// La fonction `eval` d'origine : un appel écrit `eval(…)` qui la
     /// désigne est un « eval direct ».
     pub(crate) eval_function: Option<ObjId>,
@@ -329,6 +332,7 @@ impl Vm {
             rejections: Vec::new(),
             constructing: false,
             native_new_target: Value::Undefined,
+            has_instance_function: None,
             eval_function: None,
             roots: Vec::new(),
             host: None,

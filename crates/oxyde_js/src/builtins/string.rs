@@ -727,32 +727,209 @@ fn number_to_string_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResul
     string(&number_to_radix(n, radix as u32))
 }
 
-fn number_to_fixed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let n = this_number(vm, this)?;
-    let digits = vm.to_number(&arg(args, 0))?;
-    let digits = if digits.is_nan() { 0.0 } else { digits.trunc() };
-    if !(0.0..=100.0).contains(&digits) {
-        return Err(vm.error(
-            "RangeError",
-            "toFixed : le nombre de décimales doit être entre 0 et 100",
-        ));
+/// Chiffres décimaux exacts de `|x|` (fini, non nul), sans zéros de fin, et
+/// exposant décimal du premier : `x = d₀,d₁d₂… × 10^exposant`.
+fn exact_decimal(x: f64) -> (Vec<u8>, i32) {
+    // 800 décimales suffisent à écrire exactement n'importe quel `f64`.
+    let text = format!("{:.800e}", x.abs());
+    let (mantissa, exponent) = text.split_once('e').unwrap_or((&text, "0"));
+    let mut digits: Vec<u8> = mantissa
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .map(|b| b - b'0')
+        .collect();
+    while digits.len() > 1 && digits.last() == Some(&0) {
+        digits.pop();
     }
-    if !n.is_finite() || n.abs() >= 1e21 {
-        return string(&number_to_string(n));
+    (digits, exponent.parse().unwrap_or(0))
+}
+
+/// Arrondit à `count` chiffres significatifs (`count ≥ 1`), la moitié vers
+/// le haut comme le prescrit le standard ; complète de zéros au besoin.
+fn round_digits(mut digits: Vec<u8>, mut exponent: i32, count: usize) -> (Vec<u8>, i32) {
+    if digits.len() > count {
+        let up = digits.get(count).is_some_and(|d| *d >= 5);
+        digits.truncate(count);
+        if up {
+            let mut carried = true;
+            for digit in digits.iter_mut().rev() {
+                if *digit == 9 {
+                    *digit = 0;
+                } else {
+                    *digit += 1;
+                    carried = false;
+                    break;
+                }
+            }
+            if carried {
+                // 9,99… devient 1,00… × 10.
+                digits.insert(0, 1);
+                digits.pop();
+                exponent += 1;
+            }
+        }
+    }
+    digits.resize(count, 0);
+    (digits, exponent)
+}
+
+fn digit_text(digits: &[u8]) -> String {
+    digits.iter().map(|d| char::from(b'0' + d)).collect()
+}
+
+/// Écriture décimale sans exposant de `d₀,d₁… × 10^exponent`, avec
+/// `fraction` chiffres après la virgule.
+fn fixed_text(digits: &[u8], exponent: i32, fraction: usize) -> String {
+    let mut whole = String::new();
+    let mut rest = String::new();
+    if exponent >= 0 {
+        let split = usize::try_from(exponent).unwrap_or(0) + 1;
+        for index in 0..split {
+            whole.push(char::from(b'0' + digits.get(index).copied().unwrap_or(0)));
+        }
+        rest.push_str(&digit_text(digits.get(split..).unwrap_or(&[])));
+    } else {
+        whole.push('0');
+        let zeros = usize::try_from(-exponent - 1).unwrap_or(0);
+        rest.push_str(&"0".repeat(zeros));
+        rest.push_str(&digit_text(digits));
+    }
+    while rest.len() < fraction {
+        rest.push('0');
+    }
+    rest.truncate(fraction);
+    if fraction == 0 {
+        whole
+    } else {
+        format!("{whole}.{rest}")
+    }
+}
+
+/// Écriture avec exposant : `d₀.d₁…e±n`.
+fn exponential_text(digits: &[u8], exponent: i32) -> String {
+    let mut out = digit_text(digits.get(..1).unwrap_or(&[0]));
+    if digits.len() > 1 {
+        out.push('.');
+        out.push_str(&digit_text(digits.get(1..).unwrap_or(&[])));
+    }
+    out.push('e');
+    out.push(if exponent < 0 { '-' } else { '+' });
+    out.push_str(&exponent.unsigned_abs().to_string());
+    out
+}
+
+/// Nombre de chiffres demandé à une méthode de formatage : entier, ou `None`
+/// s'il sort de `[min, 100]`.
+fn digit_count(vm: &mut Vm, value: &Value, min: f64) -> JsResult<Option<usize>> {
+    let count = vm.to_number(value)?;
+    let count = if count.is_nan() { 0.0 } else { count.trunc() };
+    if !(min..=100.0).contains(&count) {
+        return Ok(None);
     }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "dans [0, 100]"
     )]
-    let digits = digits as usize;
-    let formatted = format!("{n:.digits$}");
-    // « -0.00 » s'écrit « 0.00 » en JavaScript quand la valeur est nulle.
-    string(if n == 0.0 {
-        formatted.trim_start_matches('-')
+    Ok(Some(count as usize))
+}
+
+fn number_to_fixed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let Some(fraction) = digit_count(vm, &arg(args, 0), 0.0)? else {
+        return Err(vm.error(
+            "RangeError",
+            "toFixed : le nombre de décimales doit être entre 0 et 100",
+        ));
+    };
+    if !n.is_finite() || n.abs() >= 1e21 {
+        return string(&number_to_string(n));
+    }
+    if n == 0.0 {
+        return string(&fixed_text(&[0], 0, fraction));
+    }
+    let (digits, exponent) = exact_decimal(n);
+    // Chiffres significatifs gardés : ceux de la partie entière et `fraction`.
+    let kept = i64::from(exponent) + 1 + i64::try_from(fraction).unwrap_or(100);
+    let (digits, exponent) = match usize::try_from(kept) {
+        Ok(0) if digits.first().is_some_and(|d| *d >= 5) => {
+            (vec![1], -i32::try_from(fraction).unwrap_or(100))
+        }
+        Ok(0) | Err(_) => (vec![0], 0),
+        Ok(kept) => round_digits(digits, exponent, kept),
+    };
+    let text = fixed_text(&digits, exponent, fraction);
+    string(&if n < 0.0 { format!("-{text}") } else { text })
+}
+
+fn number_to_exponential(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let requested = arg(args, 0);
+    let fraction = digit_count(vm, &requested, 0.0)?;
+    if !n.is_finite() {
+        return string(&number_to_string(n));
+    }
+    let Some(fraction) = fraction else {
+        return Err(vm.error(
+            "RangeError",
+            "toExponential : le nombre de décimales doit être entre 0 et 100",
+        ));
+    };
+    let (digits, exponent) = if n == 0.0 {
+        (vec![0; fraction + 1], 0)
+    } else if requested == Value::Undefined {
+        // Autant de chiffres qu'il en faut pour désigner le nombre sans ambiguïté.
+        let shortest = format!("{:e}", n.abs());
+        let (mantissa, exponent) = shortest.split_once('e').unwrap_or((&shortest, "0"));
+        let digits = mantissa
+            .bytes()
+            .filter(u8::is_ascii_digit)
+            .map(|b| b - b'0')
+            .collect();
+        (digits, exponent.parse().unwrap_or(0))
     } else {
-        &formatted
-    })
+        let (digits, exponent) = exact_decimal(n);
+        round_digits(digits, exponent, fraction + 1)
+    };
+    let text = exponential_text(&digits, exponent);
+    string(&if n < 0.0 { format!("-{text}") } else { text })
+}
+
+fn number_to_precision(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let requested = arg(args, 0);
+    if requested == Value::Undefined {
+        return string(&number_to_string(n));
+    }
+    let precision = digit_count(vm, &requested, 1.0)?;
+    if !n.is_finite() {
+        return string(&number_to_string(n));
+    }
+    let Some(precision) = precision else {
+        return Err(vm.error(
+            "RangeError",
+            "toPrecision : la précision doit être entre 1 et 100",
+        ));
+    };
+    let (digits, exponent) = if n == 0.0 {
+        (vec![0; precision], 0)
+    } else {
+        let (digits, exponent) = exact_decimal(n);
+        round_digits(digits, exponent, precision)
+    };
+    let wide = i64::from(exponent) >= i64::try_from(precision).unwrap_or(100);
+    let text = if exponent < -6 || wide {
+        exponential_text(&digits, exponent)
+    } else {
+        let whole = usize::try_from(exponent.max(0)).unwrap_or(0) + 1;
+        let fraction = if exponent >= 0 {
+            precision.saturating_sub(whole)
+        } else {
+            precision + usize::try_from(-exponent - 1).unwrap_or(0)
+        };
+        fixed_text(&digits, exponent, fraction)
+    };
+    string(&if n < 0.0 { format!("-{text}") } else { text })
 }
 
 fn number_value_of(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -808,6 +985,17 @@ math_fn!(math_exp, |x| x.exp());
 math_fn!(math_log, |x| x.ln());
 math_fn!(math_log2, |x| x.log2());
 math_fn!(math_log10, |x| x.log10());
+math_fn!(math_acosh, |x| x.acosh());
+math_fn!(math_asinh, |x| x.asinh());
+math_fn!(math_atanh, |x| x.atanh());
+math_fn!(math_cosh, |x| x.cosh());
+math_fn!(math_sinh, |x| x.sinh());
+math_fn!(math_tanh, |x| x.tanh());
+math_fn!(math_expm1, |x| x.exp_m1());
+math_fn!(math_log1p, |x| x.ln_1p());
+math_fn!(math_f16round, |x| super::typed_array::f16_bits_to_f64(
+    super::typed_array::f64_to_f16_bits(x)
+));
 math_fn!(math_fround, |x| {
     #[expect(
         clippy::cast_possible_truncation,
@@ -976,6 +1164,8 @@ pub(super) fn install(vm: &mut Vm) {
     vm.define_method(proto, "toString", 1, number_to_string_method);
     vm.define_method(proto, "toLocaleString", 0, number_to_string_method);
     vm.define_method(proto, "toFixed", 1, number_to_fixed);
+    vm.define_method(proto, "toExponential", 1, number_to_exponential);
+    vm.define_method(proto, "toPrecision", 1, number_to_precision);
     vm.define_method(proto, "valueOf", 0, number_value_of);
     let statics: &[(&str, u32, NativeFn)] = &[
         ("isNaN", 1, number_is_nan),
@@ -1028,6 +1218,15 @@ pub(super) fn install(vm: &mut Vm) {
         ("log", 1, math_log),
         ("log2", 1, math_log2),
         ("log10", 1, math_log10),
+        ("acosh", 1, math_acosh),
+        ("asinh", 1, math_asinh),
+        ("atanh", 1, math_atanh),
+        ("cosh", 1, math_cosh),
+        ("sinh", 1, math_sinh),
+        ("tanh", 1, math_tanh),
+        ("expm1", 1, math_expm1),
+        ("log1p", 1, math_log1p),
+        ("f16round", 1, math_f16round),
         ("fround", 1, math_fround),
         ("clz32", 1, math_clz32),
         ("imul", 2, math_imul),

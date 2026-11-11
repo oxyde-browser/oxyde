@@ -1,8 +1,7 @@
-//! `Map`, `Set`, `WeakMap` et `WeakSet`.
+//! `Map` et `Set` (les variantes faibles sont dans `weak`).
 //!
-//! LIMITES CONNUES : `WeakMap` et `WeakSet` retiennent leurs clés (ce sont des
-//! `Map` et `Set` restreints aux clés objets) ; les itérateurs de `keys`,
-//! `values` et `entries` parcourent une copie prise à leur création.
+//! LIMITE CONNUE : les itérateurs de `keys`, `values` et `entries`
+//! parcourent une copie prise à leur création.
 
 use indexmap::IndexMap;
 
@@ -38,15 +37,6 @@ fn set_mut(vm: &mut Vm, id: ObjId) -> Option<&mut IndexMap<MapKey, Value>> {
         Kind::Set(set) => Some(set),
         _ => None,
     }
-}
-
-/// Prototype à donner à une instance : celui du constructeur global `name`.
-fn proto_of(vm: &mut Vm, name: &str, fallback: ObjId) -> JsResult<ObjId> {
-    let ctor = vm.get(&Value::Object(vm.global), name)?;
-    Ok(match ctor {
-        Value::Object(_) => vm.get(&ctor, "prototype")?.as_object().unwrap_or(fallback),
-        _ => fallback,
-    })
 }
 
 fn build_map(vm: &mut Vm, proto: ObjId, source: &Value) -> JsResult {
@@ -87,18 +77,6 @@ fn set_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     build_set(vm, proto, &arg(args, 0))
 }
 
-fn weak_map_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let fallback = vm.intrinsics.map_proto;
-    let proto = proto_of(vm, "WeakMap", fallback)?;
-    build_map(vm, proto, &arg(args, 0))
-}
-
-fn weak_set_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let fallback = vm.intrinsics.set_proto;
-    let proto = proto_of(vm, "WeakSet", fallback)?;
-    build_set(vm, proto, &arg(args, 0))
-}
-
 fn map_get(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_map(vm, this)?;
     let key = MapKey::from_value(&arg(args, 0));
@@ -120,6 +98,44 @@ fn map_set(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         map.insert(MapKey::from_value(&key), (key, value));
     }
     Ok(this.clone())
+}
+
+/// Clé normalisée d'une `Map` (`-0` devient `+0`).
+fn map_key(key: Value) -> Value {
+    if key == Value::Number(0.0) {
+        Value::Number(0.0)
+    } else {
+        key
+    }
+}
+
+/// `getOrInsert(key, value)` : la valeur présente, sinon `value`, qui est insérée.
+fn map_get_or_insert(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_map(vm, this)?;
+    let (key, value) = (map_key(arg(args, 0)), arg(args, 1));
+    let Some(map) = map_mut(vm, id) else {
+        return Ok(Value::Undefined);
+    };
+    let entry = map.entry(MapKey::from_value(&key)).or_insert((key, value));
+    Ok(entry.1.clone())
+}
+
+/// `getOrInsertComputed(key, callback)` : la valeur présente, sinon celle
+/// que rend `callback(key)`, qui est insérée.
+fn map_get_or_insert_computed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_map(vm, this)?;
+    let callback = callable(vm, &arg(args, 1))?;
+    let key = map_key(arg(args, 0));
+    let map_key = MapKey::from_value(&key);
+    if let Some((_, present)) = map_mut(vm, id).and_then(|map| map.get(&map_key)) {
+        return Ok(present.clone());
+    }
+    let value = vm.call(&callback, &Value::Undefined, std::slice::from_ref(&key))?;
+    // La fonction de rappel a pu insérer la clé : sa valeur est remplacée.
+    if let Some(map) = map_mut(vm, id) {
+        map.insert(map_key, (key, value.clone()));
+    }
+    Ok(value)
 }
 
 fn map_has(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -532,6 +548,8 @@ pub(super) fn install(vm: &mut Vm) {
         ("keys", 0, map_keys),
         ("values", 0, map_values),
         ("entries", 0, map_entries),
+        ("getOrInsert", 2, map_get_or_insert),
+        ("getOrInsertComputed", 2, map_get_or_insert_computed),
     ];
     let set_methods: &[(&str, u32, NativeFn)] = &[
         ("add", 1, set_add),
@@ -563,16 +581,4 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(set_proto, name, *arity, *func);
     }
     getter(vm, set_proto, "size", set_size);
-
-    // Variantes « faibles » : mêmes opérations de base, sans énumération.
-    let weak_map_proto = vm.new_object();
-    constructor(vm, "WeakMap", 0, weak_map_ctor, weak_map_proto);
-    for (name, arity, func) in map_methods.iter().take(4) {
-        vm.define_method(weak_map_proto, name, *arity, *func);
-    }
-    let weak_set_proto = vm.new_object();
-    constructor(vm, "WeakSet", 0, weak_set_ctor, weak_set_proto);
-    for (name, arity, func) in set_methods.iter().take(3) {
-        vm.define_method(weak_set_proto, name, *arity, *func);
-    }
 }

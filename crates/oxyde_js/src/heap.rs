@@ -340,8 +340,23 @@ pub(crate) enum Kind {
     /// Objet `arguments` : ses éléments et sa longueur sont des propriétés
     /// ordinaires.
     Arguments,
+    /// `WeakMap` et `WeakSet` (références fortes, voir `builtins::weak`).
+    WeakMap(IndexMap<MapKey, (Value, Value)>),
+    WeakSet(IndexMap<MapKey, Value>),
+    /// `WeakRef` : sa cible.
+    WeakRef(Value),
+    FinalizationRegistry(Box<Registry>),
     /// Objet rendu par une aide d'itérateur (`map`, `filter`, `Iterator.from`…).
     IteratorHelper(Box<IteratorHelper>),
+}
+
+/// État d'un `FinalizationRegistry`.
+#[derive(Clone, Debug)]
+pub(crate) struct Registry {
+    /// Fonction de nettoyage.
+    pub(crate) cleanup: Value,
+    /// Enregistrements : cible, valeur retenue, jeton de désinscription.
+    pub(crate) cells: Vec<(Value, Value, Value)>,
 }
 
 /// Nature d'une aide d'itérateur.
@@ -683,13 +698,24 @@ impl Heap {
                         pending.extend(reaction.target);
                     }
                 }
-                Kind::Map(map) => {
+                Kind::Map(map) | Kind::WeakMap(map) => {
                     for (key, value) in map.values() {
                         push(key, &mut pending);
                         push(value, &mut pending);
                     }
                 }
-                Kind::Set(set) => set.values().for_each(|v| push(v, &mut pending)),
+                Kind::Set(set) | Kind::WeakSet(set) => {
+                    set.values().for_each(|v| push(v, &mut pending))
+                }
+                Kind::WeakRef(target) => push(target, &mut pending),
+                Kind::FinalizationRegistry(registry) => {
+                    push(&registry.cleanup, &mut pending);
+                    for (target, held, token) in &registry.cells {
+                        push(target, &mut pending);
+                        push(held, &mut pending);
+                        push(token, &mut pending);
+                    }
+                }
                 Kind::Iterator(state) => match state {
                     IterState::Keys { .. } => {}
                     IterState::Array { target, .. } => pending.push(*target),

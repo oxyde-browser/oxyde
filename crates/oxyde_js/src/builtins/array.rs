@@ -73,8 +73,13 @@ fn get(vm: &mut Vm, target: &Target, index: usize) -> JsResult {
     vm.get_element(&target.object, &number(index))
 }
 
+/// `Set(O, index, value, true)` : une écriture refusée lève `TypeError`.
 fn set(vm: &mut Vm, target: &Target, index: usize, value: Value) -> JsResult<()> {
-    vm.set_element(&target.object, &number(index), value)
+    if vm.put_element(&target.object, &number(index), value)? {
+        Ok(())
+    } else {
+        Err(vm.type_error(&format!("l'élément {index} ne peut pas être écrit")))
+    }
 }
 
 /// Vrai si l'élément `index` existe (propriété propre ou héritée).
@@ -88,12 +93,22 @@ fn has(vm: &mut Vm, target: &Target, index: usize) -> JsResult<bool> {
     vm.has_property_op(target.id, &key)
 }
 
+/// `DeletePropertyOrThrow(O, index)`.
 fn delete(vm: &mut Vm, target: &Target, index: usize) -> JsResult<()> {
-    vm.delete(&target.object, &index.to_string()).map(|_| ())
+    if vm.delete(&target.object, &index.to_string())? {
+        Ok(())
+    } else {
+        Err(vm.type_error(&format!("l'élément {index} ne peut pas être supprimé")))
+    }
 }
 
+/// `Set(O, "length", len, true)`.
 fn set_length(vm: &mut Vm, target: &Target, len: usize) -> JsResult<()> {
-    vm.set(&target.object, "length", number(len))
+    if vm.put(&target.object, "length", number(len))? {
+        Ok(())
+    } else {
+        Err(vm.type_error("la longueur ne peut pas être écrite"))
+    }
 }
 
 /// Refuse de bâtir un résultat démesuré.
