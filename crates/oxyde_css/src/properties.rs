@@ -24,7 +24,10 @@ const SIDES: [Side; 4] = [Side::Top, Side::Right, Side::Bottom, Side::Left];
 
 /// Propriété longue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(missing_docs, reason = "les variantes portent le nom de la propriété CSS")]
+#[allow(
+    missing_docs,
+    reason = "les variantes portent le nom de la propriété CSS"
+)]
 pub enum Longhand {
     Display,
     Color,
@@ -93,9 +96,13 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
     let mut out = Vec::new();
     for part in split_top_level(tokens, &Token::Semicolon) {
         let part = trim(part);
-        let [Token::Ident(name), rest @ ..] = part else { continue };
+        let [Token::Ident(name), rest @ ..] = part else {
+            continue;
+        };
         let rest = trim(rest);
-        let [Token::Colon, value @ ..] = rest else { continue };
+        let [Token::Colon, value @ ..] = rest else {
+            continue;
+        };
         let mut value = trim(value);
         let mut important = false;
         if let [head @ .., Token::Delim('!'), Token::Ident(word)] = value
@@ -103,7 +110,12 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
         {
             important = true;
             value = trim(head);
-        } else if let [head @ .., Token::Delim('!'), Token::Whitespace, Token::Ident(word)] = value
+        } else if let [
+            head @ ..,
+            Token::Delim('!'),
+            Token::Whitespace,
+            Token::Ident(word),
+        ] = value
             && word.eq_ignore_ascii_case("important")
         {
             important = true;
@@ -127,7 +139,9 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
 type Pairs = Vec<(Longhand, Value)>;
 
 fn css_wide(tokens: &[Token]) -> Option<Value> {
-    let [Token::Ident(word)] = tokens else { return None };
+    let [Token::Ident(word)] = tokens else {
+        return None;
+    };
     match word.to_ascii_lowercase().as_str() {
         "inherit" => Some(Value::Inherit),
         "initial" => Some(Value::Initial),
@@ -146,7 +160,9 @@ fn ident_of(token: &Token) -> Option<String> {
 fn keyword(tokens: &[Token], allowed: &[&str]) -> Option<Value> {
     let [token] = tokens else { return None };
     let word = ident_of(token)?;
-    allowed.contains(&word.as_str()).then_some(Value::Ident(word))
+    allowed
+        .contains(&word.as_str())
+        .then_some(Value::Ident(word))
 }
 
 fn non_negative(length: Length) -> Option<Length> {
@@ -163,13 +179,19 @@ fn non_negative(length: Length) -> Option<Length> {
 
 fn length_value(token: &Token, allow_negative: bool) -> Option<Value> {
     let length = parse_length(token)?;
-    let length = if allow_negative { length } else { non_negative(length)? };
+    let length = if allow_negative {
+        length
+    } else {
+        non_negative(length)?
+    };
     Some(Value::Length(length))
 }
 
 fn length_or_keywords(token: &Token, keywords: &[&str], allow_negative: bool) -> Option<Value> {
     if let Some(word) = ident_of(token) {
-        return keywords.contains(&word.as_str()).then_some(Value::Ident(word));
+        return keywords
+            .contains(&word.as_str())
+            .then_some(Value::Ident(word));
     }
     length_value(token, allow_negative)
 }
@@ -190,14 +212,39 @@ const BORDER_STYLES: &[&str] = &[
 ];
 const BORDER_WIDTHS: &[&str] = &["thin", "medium", "thick"];
 const FONT_SIZES: &[&str] = &[
-    "xx-small", "x-small", "small", "medium", "large", "x-large", "xx-large", "xxx-large",
-    "smaller", "larger",
+    "xx-small",
+    "x-small",
+    "small",
+    "medium",
+    "large",
+    "x-large",
+    "xx-large",
+    "xxx-large",
+    "smaller",
+    "larger",
 ];
 const DISPLAYS: &[&str] = &[
-    "none", "block", "inline", "inline-block", "list-item", "flex", "inline-flex", "grid",
-    "inline-grid", "table", "inline-table", "table-row", "table-cell", "table-row-group",
-    "table-header-group", "table-footer-group", "table-column", "table-column-group",
-    "table-caption", "flow-root", "contents",
+    "none",
+    "block",
+    "inline",
+    "inline-block",
+    "list-item",
+    "flex",
+    "inline-flex",
+    "grid",
+    "inline-grid",
+    "table",
+    "inline-table",
+    "table-row",
+    "table-cell",
+    "table-row-group",
+    "table-header-group",
+    "table-footer-group",
+    "table-column",
+    "table-column-group",
+    "table-caption",
+    "flow-root",
+    "contents",
 ];
 
 /// Composants hors blancs.
@@ -217,11 +264,19 @@ fn four_sides(values: &[Value]) -> Option<[Value; 4]> {
 }
 
 fn sides(make: fn(Side) -> Longhand, values: [Value; 4]) -> Pairs {
-    SIDES.iter().copied().zip(values).map(|(side, v)| (make(side), v)).collect()
+    SIDES
+        .iter()
+        .copied()
+        .zip(values)
+        .map(|(side, v)| (make(side), v))
+        .collect()
 }
 
 fn all_sides(make: fn(Side) -> Longhand, value: &Value) -> Pairs {
-    SIDES.iter().map(|side| (make(*side), value.clone())).collect()
+    SIDES
+        .iter()
+        .map(|side| (make(*side), value.clone()))
+        .collect()
 }
 
 fn side_of(name: &str) -> Option<Side> {
@@ -346,7 +401,9 @@ fn font_shorthand(tokens: &[Token]) -> Option<Pairs> {
         }
         if let Some(word) = ident_of(t) {
             match word.as_str() {
-                "italic" | "oblique" => out.push((Longhand::FontStyle, Value::Ident("italic".into()))),
+                "italic" | "oblique" => {
+                    out.push((Longhand::FontStyle, Value::Ident("italic".into())))
+                }
                 "normal" | "small-caps" => {}
                 "bold" | "bolder" | "lighter" => out.push((Longhand::FontWeight, font_weight(t)?)),
                 _ => break,
@@ -409,7 +466,10 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         }
         "font-size" => single(Longhand::FontSize, size(FONT_SIZES)),
         "font-weight" => single(Longhand::FontWeight, one().and_then(font_weight)),
-        "font-style" => single(Longhand::FontStyle, keyword(tokens, &["normal", "italic", "oblique"])),
+        "font-style" => single(
+            Longhand::FontStyle,
+            keyword(tokens, &["normal", "italic", "oblique"]),
+        ),
         "font-family" => single(Longhand::FontFamily, font_family(tokens)),
         "font" => match wide {
             Some(w) => Some(
@@ -429,11 +489,32 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "line-height" => single(Longhand::LineHeight, one().and_then(line_height)),
         "text-align" => single(
             Longhand::TextAlign,
-            keyword(tokens, &["left", "right", "center", "justify", "start", "end", "-webkit-center"]),
+            keyword(
+                tokens,
+                &[
+                    "left",
+                    "right",
+                    "center",
+                    "justify",
+                    "start",
+                    "end",
+                    "-webkit-center",
+                ],
+            ),
         ),
         "white-space" => single(
             Longhand::WhiteSpace,
-            keyword(tokens, &["normal", "nowrap", "pre", "pre-wrap", "pre-line", "break-spaces"]),
+            keyword(
+                tokens,
+                &[
+                    "normal",
+                    "nowrap",
+                    "pre",
+                    "pre-wrap",
+                    "pre-line",
+                    "break-spaces",
+                ],
+            ),
         ),
         "text-decoration" | "text-decoration-line" => {
             if let Some(w) = wide {
@@ -443,7 +524,10 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             let mut lines = Vec::new();
             for t in components(tokens) {
                 if let Some(word) = ident_of(t)
-                    && matches!(word.as_str(), "none" | "underline" | "line-through" | "overline")
+                    && matches!(
+                        word.as_str(),
+                        "none" | "underline" | "line-through" | "overline"
+                    )
                 {
                     lines.push(word);
                 }
@@ -451,7 +535,10 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             if lines.is_empty() {
                 return None;
             }
-            Some(vec![(Longhand::TextDecorationLine, Value::Ident(lines.join(" ")))])
+            Some(vec![(
+                Longhand::TextDecorationLine,
+                Value::Ident(lines.join(" ")),
+            )])
         }
         "margin" | "padding" => {
             let (make, keywords, negative): (fn(Side) -> Longhand, &[&str], bool) =
@@ -521,14 +608,20 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "min-height" => single(Longhand::MinHeight, size(&["auto"])),
         "max-width" => single(Longhand::MaxWidth, size(&["none"])),
         "max-height" => single(Longhand::MaxHeight, size(&["none"])),
-        "box-sizing" => single(Longhand::BoxSizing, keyword(tokens, &["content-box", "border-box"])),
+        "box-sizing" => single(
+            Longhand::BoxSizing,
+            keyword(tokens, &["content-box", "border-box"]),
+        ),
         "list-style-type" | "list-style" => {
             if let Some(w) = wide {
                 return Some(vec![(Longhand::ListStyleType, w)]);
             }
             let word = components(tokens).into_iter().find_map(|t| {
                 ident_of(t).filter(|w| {
-                    matches!(w.as_str(), "none" | "disc" | "circle" | "square" | "decimal")
+                    matches!(
+                        w.as_str(),
+                        "none" | "disc" | "circle" | "square" | "decimal"
+                    )
                 })
             })?;
             Some(vec![(Longhand::ListStyleType, Value::Ident(word))])
@@ -542,7 +635,10 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
                 );
             }
             if let Some(side) = name.strip_prefix("padding-").and_then(side_of) {
-                return single(Longhand::Padding(side), one().and_then(|t| length_value(t, false)));
+                return single(
+                    Longhand::Padding(side),
+                    one().and_then(|t| length_value(t, false)),
+                );
             }
             let rest = name.strip_prefix("border-")?;
             if let Some(side) = side_of(rest) {
@@ -598,7 +694,10 @@ mod tests {
             vec![
                 (Longhand::Margin(Side::Top), Value::Length(Length::Px(1.0))),
                 (Longhand::Margin(Side::Right), Value::Ident("auto".into())),
-                (Longhand::Margin(Side::Bottom), Value::Length(Length::Px(3.0))),
+                (
+                    Longhand::Margin(Side::Bottom),
+                    Value::Length(Length::Px(3.0))
+                ),
                 (Longhand::Margin(Side::Left), Value::Ident("auto".into())),
             ]
         );
@@ -619,9 +718,13 @@ mod tests {
             last.value,
             Value::FontFamily(vec!["Inter".into(), "Segoe UI".into(), "sans-serif".into()])
         );
-        assert!(d.iter().any(|d| d.property == Longhand::FontSize
-            && d.value == Value::Length(Length::Px(14.0))));
-        assert!(d.iter().any(|d| d.property == Longhand::FontWeight && d.value == Value::Number(600.0)));
+        assert!(d.iter().any(
+            |d| d.property == Longhand::FontSize && d.value == Value::Length(Length::Px(14.0))
+        ));
+        assert!(
+            d.iter()
+                .any(|d| d.property == Longhand::FontWeight && d.value == Value::Number(600.0))
+        );
     }
 
     #[test]

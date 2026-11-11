@@ -51,41 +51,204 @@ enum FormatEntry {
 const WS: [char; 4] = ['\t', '\n', '\x0c', ' '];
 
 const SPECIAL: &[&str] = &[
-    "address", "applet", "area", "article", "aside", "base", "basefont", "bgsound", "blockquote",
-    "body", "br", "button", "caption", "center", "col", "colgroup", "dd", "details", "dir", "div",
-    "dl", "dt", "embed", "fieldset", "figcaption", "figure", "footer", "form", "frame", "frameset",
-    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "iframe", "img",
-    "input", "keygen", "li", "link", "listing", "main", "marquee", "menu", "meta", "nav",
-    "noembed", "noframes", "noscript", "object", "ol", "p", "param", "plaintext", "pre", "script",
-    "search", "section", "select", "source", "style", "summary", "table", "tbody", "td",
-    "template", "textarea", "tfoot", "th", "thead", "title", "tr", "track", "ul", "wbr", "xmp",
+    "address",
+    "applet",
+    "area",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "bgsound",
+    "blockquote",
+    "body",
+    "br",
+    "button",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "embed",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hgroup",
+    "hr",
+    "html",
+    "iframe",
+    "img",
+    "input",
+    "keygen",
+    "li",
+    "link",
+    "listing",
+    "main",
+    "marquee",
+    "menu",
+    "meta",
+    "nav",
+    "noembed",
+    "noframes",
+    "noscript",
+    "object",
+    "ol",
+    "p",
+    "param",
+    "plaintext",
+    "pre",
+    "script",
+    "search",
+    "section",
+    "select",
+    "source",
+    "style",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "template",
+    "textarea",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+    "wbr",
+    "xmp",
 ];
 
-const IMPLIED_END: &[&str] =
-    &["dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc"];
+const IMPLIED_END: &[&str] = &[
+    "dd", "dt", "li", "optgroup", "option", "p", "rb", "rp", "rt", "rtc",
+];
 
 const HEADINGS: &[&str] = &["h1", "h2", "h3", "h4", "h5", "h6"];
 
-const FORMATTING: &[&str] =
-    &["a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u"];
+const FORMATTING: &[&str] = &[
+    "a", "b", "big", "code", "em", "font", "i", "nobr", "s", "small", "strike", "strong", "tt", "u",
+];
 
 const BLOCK_START: &[&str] = &[
-    "address", "article", "aside", "blockquote", "center", "details", "dialog", "dir", "div", "dl",
-    "fieldset", "figcaption", "figure", "footer", "header", "hgroup", "main", "menu", "nav", "ol",
-    "p", "search", "section", "summary", "ul",
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "center",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "header",
+    "hgroup",
+    "main",
+    "menu",
+    "nav",
+    "ol",
+    "p",
+    "search",
+    "section",
+    "summary",
+    "ul",
 ];
 
 const BLOCK_END: &[&str] = &[
-    "address", "article", "aside", "blockquote", "button", "center", "details", "dialog", "dir",
-    "div", "dl", "fieldset", "figcaption", "figure", "footer", "header", "hgroup", "listing",
-    "main", "menu", "nav", "ol", "pre", "search", "section", "summary", "ul",
+    "address",
+    "article",
+    "aside",
+    "blockquote",
+    "button",
+    "center",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "header",
+    "hgroup",
+    "listing",
+    "main",
+    "menu",
+    "nav",
+    "ol",
+    "pre",
+    "search",
+    "section",
+    "summary",
+    "ul",
 ];
 
 const FOREIGN_BREAKOUT: &[&str] = &[
-    "b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em",
-    "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr", "i", "img", "li", "listing", "menu",
-    "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub",
-    "sup", "table", "tt", "u", "ul", "var",
+    "b",
+    "big",
+    "blockquote",
+    "body",
+    "br",
+    "center",
+    "code",
+    "dd",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "listing",
+    "menu",
+    "meta",
+    "nobr",
+    "ol",
+    "p",
+    "pre",
+    "ruby",
+    "s",
+    "small",
+    "span",
+    "strong",
+    "strike",
+    "sub",
+    "sup",
+    "table",
+    "tt",
+    "u",
+    "ul",
+    "var",
 ];
 
 const SVG_TAG_CASE: &[(&str, &str)] = &[
@@ -147,8 +310,10 @@ pub fn parse_document(source: &str) -> Document {
     while !builder.done {
         let token = builder.tok.next_token();
         builder.dispatch(token);
-        builder.tok.allow_cdata =
-            builder.open.last().is_some_and(|n| builder.ns(*n) != Namespace::Html);
+        builder.tok.allow_cdata = builder
+            .open
+            .last()
+            .is_some_and(|n| builder.ns(*n) != Namespace::Html);
     }
     builder.doc
 }
@@ -170,11 +335,17 @@ struct TreeBuilder {
 }
 
 fn end_tag(name: &str) -> Token {
-    Token::EndTag(Tag { name: name.to_owned(), ..Tag::default() })
+    Token::EndTag(Tag {
+        name: name.to_owned(),
+        ..Tag::default()
+    })
 }
 
 fn start_tag(name: &str) -> Tag {
-    Tag { name: name.to_owned(), ..Tag::default() }
+    Tag {
+        name: name.to_owned(),
+        ..Tag::default()
+    }
 }
 
 impl TreeBuilder {
@@ -197,7 +368,9 @@ impl TreeBuilder {
     }
 
     fn is_any(&self, id: NodeId, names: &[&str]) -> bool {
-        self.doc.element(id).is_some_and(|e| e.ns == Namespace::Html && names.contains(&e.name.as_str()))
+        self.doc
+            .element(id)
+            .is_some_and(|e| e.ns == Namespace::Html && names.contains(&e.name.as_str()))
     }
 
     fn current_is(&self, name: &str) -> bool {
@@ -205,7 +378,9 @@ impl TreeBuilder {
     }
 
     fn is_scope_boundary(&self, id: NodeId, scope: Scope) -> bool {
-        let Some(e) = self.doc.element(id) else { return true };
+        let Some(e) = self.doc.element(id) else {
+            return true;
+        };
         let n = e.name.as_str();
         match scope {
             Scope::Select => !(e.ns == Namespace::Html && matches!(n, "optgroup" | "option")),
@@ -214,12 +389,21 @@ impl TreeBuilder {
                 Namespace::Html => {
                     matches!(
                         n,
-                        "applet" | "caption" | "html" | "table" | "td" | "th" | "marquee"
-                            | "object" | "template"
+                        "applet"
+                            | "caption"
+                            | "html"
+                            | "table"
+                            | "td"
+                            | "th"
+                            | "marquee"
+                            | "object"
+                            | "template"
                     ) || (scope == Scope::ListItem && matches!(n, "ol" | "ul"))
                         || (scope == Scope::Button && n == "button")
                 }
-                Namespace::MathMl => matches!(n, "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml"),
+                Namespace::MathMl => {
+                    matches!(n, "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml")
+                }
                 Namespace::Svg => matches!(n, "foreignObject" | "desc" | "title"),
             },
         }
@@ -301,7 +485,10 @@ impl TreeBuilder {
             let table = self.open[pos];
             return match self.doc.node(table).parent {
                 Some(parent) => (parent, Some(table)),
-                None => (pos.checked_sub(1).map_or(self.doc.root(), |i| self.open[i]), None),
+                None => (
+                    pos.checked_sub(1).map_or(self.doc.root(), |i| self.open[i]),
+                    None,
+                ),
             };
         }
         (target, None)
@@ -369,7 +556,9 @@ impl TreeBuilder {
                 FormatEntry::Marker => break,
                 FormatEntry::Element { tag: t, .. } => {
                     if t.name == tag.name && t.attrs.len() == tag.attrs.len() && {
-                        t.attrs.iter().all(|a| tag.attr(&a.name) == Some(a.value.as_str()))
+                        t.attrs
+                            .iter()
+                            .all(|a| tag.attr(&a.name) == Some(a.value.as_str()))
                     } {
                         same.push(i);
                     }
@@ -415,7 +604,9 @@ impl TreeBuilder {
             FormatEntry::Marker => true,
             FormatEntry::Element { node, .. } => this.open.contains(node),
         };
-        let Some(last) = self.formatting.last() else { return };
+        let Some(last) = self.formatting.last() else {
+            return;
+        };
         if is_open(self, last) {
             return;
         }
@@ -424,7 +615,9 @@ impl TreeBuilder {
             i -= 1;
         }
         for idx in i..self.formatting.len() {
-            let FormatEntry::Element { tag, .. } = &self.formatting[idx] else { continue };
+            let FormatEntry::Element { tag, .. } = &self.formatting[idx] else {
+                continue;
+            };
             let tag = tag.clone();
             let node = self.insert_element(&tag);
             self.formatting[idx] = FormatEntry::Element { node, tag };
@@ -476,8 +669,9 @@ impl TreeBuilder {
                 return;
             };
             let furthest_block = self.open[fb_stack_idx];
-            let common_ancestor =
-                fe_stack_idx.checked_sub(1).map_or(self.doc.root(), |i| self.open[i]);
+            let common_ancestor = fe_stack_idx
+                .checked_sub(1)
+                .map_or(self.doc.root(), |i| self.open[i]);
             let mut bookmark = fe_list_idx;
             let mut node_idx = fb_stack_idx;
             let mut last_node = furthest_block;
@@ -503,10 +697,15 @@ impl TreeBuilder {
                     self.open.remove(node_idx);
                     continue;
                 };
-                let FormatEntry::Element { tag, .. } = &self.formatting[list_idx] else { continue };
+                let FormatEntry::Element { tag, .. } = &self.formatting[list_idx] else {
+                    continue;
+                };
                 let tag = tag.clone();
                 let new_node = self.create_element(&tag, Namespace::Html);
-                self.formatting[list_idx] = FormatEntry::Element { node: new_node, tag };
+                self.formatting[list_idx] = FormatEntry::Element {
+                    node: new_node,
+                    tag,
+                };
                 self.open[node_idx] = new_node;
                 if last_node == furthest_block {
                     bookmark = list_idx + 1;
@@ -517,8 +716,12 @@ impl TreeBuilder {
             let (parent, before) = self.insertion_place(Some(common_ancestor));
             self.doc.insert_before(parent, last_node, before);
 
-            let Some(fe_list_idx) = self.formatting_index_of(fe) else { return };
-            let FormatEntry::Element { tag, .. } = &self.formatting[fe_list_idx] else { return };
+            let Some(fe_list_idx) = self.formatting_index_of(fe) else {
+                return;
+            };
+            let FormatEntry::Element { tag, .. } = &self.formatting[fe_list_idx] else {
+                return;
+            };
             let tag = tag.clone();
             let new_fe = self.create_element(&tag, Namespace::Html);
             self.doc.reparent_children(furthest_block, new_fe);
@@ -529,7 +732,8 @@ impl TreeBuilder {
                 bookmark -= 1;
             }
             let bookmark = bookmark.min(self.formatting.len());
-            self.formatting.insert(bookmark, FormatEntry::Element { node: new_fe, tag });
+            self.formatting
+                .insert(bookmark, FormatEntry::Element { node: new_fe, tag });
 
             self.remove_from_stack(fe);
             if let Some(fb) = self.open.iter().rposition(|n| *n == furthest_block) {
@@ -555,14 +759,20 @@ impl TreeBuilder {
     fn reset_insertion_mode(&mut self) {
         for (i, &node) in self.open.iter().enumerate().rev() {
             let last = i == 0;
-            let Some(e) = self.doc.element(node) else { continue };
+            let Some(e) = self.doc.element(node) else {
+                continue;
+            };
             if e.ns != Namespace::Html {
                 continue;
             }
             self.mode = match e.name.as_str() {
                 "select" => {
                     let in_table = self.open[..i].iter().any(|n| self.is(*n, "table"));
-                    if in_table { Mode::InSelectInTable } else { Mode::InSelect }
+                    if in_table {
+                        Mode::InSelectInTable
+                    } else {
+                        Mode::InSelect
+                    }
                 }
                 "td" | "th" if !last => Mode::InCell,
                 "tr" => Mode::InRow,
@@ -573,7 +783,11 @@ impl TreeBuilder {
                 "head" if !last => Mode::InHead,
                 "body" => Mode::InBody,
                 "html" => {
-                    if self.head.is_none() { Mode::BeforeHead } else { Mode::AfterHead }
+                    if self.head.is_none() {
+                        Mode::BeforeHead
+                    } else {
+                        Mode::AfterHead
+                    }
                 }
                 _ if last => Mode::InBody,
                 _ => continue,
@@ -586,7 +800,9 @@ impl TreeBuilder {
     // ---- Aiguillage ------------------------------------------------------
 
     fn is_html_integration_point(&self, id: NodeId) -> bool {
-        let Some(e) = self.doc.element(id) else { return false };
+        let Some(e) = self.doc.element(id) else {
+            return false;
+        };
         match e.ns {
             Namespace::Svg => matches!(e.name.as_str(), "foreignObject" | "desc" | "title"),
             Namespace::MathMl => {
@@ -602,7 +818,8 @@ impl TreeBuilder {
 
     fn is_mathml_text_integration_point(&self, id: NodeId) -> bool {
         self.doc.element(id).is_some_and(|e| {
-            e.ns == Namespace::MathMl && matches!(e.name.as_str(), "mi" | "mo" | "mn" | "ms" | "mtext")
+            e.ns == Namespace::MathMl
+                && matches!(e.name.as_str(), "mi" | "mo" | "mn" | "ms" | "mtext")
         })
     }
 
@@ -624,7 +841,9 @@ impl TreeBuilder {
                     || matches!(token, Token::Eof)
                     || (self.is_mathml_text_integration_point(cur)
                         && match &token {
-                            Token::StartTag(t) => !matches!(t.name.as_str(), "mglyph" | "malignmark"),
+                            Token::StartTag(t) => {
+                                !matches!(t.name.as_str(), "mglyph" | "malignmark")
+                            }
                             Token::Characters(_) => true,
                             _ => false,
                         })
@@ -683,7 +902,12 @@ impl TreeBuilder {
                 }
             }
             Token::Comment(c) => self.insert_comment_in(self.doc.root(), &c),
-            Token::Doctype { name, public_id, system_id, force_quirks } => {
+            Token::Doctype {
+                name,
+                public_id,
+                system_id,
+                force_quirks,
+            } => {
                 let n = name.clone().unwrap_or_default();
                 let node = self.doc.create_doctype(
                     &n,
@@ -719,7 +943,8 @@ impl TreeBuilder {
                 self.open.push(node);
                 self.mode = Mode::BeforeHead;
             }
-            Token::EndTag(tag) if !matches!(tag.name.as_str(), "head" | "body" | "html" | "br") => {}
+            Token::EndTag(tag) if !matches!(tag.name.as_str(), "head" | "body" | "html" | "br") => {
+            }
             other => self.before_html_else(other),
         }
     }
@@ -750,7 +975,8 @@ impl TreeBuilder {
                 self.head = Some(node);
                 self.mode = Mode::InHead;
             }
-            Token::EndTag(tag) if !matches!(tag.name.as_str(), "head" | "body" | "html" | "br") => {}
+            Token::EndTag(tag) if !matches!(tag.name.as_str(), "head" | "body" | "html" | "br") => {
+            }
             other => self.before_head_else(other),
         }
     }
@@ -1061,7 +1287,10 @@ impl TreeBuilder {
                 self.reconstruct_formatting();
                 self.insert_element(&tag);
                 self.mode = match self.mode {
-                    Mode::InTable | Mode::InCaption | Mode::InTableBody | Mode::InRow
+                    Mode::InTable
+                    | Mode::InCaption
+                    | Mode::InTableBody
+                    | Mode::InRow
                     | Mode::InCell => Mode::InSelectInTable,
                     _ => Mode::InSelect,
                 };
@@ -1087,7 +1316,11 @@ impl TreeBuilder {
             }
             "math" | "svg" => {
                 self.reconstruct_formatting();
-                let ns = if name == "svg" { Namespace::Svg } else { Namespace::MathMl };
+                let ns = if name == "svg" {
+                    Namespace::Svg
+                } else {
+                    Namespace::MathMl
+                };
                 self.insert_element_ns(&tag, ns);
                 if tag.self_closing {
                     self.pop();
@@ -1218,7 +1451,11 @@ impl TreeBuilder {
                     }
                 }
                 "style" | "script" => self.mode_in_head(Token::StartTag(tag)),
-                "input" if tag.attr("type").is_some_and(|t| t.eq_ignore_ascii_case("hidden")) => {
+                "input"
+                    if tag
+                        .attr("type")
+                        .is_some_and(|t| t.eq_ignore_ascii_case("hidden")) =>
+                {
                     self.insert_element(&tag);
                     self.pop();
                 }
@@ -1272,7 +1509,14 @@ impl TreeBuilder {
             Token::StartTag(tag)
                 if matches!(
                     tag.name.as_str(),
-                    "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead"
+                    "caption"
+                        | "col"
+                        | "colgroup"
+                        | "tbody"
+                        | "td"
+                        | "tfoot"
+                        | "th"
+                        | "thead"
                         | "tr"
                 ) =>
             {
@@ -1288,8 +1532,16 @@ impl TreeBuilder {
             Token::EndTag(tag)
                 if matches!(
                     tag.name.as_str(),
-                    "body" | "col" | "colgroup" | "html" | "tbody" | "td" | "tfoot" | "th"
-                        | "thead" | "tr"
+                    "body"
+                        | "col"
+                        | "colgroup"
+                        | "html"
+                        | "tbody"
+                        | "td"
+                        | "tfoot"
+                        | "th"
+                        | "thead"
+                        | "tr"
                 ) => {}
             _ => self.mode_in_body(token),
         }
@@ -1450,7 +1702,14 @@ impl TreeBuilder {
             Token::StartTag(tag)
                 if matches!(
                     tag.name.as_str(),
-                    "caption" | "col" | "colgroup" | "tbody" | "td" | "tfoot" | "th" | "thead"
+                    "caption"
+                        | "col"
+                        | "colgroup"
+                        | "tbody"
+                        | "td"
+                        | "tfoot"
+                        | "th"
+                        | "thead"
                         | "tr"
                 ) =>
             {
@@ -1460,9 +1719,15 @@ impl TreeBuilder {
                 }
             }
             Token::EndTag(tag)
-                if matches!(tag.name.as_str(), "body" | "caption" | "col" | "colgroup" | "html") => {}
+                if matches!(
+                    tag.name.as_str(),
+                    "body" | "caption" | "col" | "colgroup" | "html"
+                ) => {}
             Token::EndTag(tag)
-                if matches!(tag.name.as_str(), "table" | "tbody" | "tfoot" | "thead" | "tr") =>
+                if matches!(
+                    tag.name.as_str(),
+                    "table" | "tbody" | "tfoot" | "thead" | "tr"
+                ) =>
             {
                 if self.in_scope(&tag.name, Scope::Table) {
                     self.close_cell();
@@ -1483,7 +1748,9 @@ impl TreeBuilder {
     }
 
     fn mode_in_select(&mut self, token: Token) {
-        const TABLE_PARTS: &[&str] = &["caption", "table", "tbody", "tfoot", "thead", "tr", "td", "th"];
+        const TABLE_PARTS: &[&str] = &[
+            "caption", "table", "tbody", "tfoot", "thead", "tr", "td", "th",
+        ];
         let in_table = self.mode == Mode::InSelectInTable;
         match token {
             Token::Characters(s) => {
@@ -1567,7 +1834,11 @@ impl TreeBuilder {
                 self.mode_in_body(Token::Characters(s));
             }
             Token::Comment(c) => {
-                let html = self.open.first().copied().unwrap_or_else(|| self.doc.root());
+                let html = self
+                    .open
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| self.doc.root());
                 self.insert_comment_in(html, &c);
             }
             Token::Doctype { .. } => {}
@@ -1602,8 +1873,10 @@ impl TreeBuilder {
     fn process_foreign(&mut self, token: Token) {
         match token {
             Token::Characters(s) => {
-                let text: String =
-                    s.chars().map(|c| if c == '\0' { '\u{fffd}' } else { c }).collect();
+                let text: String = s
+                    .chars()
+                    .map(|c| if c == '\0' { '\u{fffd}' } else { c })
+                    .collect();
                 self.insert_text(&text);
             }
             Token::Comment(c) => self.insert_comment(&c),
@@ -1612,7 +1885,10 @@ impl TreeBuilder {
             Token::StartTag(tag) => {
                 let breakout = FOREIGN_BREAKOUT.contains(&tag.name.as_str())
                     || (tag.name == "font"
-                        && tag.attrs.iter().any(|a| matches!(a.name.as_str(), "color" | "face" | "size")));
+                        && tag
+                            .attrs
+                            .iter()
+                            .any(|a| matches!(a.name.as_str(), "color" | "face" | "size")));
                 if breakout {
                     self.pop_foreign();
                     self.process(self.mode, Token::StartTag(tag));
@@ -1681,10 +1957,14 @@ fn quirks_mode(
         "-//w3o//dtd w3 html",
         "+//silmaril//dtd html pro v0r11 19970101//",
     ];
-    const LIMITED_PREFIXES: &[&str] =
-        &["-//w3c//dtd xhtml 1.0 frameset//", "-//w3c//dtd xhtml 1.0 transitional//"];
-    const HTML401_LOOSE: &[&str] =
-        &["-//w3c//dtd html 4.01 frameset//", "-//w3c//dtd html 4.01 transitional//"];
+    const LIMITED_PREFIXES: &[&str] = &[
+        "-//w3c//dtd xhtml 1.0 frameset//",
+        "-//w3c//dtd xhtml 1.0 transitional//",
+    ];
+    const HTML401_LOOSE: &[&str] = &[
+        "-//w3c//dtd html 4.01 frameset//",
+        "-//w3c//dtd html 4.01 transitional//",
+    ];
 
     if force_quirks || name != "html" {
         return QuirksMode::Quirks;
@@ -1713,7 +1993,10 @@ fn quirks_mode(
 /// Rend un attribut « nom=valeur » ; utile aux tests.
 #[cfg(test)]
 fn attr(name: &str, value: &str) -> Attribute {
-    Attribute { name: name.into(), value: value.into() }
+    Attribute {
+        name: name.into(),
+        value: value.into(),
+    }
 }
 
 #[cfg(not(test))]
@@ -1742,7 +2025,10 @@ mod tests {
     fn empty_input_builds_skeleton() {
         assert_eq!(dump(""), "| <html>\n|   <head>\n|   <body>\n");
         assert_eq!(parse_document("").quirks_mode, QuirksMode::Quirks);
-        assert_eq!(parse_document("<!doctype html>").quirks_mode, QuirksMode::NoQuirks);
+        assert_eq!(
+            parse_document("<!doctype html>").quirks_mode,
+            QuirksMode::NoQuirks
+        );
     }
 
     #[test]
@@ -1806,7 +2092,9 @@ mod tests {
     #[test]
     fn attributes_and_merge() {
         let doc = parse_document("<html lang=fr><body class=a><html dir=ltr lang=en>");
-        let html = doc.find_html_element(doc.root(), "html").expect("élément html");
+        let html = doc
+            .find_html_element(doc.root(), "html")
+            .expect("élément html");
         let e = doc.element(html).expect("élément");
         assert_eq!(e.attrs, vec![attr("lang", "fr"), attr("dir", "ltr")]);
     }

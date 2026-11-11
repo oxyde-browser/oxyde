@@ -1,0 +1,11 @@
+[package]
+name = "oxyde_platform"
+description = "Abstraction du système d'exploitation (fenêtres, presse-papiers, magasin de secrets)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

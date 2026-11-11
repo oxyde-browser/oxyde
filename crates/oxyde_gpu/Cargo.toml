@@ -1,6 +1,6 @@
-﻿[package]
+[package]
 name = "oxyde_gpu"
-description = "Rastérisation GPU d'Oxyde : Vello sur wgpu."
+description = "Rastérisation GPU d'Oxyde : Vello sur wgpu (Direct3D 12 sous Windows)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,6 +8,10 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+oxyde_css.workspace = true
+oxyde_paint.workspace = true
+pollster = "0.4"
+thiserror = "2"
 vello = "0.11"
 
 [lints]

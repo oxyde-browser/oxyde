@@ -65,7 +65,10 @@ impl ElementData {
     /// Valeur de l'attribut `name`, s'il existe.
     #[must_use]
     pub fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|a| a.name == name).map(|a| a.value.as_str())
+        self.attrs
+            .iter()
+            .find(|a| a.name == name)
+            .map(|a| a.value.as_str())
     }
 
     /// Vrai si l'attribut `name` est présent.
@@ -180,6 +183,14 @@ impl Document {
         NodeId(0)
     }
 
+    /// Identifiant du nœud d'index `index` dans l'arène, s'il existe.
+    #[must_use]
+    pub fn id_from_index(&self, index: usize) -> Option<NodeId> {
+        (index < self.nodes.len())
+            .then(|| u32::try_from(index).ok().map(NodeId))
+            .flatten()
+    }
+
     /// Nombre de nœuds dans l'arène (attachés ou non).
     #[must_use]
     pub fn len(&self) -> usize {
@@ -246,7 +257,11 @@ impl Document {
 
     /// Crée un élément détaché.
     pub fn create_element(&mut self, name: &str, ns: Namespace, attrs: Vec<Attribute>) -> NodeId {
-        self.push(NodeData::Element(ElementData { name: name.to_owned(), ns, attrs }))
+        self.push(NodeData::Element(ElementData {
+            name: name.to_owned(),
+            ns,
+            attrs,
+        }))
     }
 
     /// Crée un nœud texte détaché.
@@ -392,7 +407,8 @@ impl Document {
     /// Premier élément descendant de `id` portant le nom HTML `name`.
     #[must_use]
     pub fn find_html_element(&self, id: NodeId, name: &str) -> Option<NodeId> {
-        self.descendants(id).find(|n| self.element(*n).is_some_and(|e| e.is_html(name)))
+        self.descendants(id)
+            .find(|n| self.element(*n).is_some_and(|e| e.is_html(name)))
     }
 
     /// Concatène le texte de tous les descendants de `id`.
@@ -426,11 +442,18 @@ impl Document {
         // `write!` vers une `String` ne peut pas échouer.
         let _ = match &self.node(id).data {
             NodeData::Document => Ok(()),
-            NodeData::Doctype { name, public_id, system_id } => {
+            NodeData::Doctype {
+                name,
+                public_id,
+                system_id,
+            } => {
                 if public_id.is_empty() && system_id.is_empty() {
                     writeln!(out, "| {indent}<!DOCTYPE {name}>")
                 } else {
-                    writeln!(out, "| {indent}<!DOCTYPE {name} \"{public_id}\" \"{system_id}\">")
+                    writeln!(
+                        out,
+                        "| {indent}<!DOCTYPE {name} \"{public_id}\" \"{system_id}\">"
+                    )
                 }
             }
             NodeData::Element(e) => {

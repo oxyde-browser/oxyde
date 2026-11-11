@@ -1,0 +1,11 @@
+[package]
+name = "oxyde_bindings"
+description = "Générateur de liaisons Web IDL (pendant des bindings de Blink)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true

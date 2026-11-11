@@ -32,7 +32,12 @@ pub struct Edges<T> {
 impl<T: Copy> Edges<T> {
     /// Même valeur sur les quatre côtés.
     pub const fn all(v: T) -> Self {
-        Self { top: v, right: v, bottom: v, left: v }
+        Self {
+            top: v,
+            right: v,
+            bottom: v,
+            left: v,
+        }
     }
 
     /// Valeur du côté `side`.
@@ -427,7 +432,11 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
         Value::Inherit => return copy_property(style, cx.parent, property),
         Value::Initial => return copy_property(style, &ComputedStyle::initial(), property),
         Value::Unset => {
-            let from = if is_inherited(property) { cx.parent.clone() } else { ComputedStyle::initial() };
+            let from = if is_inherited(property) {
+                cx.parent.clone()
+            } else {
+                ComputedStyle::initial()
+            };
             return copy_property(style, &from, property);
         }
         _ => {}
@@ -612,7 +621,11 @@ fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
     };
     let dimension = |v: &str| {
         let v = v.trim();
-        if v.ends_with('%') { v.to_owned() } else { format!("{}px", v.trim_end_matches("px")) }
+        if v.ends_with('%') {
+            v.to_owned()
+        } else {
+            format!("{}px", v.trim_end_matches("px"))
+        }
     };
     if let Some(v) = el.attr("bgcolor") {
         push("background-color", v);
@@ -638,12 +651,18 @@ fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
         }
         _ => {}
     }
-    if matches!(el.name.as_str(), "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "td" | "th")
-        && let Some(v) = el.attr("align")
+    if matches!(
+        el.name.as_str(),
+        "p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "td" | "th"
+    ) && let Some(v) = el.attr("align")
     {
         push("text-align", &v.to_ascii_lowercase());
     }
-    if css.is_empty() { Vec::new() } else { parse_declarations(&tokenize(&css)) }
+    if css.is_empty() {
+        Vec::new()
+    } else {
+        parse_declarations(&tokenize(&css))
+    }
 }
 
 /// Entrée de cascade : (rang d'origine, spécificité, ordre, déclaration).
@@ -710,9 +729,15 @@ pub fn collect_style_elements(doc: &Document) -> Vec<Stylesheet> {
 ///
 /// `author_sheets` : feuilles d'auteur dans l'ordre du document.
 #[must_use]
-pub fn compute_styles(doc: &Document, author_sheets: &[Stylesheet], viewport: Viewport) -> StyleMap {
+pub fn compute_styles(
+    doc: &Document,
+    author_sheets: &[Stylesheet],
+    viewport: Viewport,
+) -> StyleMap {
     let initial = ComputedStyle::initial();
-    let mut map = StyleMap { styles: vec![None; doc.len()] };
+    let mut map = StyleMap {
+        styles: vec![None; doc.len()],
+    };
     let mut root_font_size = initial.font_size;
 
     // Règles actives, avec leur rang d'origine (0 = navigateur, 1 = auteur).
@@ -729,7 +754,9 @@ pub fn compute_styles(doc: &Document, author_sheets: &[Stylesheet], viewport: Vi
     let author_active: Vec<Vec<usize>> = author_sheets.iter().map(active).collect();
 
     for node in doc.descendants(doc.root()) {
-        let Some(el) = doc.element(node) else { continue };
+        let Some(el) = doc.element(node) else {
+            continue;
+        };
         let parent_style = doc.node(node).parent.and_then(|p| map.get(p)).cloned();
         let is_root = parent_style.is_none();
         let parent = parent_style.as_deref().unwrap_or(&initial);
@@ -737,17 +764,36 @@ pub fn compute_styles(doc: &Document, author_sheets: &[Stylesheet], viewport: Vi
         // (rang, spécificité, ordre, déclaration)
         let mut matched: Vec<(u8, u32, u32, &Declaration)> = Vec::new();
         let mut order = 0u32;
-        collect_matching(doc, node, &UA_SHEET.rules, &ua_active, false, &mut order, &mut matched);
+        collect_matching(
+            doc,
+            node,
+            &UA_SHEET.rules,
+            &ua_active,
+            false,
+            &mut order,
+            &mut matched,
+        );
         let hints = presentational_hints(el);
         let hint_base = order;
         for (sheet, rules) in author_sheets.iter().zip(&author_active) {
-            collect_matching(doc, node, &sheet.rules, rules, true, &mut order, &mut matched);
+            collect_matching(
+                doc,
+                node,
+                &sheet.rules,
+                rules,
+                true,
+                &mut order,
+                &mut matched,
+            );
         }
         // Indications de présentation : origine auteur, spécificité nulle, avant toute règle.
         for d in &hints {
             matched.push((1, 0, hint_base, d));
         }
-        let inline = el.attr("style").map(|s| parse_declarations(&tokenize(s))).unwrap_or_default();
+        let inline = el
+            .attr("style")
+            .map(|s| parse_declarations(&tokenize(s)))
+            .unwrap_or_default();
         for d in &inline {
             order = order.saturating_add(1);
             matched.push((if d.important { 2 } else { 1 }, u32::MAX, order, d));
@@ -755,15 +801,26 @@ pub fn compute_styles(doc: &Document, author_sheets: &[Stylesheet], viewport: Vi
         matched.sort_by_key(|(rank, spec, ord, _)| (*rank, *spec, *ord));
 
         let mut style = ComputedStyle::inherit_from(parent);
-        let cx = Context { parent, root_font_size, viewport };
+        let cx = Context {
+            parent,
+            root_font_size,
+            viewport,
+        };
         // La taille de police d'abord : les unités `em` des autres propriétés en dépendent.
-        for (_, _, _, d) in matched.iter().filter(|m| m.3.property == Longhand::FontSize) {
+        for (_, _, _, d) in matched
+            .iter()
+            .filter(|m| m.3.property == Longhand::FontSize)
+        {
             apply(&mut style, d, &cx);
         }
         if is_root {
             root_font_size = style.font_size;
         }
-        let cx = Context { parent, root_font_size, viewport };
+        let cx = Context {
+            parent,
+            root_font_size,
+            viewport,
+        };
         // La couleur ensuite : `currentcolor` des autres propriétés en dépend.
         for (_, _, _, d) in matched.iter().filter(|m| m.3.property == Longhand::Color) {
             apply(&mut style, d, &cx);
@@ -785,7 +842,10 @@ pub fn compute_styles(doc: &Document, author_sheets: &[Stylesheet], viewport: Vi
 mod tests {
     use super::*;
 
-    const VIEWPORT: Viewport = Viewport { width: 1000.0, height: 800.0 };
+    const VIEWPORT: Viewport = Viewport {
+        width: 1000.0,
+        height: 800.0,
+    };
 
     fn styled(html: &str) -> (Document, StyleMap) {
         let doc = oxyde_html::parse_document(html);
@@ -795,7 +855,9 @@ mod tests {
     }
 
     fn style_of(doc: &Document, map: &StyleMap, tag: &str) -> Arc<ComputedStyle> {
-        let node = doc.find_html_element(doc.root(), tag).expect("élément présent");
+        let node = doc
+            .find_html_element(doc.root(), tag)
+            .expect("élément présent");
         Arc::clone(map.get(node).expect("style calculé"))
     }
 
@@ -827,9 +889,17 @@ mod tests {
              <p id=x class=c style='color: black; padding: 1em'>t</p>",
         );
         let p = style_of(&doc, &map, "p");
-        assert_eq!(p.color, Color::rgb(0, 0, 255), "!important l'emporte sur le style en ligne");
+        assert_eq!(
+            p.color,
+            Color::rgb(0, 0, 255),
+            "!important l'emporte sur le style en ligne"
+        );
         assert_eq!(p.margin.top, Size::Px(10.0));
-        assert_eq!(p.margin.left, Size::Px(40.0), "em relatif à la taille de police de l'élément");
+        assert_eq!(
+            p.margin.left,
+            Size::Px(40.0),
+            "em relatif à la taille de police de l'élément"
+        );
         assert_eq!(p.padding.top, Size::Px(20.0));
     }
 

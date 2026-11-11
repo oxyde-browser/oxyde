@@ -29,7 +29,10 @@ impl Tag {
     /// Valeur de l'attribut `name`.
     #[must_use]
     pub fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|a| a.name == name).map(|a| a.value.as_str())
+        self.attrs
+            .iter()
+            .find(|a| a.name == name)
+            .map(|a| a.value.as_str())
     }
 }
 
@@ -212,7 +215,8 @@ impl Tokenizer {
 
     fn flush_text(&mut self) {
         if !self.text.is_empty() {
-            self.pending.push_back(Token::Characters(std::mem::take(&mut self.text)));
+            self.pending
+                .push_back(Token::Characters(std::mem::take(&mut self.text)));
         }
     }
 
@@ -754,7 +758,11 @@ impl Tokenizer {
                 break;
             }
             self.pos += 1;
-            n.push(if c == '\0' { '\u{fffd}' } else { c.to_ascii_lowercase() });
+            n.push(if c == '\0' {
+                '\u{fffd}'
+            } else {
+                c.to_ascii_lowercase()
+            });
         }
         if n.is_empty() {
             force_quirks = true;
@@ -801,7 +809,12 @@ impl Tokenizer {
         if !closed {
             force_quirks = true;
         }
-        self.emit(Token::Doctype { name, public_id, system_id, force_quirks });
+        self.emit(Token::Doctype {
+            name,
+            public_id,
+            system_id,
+            force_quirks,
+        });
         if !closed {
             self.emit_eof();
         }
@@ -929,14 +942,20 @@ mod tests {
             name: name.into(),
             attrs: attrs
                 .iter()
-                .map(|(n, v)| Attribute { name: (*n).into(), value: (*v).into() })
+                .map(|(n, v)| Attribute {
+                    name: (*n).into(),
+                    value: (*v).into(),
+                })
                 .collect(),
             self_closing,
         })
     }
 
     fn end(name: &str) -> Token {
-        Token::EndTag(Tag { name: name.into(), ..Tag::default() })
+        Token::EndTag(Tag {
+            name: name.into(),
+            ..Tag::default()
+        })
     }
 
     fn chars(s: &str) -> Token {
@@ -958,18 +977,30 @@ mod tests {
 
     #[test]
     fn duplicate_attribute_keeps_first() {
-        assert_eq!(tokens("<p a=1 a=2>"), vec![start("p", &[("a", "1")], false)]);
+        assert_eq!(
+            tokens("<p a=1 a=2>"),
+            vec![start("p", &[("a", "1")], false)]
+        );
     }
 
     #[test]
     fn character_references() {
-        assert_eq!(tokens("a&amp;b&lt;&#233;&#x41;&eacute;"), vec![chars("a&b<éAé")]);
-        assert_eq!(tokens("&copy 2026 &inconnu; &#128;"), vec![chars("© 2026 &inconnu; €")]);
+        assert_eq!(
+            tokens("a&amp;b&lt;&#233;&#x41;&eacute;"),
+            vec![chars("a&b<éAé")]
+        );
+        assert_eq!(
+            tokens("&copy 2026 &inconnu; &#128;"),
+            vec![chars("© 2026 &inconnu; €")]
+        );
         assert_eq!(
             tokens("<a href='?a=1&copy=2&amp;c'>"),
             vec![start("a", &[("href", "?a=1&copy=2&c")], false)]
         );
-        assert_eq!(tokens("&#0;&#x110000;&#xD800;"), vec![chars("\u{fffd}\u{fffd}\u{fffd}")]);
+        assert_eq!(
+            tokens("&#0;&#x110000;&#xD800;"),
+            vec![chars("\u{fffd}\u{fffd}\u{fffd}")]
+        );
     }
 
     #[test]
@@ -1025,7 +1056,8 @@ mod tests {
 
     #[test]
     fn never_panics_on_truncated_input() {
-        let src = "<!DOCTYPE html PUBLIC \"x\" 'y'><a b='c' d=e f><!-- c --><![CDATA[x]]>&amp;&#x41;";
+        let src =
+            "<!DOCTYPE html PUBLIC \"x\" 'y'><a b='c' d=e f><!-- c --><![CDATA[x]]>&amp;&#x41;";
         let chars: Vec<char> = src.chars().collect();
         for n in 0..=chars.len() {
             let prefix: String = chars[..n].iter().collect();

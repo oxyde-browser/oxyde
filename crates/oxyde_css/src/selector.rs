@@ -117,8 +117,11 @@ impl Selector {
     /// Vrai si l'élément `node` de `doc` correspond.
     #[must_use]
     pub fn matches(&self, doc: &Document, node: NodeId) -> bool {
-        let Some(el) = doc.element(node) else { return false };
-        compound_matches(&self.subject, doc, node, el) && match_ancestors(&self.ancestors, doc, node)
+        let Some(el) = doc.element(node) else {
+            return false;
+        };
+        compound_matches(&self.subject, doc, node, el)
+            && match_ancestors(&self.ancestors, doc, node)
     }
 }
 
@@ -149,9 +152,12 @@ fn parent_element(doc: &Document, node: NodeId) -> Option<NodeId> {
 }
 
 fn match_ancestors(rest: &[(Combinator, Compound)], doc: &Document, node: NodeId) -> bool {
-    let Some(((combinator, compound), tail)) = rest.split_first() else { return true };
+    let Some(((combinator, compound), tail)) = rest.split_first() else {
+        return true;
+    };
     let test = |candidate: NodeId| {
-        doc.element(candidate).is_some_and(|el| compound_matches(compound, doc, candidate, el))
+        doc.element(candidate)
+            .is_some_and(|el| compound_matches(compound, doc, candidate, el))
             && match_ancestors(tail, doc, candidate)
     };
     match combinator {
@@ -181,7 +187,9 @@ fn match_ancestors(rest: &[(Combinator, Compound)], doc: &Document, node: NodeId
 }
 
 fn attr_matches(sel: &AttrSelector, el: &ElementData) -> bool {
-    let Some(actual) = el.attr(&sel.name) else { return false };
+    let Some(actual) = el.attr(&sel.name) else {
+        return false;
+    };
     if sel.op == AttrOp::Exists {
         return true;
     }
@@ -198,7 +206,9 @@ fn attr_matches(sel: &AttrSelector, el: &ElementData) -> bool {
         }
         AttrOp::DashMatch => {
             actual == expected
-                || actual.strip_prefix(&expected).is_some_and(|rest| rest.starts_with('-'))
+                || actual
+                    .strip_prefix(&expected)
+                    .is_some_and(|rest| rest.starts_with('-'))
         }
         AttrOp::Prefix => !expected.is_empty() && actual.starts_with(&expected),
         AttrOp::Suffix => !expected.is_empty() && actual.ends_with(&expected),
@@ -210,7 +220,11 @@ fn nth_matches(a: i32, b: i32, index: i32) -> bool {
     // Existe-t-il n >= 0 tel que a*n + b == index ?
     // En i64 : `index - b` ne peut pas déborder même avec un `b` hostile.
     let (a, diff) = (i64::from(a), i64::from(index) - i64::from(b));
-    if a == 0 { diff == 0 } else { diff % a == 0 && diff / a >= 0 }
+    if a == 0 {
+        diff == 0
+    } else {
+        diff % a == 0 && diff / a >= 0
+    }
 }
 
 fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData) -> bool {
@@ -224,7 +238,11 @@ fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData
     {
         return false;
     }
-    if !c.classes.iter().all(|class| el.classes().any(|x| x == class)) {
+    if !c
+        .classes
+        .iter()
+        .all(|class| el.classes().any(|x| x == class))
+    {
         return false;
     }
     if !c.attrs.iter().all(|a| attr_matches(a, el)) {
@@ -232,20 +250,20 @@ fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData
     }
     c.pseudos.iter().all(|p| match p {
         Pseudo::Root => parent_element(doc, node).is_none(),
-        Pseudo::Empty => !doc.children(node).any(|n| {
-            doc.element(n).is_some() || doc.text(n).is_some_and(|t| !t.is_empty())
-        }),
+        Pseudo::Empty => !doc
+            .children(node)
+            .any(|n| doc.element(n).is_some() || doc.text(n).is_some_and(|t| !t.is_empty())),
         Pseudo::FirstChild => prev_element(doc, node).is_none(),
         Pseudo::LastChild => next_element(doc, node).is_none(),
         Pseudo::OnlyChild => prev_element(doc, node).is_none() && next_element(doc, node).is_none(),
         Pseudo::NthChild(a, b) => {
-            let index = std::iter::successors(prev_element(doc, node), |n| prev_element(doc, *n))
-                .count();
+            let index =
+                std::iter::successors(prev_element(doc, node), |n| prev_element(doc, *n)).count();
             nth_matches(*a, *b, i32::try_from(index).unwrap_or(i32::MAX - 1) + 1)
         }
         Pseudo::NthLastChild(a, b) => {
-            let index = std::iter::successors(next_element(doc, node), |n| next_element(doc, *n))
-                .count();
+            let index =
+                std::iter::successors(next_element(doc, node), |n| next_element(doc, *n)).count();
             nth_matches(*a, *b, i32::try_from(index).unwrap_or(i32::MAX - 1) + 1)
         }
         Pseudo::Link => matches!(el.name.as_str(), "a" | "area") && el.has_attr("href"),
@@ -344,7 +362,11 @@ fn parse_selector(tokens: &[Token]) -> Option<Selector> {
         ancestors.push((combinator?, compound));
         combinator = prev_combinator;
     }
-    Some(Selector { subject, ancestors, specificity })
+    Some(Selector {
+        subject,
+        ancestors,
+        specificity,
+    })
 }
 
 fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
@@ -365,7 +387,9 @@ fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
                 i += 1;
             }
             Some(Token::Delim('.')) => {
-                let Some(Token::Ident(class)) = tokens.get(i + 1) else { return None };
+                let Some(Token::Ident(class)) = tokens.get(i + 1) else {
+                    return None;
+                };
                 c.classes.push(class.clone());
                 i += 2;
             }
@@ -395,11 +419,18 @@ fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
 }
 
 fn parse_attr(tokens: &[Token]) -> Option<AttrSelector> {
-    let Some(Token::Ident(name)) = tokens.first() else { return None };
+    let Some(Token::Ident(name)) = tokens.first() else {
+        return None;
+    };
     let name = name.to_ascii_lowercase();
     let rest = trim(&tokens[1..]);
     if rest.is_empty() {
-        return Some(AttrSelector { name, op: AttrOp::Exists, value: String::new(), case_insensitive: false });
+        return Some(AttrSelector {
+            name,
+            op: AttrOp::Exists,
+            value: String::new(),
+            case_insensitive: false,
+        });
     }
     let (op, used) = match rest {
         [Token::Delim('='), ..] => (AttrOp::Equals, 1),
@@ -427,7 +458,12 @@ fn parse_attr(tokens: &[Token]) -> Option<AttrSelector> {
         [Token::Ident(flag)] if flag.eq_ignore_ascii_case("s") => false,
         _ => return None,
     };
-    Some(AttrSelector { name, op, value, case_insensitive })
+    Some(AttrSelector {
+        name,
+        op,
+        value,
+        case_insensitive,
+    })
 }
 
 fn simple_pseudo(name: &str) -> Option<Pseudo> {
@@ -489,8 +525,16 @@ fn parse_nth(tokens: &[Token]) -> Option<(i32, i32)> {
             }
             digits = rest;
         }
-        let value = if digits.is_empty() { empty_value } else { digits.parse::<i32>().ok()? };
-        Some(if negative { value.checked_neg()? } else { value })
+        let value = if digits.is_empty() {
+            empty_value
+        } else {
+            digits.parse::<i32>().ok()?
+        };
+        Some(if negative {
+            value.checked_neg()?
+        } else {
+            value
+        })
     };
     match text.split_once('n') {
         Some((a, b)) => Some((signed_int(a, 1)?, signed_int(b, 0)?)),
@@ -515,7 +559,11 @@ mod tests {
             .filter(|n| list.iter().any(|s| s.matches(&doc, *n)))
             .filter_map(|n| {
                 let e = doc.element(n)?;
-                Some(format!("{}{}", e.name, e.id().map(|i| format!("#{i}")).unwrap_or_default()))
+                Some(format!(
+                    "{}{}",
+                    e.name,
+                    e.id().map(|i| format!("#{i}")).unwrap_or_default()
+                ))
             })
             .collect()
     }
@@ -536,7 +584,17 @@ mod tests {
 
     #[test]
     fn invalid_selectors_are_rejected() {
-        for s in ["", "a >", "> a", "a,,b", "a::before", "a:unknown", ".", "[=x]", "a > > b"] {
+        for s in [
+            "",
+            "a >",
+            "> a",
+            "a,,b",
+            "a::before",
+            "a:unknown",
+            ".",
+            "[=x]",
+            "a > > b",
+        ] {
             assert!(sel(s).is_none(), "{s:?} devrait être rejeté");
         }
     }
@@ -550,7 +608,10 @@ mod tests {
         assert_eq!(first_match(html, "p + p"), ["p#c"]);
         assert_eq!(first_match(html, "p ~ span, [lang|=fr]"), ["p#c", "span#d"]);
         assert_eq!(first_match(html, "div :nth-child(2n+1)"), ["p#b", "span#d"]);
-        assert_eq!(first_match(html, "div :nth-last-child(-n+2)"), ["p#c", "span#d"]);
+        assert_eq!(
+            first_match(html, "div :nth-last-child(-n+2)"),
+            ["p#c", "span#d"]
+        );
         assert_eq!(first_match(html, "p:not(#b, #e)"), ["p#c"]);
         assert_eq!(first_match(html, "span:empty, :root"), ["html", "span#d"]);
         assert_eq!(first_match(html, "p:hover"), Vec::<String>::new());
