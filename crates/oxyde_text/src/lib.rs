@@ -4,7 +4,31 @@
 
 pub use parley;
 
+use std::sync::Arc;
+
+use parley::fontique::Blob;
 use parley::{FontContext, LayoutContext};
+
+/// Polices de la maquette embarquées dans l'exécutable (licence OFL 1.1, voir
+/// `assets/fonts/*/OFL.txt`). Polices variables : un fichier couvre toutes les graisses.
+const BUNDLED_FONTS: [&[u8]; 3] = [
+    include_bytes!("../../../assets/fonts/inter/Inter.ttf"),
+    include_bytes!("../../../assets/fonts/space-grotesk/SpaceGrotesk.ttf"),
+    include_bytes!("../../../assets/fonts/jetbrains-mono/JetBrainsMono.ttf"),
+];
+
+/// Enregistre les polices embarquées ; renvoie le nombre de familles ajoutées.
+fn register_bundled_fonts(fonts: &mut FontContext) -> usize {
+    BUNDLED_FONTS
+        .iter()
+        .map(|bytes| {
+            fonts
+                .collection
+                .register_fonts(Blob::new(Arc::new(*bytes)), None)
+                .len()
+        })
+        .sum()
+}
 
 /// Données attachées à chaque suite de glyphes produite par la mise en page.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -36,11 +60,17 @@ impl Default for TextContext {
 }
 
 impl TextContext {
-    /// Crée les contextes et charge l'index des polices du système.
+    /// Crée les contextes, charge l'index des polices du système et
+    /// enregistre les polices embarquées (Inter, Space Grotesk, JetBrains Mono).
+    ///
+    /// ÉCART CONNU : ces polices sont aussi visibles des pages web, alors que
+    /// Chromium réserve ses polices d'interface à l'interface.
     #[must_use]
     pub fn new() -> Self {
+        let mut fonts = FontContext::new();
+        register_bundled_fonts(&mut fonts);
         Self {
-            fonts: FontContext::new(),
+            fonts,
             layouts: LayoutContext::new(),
         }
     }
@@ -96,6 +126,39 @@ pub fn css_font_family(families: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_fonts_register_and_are_selected() {
+        let mut fonts = FontContext::new();
+        assert_eq!(
+            register_bundled_fonts(&mut fonts),
+            3,
+            "une famille par fichier"
+        );
+
+        // Une police embarquée demandée par son nom est bien celle utilisée.
+        let mut cx = TextContext::new();
+        for family in ["Inter", "Space Grotesk", "JetBrains Mono"] {
+            let css = css_font_family(&[family.to_owned()]);
+            let style = parley::TextStyle {
+                font_family: parley::FontFamily::from(css.as_str()),
+                font_size: 16.0,
+                font_weight: parley::FontWeight::new(600.0),
+                ..parley::TextStyle::<TextBrush>::default()
+            };
+            let mut builder = cx.layouts.tree_builder(&mut cx.fonts, 1.0, true, &style);
+            builder.push_text("Oxyde");
+            let (mut layout, _) = builder.build();
+            layout.break_all_lines(None);
+            let line = layout.lines().next().expect("une ligne");
+            let run = line.runs().next().expect("une suite de glyphes");
+            let used = run.font().data.as_ref();
+            assert!(
+                BUNDLED_FONTS.contains(&used),
+                "{family} doit venir des polices embarquées"
+            );
+        }
+    }
 
     #[test]
     fn font_family_serialization() {

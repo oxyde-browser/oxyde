@@ -81,6 +81,66 @@ pub enum NetError {
     Init(String),
 }
 
+/// Code d'erreur de certificat correspondant à une erreur rustls, s'il y en a un.
+fn certificate_code(error: &std::io::Error) -> Option<&'static str> {
+    let rustls::Error::InvalidCertificate(reason) =
+        error.get_ref()?.downcast_ref::<rustls::Error>()?
+    else {
+        return None;
+    };
+    // `CertificateError` est non exhaustif et ses variantes « avec contexte »
+    // changent d'une version à l'autre : on classe d'après le nom de la variante.
+    let name = format!("{reason:?}");
+    Some(
+        if name.starts_with("Expired") || name.starts_with("NotValidYet") {
+            "NET::ERR_CERT_DATE_INVALID"
+        } else if name.starts_with("NotValidForName") {
+            "NET::ERR_CERT_COMMON_NAME_INVALID"
+        } else if name.starts_with("UnknownIssuer") {
+            "NET::ERR_CERT_AUTHORITY_INVALID"
+        } else if name.starts_with("Revoked") {
+            "NET::ERR_CERT_REVOKED"
+        } else {
+            "NET::ERR_CERT_INVALID"
+        },
+    )
+}
+
+impl NetError {
+    /// Code d'erreur au format de Chromium (`ERR_CONNECTION_REFUSED`, …),
+    /// affiché au bas des pages d'erreur.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedScheme(_) => "ERR_UNKNOWN_URL_SCHEME",
+            Self::MissingHost(_) | Self::InvalidRequest(_) => "ERR_INVALID_URL",
+            Self::Connect { source, .. } => match (source.raw_os_error(), source.kind()) {
+                // Codes Winsock : hôte introuvable.
+                (Some(11001 | 11002 | 11004), _) => "ERR_NAME_NOT_RESOLVED",
+                // Codes Winsock : réseau arrêté ou inaccessible.
+                (Some(10050 | 10051 | 10065), _) => "ERR_INTERNET_DISCONNECTED",
+                (_, std::io::ErrorKind::ConnectionRefused) => "ERR_CONNECTION_REFUSED",
+                (_, std::io::ErrorKind::TimedOut) => "ERR_CONNECTION_TIMED_OUT",
+                _ => "ERR_CONNECTION_FAILED",
+            },
+            Self::Tls { source, .. } => {
+                certificate_code(source).unwrap_or("ERR_SSL_PROTOCOL_ERROR")
+            }
+            Self::Http(_) => "ERR_INVALID_HTTP_RESPONSE",
+            Self::TooManyRedirects => "ERR_TOO_MANY_REDIRECTS",
+            Self::Timeout => "ERR_TIMED_OUT",
+            Self::BodyTooLarge => "ERR_RESPONSE_TOO_LARGE",
+            Self::Init(_) => "ERR_FAILED",
+        }
+    }
+
+    /// Vrai si l'erreur vient d'un certificat de serveur refusé.
+    #[must_use]
+    pub fn is_certificate_error(&self) -> bool {
+        matches!(self, Self::Tls { source, .. } if certificate_code(source).is_some())
+    }
+}
+
 /// Réponse HTTP complète.
 #[derive(Debug, Clone)]
 pub struct Response {

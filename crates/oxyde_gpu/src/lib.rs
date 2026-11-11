@@ -430,6 +430,15 @@ pub fn append_display_list(scene: &mut Scene, list: &DisplayList, transform: Aff
                 scene.push_clip_layer(Fill::NonZero, transform, &shape_of(*rect, *radius));
                 clip_depth += 1;
             }
+            DisplayItem::Image { rect, image } => {
+                let (w, h) = (f64::from(image.width()), f64::from(image.height()));
+                if w > 0.0 && h > 0.0 {
+                    let local = transform
+                        * Affine::translate((f64::from(rect.x), f64::from(rect.y)))
+                        * Affine::scale_non_uniform(f64::from(rect.w) / w, f64::from(rect.h) / h);
+                    scene.draw_image(image.data(), local);
+                }
+            }
             DisplayItem::PopClip => {
                 // Une liste mal formée ne doit pas dépiler un calque qu'elle n'a pas ouvert.
                 if clip_depth > 0 {

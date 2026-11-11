@@ -5,6 +5,8 @@ avec du code Rust et des bibliothèques Rust uniquement. Cible actuelle : Window
 
 Maquette de référence : « Oxyde — navigateur Rust » (Claude Design).
 
+![Fenêtre principale en vue scindée](docs/fenetre-principale.png)
+
 ## Lancer
 
 ```bash
@@ -12,7 +14,7 @@ cargo run -p oxyde -- https://example.com
 ```
 
 ```bash
-cargo run -p oxyde -- tests/pages/demo.html --split https://example.com
+cargo run -p oxyde -- tests/pages/demo.html --split https://example.com --pin https://docs.rs
 ```
 
 Rendu hors écran (capture de la fenêtre, ou de la page seule avec `--page-only`) :
@@ -27,8 +29,21 @@ Arbre DOM au format des tests html5lib :
 cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 ```
 
-Raccourcis : Ctrl L (adresse), Ctrl T (nouvel onglet), Ctrl W (fermer), Ctrl R / F5 (actualiser),
-Ctrl Tab (onglet suivant), Alt ← / Alt → (historique).
+### Raccourcis
+
+| Raccourci | Action |
+|---|---|
+| Ctrl L, Ctrl K | saisir une adresse ou une recherche |
+| Ctrl V, Ctrl A | coller, tout sélectionner (pendant la saisie) |
+| Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
+| Ctrl Maj T | rouvrir le dernier onglet fermé |
+| Ctrl Maj P | épingler ou désépingler l'onglet |
+| Ctrl Tab | onglet suivant |
+| Ctrl R, F5 | actualiser |
+| Alt ← / Alt → | page précédente / suivante |
+
+Une saisie qui n'est pas une adresse lance une recherche sur DuckDuckGo (version HTML, qui
+fonctionne sans JavaScript). Le choix du moteur sera un réglage de l'écran Paramètres.
 
 ## Architecture
 
@@ -43,16 +58,16 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 
 | Crate | Rôle | Équivalent Chromium | État |
 |---|---|---|---|
-| `oxyde` | exécutable : fenêtre, onglets, chargements | `chrome/` | fonctionne, mono-processus |
-| `oxyde_ui` | interface dessinée d'après la maquette | Views | écran « Fenêtre principale » |
-| `oxyde_content` | page : du HTML à la liste d'affichage | `content/renderer` | fonctionne |
+| `oxyde` | exécutable : fenêtre, onglets, espaces, chargements, accessibilité | `chrome/` | fonctionne, mono-processus |
+| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur |
+| `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images | `content/renderer` | fonctionne |
 | `oxyde_net` | HTTP/1.1, HTTP/2, TLS | `//net`, BoringSSL | GET, redirections ; voir limites |
 | `oxyde_html` | tokenizer + construction d'arbre WHATWG | analyseur HTML de Blink | l'essentiel du standard |
 | `oxyde_dom` | arbre de nœuds en arène | DOM de Blink | lecture seule (pas de script) |
 | `oxyde_css` | syntaxe, sélecteurs, cascade | moteur de style de Blink | ~40 propriétés |
-| `oxyde_layout` | blocs, flux en ligne, fragments | LayoutNG | bloc + en ligne ; voir limites |
+| `oxyde_layout` | blocs, flux en ligne, éléments remplacés, fragments | LayoutNG | bloc + en ligne ; voir limites |
 | `oxyde_text` | polices, mise en forme, coupure de lignes | HarfBuzz, ICU | via Parley / HarfRust / ICU4X |
-| `oxyde_paint` | liste d'affichage | paint de Blink | rectangles, bordures, texte |
+| `oxyde_paint` | liste d'affichage | paint de Blink | rectangles, bordures, texte, images |
 | `oxyde_gpu` | rastérisation | Skia, Dawn | Vello sur wgpu |
 | `oxyde_js` | moteur JavaScript | V8 | **réservé — jalon 4** |
 | `oxyde_bindings` | liaisons Web IDL | bindings de Blink | **réservé — jalon 4** |
@@ -69,6 +84,8 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   retenue pour rester en Rust pur. À réévaluer avant toute diffusion.
 - **Pas de JavaScript** : les pages qui construisent leur contenu par script s'affichent vides
   ou partiellement.
+- **Rien n'est conservé d'une session à l'autre** : onglets épinglés, espaces et onglets fermés
+  sont perdus à la fermeture (persistance prévue au jalon 7).
 
 Les écarts connus par rapport aux standards sont listés dans [conformance/README.md](conformance/README.md)
 et en tête de chaque crate (« LIMITES CONNUES »).
@@ -76,8 +93,16 @@ et en tête de chaque crate (« LIMITES CONNUES »).
 ## Règle « 100 % Rust »
 
 Aucune dépendance C ou C++ compilée. Seules exceptions : les API du système appelées via
-`windows-rs` / `windows-sys` (Direct3D 12, fenêtres, sockets). `unsafe` est interdit dans tous les
-crates du workspace (`unsafe_code = "forbid"`).
+`windows-rs` / `windows-sys` (Direct3D 12, fenêtres, sockets, presse-papiers, UI Automation).
+`unsafe` est interdit dans tous les crates du workspace (`unsafe_code = "forbid"`).
+`cargo deny check` fait respecter cette règle ([deny.toml](deny.toml)) pour la cible Windows.
+Sur Android et Linux, `winit` amène du code C : à traiter avec les portages du jalon 10.
+
+## Polices
+
+Inter, Space Grotesk et JetBrains Mono sont embarquées dans l'exécutable depuis `assets/fonts/`.
+Elles proviennent du dépôt `google/fonts` et sont distribuées sous licence SIL Open Font License 1.1
+(texte dans chaque dossier, `OFL.txt`).
 
 ## Vérifications
 
@@ -93,12 +118,17 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+```bash
+cargo deny check
+```
+
 ## Jalons
 
-1. Socle — fait
-2. Premier pixel — fait, sauf les images
-3. Interface de la maquette — fenêtre principale faite ; nouvel onglet, pages d'erreur et
-   accessibilité (AccessKit) à compléter
+1. **Socle** — fait.
+2. **Premier pixel** — fait : HTML, CSS, blocs et texte, défilement, images PNG / JPEG / WebP / GIF.
+3. **Interface de la maquette** — fait : fenêtre principale (barre de titre, onglets, onglets
+   épinglés, espaces, barre d'adresse, vue scindée), page Nouvel onglet, pages d'erreur,
+   accessibilité du pourtour via AccessKit, polices de la maquette embarquées.
 4. JavaScript (`oxyde_js`, Web IDL, DOM scriptable)
 5. Multi-processus et bac à sable
 6. Mise en page complète (flex, grille, tableaux, flottants, positionnement) et compositeur

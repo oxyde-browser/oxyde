@@ -11,7 +11,8 @@ use crate::browser::Browser;
 const PANE_RADIUS: f32 = 12.0;
 
 /// Dessine la fenêtre entière dans `scene` et renvoie l'interface construite
-/// (zones cliquables et volets) pour le traitement des événements.
+/// (zones cliquables, volets, éléments accessibles) pour le traitement des
+/// événements.
 ///
 /// `width` et `height` sont en pixels logiques ; `scale` convertit vers les
 /// pixels physiques.
@@ -24,7 +25,7 @@ pub(crate) fn compose(
     scale: f64,
 ) -> Chrome {
     let chrome = {
-        let views = browser.tab_views();
+        let views = browser.views();
         let state = browser.chrome_state(&views, width, height);
         build_chrome(&state, text)
     };
@@ -32,6 +33,8 @@ pub(crate) fn compose(
     scene.reset();
     append_display_list(scene, &chrome.list, to_device);
 
+    // Seuls les volets de pages web sont listés : les pages internes (nouvel
+    // onglet, erreurs) font déjà partie de la liste de l'interface.
     for pane in &chrome.panes {
         let Some(tab) = browser.tab_mut(pane.tab) else {
             continue;

@@ -11,7 +11,8 @@
 pub use kurbo::BezPath;
 pub use oxyde_layout::Rect;
 
-use oxyde_css::{Color, Side, Viewport};
+use oxyde_css::{Color, Side, Size, Viewport};
+use oxyde_dom::NodeId;
 use oxyde_layout::{BoxFragment, Fragment, LayoutTree, TextFragment};
 use oxyde_text::TextLayout;
 use oxyde_text::parley::{FontData, PositionedLayoutItem};
@@ -91,7 +92,63 @@ pub enum DisplayItem {
     },
     /// Fin de la zone de découpe la plus récente.
     PopClip,
+    /// Image matricielle étirée dans `rect`.
+    Image {
+        /// Zone de destination.
+        rect: Rect,
+        /// Pixels.
+        image: Image,
+    },
 }
+
+/// Image décodée, prête pour le rendu.
+///
+/// INVARIANT : `data` contient exactement `width × height × 4` octets RGBA
+/// (alpha non prémultiplié) ; garanti par [`Image::from_rgba`], seul constructeur.
+#[derive(Clone, Debug)]
+pub struct Image(peniko::ImageData);
+
+impl Image {
+    /// Construit une image à partir de pixels RGBA8. `None` si la taille est
+    /// nulle ou si `rgba` n'a pas la longueur attendue.
+    #[must_use]
+    pub fn from_rgba(width: u32, height: u32, rgba: Vec<u8>) -> Option<Self> {
+        let expected = (width as usize)
+            .checked_mul(height as usize)?
+            .checked_mul(4)?;
+        if expected == 0 || rgba.len() != expected {
+            return None;
+        }
+        Some(Self(peniko::ImageData {
+            data: peniko::Blob::new(std::sync::Arc::new(rgba)),
+            format: peniko::ImageFormat::Rgba8,
+            alpha_type: peniko::ImageAlphaType::Alpha,
+            width,
+            height,
+        }))
+    }
+
+    /// Largeur en pixels.
+    #[must_use]
+    pub fn width(&self) -> u32 {
+        self.0.width
+    }
+
+    /// Hauteur en pixels.
+    #[must_use]
+    pub fn height(&self) -> u32 {
+        self.0.height
+    }
+
+    /// Données au format attendu par le moteur de rendu.
+    #[must_use]
+    pub fn data(&self) -> &peniko::ImageData {
+        &self.0
+    }
+}
+
+/// Image associée à un élément remplacé (`<img>`), si elle est chargée.
+pub type ImageSource<'a> = &'a dyn Fn(NodeId) -> Option<Image>;
 
 /// Liste d'affichage : primitives dans l'ordre de peinture.
 #[derive(Clone, Debug, Default)]
@@ -214,7 +271,7 @@ pub fn canvas_color(tree: &LayoutTree) -> Color {
 /// Peint la page. Les coordonnées de la liste sont celles de la page (le
 /// défilement est appliqué au rendu).
 #[must_use]
-pub fn paint(tree: &LayoutTree, viewport: Viewport) -> DisplayList {
+pub fn paint(tree: &LayoutTree, viewport: Viewport, images: ImageSource<'_>) -> DisplayList {
     let mut list = DisplayList::default();
     list.rect(
         Rect {
@@ -227,19 +284,19 @@ pub fn paint(tree: &LayoutTree, viewport: Viewport) -> DisplayList {
         0.0,
     );
     if let Some(root) = &tree.root {
-        paint_fragment(&mut list, root);
+        paint_fragment(&mut list, root, images);
     }
     list
 }
 
-fn paint_fragment(list: &mut DisplayList, fragment: &Fragment) {
+fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSource<'_>) {
     match fragment {
-        Fragment::Box(b) => paint_box(list, b),
-        Fragment::Text(t) => paint_text(list, t),
+        Fragment::Box(b) => paint_box(list, b, images),
+        Fragment::Text(t) => paint_text(list, t, images),
     }
 }
 
-fn paint_box(list: &mut DisplayList, b: &BoxFragment) {
+fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
     let r = b.border_box;
     let style = &b.style;
     list.rect(r, style.background_color, style.border_radius);
@@ -302,15 +359,46 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment) {
             0.0,
         );
     }
+    if let Some(image) = b.node.and_then(images) {
+        // Boîte de contenu : bordures et marges internes en pixels retirées.
+        let pad = |s: Size| match s {
+            Size::Px(v) => v,
+            _ => 0.0,
+        };
+        let (left, top) = (
+            bw.left + pad(style.padding.left),
+            bw.top + pad(style.padding.top),
+        );
+        let rect = Rect {
+            x: r.x + left,
+            y: r.y + top,
+            w: (r.w - left - bw.right - pad(style.padding.right)).max(0.0),
+            h: (r.h - top - bw.bottom - pad(style.padding.bottom)).max(0.0),
+        };
+        if rect.w > 0.0 && rect.h > 0.0 {
+            // `border-radius` découpe aussi le contenu d'un élément remplacé.
+            let rounded = style.border_radius > 0.0;
+            if rounded {
+                list.items.push(DisplayItem::PushClip {
+                    rect: r,
+                    radius: style.border_radius,
+                });
+            }
+            list.items.push(DisplayItem::Image { rect, image });
+            if rounded {
+                list.items.push(DisplayItem::PopClip);
+            }
+        }
+    }
     for child in &b.children {
-        paint_fragment(list, child);
+        paint_fragment(list, child, images);
     }
 }
 
-fn paint_text(list: &mut DisplayList, t: &TextFragment) {
+fn paint_text(list: &mut DisplayList, t: &TextFragment, images: ImageSource<'_>) {
     list.text(&t.layout, t.x, t.y);
     for child in &t.boxes {
-        paint_fragment(list, child);
+        paint_fragment(list, child, images);
     }
 }
 
@@ -328,7 +416,7 @@ mod tests {
         let styles = oxyde_css::compute_styles(&doc, &sheets, viewport);
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
-        paint(&tree, viewport)
+        paint(&tree, viewport, &|_| None)
     }
 
     #[test]

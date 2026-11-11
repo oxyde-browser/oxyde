@@ -58,3 +58,35 @@ pub const FAVICONS: [Color; 4] = [
     Color::rgb(0x2B, 0x4E, 0x86),
     Color::rgb(0x5B, 0x3F, 0x78),
 ];
+
+/// Troisième couleur d'espace.
+pub const BLUE: Color = Color::rgb(0x8F, 0xB4, 0xF2);
+/// Couleurs des initiales des onglets épinglés.
+pub const PINNED_LETTERS: [Color; 4] = [BLUE, AMBER, ACCENT, Color::rgb(0xD9, 0xA0, 0xE8)];
+/// Fond d'une page interne (nouvel onglet, erreur).
+pub const PANEL: Color = Color::rgb(0x12, 0x16, 0x1C);
+/// Bordure d'une page interne.
+pub const PANEL_BORDER: Color = Color::rgb(0x22, 0x28, 0x31);
+/// Anneau de focus du champ de recherche (accent à 18 %).
+pub const FOCUS_RING: Color = Color {
+    r: 0x4C,
+    g: 0xC9,
+    b: 0xA8,
+    a: 46,
+};
+/// Texte posé sur la couleur d'accent.
+pub const ON_ACCENT: Color = Color::rgb(0x06, 0x23, 0x1C);
+/// Fond de la page d'erreur de certificat.
+pub const DANGER_PANEL: Color = Color::rgb(0x1A, 0x12, 0x13);
+/// Bordure de la page d'erreur de certificat.
+pub const DANGER_BORDER: Color = Color::rgb(0x4A, 0x2A, 0x2A);
+/// Rouge clair : icône et bouton principal de l'erreur de certificat.
+pub const DANGER_SOFT: Color = Color::rgb(0xF0, 0xA7, 0xA0);
+/// Texte posé sur le rouge clair.
+pub const DANGER_ON_SOFT: Color = Color::rgb(0x2A, 0x0F, 0x0D);
+/// Texte courant de l'erreur de certificat.
+pub const DANGER_TEXT: Color = Color::rgb(0xE0, 0xCF, 0xCD);
+/// Texte secondaire de l'erreur de certificat.
+pub const DANGER_MUTED: Color = Color::rgb(0xC9, 0xA9, 0xA6);
+/// Bouton secondaire de l'erreur de certificat.
+pub const DANGER_BUTTON: Color = Color::rgb(0x2E, 0x1D, 0x1E);

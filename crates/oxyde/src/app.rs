@@ -1,11 +1,11 @@
 //! Fenêtre du navigateur : boucle d'événements winit, clavier, souris,
-//! chargements en arrière-plan.
+//! chargements en arrière-plan, accessibilité.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use oxyde_content::{Page, Url};
+use oxyde_content::Url;
 use oxyde_gpu::{Gpu, GpuScene, Surface};
 use oxyde_text::TextContext;
 use oxyde_ui::{Chrome, Hit, theme};
@@ -17,7 +17,8 @@ use winit::keyboard::{Key, ModifiersState, NamedKey};
 use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use crate::browser::{Browser, Command, KeyPress};
-use crate::{frame, loader};
+use crate::loader::{self, Loaded};
+use crate::{a11y, frame};
 
 /// Pixels CSS défilés par cran de molette.
 const WHEEL_STEP: f32 = 100.0;
@@ -25,15 +26,25 @@ const WHEEL_STEP: f32 = 100.0;
 const RESIZE_BORDER: f32 = 5.0;
 /// Intervalle maximal entre deux clics d'un double-clic.
 const DOUBLE_CLICK: Duration = Duration::from_millis(400);
+/// Longueur maximale d'un texte collé dans la barre d'adresse.
+const MAX_PASTE_CHARS: usize = 8192;
 
-/// Événement envoyé par un fil de chargement.
+/// Événement reçu hors de la fenêtre : fin de chargement ou demande d'une
+/// technologie d'assistance.
 #[derive(Debug)]
 pub(crate) enum UserEvent {
     Loaded {
         tab: u64,
-        page: Box<Page>,
+        loaded: Box<Loaded>,
         push_history: bool,
     },
+    Accessibility(accesskit_winit::Event),
+}
+
+impl From<accesskit_winit::Event> for UserEvent {
+    fn from(event: accesskit_winit::Event) -> Self {
+        Self::Accessibility(event)
+    }
 }
 
 struct App {
@@ -43,6 +54,7 @@ struct App {
     proxy: EventLoopProxy<UserEvent>,
     window: Option<Arc<Window>>,
     surface: Option<Surface>,
+    accessibility: Option<accesskit_winit::Adapter>,
     scene: GpuScene,
     /// Interface de la dernière image, pour le test de clic.
     chrome: Chrome,
@@ -54,6 +66,14 @@ struct App {
     last_title_click: Option<Instant>,
     /// Première erreur fatale rencontrée dans la boucle d'événements.
     error: Option<anyhow::Error>,
+}
+
+/// Texte du presse-papiers, borné ; `None` s'il est vide ou inaccessible.
+fn clipboard_text() -> Option<String> {
+    let text = arboard::Clipboard::new()
+        .and_then(|mut c| c.get_text())
+        .ok()?;
+    Some(text.chars().take(MAX_PASTE_CHARS).collect())
 }
 
 impl App {
@@ -120,6 +140,13 @@ impl App {
                     }
                 }
                 Command::CloseWindow => event_loop.exit(),
+                Command::NetworkDiagnostics => {
+                    // Ouvre le dépannage réseau des Paramètres de Windows. Un
+                    // échec de lancement est sans conséquence pour le navigateur.
+                    let _ = std::process::Command::new("explorer.exe")
+                        .arg("ms-settings:network-troubleshoot")
+                        .spawn();
+                }
             }
         }
         if let Some(window) = &self.window {
@@ -131,26 +158,29 @@ impl App {
     /// Charge `url` sur un fil dédié : l'interface reste réactive.
     fn spawn_load(&self, tab: u64, url: Url, push_history: bool) {
         let proxy = self.proxy.clone();
+        let failed_url = url.clone();
         let spawned = std::thread::Builder::new()
             .name("oxyde-chargement".to_owned())
             .spawn(move || {
-                let page = Box::new(loader::load_page(url));
+                let loaded = Box::new(loader::load(url));
                 // La boucle d'événements peut s'être arrêtée entre-temps : rien à faire alors.
                 let _ = proxy.send_event(UserEvent::Loaded {
                     tab,
-                    page,
+                    loaded,
                     push_history,
                 });
             });
         if let Err(e) = spawned {
             // Sans fil disponible, on signale l'échec dans l'onglet plutôt que de bloquer.
-            let error = loader::LoadError {
-                title: "Chargement impossible",
-                detail: e.to_string(),
-            };
+            let error =
+                loader::LoadError::other("Chargement impossible", e.to_string(), "ERR_FAILED");
+            let loaded = Box::new(Loaded {
+                page: oxyde_content::Page::from_html(failed_url, ""),
+                error: Some(error),
+            });
             let _ = self.proxy.send_event(UserEvent::Loaded {
                 tab,
-                page: Box::new(loader::error_page_for(&error)),
+                loaded,
                 push_history: false,
             });
         }
@@ -174,7 +204,26 @@ impl App {
             scale,
         );
         self.gpu.render(surface, &self.scene, theme::WINDOW)?;
+        // La liste a pu raccourcir (onglet fermé, fenêtre agrandie) : le défilement suit.
+        self.browser.tab_scroll = self
+            .browser
+            .tab_scroll
+            .clamp(0.0, self.chrome.tab_scroll_max);
+        self.update_accessibility();
         Ok(())
+    }
+
+    /// Publie l'arbre d'accessibilité si une technologie d'assistance écoute.
+    fn update_accessibility(&mut self) {
+        let (Some(adapter), Some(window)) = (self.accessibility.as_mut(), self.window.as_ref())
+        else {
+            return;
+        };
+        let (chrome, browser) = (&self.chrome, &self.browser);
+        let scale = window.scale_factor();
+        adapter.update_if_active(|| {
+            a11y::tree_update(chrome, scale, &browser.window_title(), browser.is_editing())
+        });
     }
 
     fn update_hover(&mut self) {
@@ -196,7 +245,7 @@ impl App {
                         CursorIcon::Default
                     }
                 }
-                Some(Hit::Address) if self.browser.is_editing() => CursorIcon::Text,
+                Some(Hit::Address) => CursorIcon::Text,
                 _ => CursorIcon::Default,
             }
         };
@@ -257,6 +306,7 @@ impl App {
     fn key_pressed(&mut self, event_loop: &ActiveEventLoop, key: &Key, text: Option<&str>) {
         let ctrl = self.modifiers.control_key();
         let alt = self.modifiers.alt_key();
+        let shift = self.modifiers.shift_key();
         let press = match key {
             Key::Named(NamedKey::Enter) => Some(KeyPress::Enter),
             Key::Named(NamedKey::Escape) => Some(KeyPress::Escape),
@@ -265,10 +315,26 @@ impl App {
             Key::Named(NamedKey::Tab) if ctrl => Some(KeyPress::CtrlTab),
             Key::Named(NamedKey::ArrowLeft) if alt => Some(KeyPress::AltLeft),
             Key::Named(NamedKey::ArrowRight) if alt => Some(KeyPress::AltRight),
-            Key::Character(c) if ctrl && !alt => c
-                .chars()
-                .next()
-                .map(|ch| KeyPress::Ctrl(ch.to_ascii_lowercase())),
+            Key::Named(NamedKey::ArrowLeft) => Some(KeyPress::Left),
+            Key::Named(NamedKey::ArrowRight) => Some(KeyPress::Right),
+            Key::Named(NamedKey::Home) => Some(KeyPress::Home),
+            Key::Named(NamedKey::End) => Some(KeyPress::End),
+            Key::Named(NamedKey::Delete) => Some(KeyPress::Delete),
+            Key::Character(c) if ctrl && !alt => {
+                match c.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+                    // Le presse-papiers n'est lu que pendant une saisie d'adresse.
+                    Some('v') if !shift => {
+                        if self.browser.is_editing() {
+                            clipboard_text().map(KeyPress::Paste)
+                        } else {
+                            None
+                        }
+                    }
+                    Some(ch) if shift => Some(KeyPress::CtrlShift(ch)),
+                    Some(ch) => Some(KeyPress::Ctrl(ch)),
+                    None => None,
+                }
+            }
             _ => text
                 .filter(|t| !ctrl && !t.is_empty())
                 .map(|t| KeyPress::Text(t.to_owned())),
@@ -290,16 +356,25 @@ impl ApplicationHandler<UserEvent> for App {
         if self.window.is_some() {
             return;
         }
-        // Barre de titre dessinée par Oxyde (maquette) : pas de décorations du système.
+        // Barre de titre dessinée par Oxyde (maquette) : pas de décorations du
+        // système. La fenêtre naît masquée : AccessKit doit s'y attacher avant
+        // son premier affichage.
         let attributes = Window::default_attributes()
             .with_title(self.browser.window_title())
             .with_decorations(false)
+            .with_visible(false)
             .with_min_inner_size(LogicalSize::new(640.0, 400.0))
             .with_inner_size(LogicalSize::new(1440.0, 900.0));
         let window = match event_loop.create_window(attributes) {
             Ok(window) => Arc::new(window),
             Err(e) => return self.fail(event_loop, e.into()),
         };
+        self.accessibility = Some(accesskit_winit::Adapter::with_event_loop_proxy(
+            event_loop,
+            &window,
+            self.proxy.clone(),
+        ));
+        window.set_visible(true);
         let size = window.inner_size();
         match self
             .gpu
@@ -315,16 +390,33 @@ impl ApplicationHandler<UserEvent> for App {
         match event {
             UserEvent::Loaded {
                 tab,
-                page,
+                loaded,
                 push_history,
             } => {
-                self.browser.finish_load(tab, *page, push_history);
+                self.browser.finish_load(tab, *loaded, push_history);
                 self.execute(event_loop, Vec::new());
             }
+            UserEvent::Accessibility(event) => match event.window_event {
+                accesskit_winit::WindowEvent::InitialTreeRequested => self.update_accessibility(),
+                accesskit_winit::WindowEvent::ActionRequested(request) => {
+                    if matches!(
+                        request.action,
+                        accesskit::Action::Click | accesskit::Action::Focus
+                    ) && let Some(hit) = a11y::hit_for(&self.chrome, request.target_node)
+                    {
+                        let commands = self.browser.click(hit, None);
+                        self.execute(event_loop, commands);
+                    }
+                }
+                accesskit_winit::WindowEvent::AccessibilityDeactivated => {}
+            },
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let (Some(adapter), Some(window)) = (self.accessibility.as_mut(), self.window.as_ref()) {
+            adapter.process_event(window, &event);
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
@@ -358,6 +450,16 @@ impl ApplicationHandler<UserEvent> for App {
                 let Some((x, y)) = self.cursor_logical() else {
                     return;
                 };
+                // Au-dessus de la barre latérale, la molette fait défiler la liste d'onglets.
+                if x < theme::SIDEBAR + 8.0 && y > theme::TITLE_BAR {
+                    let max = self.chrome.tab_scroll_max;
+                    let target = (self.browser.tab_scroll - dy).clamp(0.0, max);
+                    if (target - self.browser.tab_scroll).abs() > f32::EPSILON {
+                        self.browser.tab_scroll = target;
+                        self.request_redraw();
+                    }
+                    return;
+                }
                 if let Some(Hit::Pane(tab)) = self.chrome.hit(x, y)
                     && let Some(pane) = self.chrome.panes.iter().find(|p| p.tab == tab)
                     && self.browser.scroll_by(tab, -dy, pane.rect.h)
@@ -397,6 +499,7 @@ pub(crate) fn run(browser: Browser) -> Result<()> {
         proxy: event_loop.create_proxy(),
         window: None,
         surface: None,
+        accessibility: None,
         scene: GpuScene::new(),
         chrome: Chrome::default(),
         cursor: PhysicalPosition::new(0.0, 0.0),

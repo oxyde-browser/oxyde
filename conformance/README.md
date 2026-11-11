@@ -42,7 +42,8 @@ actuels sont les tests unitaires de chaque crate (`cargo test --workspace`).
 - Hauteurs en pourcentage traitées comme `auto`.
 
 ### Peinture et rendu
-- Pas d'images, de dégradés, d'ombres ni de `z-index`.
+- Images : `<img src>` seulement (pas de `srcset`, `<picture>`, `object-fit` ni d'images CSS) ; images animées réduites à leur première image.
+- Pas de dégradés, d'ombres ni de `z-index`.
 - Bordures pointillées et tiretées peintes pleines.
 
 ### Réseau (`oxyde_net`)
@@ -52,4 +53,8 @@ actuels sont les tests unitaires de chaque crate (`cargo test --workspace`).
 ### Navigateur
 - Un seul processus, pas de bac à sable.
 - Pas de JavaScript.
-- Pas de collage depuis le presse-papiers dans la barre d'adresse.
+- Barre d'adresse : pas de sélection partielle ni de placement du curseur à la souris.
+- Onglets épinglés, espaces et onglets fermés ne sont pas conservés entre deux sessions.
+- Les polices embarquées pour l'interface (Inter, Space Grotesk, JetBrains Mono) sont aussi visibles des pages web ; Chromium réserve les siennes à l'interface.
+- Accessibilité : seul le pourtour est exposé ; une page web apparaît comme un document sans arbre détaillé.
+- Le bouton Paramètres est inactif (écran prévu au jalon 7).
