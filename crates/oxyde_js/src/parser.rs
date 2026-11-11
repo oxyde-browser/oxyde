@@ -1,7 +1,6 @@
 //! Analyse syntaxique d'ECMAScript : descente récursive et priorités d'opérateurs.
 //!
-//! LIMITES CONNUES : pas de générateurs async ni de `for await`, pas de modules
-//! (`import` / `export`), de gabarits étiquetés ni de `with`. Les noms privés
+//! LIMITES CONNUES : pas d'`import()` dynamique, de gabarits étiquetés ni de `with`. Les noms privés
 //! (`#x`) sont traités comme des propriétés ordinaires nommées `#x`. Le mode
 //! strict n'est pas distingué du mode normal.
 
@@ -12,6 +11,7 @@ use crate::ast::{
     LogicalOp, Param, Pattern, PropKey, PropKind, Property, Stmt, UnaryOp, VarKind,
 };
 use crate::lexer::{Lexer, SyntaxError, Tok, Token};
+use crate::module::{Import, ModuleInfo};
 
 /// Profondeur maximale d'imbrication syntaxique. Borne la récursion de
 /// l'analyseur et du compilateur ; voir [`crate::with_large_stack`].
@@ -68,7 +68,13 @@ struct Parser {
     in_async: bool,
     /// Vrai dans le corps d'un générateur : `yield` y est un opérateur.
     in_generator: bool,
+    /// Vrai pendant l'analyse d'un module : `import.meta` y est permis.
+    module: bool,
 }
+
+/// Nom de la liaison locale qui porte la valeur de `export default <expression>`.
+/// Ce n'est pas un identifiant : aucun script ne peut la désigner.
+pub(crate) const DEFAULT_EXPORT: &str = "*default*";
 
 /// Analyse un script complet.
 pub(crate) fn parse_program(source: &str) -> PResult<Vec<Stmt>> {
@@ -81,12 +87,36 @@ pub(crate) fn parse_program(source: &str) -> PResult<Vec<Stmt>> {
         no_in: false,
         in_async: false,
         in_generator: false,
+        module: false,
     };
     let mut body = Vec::new();
     while parser.tok.tok != Tok::Eof {
         body.push(parser.statement()?);
     }
     Ok(body)
+}
+
+/// Analyse un module : ses instructions (les déclarations `import` et
+/// `export` sont ramenées à des déclarations ordinaires) et ce qu'il importe
+/// et exporte.
+pub(crate) fn parse_module(source: &str) -> PResult<(Vec<Stmt>, ModuleInfo)> {
+    let mut lexer = Lexer::new(source);
+    let tok = lexer.next()?;
+    let mut parser = Parser {
+        lexer,
+        tok,
+        depth: 0,
+        no_in: false,
+        in_async: false,
+        in_generator: false,
+        module: true,
+    };
+    let mut body = Vec::new();
+    let mut info = ModuleInfo::default();
+    while parser.tok.tok != Tok::Eof {
+        parser.module_item(&mut body, &mut info)?;
+    }
+    Ok((body, info))
 }
 
 fn binary_op(p: &str) -> Option<(u8, BinaryOp)> {
@@ -138,6 +168,235 @@ fn assign_op(p: &str) -> Option<AssignOp> {
 }
 
 impl Parser {
+    // ---- Modules ---------------------------------------------------------
+
+    fn module_item(&mut self, body: &mut Vec<Stmt>, info: &mut ModuleInfo) -> PResult<()> {
+        if self.is_kw("import") && !matches!(self.peek()?.tok, Tok::Punct("(" | ".")) {
+            return self.import_declaration(info);
+        }
+        if self.is_kw("export") {
+            return self.export_declaration(body, info);
+        }
+        body.push(self.statement()?);
+        Ok(())
+    }
+
+    /// Spécificateur de module (`"./chemin.js"`), enregistré dans `info`.
+    fn module_request(&mut self, info: &mut ModuleInfo) -> PResult<usize> {
+        let Tok::Str(specifier) = &self.tok.tok else {
+            return self.error("nom de module attendu (chaîne)");
+        };
+        let request = info.request(specifier);
+        self.advance()?;
+        if self.is_kw("with") {
+            return self.unsupported("les attributs d'importation");
+        }
+        Ok(request)
+    }
+
+    fn from_clause(&mut self, info: &mut ModuleInfo) -> PResult<usize> {
+        if !self.eat_kw("from")? {
+            return self.error("« from » attendu");
+        }
+        self.module_request(info)
+    }
+
+    /// Nom d'export : identifiant quelconque (mot réservé compris) ou chaîne.
+    /// Le booléen dit si c'est un identifiant utilisable comme liaison.
+    fn export_name(&mut self) -> PResult<(Arc<str>, bool)> {
+        let name = match &self.tok.tok {
+            Tok::Ident(name) => (
+                Arc::<str>::from(name.as_str()),
+                !RESERVED.contains(&name.as_str()),
+            ),
+            Tok::Str(name) => (Arc::<str>::from(name.as_str()), false),
+            _ => return self.error("nom d'export attendu"),
+        };
+        self.advance()?;
+        Ok(name)
+    }
+
+    fn import_declaration(&mut self, info: &mut ModuleInfo) -> PResult<()> {
+        self.advance()?;
+        // `import "module";` : pour ses seuls effets.
+        if matches!(self.tok.tok, Tok::Str(_)) {
+            self.module_request(info)?;
+            return self.semicolon();
+        }
+        // (nom dans la source ; `None` : espace de noms, liaison locale).
+        let mut bindings: Vec<(Option<Arc<str>>, Arc<str>)> = Vec::new();
+        let mut more = true;
+        if matches!(self.tok.tok, Tok::Ident(_)) {
+            bindings.push((Some(Arc::from("default")), self.binding_ident()?));
+            more = self.eat_punct(",")?;
+        }
+        if more {
+            if self.eat_punct("*")? {
+                if !self.eat_kw("as")? {
+                    return self.error("« as » attendu");
+                }
+                bindings.push((None, self.binding_ident()?));
+            } else if self.eat_punct("{")? {
+                while !self.eat_punct("}")? {
+                    let (imported, is_binding) = self.export_name()?;
+                    let local = if self.eat_kw("as")? {
+                        self.binding_ident()?
+                    } else if is_binding {
+                        Arc::clone(&imported)
+                    } else {
+                        return self.error("« as » attendu");
+                    };
+                    bindings.push((Some(imported), local));
+                    if !self.is_punct("}") {
+                        self.expect_punct(",")?;
+                    }
+                }
+            } else {
+                return self.error("liaisons d'importation attendues");
+            }
+        }
+        let request = self.from_clause(info)?;
+        self.semicolon()?;
+        for (name, local) in bindings {
+            if info.imports.iter().any(|i| i.local == local) {
+                return self.error(format!("« {local} » est importé deux fois"));
+            }
+            info.imports.push(Import {
+                request,
+                name,
+                local,
+            });
+        }
+        Ok(())
+    }
+
+    fn add_export(
+        &self,
+        info: &mut ModuleInfo,
+        exported: Arc<str>,
+        local: Arc<str>,
+    ) -> PResult<()> {
+        if info.exports(&exported) {
+            return self.error(format!("« {exported} » est exporté deux fois"));
+        }
+        info.local_exports.push((exported, local));
+        Ok(())
+    }
+
+    fn export_declaration(&mut self, body: &mut Vec<Stmt>, info: &mut ModuleInfo) -> PResult<()> {
+        self.advance()?;
+        // `export * from "m"` et `export * as ns from "m"`.
+        if self.eat_punct("*")? {
+            let alias = if self.eat_kw("as")? {
+                Some(self.export_name()?.0)
+            } else {
+                None
+            };
+            let request = self.from_clause(info)?;
+            self.semicolon()?;
+            match alias {
+                Some(alias) => {
+                    if info.exports(&alias) {
+                        return self.error(format!("« {alias} » est exporté deux fois"));
+                    }
+                    info.indirect_exports.push((alias, request, None));
+                }
+                None => info.star_exports.push(request),
+            }
+            return Ok(());
+        }
+        // `export { a, b as c }`, avec ou sans `from "m"`.
+        if self.eat_punct("{")? {
+            let mut specifiers = Vec::new();
+            while !self.eat_punct("}")? {
+                let (local, is_binding) = self.export_name()?;
+                let exported = if self.eat_kw("as")? {
+                    self.export_name()?.0
+                } else {
+                    Arc::clone(&local)
+                };
+                specifiers.push((local, is_binding, exported));
+                if !self.is_punct("}") {
+                    self.expect_punct(",")?;
+                }
+            }
+            let request = if self.is_kw("from") {
+                Some(self.from_clause(info)?)
+            } else {
+                None
+            };
+            self.semicolon()?;
+            for (local, is_binding, exported) in specifiers {
+                match request {
+                    Some(request) => {
+                        if info.exports(&exported) {
+                            return self.error(format!("« {exported} » est exporté deux fois"));
+                        }
+                        info.indirect_exports.push((exported, request, Some(local)));
+                    }
+                    None if !is_binding => {
+                        return self
+                            .error(format!("« {local} » ne désigne pas une liaison locale"));
+                    }
+                    None => self.add_export(info, exported, local)?,
+                }
+            }
+            return Ok(());
+        }
+        // `export default …`
+        if self.eat_kw("default")? {
+            let declaration = self.is_kw("function")
+                || self.is_kw("class")
+                || (self.is_kw("async") && self.async_function_follows()?);
+            let value = self.assignment()?;
+            let local = match value {
+                // Fonction ou classe nommée : c'est une déclaration ordinaire.
+                Expr::Function(func) if declaration && func.name.is_some() => {
+                    let name = func.name.clone().unwrap_or_else(|| Arc::from(""));
+                    body.push(Stmt::Function(func));
+                    name
+                }
+                Expr::Class(class) if declaration && class.name.is_some() => {
+                    let name = class.name.clone().unwrap_or_else(|| Arc::from(""));
+                    body.push(Stmt::Class(class));
+                    name
+                }
+                value => {
+                    let local: Arc<str> = Arc::from(DEFAULT_EXPORT);
+                    body.push(Stmt::VarDecl(
+                        VarKind::Const,
+                        vec![(Pattern::Ident(Arc::clone(&local)), Some(value))],
+                    ));
+                    local
+                }
+            };
+            if declaration {
+                self.eat_punct(";")?;
+            } else {
+                self.semicolon()?;
+            }
+            return self.add_export(info, Arc::from("default"), local);
+        }
+        // `export` devant une déclaration.
+        let statement = self.statement()?;
+        let mut names = Vec::new();
+        match &statement {
+            Stmt::VarDecl(_, declarations) => {
+                for (pattern, _) in declarations {
+                    crate::compiler::pattern_names(pattern, &mut names);
+                }
+            }
+            Stmt::Function(func) => names.extend(func.name.clone()),
+            Stmt::Class(class) => names.extend(class.name.clone()),
+            _ => return self.error("déclaration attendue après « export »"),
+        }
+        body.push(statement);
+        for name in names {
+            self.add_export(info, Arc::clone(&name), name)?;
+        }
+        Ok(())
+    }
+
     // ---- Jetons ----------------------------------------------------------
 
     fn error<T>(&self, message: impl Into<String>) -> PResult<T> {
@@ -310,15 +569,13 @@ impl Parser {
             "async" if self.async_function_follows()? => {
                 self.advance()?;
                 self.advance()?;
-                if self.is_punct("*") {
-                    return self.unsupported("les générateurs async");
-                }
+                let is_generator = self.eat_punct("*")?;
                 let name = self.binding_ident()?;
                 Ok(Stmt::Function(Arc::new(self.function_with(
                     Some(name),
                     false,
                     true,
-                    false,
+                    is_generator,
                 )?)))
             }
             "class" => {
@@ -453,8 +710,12 @@ impl Parser {
 
     fn for_statement(&mut self) -> PResult<Stmt> {
         self.advance()?;
-        if self.is_kw("await") {
-            return self.unsupported("for await");
+        let is_await = self.is_kw("await");
+        if is_await {
+            if !self.in_async {
+                return self.error("« for await » n'est permis que dans une fonction async");
+            }
+            self.advance()?;
         }
         self.expect_punct("(")?;
         let mut init = None;
@@ -498,12 +759,19 @@ impl Parser {
                     self.expression()?
                 };
                 self.expect_punct(")")?;
+                if is_await && !of {
+                    return self.error("« for await » exige la forme « of »");
+                }
                 return Ok(Stmt::ForIn {
                     target,
                     object,
                     body: Box::new(self.statement()?),
                     of,
+                    is_await,
                 });
+            }
+            if is_await {
+                return self.error("« for await » exige la forme « of »");
             }
             if let ForInit::Decl(kind, decls) = &parsed {
                 for (pattern, value) in decls {
@@ -669,10 +937,8 @@ impl Parser {
         let mut is_async = false;
         if self.is_kw("async") {
             let after = self.peek()?;
-            if !after.newline_before && matches!(after.tok, Tok::Punct("*")) {
-                return self.unsupported("les générateurs async");
-            }
-            if !after.newline_before && self.is_modifier()? {
+            let modifier = matches!(after.tok, Tok::Punct("*")) || self.is_modifier()?;
+            if !after.newline_before && modifier {
                 self.advance()?;
                 is_async = true;
             }
@@ -687,6 +953,7 @@ impl Parser {
             Tok::Private(name) => PropKey::Name(Arc::from(format!("#{name}"))),
             Tok::Str(s) => PropKey::Name(Arc::from(s.as_str())),
             Tok::Num(n) => PropKey::Name(Arc::from(crate::value::number_to_string(*n))),
+            Tok::BigInt(big) => PropKey::Name(Arc::from(big.to_string())),
             Tok::Punct("[") => {
                 self.advance()?;
                 let expr = self.assignment()?;
@@ -704,7 +971,12 @@ impl Parser {
     fn is_modifier(&self) -> PResult<bool> {
         Ok(matches!(
             self.peek()?.tok,
-            Tok::Ident(_) | Tok::Private(_) | Tok::Str(_) | Tok::Num(_) | Tok::Punct("[")
+            Tok::Ident(_)
+                | Tok::Private(_)
+                | Tok::Str(_)
+                | Tok::Num(_)
+                | Tok::BigInt(_)
+                | Tok::Punct("[")
         ))
     }
 
@@ -1425,6 +1697,11 @@ impl Parser {
                 self.advance()?;
                 Ok(Expr::Number(n))
             }
+            Tok::BigInt(big) => {
+                let big = Arc::clone(big);
+                self.advance()?;
+                Ok(Expr::BigInt(big))
+            }
             Tok::Str(s) => {
                 let s: Arc<str> = Arc::from(s.as_str());
                 self.advance()?;
@@ -1497,21 +1774,31 @@ impl Parser {
                 "async" if self.async_function_follows()? => {
                     self.advance()?;
                     self.advance()?;
-                    if self.is_punct("*") {
-                        return self.unsupported("les générateurs async");
-                    }
+                    let is_generator = self.eat_punct("*")?;
                     let name = if self.is_punct("(") {
                         None
                     } else {
                         Some(self.binding_ident()?)
                     };
-                    Ok(Expr::Function(Arc::new(
-                        self.function_with(name, false, true, false)?,
-                    )))
+                    Ok(Expr::Function(Arc::new(self.function_with(
+                        name,
+                        false,
+                        true,
+                        is_generator,
+                    )?)))
                 }
                 "class" => {
                     self.advance()?;
                     Ok(Expr::Class(Box::new(self.class_rest(false)?)))
+                }
+                "import" if self.module && self.peek_is_punct(".")? => {
+                    self.advance()?;
+                    self.advance()?;
+                    if !self.eat_kw("meta")? {
+                        return self.error("« meta » attendu après « import. »");
+                    }
+                    // Lu comme une liaison de la portée du module (voir `module.rs`).
+                    Ok(Expr::Ident(Arc::from("import.meta")))
                 }
                 w if RESERVED.contains(&w) => self.error(format!("« {w} » inattendu")),
                 _ => Ok(Expr::Ident(self.binding_ident()?)),
@@ -1768,9 +2055,7 @@ mod tests {
     #[test]
     fn unsupported_syntax_says_so() {
         for src in [
-            "async function* f() {}",
-            "class A { async *g() {} }",
-            "async function f() { for await (const x of y) {} }",
+            "with (a) {}",
             "import x from 'y'",
             "export default 1",
             "tag`x`",

@@ -16,7 +16,7 @@ use super::{
 };
 
 /// Longueur maximale d'une chaîne produite par une méthode.
-const MAX_STRING: usize = 1 << 28;
+pub(super) const MAX_STRING: usize = 1 << 28;
 
 fn this_str(vm: &mut Vm, this: &Value) -> JsResult<JsStr> {
     if this.is_nullish() {
@@ -491,7 +491,11 @@ fn string_value_of(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 fn number_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let value = match args.first() {
         None => Value::Number(0.0),
-        Some(v) => Value::Number(vm.to_number(v)?),
+        // `Number(1n)` est la conversion explicite d'un BigInt.
+        Some(v) => match vm.to_numeric(v)? {
+            Value::BigInt(big) => Value::Number(big.to_f64()),
+            other => other,
+        },
     };
     if vm.constructing {
         vm.to_object(&value)

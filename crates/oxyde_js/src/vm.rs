@@ -19,8 +19,8 @@ use indexmap::IndexMap;
 use crate::builtins::promise::Job;
 use crate::bytecode::{FunctionKind, FunctionProto, Op, Reg};
 use crate::heap::{
-    Closure, CoState, Coroutine, Heap, IterState, Kind, Object, Property, SavedFrame, Slot, UpId,
-    Upvalue,
+    Closure, CoKind, CoState, Coroutine, Heap, IterState, Kind, Object, Property, SavedFrame, Slot,
+    UpId, Upvalue,
 };
 use crate::value::{JsStr, ObjId, Symbol, Value};
 
@@ -35,6 +35,7 @@ pub type NativeFn = fn(&mut Vm, &Value, &[Value]) -> JsResult;
 pub type NativeDataFn = fn(&mut Vm, &[Value], &Value, &[Value]) -> JsResult;
 
 /// Façon de reprendre une coroutine suspendue.
+#[derive(Clone, Debug)]
 pub(crate) enum Resume {
     /// `next(v)` : `v` devient la valeur de l'expression `yield` / `await`.
     Next(Value),
@@ -48,6 +49,8 @@ pub(crate) enum Resume {
 pub(crate) enum CoOutcome {
     /// Suspendue de nouveau, en rendant cette valeur.
     Yield(Value),
+    /// Suspendue par `await`, dans l'attente de cette valeur.
+    Await(Value),
     /// Terminée avec cette valeur.
     Return(Value),
 }
@@ -77,6 +80,11 @@ pub(crate) struct Intrinsics {
     pub(crate) generator_proto: ObjId,
     pub(crate) promise_proto: ObjId,
     pub(crate) regexp_proto: ObjId,
+    pub(crate) async_generator_proto: ObjId,
+    pub(crate) array_buffer_proto: ObjId,
+    pub(crate) data_view_proto: ObjId,
+    pub(crate) bigint_proto: ObjId,
+    pub(crate) date_proto: ObjId,
 }
 
 /// Symboles connus du langage (`Symbol.iterator`…).
@@ -108,6 +116,8 @@ struct Frame {
     construct: bool,
     /// Coroutine dont ce cadre exécute le corps.
     generator: Option<ObjId>,
+    /// Portée de premier niveau du code exécuté (`None` : objet global).
+    scope: Option<ObjId>,
 }
 
 /// Classes d'objets de l'hôte et crochets d'accès à leurs propriétés.
@@ -139,6 +149,12 @@ pub struct Vm {
     pub(crate) regex_cache: std::collections::HashMap<(JsStr, JsStr), Arc<crate::regexp::Regex>>,
     /// Dernier texte préparé pour une recherche.
     pub(crate) regex_input: Option<(JsStr, Arc<crate::builtins::regexp::RegexInput>)>,
+    /// Prototypes des tableaux typés, dans l'ordre de leurs types d'éléments.
+    pub(crate) typed_protos: Vec<ObjId>,
+    /// Modules chargés, par identifiant.
+    pub(crate) modules: IndexMap<JsStr, crate::module::ModuleRecord>,
+    /// Fonction de l'hôte qui fournit le texte des modules importés.
+    pub(crate) module_loader: Option<crate::module::ModuleLoader>,
     /// Exception à lever à la prochaine instruction (reprise par `throw()`).
     pending_throw: Option<Value>,
     /// File des microtâches (réactions de promesses).
@@ -214,6 +230,11 @@ impl Vm {
             generator_proto: proto(&mut heap, Kind::Ordinary),
             promise_proto: proto(&mut heap, Kind::Ordinary),
             regexp_proto: proto(&mut heap, Kind::Ordinary),
+            async_generator_proto: proto(&mut heap, Kind::Ordinary),
+            array_buffer_proto: proto(&mut heap, Kind::Ordinary),
+            data_view_proto: proto(&mut heap, Kind::Ordinary),
+            bigint_proto: proto(&mut heap, Kind::Ordinary),
+            date_proto: proto(&mut heap, Kind::Ordinary),
         };
         let global = proto(&mut heap, Kind::Ordinary);
         let known = |id: u64, name: &str| Symbol::new(id, Some(Arc::from(name)));
@@ -238,6 +259,9 @@ impl Vm {
             native_depth: 0,
             regex_cache: std::collections::HashMap::new(),
             regex_input: None,
+            typed_protos: Vec::new(),
+            modules: IndexMap::new(),
+            module_loader: None,
             pending_throw: None,
             jobs: VecDeque::new(),
             rejections: Vec::new(),
@@ -268,6 +292,28 @@ impl Vm {
         if let Some(budget) = &mut self.budget {
             *budget = budget.saturating_sub(steps);
         }
+    }
+
+    /// Impute `steps` pas à une boucle native et l'arrête si le budget est
+    /// épuisé : sans cela, une méthode appliquée à un objet de longueur
+    /// démesurée (`{ length: 2 ** 53 }`) tournerait sans fin.
+    ///
+    /// # Errors
+    /// `RangeError` que le script ne peut pas rattraper, comme pour le bytecode.
+    pub(crate) fn tick(&mut self, steps: u64) -> JsResult<()> {
+        let Some(budget) = &mut self.budget else {
+            return Ok(());
+        };
+        if *budget < steps {
+            *budget = 0;
+            self.interrupted = true;
+            return Err(self.error(
+                "RangeError",
+                "script interrompu : temps d'exécution dépassé",
+            ));
+        }
+        *budget -= steps;
+        Ok(())
     }
 
     /// Vrai si le dernier script a été interrompu pour dépassement du budget.
@@ -328,6 +374,11 @@ impl Vm {
             intr.generator_proto,
             intr.promise_proto,
             intr.regexp_proto,
+            intr.async_generator_proto,
+            intr.array_buffer_proto,
+            intr.data_view_proto,
+            intr.bigint_proto,
+            intr.date_proto,
         ];
         let frame_values = self.frames.iter().flat_map(|f| {
             [
@@ -335,6 +386,7 @@ impl Vm {
                 f.this.clone(),
                 f.new_target.clone(),
                 f.generator.map_or(Value::Undefined, Value::Object),
+                f.scope.map_or(Value::Undefined, Value::Object),
             ]
             .into_iter()
             .chain(f.args.iter().cloned())
@@ -342,6 +394,9 @@ impl Vm {
         let mut job_values = Vec::new();
         for job in &self.jobs {
             job.trace(&mut job_values);
+        }
+        for module in self.modules.values() {
+            module.trace(&mut job_values);
         }
         let roots: Vec<Value> = fixed
             .into_iter()
@@ -352,6 +407,7 @@ impl Vm {
             .chain(self.roots.iter().cloned())
             .chain(job_values)
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
+            .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
             .chain(self.pending_throw.iter().cloned())
             .collect();
         let open: Vec<UpId> = self.open_upvalues.iter().map(|(_, id)| *id).collect();
@@ -578,6 +634,7 @@ impl Vm {
             return Err(self.type_error("la valeur appelée n'est pas une fonction"));
         };
         let proto = Arc::clone(&c.proto);
+        let scope = c.scope;
         let this = c.bound_this.clone().unwrap_or(this);
         let base = self.stack.len();
         if self.frames.len() >= MAX_FRAMES || base + usize::from(proto.registers) > MAX_STACK {
@@ -602,8 +659,19 @@ impl Vm {
             ret,
             construct,
             generator: None,
+            scope,
         });
         Ok(())
+    }
+
+    /// Objet où le code courant résout ses noms de premier niveau : la portée
+    /// de son module, ou l'objet global. La portée d'un module a l'objet
+    /// global pour prototype, si bien qu'une lecture y trouve aussi les globales.
+    fn scope(&self) -> ObjId {
+        self.frames
+            .last()
+            .and_then(|f| f.scope)
+            .unwrap_or(self.global)
     }
 
     fn pop_frame(&mut self) -> Option<Frame> {
@@ -904,7 +972,11 @@ impl Vm {
         frame.pc += 1;
         match op {
             Op::Nop => {}
-            Op::Yield { dst, src } => {
+            Op::AsyncIterStart { dst, src } => {
+                let iterator = self.async_iterator_for(&self.reg(src))?;
+                self.set_reg(dst, iterator);
+            }
+            Op::Yield { dst, src } | Op::Await { dst, src } => {
                 let value = self.reg(src);
                 let Some(coroutine) = self.frames.last().and_then(|f| f.generator) else {
                     return Err(self.error(
@@ -927,6 +999,7 @@ impl Vm {
                 let registers = self.stack.split_off(base.min(self.stack.len()));
                 let saved = SavedFrame {
                     closure: frame.closure,
+                    scope: frame.scope,
                     proto: frame.proto,
                     pc: frame.pc,
                     this: frame.this,
@@ -936,6 +1009,7 @@ impl Vm {
                     registers,
                     upvalues,
                     resume_reg: dst,
+                    awaiting: matches!(op, Op::Await { .. }),
                 };
                 self.set_coroutine_state(coroutine, CoState::Suspended(Box::new(saved)));
                 return Ok(Some(value));
@@ -980,38 +1054,50 @@ impl Vm {
                 self.set_reg(dst, value);
             }
             Op::GetGlobal { dst, name } => {
-                let name = self.name(name);
-                if !self.has_property(self.global, &name) {
+                let (name, scope) = (self.name(name), self.scope());
+                if !self.has_property(scope, &name) {
                     return Err(self.error("ReferenceError", &format!("{name} n'est pas défini")));
                 }
-                let value = self.get(&Value::Object(self.global), &name)?;
+                let value = self.get(&Value::Object(scope), &name)?;
                 self.set_reg(dst, value);
             }
             Op::SetGlobal { name, src } => {
                 let (name, value) = (self.name(name), self.reg(src));
-                self.set(&Value::Object(self.global), &name, value)?;
+                let scope = self.scope();
+                // Dans un module, affecter une variable globale existante ne
+                // doit pas créer une liaison locale qui la masquerait.
+                let target = if scope != self.global
+                    && !self.has_own(scope, &name)
+                    && self.has_property(self.global, &name)
+                {
+                    self.global
+                } else {
+                    scope
+                };
+                self.set(&Value::Object(target), &name, value)?;
             }
             Op::InitGlobal { name, src } => {
                 let (name, value) = (self.name(name), self.reg(src));
+                let scope = self.scope();
                 if value == Value::Hole {
                     // Déclaration `var` : ne remplace pas une variable existante.
-                    if !self.heap.get(self.global).props.contains_key(&name) {
+                    if !self.heap.get(scope).props.contains_key(&name) {
                         self.heap
-                            .get_mut(self.global)
+                            .get_mut(scope)
                             .props
                             .insert(name, Property::data(Value::Undefined));
                     }
                 } else {
                     self.heap
-                        .get_mut(self.global)
+                        .get_mut(scope)
                         .props
                         .insert(name, Property::data(value));
                 }
             }
             Op::TypeofGlobal { dst, name } => {
-                let name = self.name(name);
-                let value = if self.has_property(self.global, &name) {
-                    self.get(&Value::Object(self.global), &name)?
+                let (name, scope) = (self.name(name), self.scope());
+                let value = if self.has_property(scope, &name) {
+                    self.get(&Value::Object(scope), &name)?
                 } else {
                     Value::Undefined
                 };
@@ -1209,8 +1295,29 @@ impl Vm {
                 self.set_reg(dst, result);
             }
             Op::ToNumber { dst, src } => {
-                let n = self.to_number(&self.reg(src))?;
-                self.set_reg(dst, Value::Number(n));
+                // `ToNumeric` : un BigInt reste un BigInt (`x++`).
+                let value = self.to_numeric(&self.reg(src))?;
+                self.set_reg(dst, value);
+            }
+            Op::Step {
+                dst,
+                src,
+                increment,
+            } => {
+                let value = match self.reg(src) {
+                    Value::BigInt(big) => {
+                        let one = crate::bigint::BigInt::from_i64(if increment { 1 } else { -1 });
+                        match big.add(&one) {
+                            Ok(result) => Value::BigInt(Arc::new(result)),
+                            Err(_) => return Err(self.error("RangeError", "BigInt trop grand")),
+                        }
+                    }
+                    other => {
+                        let n = self.to_number(&other)?;
+                        Value::Number(if increment { n + 1.0 } else { n - 1.0 })
+                    }
+                };
+                self.set_reg(dst, value);
             }
             Op::ToString { dst, src } => {
                 let s = self.to_string(&self.reg(src))?;
@@ -1254,6 +1361,7 @@ impl Vm {
                     return Ok(None);
                 };
                 let (base, parent, this) = (frame.base, frame.closure, frame.this.clone());
+                let scope = frame.scope;
                 let mut upvalues = Vec::with_capacity(proto.upvalues.len());
                 for desc in &proto.upvalues {
                     let id = if desc.from_parent_register {
@@ -1282,6 +1390,7 @@ impl Vm {
                     home,
                     parent: None,
                     fields: None,
+                    scope,
                 };
                 let id = self.heap.alloc(Object::new(
                     Some(self.intrinsics.function_proto),
@@ -1537,6 +1646,17 @@ impl Vm {
 
     /// Exécute une fonction compilée de premier niveau (un script).
     pub(crate) fn run_script(&mut self, proto: Arc<FunctionProto>) -> JsResult {
+        self.run_top_level(proto, None, Value::Object(self.global))
+    }
+
+    /// Exécute du code de premier niveau dans la portée `scope` (celle d'un
+    /// module, ou `None` pour l'objet global), avec `this` pour receveur.
+    pub(crate) fn run_top_level(
+        &mut self,
+        proto: Arc<FunctionProto>,
+        scope: Option<ObjId>,
+        this: Value,
+    ) -> JsResult {
         let closure = Closure {
             proto,
             upvalues: Vec::new(),
@@ -1544,20 +1664,14 @@ impl Vm {
             home: None,
             parent: None,
             fields: None,
+            scope,
         };
         let id = self.heap.alloc(Object::new(
             Some(self.intrinsics.function_proto),
             Kind::Closure(closure),
         ));
         let depth = self.frames.len();
-        self.push_frame(
-            id,
-            Value::Object(self.global),
-            Vec::new(),
-            Value::Undefined,
-            None,
-            false,
-        )?;
+        self.push_frame(id, this, Vec::new(), Value::Undefined, None, false)?;
         self.run_nested(depth)
     }
 
@@ -1586,29 +1700,39 @@ impl Vm {
     /// Un générateur ne démarre qu'au premier `next()` ; une fonction async
     /// s'exécute tout de suite jusqu'à son premier `await`.
     fn start_coroutine(&mut self, closure: ObjId, this: Value, args: Vec<Value>) -> JsResult {
-        let is_async = matches!(&self.heap.get(closure).kind, Kind::Closure(c) if c.proto.is_async);
+        let kind = match &self.heap.get(closure).kind {
+            Kind::Closure(c) if c.proto.is_async && c.proto.is_generator => CoKind::AsyncGenerator,
+            Kind::Closure(c) if c.proto.is_async => CoKind::Async,
+            _ => CoKind::Generator,
+        };
         let state = CoState::Start {
             closure,
             this,
             args,
         };
-        if !is_async {
-            let coroutine = Coroutine {
-                state,
-                promise: None,
+        let coroutine = |promise| Coroutine {
+            state,
+            kind,
+            promise,
+            queue: std::collections::VecDeque::new(),
+            busy: false,
+        };
+        if kind != CoKind::Async {
+            // Un générateur, async ou non, ne démarre qu'à sa première requête.
+            let proto = if kind == CoKind::Generator {
+                self.intrinsics.generator_proto
+            } else {
+                self.intrinsics.async_generator_proto
             };
             return Ok(Value::Object(self.heap.alloc(Object::new(
-                Some(self.intrinsics.generator_proto),
-                Kind::Coroutine(Box::new(coroutine)),
+                Some(proto),
+                Kind::Coroutine(Box::new(coroutine(None))),
             ))));
         }
         let promise = self.new_promise();
         let coroutine = self.heap.alloc(Object::new(
             None,
-            Kind::Coroutine(Box::new(Coroutine {
-                state,
-                promise: Some(promise),
-            })),
+            Kind::Coroutine(Box::new(coroutine(Some(promise)))),
         ));
         // Des identifiants d'objets vivent dans des variables Rust pendant
         // l'étape : le ramasse-miettes doit attendre.
@@ -1708,6 +1832,7 @@ impl Vm {
                     ret: None,
                     construct: false,
                     generator: Some(coroutine),
+                    scope: saved.scope,
                 });
                 match mode {
                     Resume::Next(value) => {
@@ -1728,12 +1853,17 @@ impl Vm {
         while self.frames.len() > depth {
             self.pop_frame();
         }
-        let suspended = matches!(
-            &self.heap.get(coroutine).kind,
-            Kind::Coroutine(c) if matches!(c.state, CoState::Suspended(_))
-        );
+        // `Some(true)` : suspendue par `await` ; `Some(false)` : par `yield`.
+        let suspended = match &self.heap.get(coroutine).kind {
+            Kind::Coroutine(c) => match &c.state {
+                CoState::Suspended(frame) => Some(frame.awaiting),
+                _ => None,
+            },
+            _ => None,
+        };
         match result {
-            Ok(value) if suspended => Ok(CoOutcome::Yield(value)),
+            Ok(value) if suspended == Some(true) => Ok(CoOutcome::Await(value)),
+            Ok(value) if suspended == Some(false) => Ok(CoOutcome::Yield(value)),
             Ok(value) => {
                 self.set_coroutine_state(coroutine, CoState::Done);
                 Ok(CoOutcome::Return(value))
@@ -1749,7 +1879,7 @@ impl Vm {
     pub(crate) fn generator_id(&self, value: &Value) -> Option<ObjId> {
         let id = value.as_object()?;
         match &self.heap.get(id).kind {
-            Kind::Coroutine(c) if c.promise.is_none() => Some(id),
+            Kind::Coroutine(c) if c.kind == CoKind::Generator => Some(id),
             _ => None,
         }
     }

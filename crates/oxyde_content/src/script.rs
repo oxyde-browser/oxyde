@@ -1,10 +1,13 @@
 //! Liaison entre le moteur JavaScript et le DOM : objets `window`,
 //! `document`, nœuds, événements et minuteurs.
 //!
-//! Ces liaisons sont écrites à la main. Le générateur à partir des fichiers
-//! Web IDL (prévu par le plan du jalon 4) les remplacera.
+//! Les interfaces (prototypes, constructeurs, constantes, répartition et
+//! arité des opérations) viennent de la table produite par `oxyde_bindings` à
+//! partir des fichiers Web IDL du dossier `idl/`. Le corps des opérations et
+//! les attributs restent écrits à la main dans ce module.
 //!
-//! LIMITES CONNUES : `fetch` se limite à `GET` sans en-têtes ni corps, et la
+//! LIMITES CONNUES : les modules sont chargés entièrement avant toute
+//! exécution et sans contrôle CORS ; `fetch` se limite à `GET` sans en-têtes ni corps, et la
 //! réponse est lue d'un bloc (pas de flux, `text()` et `json()` seulement) ;
 //! pas de `XMLHttpRequest`, `localStorage`, `MutationObserver`
 //! ni `getBoundingClientRect` réel ; `getElementsBy…` et `querySelectorAll`
@@ -15,6 +18,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
+use oxyde_bindings::InterfaceDescriptor;
 use oxyde_css::selector::{Selector, parse_selector_list};
 use oxyde_css::syntax::tokenize;
 use oxyde_dom::{Document, Namespace, NodeData, NodeId};
@@ -59,6 +63,8 @@ struct DomHost {
     node_proto: ObjId,
     style_proto: ObjId,
     class_list_proto: ObjId,
+    /// Prototype de chaque interface décrite par l'IDL, par nom.
+    protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
     timers: Vec<Timer>,
     next_timer: u32,
@@ -70,6 +76,8 @@ struct DomHost {
     fetch_queue: Vec<crate::FetchRequest>,
     /// Requêtes `fetch` en attente de réponse, par identifiant.
     fetches: HashMap<u64, PendingFetch>,
+    /// Texte des modules importables, par adresse.
+    modules: HashMap<String, String>,
 }
 
 fn host(vm: &mut Vm) -> Option<&mut DomHost> {
@@ -117,7 +125,16 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
     if let Some(id) = h.wrappers.get(&index) {
         return Value::Object(*id);
     }
-    let proto = h.node_proto;
+    // L'enveloppe prend le prototype de l'interface du nœud.
+    let interface = match &h.doc.node(node).data {
+        NodeData::Document => "Document",
+        NodeData::Doctype { .. } => "DocumentType",
+        NodeData::Element(element) if element.ns == Namespace::Html => "HTMLElement",
+        NodeData::Element(_) => "Element",
+        NodeData::Text(_) => "Text",
+        NodeData::Comment(_) => "Comment",
+    };
+    let proto = h.protos.get(interface).copied().unwrap_or(h.node_proto);
     let id = vm.new_host_object(proto, CLASS_NODE, u64::from(index));
     vm.add_root(Value::Object(id));
     if let Some(h) = host(vm) {
@@ -1312,11 +1329,166 @@ fn define_getter(vm: &mut Vm, target: ObjId, name: &str, func: NativeFn) -> JsRe
     Ok(())
 }
 
+// ---- Interfaces décrites par l'IDL -----------------------------------------------
+
+/// Opérations implémentées : (interface, nom, fonction). Une interface vide
+/// désigne une implémentation valable pour toute interface de nœud qui
+/// déclare l'opération ; l'IDL décide sur quels prototypes elle est installée
+/// et avec quelle arité.
+const OPERATIONS: &[(&str, &str, NativeFn)] = &[
+    ("", "appendChild", append_child),
+    ("", "insertBefore", insert_before),
+    ("", "removeChild", remove_child),
+    ("", "remove", remove),
+    ("", "append", append),
+    ("", "prepend", prepend),
+    ("", "getAttribute", get_attribute),
+    ("", "setAttribute", set_attribute),
+    ("", "removeAttribute", remove_attribute),
+    ("", "hasAttribute", has_attribute),
+    ("", "querySelector", query_selector),
+    ("", "querySelectorAll", query_selector_all),
+    ("", "matches", element_matches),
+    ("", "closest", closest),
+    ("", "getElementById", get_element_by_id),
+    ("", "getElementsByTagName", get_elements_by_tag_name),
+    ("", "getElementsByClassName", get_elements_by_class_name),
+    ("", "createElement", create_element),
+    ("", "createTextNode", create_text_node),
+    ("", "contains", contains),
+    ("", "cloneNode", clone_node),
+    ("", "addEventListener", add_event_listener),
+    ("", "removeEventListener", remove_event_listener),
+    ("", "click", element_click),
+    ("", "focus", no_op),
+    ("", "blur", no_op),
+    ("", "scrollIntoView", no_op),
+    ("", "getBoundingClientRect", get_bounding_client_rect),
+    ("CSSStyleDeclaration", "setProperty", style_set_property),
+    (
+        "CSSStyleDeclaration",
+        "getPropertyValue",
+        style_get_property_value,
+    ),
+    (
+        "CSSStyleDeclaration",
+        "removeProperty",
+        style_remove_property,
+    ),
+    ("DOMTokenList", "add", class_list_add),
+    ("DOMTokenList", "remove", class_list_remove),
+    ("DOMTokenList", "toggle", class_list_toggle),
+    ("DOMTokenList", "contains", class_list_contains),
+];
+
+fn interface(name: &str) -> Option<&'static InterfaceDescriptor> {
+    crate::dom_idl::INTERFACES.iter().find(|i| i.name == name)
+}
+
+/// Vrai si `name` est `EventTarget` ou en hérite : ses instances sont des
+/// nœuds, auxquels s'appliquent les implémentations génériques.
+fn is_node_interface(name: &str) -> bool {
+    let mut current = interface(name);
+    // Borne : une table générée à partir d'un IDL valide n'a pas de cycle.
+    for _ in 0..64 {
+        match current {
+            Some(i) if i.name == "EventTarget" => return true,
+            Some(i) => current = i.parent.and_then(interface),
+            None => return false,
+        }
+    }
+    false
+}
+
+/// Implémentation de l'opération `name` déclarée par l'interface `interface`.
+fn implementation(interface: &str, name: &str) -> Option<NativeFn> {
+    let find = |wanted: &str| {
+        OPERATIONS
+            .iter()
+            .find(|(i, n, _)| *i == wanted && *n == name)
+            .map(|(_, _, func)| *func)
+    };
+    find(interface).or_else(|| is_node_interface(interface).then(|| find("")).flatten())
+}
+
+/// Les objets interface ne se construisent pas depuis un script.
+fn illegal_constructor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    Err(vm.error("TypeError", "constructeur illégal"))
+}
+
+/// Crée, pour chaque interface de la table générée, son prototype et son
+/// objet interface global (`Node`, `Element`…), avec la chaîne d'héritage,
+/// les constantes et les opérations implémentées. Renvoie les prototypes.
+fn install_interfaces(vm: &mut Vm) -> JsResult<HashMap<&'static str, ObjId>> {
+    let global = vm.global();
+    let symbol = vm.get(&Value::Object(global), "Symbol")?;
+    let tag = vm.get(&symbol, "toStringTag")?;
+    let mut protos = HashMap::new();
+    let mut constructors = HashMap::new();
+    for interface in crate::dom_idl::INTERFACES {
+        let proto = vm.new_object();
+        let constructor = vm.new_function(
+            interface.name,
+            interface.constructor.unwrap_or(0),
+            illegal_constructor,
+        );
+        vm.define_hidden(constructor, "prototype", Value::Object(proto));
+        vm.define_hidden(proto, "constructor", Value::Object(constructor));
+        if let Value::Symbol(tag) = &tag {
+            vm.define_hidden_symbol(proto, tag, Value::string(interface.name));
+        }
+        for (name, value) in interface.constants {
+            vm.define_hidden(constructor, name, Value::Number(*value));
+            vm.define_hidden(proto, name, Value::Number(*value));
+        }
+        vm.define_hidden(global, interface.name, Value::Object(constructor));
+        protos.insert(interface.name, proto);
+        constructors.insert(interface.name, constructor);
+    }
+    for interface in crate::dom_idl::INTERFACES {
+        let (Some(proto), Some(constructor)) = (
+            protos.get(interface.name).copied(),
+            constructors.get(interface.name).copied(),
+        ) else {
+            continue;
+        };
+        if let Some(parent) = interface.parent
+            && let (Some(parent_proto), Some(parent_constructor)) = (
+                protos.get(parent).copied(),
+                constructors.get(parent).copied(),
+            )
+        {
+            vm.set_prototype(proto, Some(parent_proto))?;
+            vm.set_prototype(constructor, Some(parent_constructor))?;
+        }
+        for operation in interface.operations {
+            if let Some(func) = implementation(interface.name, operation.name) {
+                let target = if operation.is_static {
+                    constructor
+                } else {
+                    proto
+                };
+                vm.define_method(target, operation.name, operation.length, func);
+            }
+        }
+    }
+    Ok(protos)
+}
+
 /// Installe `window`, `document` et leurs méthodes dans une machine neuve.
 fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
-    let node_proto = vm.new_object();
-    let style_proto = vm.new_object();
-    let class_list_proto = vm.new_object();
+    let protos = install_interfaces(vm)?;
+    let proto_of = |name: &str| protos.get(name).copied();
+    let (Some(node_proto), Some(style_proto), Some(class_list_proto)) = (
+        proto_of("Node"),
+        proto_of("CSSStyleDeclaration"),
+        proto_of("DOMTokenList"),
+    ) else {
+        return Err(vm.error(
+            "TypeError",
+            "interfaces du DOM absentes de la table générée",
+        ));
+    };
     vm.host = Some(Box::new(DomHost {
         doc: Document::new(),
         url: url.clone(),
@@ -1324,10 +1496,12 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         node_proto,
         style_proto,
         class_list_proto,
+        protos,
         listeners: Vec::new(),
         timers: Vec::new(),
         fetch_queue: Vec::new(),
         fetches: HashMap::new(),
+        modules: HashMap::new(),
         next_timer: 0,
         dirty: false,
         viewport: (0.0, 0.0),
@@ -1337,47 +1511,6 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         get: host_get,
         set: host_set,
     });
-
-    let node_methods: &[(&str, u32, NativeFn)] = &[
-        ("appendChild", 1, append_child),
-        ("insertBefore", 2, insert_before),
-        ("removeChild", 1, remove_child),
-        ("remove", 0, remove),
-        ("append", 1, append),
-        ("prepend", 1, prepend),
-        ("getAttribute", 1, get_attribute),
-        ("setAttribute", 2, set_attribute),
-        ("removeAttribute", 1, remove_attribute),
-        ("hasAttribute", 1, has_attribute),
-        ("querySelector", 1, query_selector),
-        ("querySelectorAll", 1, query_selector_all),
-        ("matches", 1, element_matches),
-        ("closest", 1, closest),
-        ("getElementById", 1, get_element_by_id),
-        ("getElementsByTagName", 1, get_elements_by_tag_name),
-        ("getElementsByClassName", 1, get_elements_by_class_name),
-        ("createElement", 1, create_element),
-        ("createTextNode", 1, create_text_node),
-        ("contains", 1, contains),
-        ("cloneNode", 1, clone_node),
-        ("addEventListener", 2, add_event_listener),
-        ("removeEventListener", 2, remove_event_listener),
-        ("click", 0, element_click),
-        ("focus", 0, no_op),
-        ("blur", 0, no_op),
-        ("scrollIntoView", 0, no_op),
-        ("getBoundingClientRect", 0, get_bounding_client_rect),
-    ];
-    for (name, arity, func) in node_methods {
-        vm.define_method(node_proto, name, *arity, *func);
-    }
-    vm.define_method(style_proto, "setProperty", 2, style_set_property);
-    vm.define_method(style_proto, "getPropertyValue", 1, style_get_property_value);
-    vm.define_method(style_proto, "removeProperty", 1, style_remove_property);
-    vm.define_method(class_list_proto, "add", 1, class_list_add);
-    vm.define_method(class_list_proto, "remove", 1, class_list_remove);
-    vm.define_method(class_list_proto, "toggle", 1, class_list_toggle);
-    vm.define_method(class_list_proto, "contains", 1, class_list_contains);
 
     let global = vm.global();
     let window = Value::Object(global);
@@ -1514,6 +1647,30 @@ impl ScriptEngine {
         });
     }
 
+    /// Fournit le texte des modules que les scripts pourront importer.
+    pub(crate) fn set_modules(&mut self, modules: HashMap<String, String>) {
+        self.vm.set_module_loader(load_module);
+        if let Some(h) = host(&mut self.vm) {
+            h.modules = modules;
+        }
+    }
+
+    /// Exécute un script de type module, d'identifiant (adresse) `id` ; une
+    /// erreur est signalée dans la console.
+    pub(crate) fn eval_module(&mut self, doc: &mut Document, source: &str, id: &str) {
+        self.run(doc, |vm| {
+            if let Err(error) = vm.eval_module(source, id) {
+                let message = Value::string(&format!("Exception non rattrapée : {error}"));
+                let global = Value::Object(vm.global());
+                if let Ok(console) = vm.get(&global, "console")
+                    && let Ok(log) = vm.get(&console, "error")
+                {
+                    let _ = vm.call(&log, &console, &[message]);
+                }
+            }
+        });
+    }
+
     /// Distribue l'événement `kind` sur `target` (`None` : la fenêtre).
     /// Renvoie `true` si l'action par défaut a été annulée.
     pub(crate) fn dispatch(
@@ -1608,6 +1765,22 @@ impl ScriptEngine {
     pub(crate) fn take_console(&mut self) -> Vec<ConsoleMessage> {
         self.vm.take_console()
     }
+}
+
+// ---- Modules ---------------------------------------------------------------------
+
+/// Chargeur de modules de la page : les textes ont été fournis d'avance par
+/// l'embarqueur (voir `Page::pending_modules`).
+fn load_module(vm: &mut Vm, specifier: &str, referrer: &str) -> Result<(String, String), String> {
+    let referrer = Url::parse(referrer).map_err(|e| e.to_string())?;
+    let url = crate::resolve_module(&referrer, specifier)
+        .ok_or("ce spécificateur ne désigne ni un chemin ni une adresse")?;
+    let id = url.to_string();
+    let source = host(vm)
+        .and_then(|h| h.modules.get(&id))
+        .ok_or_else(|| format!("{id} n'a pas pu être chargé"))?
+        .clone();
+    Ok((id, source))
 }
 
 // ---- fetch -----------------------------------------------------------------------
@@ -1841,4 +2014,144 @@ fn response_json(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
         Ok(value) => vm.promise_resolved(value),
         Err(thrown) => vm.promise_rejected(thrown),
     })
+}
+
+// ---- Couverture du DOM -----------------------------------------------------------
+
+/// Voir [`crate::dom_coverage_report`].
+pub(crate) fn dom_coverage_report() -> String {
+    use std::fmt::Write as _;
+
+    let Ok(url) = Url::parse("https://oxyde.test/") else {
+        return String::new();
+    };
+    let mut doc = oxyde_html::parse_document(
+        "<!DOCTYPE html><title>t</title><p id=p class=c style='color: red'>texte<!--c--></p>",
+    );
+    let mut engine = ScriptEngine::new(&url);
+
+    // Un membre par ligne : interface, nature (c, a, o), nom, statique.
+    let mut members = String::new();
+    for interface in crate::dom_idl::INTERFACES {
+        let name = interface.name;
+        for (constant, _) in interface.constants {
+            let _ = write!(members, "['{name}','c','{constant}',1],");
+        }
+        for attribute in interface.attributes {
+            let is_static = u8::from(attribute.is_static);
+            let _ = write!(members, "['{name}','a','{}',{is_static}],", attribute.name);
+        }
+        for operation in interface.operations {
+            let is_static = u8::from(operation.is_static);
+            let _ = write!(members, "['{name}','o','{}',{is_static}],", operation.name);
+        }
+    }
+    // Pour chaque interface, un objet d'essai ; un attribut IDL ne vaut jamais
+    // `undefined`, ce qui distingue un attribut servi d'un attribut absent.
+    // `style` répond à tout nom de propriété CSS : seul `cssText` y est un
+    // attribut IDL réellement servi.
+    let probe = format!(
+        "(function () {{
+           const el = document.getElementById('p'); let ev = null;
+           el.addEventListener('click', e => {{ ev = e; }}); el.click();
+           const kind = n => n && n.nodeType;
+           const samples = {{
+             Event: ev, EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
+             DocumentType: kind(document.firstChild) === 10 ? document.firstChild : null,
+             DocumentFragment: null,
+             CharacterData: el.firstChild, Text: el.firstChild,
+             Comment: kind(el.lastChild) === 8 ? el.lastChild : null,
+             DOMTokenList: el.classList, CSSStyleDeclaration: el.style,
+             NodeList: document.querySelectorAll('p'), HTMLCollection: el.children,
+           }};
+           let out = '';
+           for (const [iface, nature, name, isStatic] of [{members}]) {{
+             let ok = false;
+             try {{
+               const target = isStatic ? globalThis[iface] : samples[iface];
+               if (target !== null && target !== undefined) {{
+                 if (nature === 'c') ok = typeof target[name] === 'number';
+                 else if (nature === 'o') ok = typeof target[name] === 'function';
+                 else if (iface === 'CSSStyleDeclaration') ok = name === 'cssText';
+                 else ok = target[name] !== undefined;
+               }}
+             }} catch (e) {{}}
+             out += ok ? '1' : '0';
+           }}
+           return out;
+         }})()"
+    );
+    let flags = engine.run(&mut doc, |vm| {
+        vm.eval(&probe)
+            .map(|value| vm.display(&value))
+            .unwrap_or_default()
+    });
+    let mut flags = flags.chars().map(|c| c == '1');
+
+    let mut rows = String::new();
+    let mut missing = String::new();
+    let (mut total, mut done) = (0_usize, 0_usize);
+    for interface in crate::dom_idl::INTERFACES {
+        let mut absent: Vec<&str> = Vec::new();
+        let mut count = |names: &mut dyn Iterator<Item = &'static str>| {
+            let (mut all, mut ok) = (0_usize, 0_usize);
+            for name in names {
+                all += 1;
+                if flags.next().unwrap_or(false) {
+                    ok += 1;
+                } else {
+                    absent.push(name);
+                }
+            }
+            (ok, all)
+        };
+        let constants = count(&mut interface.constants.iter().map(|(name, _)| *name));
+        let attributes = count(&mut interface.attributes.iter().map(|a| a.name));
+        let operations = count(&mut interface.operations.iter().map(|o| o.name));
+        total += constants.1 + attributes.1 + operations.1;
+        done += constants.0 + attributes.0 + operations.0;
+        let cell = |(ok, all): (usize, usize)| {
+            if all == 0 {
+                "—".to_owned()
+            } else {
+                format!("{ok} / {all}")
+            }
+        };
+        let _ = writeln!(
+            rows,
+            "| `{}` | {} | {} | {} | {} |",
+            interface.name,
+            interface
+                .parent
+                .map_or("—".to_owned(), |p| format!("`{p}`")),
+            cell(constants),
+            cell(attributes),
+            cell(operations)
+        );
+        if !absent.is_empty() {
+            let _ = writeln!(missing, "- `{}` : {}", interface.name, absent.join(", "));
+        }
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "nombres de membres petits devant 2^53"
+    )]
+    let rate = if total == 0 {
+        0.0
+    } else {
+        done as f64 * 100.0 / total as f64
+    };
+    format!(
+        "# Couverture du DOM\n\n\
+         Membres des interfaces décrites par les fichiers Web IDL d'Oxyde (`crates/oxyde_content/idl/`) \
+         que les scripts trouvent réellement, mesurés en interrogeant une page d'essai. \
+         Généré par `cargo run -p oxyde -- --dom-coverage`.\n\n\
+         La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : \
+         c'est le rôle des Web Platform Tests, pas encore branchés. Les interfaces que l'IDL \
+         d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) \
+         ne sont pas comptées.\n\n\
+         **Total : {done} membres disponibles sur {total} ({rate:.1} %).**\n\n\
+         | Interface | Hérite de | Constantes | Attributs | Opérations |\n|---|---|---:|---:|---:|\n{rows}\n\
+         ## Membres absents\n\n{missing}"
+    )
 }

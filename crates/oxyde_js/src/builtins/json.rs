@@ -306,6 +306,9 @@ impl Writer {
         let _ = holder;
         match &value {
             Value::Undefined | Value::Hole | Value::Symbol(_) => return Ok(false),
+            Value::BigInt(_) => {
+                return Err(vm.type_error("JSON.stringify ne sait pas sérialiser un BigInt"));
+            }
             Value::Null => self.out.push_str("null"),
             Value::Bool(b) => self.out.push_str(if *b { "true" } else { "false" }),
             Value::Number(n) => {

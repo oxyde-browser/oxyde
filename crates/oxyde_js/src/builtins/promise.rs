@@ -338,7 +338,7 @@ impl Vm {
         match self.resume(coroutine, mode) {
             Ok(CoOutcome::Return(value)) => self.resolve_promise(promise, value),
             Err(thrown) => self.settle(promise, true, thrown),
-            Ok(CoOutcome::Yield(awaited)) => {
+            Ok(CoOutcome::Yield(awaited) | CoOutcome::Await(awaited)) => {
                 let awaited = self.promise_resolve(&awaited);
                 let data = vec![Value::Object(coroutine)];
                 let on_fulfilled = self.new_native_data(async_fulfilled, data.clone());

@@ -1,12 +1,14 @@
 //! Bibliothèque standard : objets globaux d'ECMAScript.
 //!
-//! LIMITES CONNUES : pas de `Proxy`, `Reflect`, `BigInt`, tableaux typés ni
-//! `Intl` ; `Date` se réduit à l'horloge ;
+//! LIMITES CONNUES : pas de `Proxy` ni d'`Intl` ;
 //! `WeakMap` et `WeakSet` retiennent leurs clés ; `Object.freeze` ne fige pas
 //! les éléments d'un tableau.
 
 mod array;
+mod async_generator;
+pub(crate) mod bigint;
 mod collections;
+mod date;
 mod generator;
 mod json;
 pub(crate) mod promise;
@@ -14,6 +16,7 @@ mod reflect;
 pub(crate) mod regexp;
 mod string;
 pub(crate) mod symbol;
+mod typed_array;
 
 use std::sync::Arc;
 
@@ -122,7 +125,11 @@ pub(crate) fn install(vm: &mut Vm) {
     json::install(vm);
     collections::install(vm);
     symbol::install(vm);
+    bigint::install(vm);
+    date::install(vm);
+    typed_array::install(vm);
     generator::install(vm);
+    async_generator::install(vm);
     promise::install(vm);
     regexp::install(vm);
     reflect::install(vm);
@@ -494,7 +501,7 @@ fn object_proto_property_is_enumerable(vm: &mut Vm, this: &Value, args: &[Value]
     Ok(Value::Bool(enumerable))
 }
 
-fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+pub(super) fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let tag = match this {
         Value::Undefined | Value::Hole => "Undefined",
         Value::Null => "Null",
@@ -502,6 +509,7 @@ fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResul
         Value::Number(_) => "Number",
         Value::String(_) => "String",
         Value::Symbol(_) => "Symbol",
+        Value::BigInt(_) => "BigInt",
         Value::Object(id) => match &vm.heap.get(*id).kind {
             Kind::Array(_) => "Array",
             Kind::Closure(_)
@@ -509,6 +517,7 @@ fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResul
             | Kind::NativeData { .. }
             | Kind::Bound { .. } => "Function",
             Kind::Error => "Error",
+            Kind::Date(_) => "Date",
             Kind::RegExp { .. } => "RegExp",
             Kind::Primitive(Value::Bool(_)) => "Boolean",
             Kind::Primitive(Value::Number(_)) => "Number",
@@ -1067,47 +1076,6 @@ console_fn!(console_warn, "warn");
 console_fn!(console_error, "error");
 console_fn!(console_debug, "debug");
 
-fn now_ms() -> f64 {
-    let elapsed = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "millisecondes depuis 1970 : bien en deçà de 2^53"
-    )]
-    let ms = elapsed.as_millis() as f64;
-    ms
-}
-
-fn date_now(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    Ok(Value::Number(now_ms()))
-}
-
-fn date_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let time = match arg(args, 0) {
-        Value::Undefined => now_ms(),
-        other => vm.to_number(&other)?,
-    };
-    let proto = match vm.get(&Value::Object(vm.global), "Date")? {
-        date @ Value::Object(_) => vm.get(&date, "prototype")?.as_object(),
-        _ => None,
-    };
-    let object = Object::new(
-        proto.or(Some(vm.intrinsics.object_proto)),
-        Kind::Primitive(Value::Number(time)),
-    );
-    Ok(Value::Object(vm.heap.alloc(object)))
-}
-
-fn date_get_time(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    this_primitive(
-        vm,
-        this,
-        |v| matches!(v, Value::Number(_)),
-        "Date.prototype.getTime",
-    )
-}
-
 fn install_globals(vm: &mut Vm) {
     let global = vm.global;
     vm.define_hidden(global, "globalThis", Value::Object(global));
@@ -1141,12 +1109,6 @@ fn install_globals(vm: &mut Vm) {
         vm.define_method(console, name, 0, *func);
     }
     vm.define_hidden(global, "console", Value::Object(console));
-
-    let date_proto = vm.new_object();
-    let date = constructor(vm, "Date", 7, date_ctor, date_proto);
-    vm.define_method(date, "now", 0, date_now);
-    vm.define_method(date_proto, "getTime", 0, date_get_time);
-    vm.define_method(date_proto, "valueOf", 0, date_get_time);
 }
 
 /// Représentation d'un nombre dans la base `radix` (2 à 36), partie entière seulement

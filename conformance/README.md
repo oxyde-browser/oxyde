@@ -10,16 +10,20 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
 | Web Platform Tests (sous-ensembles DOM, CSS) | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
-| test262 | `oxyde_js` | **branchée** : 20 076 tests réussis sur 48 795 (41,1 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 28 064 tests réussis sur 48 795 (57,5 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
 
+La couverture du DOM (membres des interfaces Web IDL réellement disponibles aux scripts) est
+mesurée par `cargo run -p oxyde -- --dom-coverage` et publiée dans [dom.md](dom.md) :
+125 membres sur 283 (44,2 %). Elle dit qu'un membre existe, pas qu'il est conforme.
+
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus
-gros manques qu'il révèle : générateurs async, tableaux typés et `ArrayBuffer`, `BigInt`,
-`Temporal`, modules, `Proxy`, erreurs de syntaxe précoces non détectées, méthodes de tableau
-appliquées à des objets ordinaires.
+gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul), erreurs de syntaxe précoces
+non détectées, `Proxy`, les méthodes d'`Iterator`, `with`, `SharedArrayBuffer` et `Atomics`,
+les membres privés statiques et `#x in obj`, `await` de premier niveau dans les modules.
 
 ## Écarts connus
 
@@ -66,11 +70,23 @@ appliquées à des objets ordinaires.
 - Le bouton Paramètres est inactif (écran prévu au jalon 7).
 
 ### JavaScript (`oxyde_js`) et DOM scriptable
-- Absents du langage : modules, générateurs async et `for await`,
-  `BigInt`, `Proxy`/`Reflect`, tableaux typés, gabarits étiquetés, `with`. La syntaxe non prise
+- Absents du langage : `import()` dynamique,
+  `Proxy`, gabarits étiquetés, `with`. La syntaxe non prise
   en charge est refusée avec une erreur explicite.
 - `eval` et `Function` évaluent toujours dans la portée globale : `eval` ne voit pas les
   variables locales de l'appelant. Le mode strict (`"use strict"`) n'est pas distingué.
+- Modules : `import` et `export` sous toutes leurs formes statiques, liaisons vivantes,
+  cycles, `import.meta.url`. Pas d'`await` de premier niveau ni d'attributs d'importation ;
+  affecter une liaison importée est ignoré au lieu de lever `TypeError` ; deux `export *` qui
+  fournissent le même nom ne sont pas signalés comme ambigus. Dans une page, tout le graphe
+  est chargé avant l'exécution, sans contrôle CORS, et un spécificateur « nu » (`"lodash"`)
+  n'est pas résolu (pas de carte d'importation).
+- `BigInt` : arithmétique en précision arbitraire écrite pour Oxyde, bornée à 2^22 bits
+  (au-delà, `RangeError`).
+- Tableaux typés, `ArrayBuffer` (redimensionnable, transférable) et `DataView` : pas de
+  `SharedArrayBuffer` ni d'`Atomics` ; `Symbol.species` n'est pas consulté.
+- `Array` : méthodes génériques (tout objet muni d'une longueur) ; `Symbol.species` et
+  `Symbol.isConcatSpreadable` ne sont pas consultés.
 - `Symbol` : `Symbol.toPrimitive` et `Symbol.hasInstance` existent mais ne sont pas consultés
   par les conversions ni par `instanceof`.
 - Itération : `for…of`, la décomposition et `...` suivent `Symbol.iterator`, sauf pour les
@@ -86,18 +102,27 @@ appliquées à des objets ordinaires.
   `v` ; `d` est accepté sans effet ; un motif littéral invalide n'est signalé qu'à
   l'exécution ; les méthodes de `String` ne passent pas par `Symbol.match`, `Symbol.replace`…
   Une recherche trop coûteuse (motif à coût exponentiel) lève `RangeError`.
+- Générateurs async et `for await` : mêmes limites que les générateurs pour `return()` et
+  `yield*` ; un itérateur abandonné par `break` ne reçoit pas d'appel à `return()`.
 - `Promise` : `then`, `catch`, `finally`, `resolve`, `reject`, `all`, `allSettled`, `any`,
   `race` ; pas de sous-classes (les méthodes statiques ignorent `this`), ni `withResolvers`,
   ni `try`. Un rejet sans gestionnaire est signalé dans la console à la fin de la tâche.
 - Chaînes stockées en UTF-8 : longueurs et index comptés en unités UTF-16, mais un substitut
   isolé n'est pas représentable.
-- `Date` minimale ; pas d'`Intl`.
+- `Date` : le fuseau horaire local n'est pas consulté (l'heure locale est l'heure UTC,
+  `getTimezoneOffset()` vaut 0) ; `Date.parse` ne reconnaît que le format ISO et les formats
+  de `toString` et `toUTCString`. Pas d'`Intl`.
 - Interpréteur seul (pas de compilation à la volée) ; ramasse-miettes marquage-balayage non
   générationnel. Un script est interrompu après 200 millions d'instructions.
 - DOM : `getElementById`, `querySelector(All)`, création/insertion/suppression de nœuds,
   `textContent`, `innerHTML`, attributs, `classList`, `style`, événements avec propagation
-  (`click`, `load`), `setTimeout`/`setInterval`. Liaisons écrites à la main : le générateur
-  Web IDL (`oxyde_bindings`) n'existe pas encore.
+  (`click`, `load`), `setTimeout`/`setInterval`. Les interfaces (prototypes, constructeurs
+  `Node`, `Element`…, constantes, arité et répartition des opérations) sont générées par
+  `oxyde_bindings` à partir des fichiers Web IDL de `crates/oxyde_content/idl/` ; le corps des
+  opérations et les attributs restent écrits à la main, sans conversion des arguments d'après
+  leurs types IDL. Les fichiers IDL sont des transcriptions partielles des standards : les
+  éléments HTML particuliers (`HTMLAnchorElement`…) et `Window` n'y figurent pas encore, si
+  bien que tous les éléments HTML sont de simples `HTMLElement`.
 - `fetch` : `GET` seulement, sans en-têtes ni corps de requête ; la réponse est lue d'un bloc
   (`status`, `ok`, `headers.get/has`, `text()`, `json()`). Politique de même origine : une
   réponse d'une autre origine n'est remise au script que si elle porte
@@ -106,5 +131,5 @@ appliquées à des objets ordinaires.
   `http` et `https` sont refusés aux scripts.
 - Pas de `XMLHttpRequest`, pas de navigation par `location`, pas de `getBoundingClientRect`,
   pas d'événements clavier ni de formulaires.
-- Scripts `type=module` ignorés ; `defer` et `async` exécutés dans l'ordre du document, comme
-  des scripts classiques.
+- Scripts `type=module` exécutés après les scripts classiques ; `defer` et `async` exécutés
+  dans l'ordre du document, comme des scripts classiques.

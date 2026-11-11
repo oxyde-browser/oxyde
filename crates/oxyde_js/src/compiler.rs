@@ -142,7 +142,7 @@ pub(crate) fn compile_script(body: &[Stmt]) -> CResult<Arc<FunctionProto>> {
 }
 
 /// Noms liés par un motif.
-fn pattern_names(pattern: &Pattern, out: &mut Vec<JsStr>) {
+pub(crate) fn pattern_names(pattern: &Pattern, out: &mut Vec<JsStr>) {
     match pattern {
         Pattern::Ident(name) => out.push(Arc::clone(name)),
         Pattern::Expr(_) => {}
@@ -233,6 +233,7 @@ fn is_pure(expr: &Expr) -> bool {
     matches!(
         expr,
         Expr::Number(_)
+            | Expr::BigInt(_)
             | Expr::String(_)
             | Expr::Bool(_)
             | Expr::Null
@@ -1069,7 +1070,12 @@ impl Compiler {
             let mark = self.mark();
             match (pattern, value) {
                 (Pattern::Ident(name), Some(value)) => {
-                    let reg = self.expr_named(value, name, None)?;
+                    // `export default <expression>` : la valeur s'appelle « default ».
+                    let reg = if &**name == crate::parser::DEFAULT_EXPORT {
+                        self.expr_named(value, &Arc::from("default"), None)?
+                    } else {
+                        self.expr_named(value, name, None)?
+                    };
                     self.store(name, reg, init)?;
                 }
                 (Pattern::Ident(name), None) => {
@@ -1222,7 +1228,8 @@ impl Compiler {
                 object,
                 body,
                 of,
-            } => self.for_in_statement(target, object, body, *of)?,
+                is_await,
+            } => self.for_in_statement(target, object, body, *of, *is_await)?,
             Stmt::Switch {
                 discriminant,
                 cases,
@@ -1325,11 +1332,17 @@ impl Compiler {
         object: &Expr,
         body: &Stmt,
         of: bool,
+        is_await: bool,
     ) -> CResult<()> {
         let labels = std::mem::take(&mut self.f().pending_labels);
         let iter = self.alloc()?;
         let source = self.expr(object, None)?;
-        self.emit(if of {
+        self.emit(if is_await {
+            Op::AsyncIterStart {
+                dst: iter,
+                src: source,
+            }
+        } else if of {
             Op::IterStart {
                 dst: iter,
                 src: source,
@@ -1345,11 +1358,15 @@ impl Compiler {
         self.push_target(true, true);
         let head = self.here();
         let value = self.alloc()?;
-        let exit = self.emit(Op::IterNext {
-            dst: value,
-            iter,
-            done: 0,
-        });
+        let exit = if is_await {
+            self.async_iter_next(iter, value)?
+        } else {
+            self.emit(Op::IterNext {
+                dst: value,
+                iter,
+                done: 0,
+            })
+        };
         // Une portée par tour : chaque itération a ses propres liaisons.
         self.push_scope();
         match target {
@@ -1373,6 +1390,48 @@ impl Compiler {
         self.patch(exit);
         self.pop_target(head);
         Ok(())
+    }
+
+    /// Un tour d'itération asynchrone : `value = (await iter.next()).value`.
+    /// Renvoie le saut pris quand l'itérateur est épuisé, à compléter.
+    fn async_iter_next(&mut self, iter: Reg, value: Reg) -> CResult<usize> {
+        let mark = self.mark();
+        let next = self.alloc()?;
+        let name = self.string(&Arc::from("next"));
+        self.emit(Op::GetProp {
+            dst: next,
+            obj: iter,
+            name,
+        });
+        self.emit(Op::Call {
+            dst: value,
+            callee: next,
+            this: iter,
+            first: next,
+            argc: 0,
+        });
+        self.emit(Op::Await {
+            dst: value,
+            src: value,
+        });
+        let done = self.string(&Arc::from("done"));
+        self.emit(Op::GetProp {
+            dst: next,
+            obj: value,
+            name: done,
+        });
+        let exit = self.emit(Op::JumpIfTrue {
+            src: next,
+            target: 0,
+        });
+        let name = self.string(&Arc::from("value"));
+        self.emit(Op::GetProp {
+            dst: value,
+            obj: value,
+            name,
+        });
+        self.free_to(mark);
+        Ok(exit)
     }
 
     fn switch_statement(
@@ -1741,6 +1800,14 @@ impl Compiler {
 
     fn expr(&mut self, expr: &Expr, dst: Option<Reg>) -> CResult<Reg> {
         match expr {
+            Expr::BigInt(big) => {
+                let dst = self.dst_or_alloc(dst)?;
+                let f = self.f();
+                f.constants.push(Value::BigInt(Arc::clone(big)));
+                let index = u32::try_from(f.constants.len() - 1).unwrap_or(u32::MAX);
+                self.emit(Op::LoadConst { dst, index });
+                Ok(dst)
+            }
             Expr::Number(n) => {
                 let dst = self.dst_or_alloc(dst)?;
                 let index = self.number(*n);
@@ -1879,7 +1946,24 @@ impl Compiler {
                         reg
                     }
                 };
-                if *delegate {
+                if *delegate && self.f().is_async {
+                    // `yield* it` dans un générateur async : comme `for await`.
+                    let iter = self.alloc()?;
+                    self.emit(Op::AsyncIterStart {
+                        dst: iter,
+                        src: value,
+                    });
+                    let head = self.here();
+                    let item = self.alloc()?;
+                    let exit = self.async_iter_next(iter, item)?;
+                    self.emit(Op::Yield {
+                        dst: item,
+                        src: item,
+                    });
+                    self.emit(Op::Jump { target: head });
+                    self.patch(exit);
+                    self.emit(Op::LoadUndefined { dst });
+                } else if *delegate {
                     // `yield* it` : rend une à une les valeurs de l'itérable.
                     let iter = self.alloc()?;
                     self.emit(Op::IterStart {
@@ -1910,7 +1994,7 @@ impl Compiler {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
                 let value = self.expr(arg, None)?;
-                self.emit(Op::Yield { dst, src: value });
+                self.emit(Op::Await { dst, src: value });
                 self.free_to(mark);
                 Ok(dst)
             }
@@ -2265,14 +2349,7 @@ impl Compiler {
     ) -> CResult<Reg> {
         let dst = self.dst_or_alloc(dst)?;
         let mark = self.mark();
-        let op = if increment {
-            BinaryOp::Add
-        } else {
-            BinaryOp::Sub
-        };
-        let (old, new, one) = (self.alloc()?, self.alloc()?, self.alloc()?);
-        let index = self.number(1.0);
-        self.emit(Op::LoadConst { dst: one, index });
+        let (old, new) = (self.alloc()?, self.alloc()?);
         match target {
             Expr::Ident(name) => {
                 let current = self.load(name, None)?;
@@ -2280,11 +2357,10 @@ impl Compiler {
                     dst: old,
                     src: current,
                 });
-                self.emit(Op::Binary {
-                    op,
+                self.emit(Op::Step {
                     dst: new,
-                    left: old,
-                    right: one,
+                    src: old,
+                    increment,
                 });
                 self.store(name, new, false)?;
             }
@@ -2297,11 +2373,10 @@ impl Compiler {
                     name,
                 });
                 self.emit(Op::ToNumber { dst: old, src: old });
-                self.emit(Op::Binary {
-                    op,
+                self.emit(Op::Step {
                     dst: new,
-                    left: old,
-                    right: one,
+                    src: old,
+                    increment,
                 });
                 self.emit(Op::SetProp {
                     obj,
@@ -2314,11 +2389,10 @@ impl Compiler {
                 let key = self.expr_to_temp(index)?;
                 self.emit(Op::GetElem { dst: old, obj, key });
                 self.emit(Op::ToNumber { dst: old, src: old });
-                self.emit(Op::Binary {
-                    op,
+                self.emit(Op::Step {
                     dst: new,
-                    left: old,
-                    right: one,
+                    src: old,
+                    increment,
                 });
                 self.emit(Op::SetElem { obj, key, src: new });
             }

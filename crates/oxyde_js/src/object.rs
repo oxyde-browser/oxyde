@@ -3,9 +3,10 @@
 
 use std::sync::Arc;
 
-use crate::heap::{IterState, Kind, Object, Property, Slot};
+use crate::heap::{IndexedKind, IterState, Kind, Object, Property, Slot};
 use crate::value::{
-    JsStr, ObjId, PropertyKey, Symbol, Value, array_index, number_to_string, utf16_len,
+    JsStr, ObjId, PropertyKey, Symbol, Value, array_index, canonical_numeric_index,
+    number_to_string, utf16_len,
 };
 use crate::vm::{JsResult, Vm};
 
@@ -48,6 +49,7 @@ impl Vm {
             Value::Number(_) => self.get_with_receiver(self.intrinsics.number_proto, key, target),
             Value::Bool(_) => self.get_with_receiver(self.intrinsics.boolean_proto, key, target),
             Value::Symbol(_) => self.get_with_receiver(self.intrinsics.symbol_proto, key, target),
+            Value::BigInt(_) => self.get_with_receiver(self.intrinsics.bigint_proto, key, target),
             Value::Undefined | Value::Null | Value::Hole => {
                 let shown = if *target == Value::Null {
                     "null"
@@ -128,8 +130,26 @@ impl Vm {
                 let hooks = self.host_hooks?;
                 (hooks.get)(self, class, data, key)
             }
+            // Tableau typé : une clé numérique désigne un élément ou rien, sans
+            // jamais consulter le prototype.
+            Kind::TypedArray(_) => {
+                let index = canonical_numeric_index(key)?;
+                Some(Ok(index
+                    .and_then(|i| self.typed_get(id, i))
+                    .unwrap_or(Value::Undefined)))
+            }
             _ => None,
         }
+    }
+
+    /// Vrai si `key` désigne un élément existant du tableau typé `id` ;
+    /// `None` si `id` n'est pas un tableau typé ou si la clé n'est pas numérique.
+    fn typed_has(&self, id: ObjId, key: &str) -> Option<bool> {
+        if !matches!(self.heap.get(id).kind, Kind::TypedArray(_)) {
+            return None;
+        }
+        let index = canonical_numeric_index(key)?;
+        Some(index.is_some_and(|i| self.typed_length(id).is_some_and(|len| i < len)))
     }
 
     /// Lit `key` sur l'objet `id` et sa chaîne de prototypes ; `receiver` est
@@ -177,6 +197,20 @@ impl Vm {
                 return Ok(value.clone());
             }
         }
+        if let (Value::Object(id), Value::Number(n)) = (target, key)
+            && matches!(self.heap.get(*id).kind, Kind::TypedArray(_))
+            && *n >= 0.0
+            && n.fract() == 0.0
+            && *n < 9_007_199_254_740_992.0
+        {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "entier vérifié dans [0, 2^53)"
+            )]
+            let index = *n as usize;
+            return Ok(self.typed_get(*id, index).unwrap_or(Value::Undefined));
+        }
         let key = self.to_key(key)?;
         self.get_key(target, &key)
     }
@@ -195,6 +229,7 @@ impl Vm {
                     Value::Number(_) => self.intrinsics.number_proto,
                     Value::Bool(_) => self.intrinsics.boolean_proto,
                     Value::Symbol(_) => self.intrinsics.symbol_proto,
+                    Value::BigInt(_) => self.intrinsics.bigint_proto,
                     Value::Undefined | Value::Null | Value::Hole => {
                         return Err(self.type_error(&format!(
                             "impossible de lire la propriété « {} » de null ou undefined",
@@ -372,6 +407,9 @@ impl Vm {
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { return false };
+            if let Some(present) = self.typed_has(obj, key) {
+                return present;
+            }
             if self.has_own(obj, key) {
                 return true;
             }
@@ -382,6 +420,9 @@ impl Vm {
 
     /// Vrai si `key` est une propriété propre de `id`.
     pub(crate) fn has_own(&self, id: ObjId, key: &str) -> bool {
+        if let Some(present) = self.typed_has(id, key) {
+            return present;
+        }
         let object = self.heap.get(id);
         if object.props.contains_key(key) {
             return true;
@@ -424,6 +465,12 @@ impl Vm {
             // Écrire sur une primitive est sans effet (hors mutateur hérité, non géré).
             _ => return Ok(()),
         };
+        if matches!(self.heap.get(id).kind, Kind::TypedArray(_))
+            && let Some(index) = canonical_numeric_index(key)
+        {
+            self.typed_store(id, index, &value)?;
+            return Ok(());
+        }
         match &mut self.heap.get_mut(id).kind {
             Kind::Array(items) => {
                 if let Some(index) = array_index(key) {
@@ -546,6 +593,21 @@ impl Vm {
                 return Ok(());
             }
         }
+        if let (Value::Object(id), Value::Number(n)) = (target, key)
+            && matches!(self.heap.get(*id).kind, Kind::TypedArray(_))
+            && *n >= 0.0
+            && n.fract() == 0.0
+            && *n < 9_007_199_254_740_992.0
+        {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "entier vérifié dans [0, 2^53)"
+            )]
+            let index = *n as usize;
+            self.typed_store(*id, Some(index), &value)?;
+            return Ok(());
+        }
         let key = self.to_key(key)?;
         self.set_key(target, &key, value)
     }
@@ -561,6 +623,10 @@ impl Vm {
             }
             _ => return Ok(true),
         };
+        // Un élément de tableau typé ne se supprime pas.
+        if let Some(present) = self.typed_has(id, key) {
+            return Ok(!present);
+        }
         let object = self.heap.get_mut(id);
         if let Kind::Array(items) = &mut object.kind
             && let Some(slot) = array_index(key).and_then(|i| items.get_mut(i))
@@ -595,6 +661,10 @@ impl Vm {
             }
             Kind::Primitive(Value::String(s)) => {
                 keys.extend((0..utf16_len(s)).map(|i| Arc::from(i.to_string())))
+            }
+            Kind::TypedArray(_) => {
+                let length = self.typed_length(id).unwrap_or(0);
+                keys.extend((0..length).map(|i| Arc::from(i.to_string())));
             }
             _ => {}
         }
@@ -663,8 +733,11 @@ impl Vm {
         Ok(())
     }
 
-    /// Change le prototype de `id` ; refuse de créer un cycle.
-    pub(crate) fn set_prototype(&mut self, id: ObjId, proto: Option<ObjId>) -> JsResult<()> {
+    /// Change le prototype de `id`.
+    ///
+    /// # Errors
+    /// `TypeError` si le changement créerait une chaîne de prototypes cyclique.
+    pub fn set_prototype(&mut self, id: ObjId, proto: Option<ObjId>) -> JsResult<()> {
         let mut current = proto;
         for _ in 0..10_000 {
             match current {
@@ -796,6 +869,41 @@ impl Vm {
                     }
                 }))
             }
+            IterState::Indexed {
+                target,
+                index,
+                kind,
+            } => {
+                let (target, i, kind) = (target.clone(), *index, *kind);
+                // La longueur est relue à chaque tour : l'objet peut changer.
+                let length = self.get(&target, "length")?;
+                let length = self.to_number(&length)?;
+                #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+                let position = i as f64;
+                if length.is_nan() || position >= length {
+                    // Épuisé pour de bon, même si l'objet grandit ensuite.
+                    if let Kind::Iterator(IterState::Indexed { index, .. }) =
+                        &mut self.heap.get_mut(id).kind
+                    {
+                        *index = usize::MAX;
+                    }
+                    return Ok(None);
+                }
+                if let Kind::Iterator(IterState::Indexed { index, .. }) =
+                    &mut self.heap.get_mut(id).kind
+                {
+                    *index = i.saturating_add(1);
+                }
+                let key = Value::Number(position);
+                Ok(Some(match kind {
+                    IndexedKind::Keys => key,
+                    IndexedKind::Values => self.get_element(&target, &key)?,
+                    IndexedKind::Entries => {
+                        let value = self.get_element(&target, &key)?;
+                        self.new_array(vec![key, value])
+                    }
+                }))
+            }
             IterState::Protocol { iterator, next } => {
                 let (iterator, next) = (iterator.clone(), next.clone());
                 let result = self.call(&next, &iterator, &[])?;
@@ -873,6 +981,7 @@ impl Vm {
             Value::String(s) if depth == 0 => s.to_string(),
             Value::String(s) => format!("'{s}'"),
             Value::Symbol(s) => format!("Symbol({})", s.description().unwrap_or("")),
+            Value::BigInt(b) => format!("{b}n"),
             Value::Object(id) => {
                 let object: &Object = self.heap.get(*id);
                 match &object.kind {
@@ -917,6 +1026,9 @@ impl Vm {
                     Kind::Array(_) => "[Array]".to_owned(),
                     Kind::Host { .. } => "[object Host]".to_owned(),
                     Kind::Promise(_) => "[object Promise]".to_owned(),
+                    Kind::Date(_) => self
+                        .to_string(value)
+                        .map_or_else(|_| "[object Date]".to_owned(), |s| s.to_string()),
                     Kind::RegExp { .. } => self
                         .to_string(value)
                         .map_or_else(|_| "[object RegExp]".to_owned(), |s| s.to_string()),

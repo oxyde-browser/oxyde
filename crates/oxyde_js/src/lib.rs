@@ -19,11 +19,13 @@
 #![allow(clippy::wrong_self_convention, reason = "noms repris d'ECMA-262")]
 
 mod ast;
+pub mod bigint;
 mod builtins;
 mod bytecode;
 mod compiler;
 mod heap;
 pub mod lexer;
+mod module;
 mod object;
 mod ops;
 mod parser;
@@ -33,6 +35,7 @@ mod vm;
 
 pub use builtins::ConsoleMessage;
 pub use lexer::SyntaxError;
+pub use module::{ModuleLoader, module_requests};
 pub use value::{JsStr, ObjId, PropertyKey, Symbol, Value};
 pub use vm::{HostHooks, JsResult, NativeDataFn, NativeFn, Vm};
 

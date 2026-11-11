@@ -3,11 +3,21 @@
 use std::sync::Arc;
 
 use crate::ast::BinaryOp;
+use crate::bigint::BigInt;
 use crate::bytecode::UnaryKind;
 use crate::heap::Kind;
 use crate::value::{
     JsStr, PropertyKey, Value, number_to_string, string_to_number, to_int32, to_uint32,
 };
+
+/// Type préféré d'une conversion en primitive (ECMA-262, « hint »).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Hint {
+    /// Pas de préférence (`+`, `==`) : nombre, sauf pour les dates.
+    Default,
+    Number,
+    String,
+}
 use crate::vm::{JsResult, Vm};
 
 impl Vm {
@@ -21,6 +31,7 @@ impl Vm {
             Value::Number(_) => "number",
             Value::String(_) => "string",
             Value::Symbol(_) => "symbol",
+            Value::BigInt(_) => "bigint",
             Value::Object(id) => {
                 if self.heap.get(*id).is_callable() {
                     "function"
@@ -33,6 +44,40 @@ impl Vm {
 
     /// `ToPrimitive` : `prefer_string` choisit l'ordre `toString` / `valueOf`.
     pub(crate) fn to_primitive(&mut self, value: &Value, prefer_string: bool) -> JsResult {
+        let hint = if prefer_string {
+            Hint::String
+        } else {
+            Hint::Number
+        };
+        self.to_primitive_hint(value, hint)
+    }
+
+    /// `ToPrimitive` avec son indication : la méthode `Symbol.toPrimitive` de
+    /// l'objet l'emporte, sinon `valueOf` et `toString` sont essayées.
+    pub(crate) fn to_primitive_hint(&mut self, value: &Value, hint: Hint) -> JsResult {
+        if value.as_object().is_none() {
+            return Ok(value.clone());
+        }
+        let key = PropertyKey::Symbol(self.well_known.to_primitive.clone());
+        let exotic = self.get_key(value, &key)?;
+        if !exotic.is_nullish() {
+            let name = match hint {
+                Hint::Default => "default",
+                Hint::Number => "number",
+                Hint::String => "string",
+            };
+            // Appeler une valeur non appelable lève la `TypeError` attendue.
+            let result = self.call(&exotic, value, &[Value::string(name)])?;
+            if result.as_object().is_some() {
+                return Err(self.type_error("Symbol.toPrimitive a rendu un objet"));
+            }
+            return Ok(result);
+        }
+        self.ordinary_to_primitive(value, hint == Hint::String)
+    }
+
+    /// `OrdinaryToPrimitive` : `toString` puis `valueOf`, ou l'inverse.
+    pub(crate) fn ordinary_to_primitive(&mut self, value: &Value, prefer_string: bool) -> JsResult {
         let Value::Object(id) = value else {
             return Ok(value.clone());
         };
@@ -76,6 +121,11 @@ impl Vm {
             Value::Symbol(_) => {
                 return Err(self.type_error("impossible de convertir un symbole en nombre"));
             }
+            Value::BigInt(_) => {
+                return Err(self.type_error(
+                    "impossible de convertir un BigInt en nombre ; utiliser Number(valeur)",
+                ));
+            }
             Value::Object(_) => {
                 let primitive = self.to_primitive(value, false)?;
                 return self.to_number(&primitive);
@@ -97,6 +147,7 @@ impl Vm {
             Value::Symbol(_) => {
                 return Err(self.type_error("impossible de convertir un symbole en chaîne"));
             }
+            Value::BigInt(b) => Arc::from(b.to_string()),
             Value::Object(_) => {
                 let primitive = self.to_primitive(value, true)?;
                 return self.to_string(&primitive);
@@ -133,6 +184,18 @@ impl Vm {
         }
     }
 
+    /// `ToNumeric` : nombre ou `BigInt`.
+    pub(crate) fn to_numeric(&mut self, value: &Value) -> JsResult {
+        match value {
+            Value::BigInt(_) => Ok(value.clone()),
+            Value::Object(_) => {
+                let primitive = self.to_primitive(value, false)?;
+                self.to_numeric(&primitive)
+            }
+            other => Ok(Value::Number(self.to_number(other)?)),
+        }
+    }
+
     /// `ToObject` : enveloppe une primitive.
     pub(crate) fn to_object(&mut self, value: &Value) -> JsResult {
         let proto = match value {
@@ -144,6 +207,7 @@ impl Vm {
             Value::Number(_) => self.intrinsics.number_proto,
             Value::String(_) => self.intrinsics.string_proto,
             Value::Symbol(_) => self.intrinsics.symbol_proto,
+            Value::BigInt(_) => self.intrinsics.bigint_proto,
         };
         let object = crate::heap::Object::new(Some(proto), Kind::Primitive(value.clone()));
         Ok(Value::Object(self.heap.alloc(object)))
@@ -189,12 +253,24 @@ impl Vm {
             (_, Value::Bool(y)) => {
                 return self.loose_equals(a, &Value::Number(f64::from(u8::from(*y))));
             }
-            (Value::Object(_), Value::Number(_) | Value::String(_)) => {
-                let primitive = self.to_primitive(a, false)?;
+            (Value::BigInt(x), Value::Number(y)) | (Value::Number(y), Value::BigInt(x)) => {
+                x.compare_f64(*y) == Some(std::cmp::Ordering::Equal)
+            }
+            (Value::BigInt(x), Value::String(s)) | (Value::String(s), Value::BigInt(x)) => {
+                BigInt::parse_string(s).is_some_and(|parsed| parsed == **x)
+            }
+            (
+                Value::Object(_),
+                Value::Number(_) | Value::String(_) | Value::BigInt(_) | Value::Symbol(_),
+            ) => {
+                let primitive = self.to_primitive_hint(a, Hint::Default)?;
                 return self.loose_equals(&primitive, b);
             }
-            (Value::Number(_) | Value::String(_), Value::Object(_)) => {
-                let primitive = self.to_primitive(b, false)?;
+            (
+                Value::Number(_) | Value::String(_) | Value::BigInt(_) | Value::Symbol(_),
+                Value::Object(_),
+            ) => {
+                let primitive = self.to_primitive_hint(b, Hint::Default)?;
                 return self.loose_equals(a, &primitive);
             }
             _ => Self::strict_equals(a, b),
@@ -207,6 +283,25 @@ impl Vm {
         if let (Value::String(x), Value::String(y)) = (&a, &b) {
             // Ordre des unités UTF-16, comme l'exige le langage.
             return Ok(Some(x.encode_utf16().lt(y.encode_utf16())));
+        }
+        match (&a, &b) {
+            (Value::BigInt(x), Value::BigInt(y)) => return Ok(Some(x < y)),
+            // Une chaîne qui n'est pas un entier rend la comparaison indéfinie.
+            (Value::BigInt(x), Value::String(s)) => {
+                return Ok(BigInt::parse_string(s).map(|parsed| **x < parsed));
+            }
+            (Value::String(s), Value::BigInt(y)) => {
+                return Ok(BigInt::parse_string(s).map(|parsed| parsed < **y));
+            }
+            (Value::BigInt(x), _) => {
+                let n = self.to_number(&b)?;
+                return Ok(x.compare_f64(n).map(std::cmp::Ordering::is_lt));
+            }
+            (_, Value::BigInt(y)) => {
+                let n = self.to_number(&a)?;
+                return Ok(y.compare_f64(n).map(std::cmp::Ordering::is_gt));
+            }
+            _ => {}
         }
         let (x, y) = (self.to_number(&a)?, self.to_number(&b)?);
         Ok(x.partial_cmp(&y).map(std::cmp::Ordering::is_lt))
@@ -241,10 +336,16 @@ impl Vm {
 
     pub(crate) fn unary(&mut self, op: UnaryKind, value: &Value) -> JsResult {
         Ok(match op {
-            UnaryKind::Neg => Value::Number(-self.to_number(value)?),
+            UnaryKind::Neg => match self.to_numeric(value)? {
+                Value::BigInt(b) => Value::BigInt(Arc::new(b.neg())),
+                other => Value::Number(-self.to_number(&other)?),
+            },
             UnaryKind::Plus => Value::Number(self.to_number(value)?),
             UnaryKind::Not => Value::Bool(!value.truthy()),
-            UnaryKind::BitNot => Value::Number(f64::from(!to_int32(self.to_number(value)?))),
+            UnaryKind::BitNot => match self.to_numeric(value)? {
+                Value::BigInt(b) => Value::BigInt(Arc::new(b.bit_not())),
+                other => Value::Number(f64::from(!to_int32(self.to_number(&other)?))),
+            },
             UnaryKind::Typeof => Value::string(self.type_of(value)),
         })
     }
@@ -272,7 +373,106 @@ impl Vm {
         self.binary_slow(op, a, b)
     }
 
+    /// Opération entre deux `BigInt`.
+    fn bigint_binary(&mut self, op: BinaryOp, x: &BigInt, y: &BigInt) -> JsResult {
+        let shift = |amount: &BigInt, left: bool| match amount.to_i64() {
+            Some(bits) => x.shift_left(if left { bits } else { bits.saturating_neg() }),
+            // Décalage démesuré : zéro ou -1 vers la droite, trop grand vers la gauche.
+            None if left != amount.is_negative() && !x.is_zero() => Err(crate::bigint::TooBig),
+            None if x.is_negative() => Ok(BigInt::from_i64(-1)),
+            None => Ok(BigInt::zero()),
+        };
+        let result = match op {
+            BinaryOp::Add => x.add(y),
+            BinaryOp::Sub => x.sub(y),
+            BinaryOp::Mul => x.mul(y),
+            BinaryOp::Div | BinaryOp::Rem => match x.div_rem(y) {
+                Some((quotient, _)) if op == BinaryOp::Div => Ok(quotient),
+                Some((_, remainder)) => Ok(remainder),
+                None => return Err(self.error("RangeError", "division d'un BigInt par zéro")),
+            },
+            BinaryOp::Exp => {
+                if y.is_negative() {
+                    return Err(self.error("RangeError", "exposant BigInt négatif"));
+                }
+                match y.to_i64() {
+                    Some(exponent) => x.pow(exponent.unsigned_abs()),
+                    // Exposant démesuré : seuls 0, 1 et -1 restent calculables.
+                    None if x.bits() <= 1 => {
+                        let odd = !y.bit_and(&BigInt::from_u64(1)).is_zero();
+                        Ok(if x.is_negative() && !odd {
+                            x.neg()
+                        } else {
+                            x.clone()
+                        })
+                    }
+                    None => Err(crate::bigint::TooBig),
+                }
+            }
+            BinaryOp::Shl => shift(y, true),
+            BinaryOp::Shr => shift(y, false),
+            BinaryOp::UShr => {
+                return Err(self.type_error("un BigInt n'a pas de décalage non signé (>>>)"));
+            }
+            BinaryOp::BitAnd => Ok(x.bit_and(y)),
+            BinaryOp::BitOr => Ok(x.bit_or(y)),
+            BinaryOp::BitXor => Ok(x.bit_xor(y)),
+            _ => return Err(self.type_error("opération invalide sur un BigInt")),
+        };
+        match result {
+            Ok(big) => Ok(Value::BigInt(Arc::new(big))),
+            Err(_) => Err(self.error("RangeError", "BigInt trop grand")),
+        }
+    }
+
     fn binary_slow(&mut self, op: BinaryOp, a: &Value, b: &Value) -> JsResult {
+        let arithmetic = matches!(
+            op,
+            BinaryOp::Add
+                | BinaryOp::Sub
+                | BinaryOp::Mul
+                | BinaryOp::Div
+                | BinaryOp::Rem
+                | BinaryOp::Exp
+                | BinaryOp::Shl
+                | BinaryOp::Shr
+                | BinaryOp::UShr
+                | BinaryOp::BitAnd
+                | BinaryOp::BitOr
+                | BinaryOp::BitXor
+        );
+        let special = |v: &Value| matches!(v, Value::Object(_) | Value::BigInt(_));
+        if arithmetic && (special(a) || special(b)) {
+            // Seul `+` convertit sans préférence (une date y devient une chaîne).
+            let hint = if op == BinaryOp::Add {
+                Hint::Default
+            } else {
+                Hint::Number
+            };
+            // Les objets sont convertis une seule fois ; un `BigInt` ne se
+            // mêle à aucun autre type numérique.
+            let (x, y) = (
+                self.to_primitive_hint(a, hint)?,
+                self.to_primitive_hint(b, hint)?,
+            );
+            if op == BinaryOp::Add
+                && (matches!(x, Value::String(_)) || matches!(y, Value::String(_)))
+            {
+                let (x, y) = (self.to_string(&x)?, self.to_string(&y)?);
+                let mut out = String::with_capacity(x.len() + y.len());
+                out.push_str(&x);
+                out.push_str(&y);
+                return Ok(Value::String(Arc::from(out)));
+            }
+            let (x, y) = (self.to_numeric(&x)?, self.to_numeric(&y)?);
+            return match (&x, &y) {
+                (Value::BigInt(p), Value::BigInt(q)) => self.bigint_binary(op, p, q),
+                (Value::BigInt(_), _) | (_, Value::BigInt(_)) => Err(self.type_error(
+                    "impossible de mêler BigInt et autres types ; utiliser des conversions explicites",
+                )),
+                _ => self.binary(op, &x, &y),
+            };
+        }
         let number = |vm: &mut Self, f: fn(f64, f64) -> f64| -> JsResult {
             let (x, y) = (vm.to_number(a)?, vm.to_number(b)?);
             Ok(Value::Number(f(x, y)))

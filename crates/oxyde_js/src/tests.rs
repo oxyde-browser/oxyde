@@ -1052,6 +1052,663 @@ fn eval_reflect_and_function_names() {
     assert_eq!(eval("String(Reflect)"), "[object Reflect]");
 }
 
+/// Chargeur de modules de test : les textes sont dans `vm.host`, sous leur nom.
+fn test_loader(vm: &mut Vm, specifier: &str, _referrer: &str) -> Result<(String, String), String> {
+    let name = specifier.trim_start_matches("./");
+    let sources = vm
+        .host
+        .as_ref()
+        .and_then(|h| h.downcast_ref::<Vec<(&'static str, &'static str)>>())
+        .ok_or("pas de modules")?;
+    sources
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map(|(n, source)| ((*n).to_owned(), (*source).to_owned()))
+        .ok_or_else(|| format!("{name} absent"))
+}
+
+/// Évalue le module `main` parmi `modules`, puis l'expression globale `probe`.
+fn eval_modules(modules: &[(&'static str, &'static str)], probe: &str) -> String {
+    let mut vm = Vm::new();
+    vm.host = Some(Box::new(modules.to_vec()));
+    vm.set_module_loader(test_loader);
+    let main = modules
+        .iter()
+        .find(|(n, _)| *n == "main")
+        .map_or("", |(_, s)| s);
+    if let Err(error) = vm.eval_module(main, "main") {
+        return format!("ERREUR {error}");
+    }
+    match vm.eval(probe) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    }
+}
+
+#[test]
+fn modules() {
+    // Imports nommés, par défaut, renommés, espace de noms.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "import defaut, { un, deux as two, somme } from './maths';
+                          import * as maths from './maths';
+                          globalThis.out = [defaut, un, two, somme(un, two), Object.keys(maths).join('|'), Object.prototype.toString.call(maths), typeof maths.somme].join();"),
+                ("maths", "export const un = 1; export let deux = 2; export function somme(a, b) { return a + b; }
+                           export default 'défaut';"),
+            ],
+            "out"
+        ),
+        "défaut,1,2,3,default|deux|somme|un,[object Module],function"
+    );
+    // Les liaisons sont vivantes : l'importateur voit les modifications.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "import { compteur, incrementer } from './etat'; const avant = compteur; incrementer(); incrementer();
+                          globalThis.out = avant + ':' + compteur;"),
+                ("etat", "export let compteur = 0; export function incrementer() { compteur++; }"),
+            ],
+            "out"
+        ),
+        "0:2"
+    );
+    // Un module n'est évalué qu'une fois, dépendances d'abord ; sa portée est
+    // privée et `this` y vaut `undefined`.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "import './a'; import './b'; import { trace } from './journal'; const prive = 1;
+                          globalThis.out = trace.join() + ':' + typeof this + ':' + typeof globalThis.prive + ':' + import.meta.url;"),
+                ("a", "import { trace } from './journal'; import './b'; trace.push('a');"),
+                ("b", "import { trace } from './journal'; trace.push('b');"),
+                ("journal", "export const trace = []; trace.push('journal');"),
+            ],
+            "out + ':' + typeof trace"
+        ),
+        "journal,b,a:undefined:undefined:main:undefined"
+    );
+    // Réexportations : nommées, en bloc, sous un espace de noms, par défaut.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "import { x, y as z, tout, d, local } from './facade'; globalThis.out = [x, z, tout.x, d, local].join();"),
+                ("facade", "export * from './base'; export { y } from './base'; export * as tout from './base';
+                            export { default as d } from './base'; const local = 'ici'; export { local };"),
+                ("base", "export const x = 1, y = 2; export default 3;"),
+            ],
+            "out"
+        ),
+        "1,2,1,3,ici"
+    );
+    // Formes de `export default` et inférence du nom.
+    assert_eq!(
+        eval_modules(
+            &[
+                ("main", "import f from './f'; import C from './c'; import g from './g'; import v from './v';
+                          globalThis.out = [f(), f.name, new C().m(), C.name, g.name, v].join();"),
+                ("f", "export default function nommee() { return 'f'; }"),
+                ("c", "export default class Classe { m() { return 'm'; } }"),
+                ("g", "export default () => {};"),
+                ("v", "const a = 20; export default a * 2 + 2;"),
+            ],
+            "out"
+        ),
+        "f,nommee,m,Classe,default,42"
+    );
+    // Cycle d'importations : les fonctions hissées sont utilisables, une
+    // liaison pas encore initialisée lève ReferenceError.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    "import { pair } from './pair'; globalThis.out = pair(10) + ':' + pair(7);"
+                ),
+                (
+                    "pair",
+                    "import { impair } from './impair'; export function pair(n) { return n === 0 ? true : impair(n - 1); }"
+                ),
+                (
+                    "impair",
+                    "import { pair } from './pair'; export function impair(n) { return n === 0 ? false : pair(n - 1); }"
+                ),
+            ],
+            "out"
+        ),
+        "true:false"
+    );
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import { b } from './b'; export const a = 1;"),
+                ("b", "import { a } from './main'; export const b = a + 1;"),
+            ],
+            "1"
+        )
+        .contains("ReferenceError")
+    );
+    // Fermetures et async dans un module gardent sa portée.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    "import { lire } from './m'; globalThis.out = 'attente'; lire().then(v => { globalThis.out = v; });"
+                ),
+                (
+                    "m",
+                    "const secret = 7; export async function lire() { await null; return secret * 6; }"
+                ),
+            ],
+            "out"
+        ),
+        "42"
+    );
+    // Erreurs.
+    for (modules, expected) in [
+        (
+            &[
+                ("main", "import { absent } from './m';"),
+                ("m", "export const x = 1;"),
+            ][..],
+            "n'exporte pas",
+        ),
+        (&[("main", "import './nulle-part';")][..], "introuvable"),
+        (
+            &[("main", "import './m';"), ("m", "export const = 1;")][..],
+            "SyntaxError",
+        ),
+        (
+            &[("main", "import './m';"), ("m", "throw new Error('boum');")][..],
+            "Error: boum",
+        ),
+        (
+            &[("main", "export const a = 1; export { a };")][..],
+            "exporté deux fois",
+        ),
+        (
+            &[
+                ("main", "import { a } from './m'; import { a } from './m';"),
+                ("m", "export const a = 1;"),
+            ][..],
+            "importé deux fois",
+        ),
+        (
+            &[
+                ("main", "export { inconnu } from './m';"),
+                ("m", "export const a = 1;"),
+            ][..],
+            "réexporte",
+        ),
+        (&[("main", "await 1;")][..], "SyntaxError"),
+        (&[("main", "import('./m');")][..], "SyntaxError"),
+    ] {
+        let result = eval_modules(modules, "1");
+        assert!(result.contains(expected), "{modules:?} → {result}");
+    }
+    // Hors d'un module, `import` et `export` restent refusés.
+    assert!(eval("import x from 'y'").contains("SyntaxError"));
+    assert!(eval("export const a = 1").contains("SyntaxError"));
+    assert!(eval("import.meta").contains("SyntaxError"));
+    assert_eq!(
+        crate::module_requests(
+            "import a from 'x'; export * from 'y'; import 'x'; export { b } from 'z';"
+        )
+        .expect("module valide"),
+        ["x", "y", "z"]
+    );
+}
+
+#[test]
+fn async_generators_and_for_await() {
+    // `next()` rend une promesse ; les valeurs rendues sont attendues.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* g() { yield 1; const v = await Promise.resolve(2); yield v; yield Promise.resolve(3); return 'fin'; }
+             const it = g();
+             (async () => { for (let i = 0; i < 5; i++) { const r = await it.next(); out.push(r.value + ':' + r.done); } })();",
+            "out.join()"
+        ),
+        "1:false,2:false,3:false,fin:true,undefined:true"
+    );
+    assert_eq!(
+        eval(
+            "async function* g() {} const it = g(); [it.next() instanceof Promise, it[Symbol.asyncIterator]() === it, Object.prototype.toString.call(it), typeof it.return].join()"
+        ),
+        "true,true,[object AsyncGenerator],function"
+    );
+    // for await : itérables asynchrones, synchrones, promesses dans un tableau.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* compte(n) { for (let i = 1; i <= n; i++) { await null; yield i; } }
+             (async () => {
+               for await (const v of compte(3)) out.push(v);
+               for await (const v of [Promise.resolve('a'), 'b']) out.push(v);
+               for await (const [k, v] of new Map([['x', 1]])) out.push(k + v);
+               const source = { [Symbol.asyncIterator]() { let n = 0; return { next: async () => ({ value: n, done: n++ >= 2 }) }; } };
+               for await (const v of source) out.push('s' + v);
+               out.push('fin');
+             })();",
+            "out.join()"
+        ),
+        "1,2,3,a,b,x1,s0,s1,fin"
+    );
+    // Les requêtes sont servies dans l'ordre, même émises d'un coup.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* g() { yield 'a'; yield 'b'; }
+             const it = g(); Promise.all([it.next(), it.next(), it.next()]).then(rs => { out = rs.map(r => r.value + ':' + r.done); });",
+            "out.join()"
+        ),
+        "a:false,b:false,undefined:true"
+    );
+    // Exceptions : levées dans le générateur, rattrapées, ou propagées en rejet.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* g() { try { yield 1; } catch (e) { out.push('rattrapé ' + e); yield 2; } throw new Error('boum'); }
+             (async () => {
+               const it = g(); await it.next(); out.push((await it.throw('x')).value);
+               try { await it.next(); } catch (e) { out.push(e.message); }
+               out.push((await it.next()).done);
+               try { for await (const v of (async function* () { yield 1; throw 'arrêt'; })()) out.push(v); } catch (e) { out.push(e); }
+               try { for await (const v of [Promise.reject('rejet')]) out.push(v); } catch (e) { out.push(e); }
+             })();",
+            "out.join()"
+        ),
+        "rattrapé x,2,boum,true,1,arrêt,rejet"
+    );
+    // return() et throw() sur un générateur non démarré ou terminé.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* g() { yield 1; }
+             (async () => {
+               const a = g(); const r = await a.return(Promise.resolve('tôt')); out.push(r.value + ':' + r.done, (await a.next()).done);
+               const b = g(); try { await b.throw('jeté'); } catch (e) { out.push(e); }
+               const c = g(); await c.next(); await c.next(); out.push((await c.return(9)).value);
+             })();",
+            "out.join()"
+        ),
+        "tôt:true,true,jeté,9"
+    );
+    // yield* délègue à un itérable asynchrone ou synchrone ; méthodes de classe.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* interne() { yield 1; yield 2; }
+             class C { async *tout() { yield 0; yield* interne(); yield* [3, 4]; } static async *s() { yield 's'; } }
+             const o = { async *m() { yield 'm'; } };
+             (async () => {
+               for await (const v of new C().tout()) out.push(v);
+               for await (const v of C.s()) out.push(v);
+               for await (const v of o.m()) out.push(v);
+               const expr = async function* () { yield 'e'; }; for await (const v of expr()) out.push(v);
+             })();",
+            "out.join('')"
+        ),
+        "01234sme"
+    );
+    // break quitte la boucle ; les étiquettes et continue fonctionnent.
+    assert_eq!(
+        eval_then(
+            "var out = []; async function* infini() { let i = 0; while (true) yield i++; }
+             (async () => { for await (const v of infini()) { if (v === 1) continue; if (v > 3) break; out.push(v); } out.push('fin'); })();",
+            "out.join()"
+        ),
+        "0,2,3,fin"
+    );
+    assert!(eval("function f() { for await (const x of []) {} }").contains("SyntaxError"));
+    assert!(eval("async function f() { for await (const x in {}) {} }").contains("SyntaxError"));
+    assert!(eval("async function* g() {} new g()").contains("TypeError"));
+    assert_eq!(
+        eval_then(
+            "var out; (async function* () {})().next.call({}).catch(e => { out = e.name; });",
+            "out"
+        ),
+        "TypeError"
+    );
+}
+
+#[test]
+fn array_methods_are_generic() {
+    // Les méthodes opèrent sur tout objet muni d'une longueur.
+    assert_eq!(
+        eval(
+            "const o = { length: 3, 0: 'a', 1: 'b', 2: 'c' };
+             const A = Array.prototype;
+             [A.join.call(o, '-'), A.map.call(o, x => x + x).join(), A.indexOf.call(o, 'c'), A.slice.call(o, 1).join(),
+              A.includes.call('xyz', 'y'), A.reduce.call(o, (a, b) => a + b), A.push.call(o, 'd'), o.length, o[3],
+              A.pop.call(o), o.length, A.shift.call(o), o[0], o.length, A.filter.call('abc', c => c > 'a').join('')].join()"
+        ),
+        "a-b-c,aa,bb,cc,2,b,c,true,abc,4,4,d,d,3,a,b,2,bc"
+    );
+    // Trous : sautés par forEach/map, lus comme undefined par find, préservés par slice.
+    assert_eq!(
+        eval(
+            "const a = [1, , 3]; let vus = 0; a.forEach(() => vus++);
+             [vus, a.map(x => x * 2).length, 1 in a.map(x => x), a.findIndex(x => x === undefined), 1 in a.slice(), a.indexOf(undefined), a.includes(undefined)].join()"
+        ),
+        "2,3,false,1,false,-1,true"
+    );
+    // Les éléments hérités du prototype sont vus.
+    assert_eq!(
+        eval("Array.prototype[1] = 'p'; const r = [0, , 2].join(); delete Array.prototype[1]; r"),
+        "0,p,2"
+    );
+    assert_eq!(
+        eval(
+            "[3, 1, 2].toSorted().join() + [1, 2, 3].toReversed().join() + [1, 2, 3].with(1, 9).join() + [1, 2, 3].toSpliced(0, 1).join()"
+        ),
+        "1,2,33,2,11,9,32,3"
+    );
+    assert_eq!(eval("[1, 2, 3, 4, 5].copyWithin(0, 3).join()"), "4,5,3,4,5");
+    assert_eq!(
+        eval("const a = [5, , 1, undefined, 3]; a.sort(); [a.join(), 4 in a, a.length].join('|')"),
+        "1,3,5,,|false|5"
+    );
+    assert_eq!(
+        eval(
+            "[[1, [2]], [3]].flat().length + ':' + [1, [2, [3, [4]]]].flat(Infinity).join() + ':' + [1, 2].flatMap(x => [x, [x]]).length"
+        ),
+        "3:1,2,3,4:4"
+    );
+    assert_eq!(
+        eval(
+            "const it = Array.prototype.entries.call({ length: 2, 0: 'x', 1: 'y' }); [...it].join('|')"
+        ),
+        "0,x|1,y"
+    );
+    assert_eq!(
+        eval("const a = [1]; const it = a.values(); a.push(2); [...it].join()"),
+        "1,2"
+    );
+    assert_eq!(
+        eval("Array.from({ length: 2, 0: 'a', 1: 'b' }, (v, i) => v + i).join()"),
+        "a0,b1"
+    );
+    assert!(eval("[].reduce((a, b) => a)").contains("TypeError"));
+    assert!(eval("Array.prototype.forEach.call(null, () => {})").contains("TypeError"));
+    assert!(eval("[1].forEach(1)").contains("TypeError"));
+    // Une longueur démesurée est arrêtée par le budget, pas par un blocage.
+    let mut vm = Vm::new();
+    vm.set_budget(Some(100_000));
+    assert!(
+        vm.eval("Array.prototype.forEach.call({ length: 2 ** 53 }, () => {})")
+            .is_err()
+    );
+    assert!(vm.was_interrupted());
+}
+
+#[test]
+fn typed_arrays_and_buffers() {
+    assert_eq!(
+        eval(
+            "const b = new ArrayBuffer(8); const u8 = new Uint8Array(b); const u32 = new Uint32Array(b, 4, 1);
+             u8[0] = 257; u8[1] = -1; u32[0] = 0x01020304; u8[9] = 5;
+             [u8.length, u8[0], u8[1], u8[4], u8[7], u8[9], u32.byteOffset, u32.byteLength, b.byteLength, u8.buffer === b,
+              Object.prototype.toString.call(u8), u8 instanceof Uint8Array, Uint8Array.BYTES_PER_ELEMENT, '9' in u8, 1 in u8].join()"
+        ),
+        "8,1,255,4,1,,4,4,8,true,[object Uint8Array],true,1,false,true"
+    );
+    // Conversions à l'écriture.
+    assert_eq!(
+        eval(
+            "const c = new Uint8ClampedArray([300, -5, 1.5, 2.5]); const i8 = new Int8Array([200]); const f32 = new Float32Array([0.1]);
+             const f16 = new Float16Array([1.5, 65520, 1e-8]); const i16 = Int16Array.of(70000, '12');
+             [c.join(), i8[0], f32[0] === Math.fround(0.1), f16.join(), i16.join()].join('|')"
+        ),
+        "255,0,2,2|-56|true|1.5,Infinity,0|4464,12"
+    );
+    // Méthodes : celles d'Array, plus les variantes typées.
+    assert_eq!(
+        eval(
+            "const a = new Float64Array([3, 1, 2]);
+             [a.map(x => x * 2).join(), a.filter(x => x > 1).join(), a.slice(1).join(), a.indexOf(2), a.includes(1),
+              a.reduce((s, x) => s + x), [...a].join(), [...a.entries()].join('|'), a.toSorted().join(), a.join(),
+              a.sort().join(), a.reverse().join(), a.fill(7, 1).join(), a.at(-1), a.subarray(1).length,
+              new Float64Array([1, NaN, -0, 0, -1]).sort().join(), a.map(x => x) instanceof Float64Array, a.with(0, 9).join()].join(';')"
+        ),
+        "6,2,4;3,2;1,2;2;true;6;3,1,2;0,3|1,1|2,2;1,2,3;3,1,2;1,2,3;3,2,1;3,7,7;7;2;-1,0,0,1,NaN;true;9,7,7"
+    );
+    // Une vue partage les octets de son tampon ; subarray aussi, slice non.
+    assert_eq!(
+        eval(
+            "const a = new Uint8Array([1, 2, 3, 4]); const vue = a.subarray(1, 3); const copie = a.slice(1, 3);
+             vue[0] = 9; copie[1] = 8; const b = new Uint16Array(a.buffer); a.set([5, 6], 2);
+             [a.join(), vue.join(), copie.join(), b.length, vue.byteOffset].join('|')"
+        ),
+        "1,9,5,6|9,5|2,8|2|1"
+    );
+    // Constructions.
+    assert_eq!(
+        eval(
+            "[new Uint8Array(3).join(), new Uint8Array([1, 2]).join(), new Uint8Array(new Set([7, 8])).join(),
+              new Int16Array(new Uint8Array([255])).join(), Uint8Array.from('123', Number).join(), new Uint8Array({ length: 2, 0: 4 }).join(),
+              new Float32Array().length].join('|')"
+        ),
+        "0,0,0|1,2|7,8|255|1,2,3|4,0|0"
+    );
+    // DataView et boutisme.
+    assert_eq!(
+        eval(
+            "const v = new DataView(new ArrayBuffer(8)); v.setUint16(0, 0x1234); v.setUint16(2, 0x1234, true); v.setFloat32(4, 1.5);
+             [v.getUint8(0), v.getUint8(1), v.getUint8(2), v.getUint16(0, true), v.getInt8(3), v.getFloat32(4), v.byteLength, v.getFloat16(4)].join()"
+        ),
+        "18,52,52,13330,18,1.5,8,1.9375"
+    );
+    // Tampons redimensionnables et détachés.
+    assert_eq!(
+        eval(
+            "const b = new ArrayBuffer(4, { maxByteLength: 8 }); const suit = new Uint8Array(b); const fixe = new Uint8Array(b, 0, 4);
+             b.resize(8); const grand = [suit.length, fixe.length]; b.resize(2);
+             const t = b.transfer(); [grand.join(), suit.length, fixe.length, b.detached, b.byteLength, t.byteLength, t.resizable, ArrayBuffer.isView(suit), b.slice === t.slice].join()"
+        ),
+        "8,4,0,0,true,0,2,true,true,true"
+    );
+    for source in [
+        "new Uint8Array(-1)",
+        "new Uint16Array(new ArrayBuffer(3))",
+        "new Uint32Array(new ArrayBuffer(8), 2)",
+        "new DataView(new ArrayBuffer(1)).getUint16(0)",
+        "new ArrayBuffer(2 ** 40)",
+        "new Uint8Array(new ArrayBuffer(2), 4)",
+        "new ArrayBuffer(8, { maxByteLength: 4 })",
+        "new Uint8Array(1).with(3, 0)",
+    ] {
+        assert!(
+            eval(source).contains("RangeError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+    for source in [
+        "Uint8Array(2)",
+        "new (Object.getPrototypeOf(Uint8Array))()",
+        "Uint8Array.prototype.length",
+        "ArrayBuffer(1)",
+        "const b = new ArrayBuffer(1); const a = new Uint8Array(b); b.transfer(); a.fill(0)",
+        "new DataView({})",
+        "Uint8Array.prototype.map.call([], x => x)",
+    ] {
+        assert!(
+            eval(source).contains("TypeError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+    assert_eq!(
+        eval("JSON.stringify(new Uint8Array([1, 2])) + Object.keys(new Uint8Array(2)).join()"),
+        "{\"0\":1,\"1\":2}0,1"
+    );
+}
+
+#[test]
+fn bigints() {
+    assert_eq!(
+        eval("typeof 1n + ' ' + (2n ** 100n) + ' ' + (0xffn + 0b11n + 0o7n) + ' ' + 1_000n"),
+        "bigint 1267650600228229401496703205376 265 1000"
+    );
+    assert_eq!(
+        eval(
+            "[7n / 2n, -7n / 2n, 7n % -2n, -7n % 2n, 5n - 8n, 3n * -4n, -(5n), ~5n, 1n << 70n, -5n >> 1n, 6n & 3n, 6n | 3n, 6n ^ 3n].join()"
+        ),
+        "3,-3,1,-1,-3,-12,-5,-6,1180591620717411303424,-3,2,7,5"
+    );
+    assert_eq!(
+        eval("let x = 9007199254740993n; x++; ++x; x--; String(x) + ':' + (x += 2n)"),
+        "9007199254740994:9007199254740996"
+    );
+    // Comparaisons et égalités, y compris avec des nombres et des chaînes.
+    assert_eq!(
+        eval(
+            "[1n < 2, 2 < 1n, 1n == 1, 1n === 1, 1n == '1', 2n > 1.5, 1n < NaN, 10n > '9', 0n == false, 1n === 1n, 2n >= 2n, 1n < 'x'].join()"
+        ),
+        "true,false,true,false,true,true,false,true,true,true,true,false"
+    );
+    // Conversions.
+    assert_eq!(
+        eval(
+            "[BigInt(42), BigInt('0x10'), BigInt(true), BigInt(' 12 '), Number(2n ** 64n), String(-3n), 5n + '', `${7n}`, (255n).toString(16), parseInt(1n), Boolean(0n), !!1n, 0n ? 'a' : 'b'].join()"
+        ),
+        "42,16,1,12,18446744073709552000,-3,5,7,ff,1,false,true,b"
+    );
+    assert_eq!(
+        eval(
+            "[BigInt.asUintN(8, -1n), BigInt.asIntN(8, 255n), BigInt.asIntN(64, 2n ** 63n), BigInt.asUintN(3, 9n)].join()"
+        ),
+        "255,-1,-9223372036854775808,1"
+    );
+    assert_eq!(
+        eval(
+            "const o = { 1n: 'a' }; o[1] + o['1'] + [10, 20][1n] + Object(1n).valueOf() + typeof Object(1n)"
+        ),
+        "aa201object"
+    );
+    assert_eq!(
+        eval(
+            "const m = new Map([[1n, 'un']]); m.get(1n) + m.has(1) + new Set([1n, 1n, 2n]).size + [1n, 2n].includes(1n) + [3n, 1n, 2n].sort().join()"
+        ),
+        "unfalse2true1,2,3"
+    );
+    assert_eq!(
+        eval("Object.prototype.toString.call(1n) + (1n).constructor.name"),
+        "[object BigInt]BigInt"
+    );
+    // Mélanges et conversions implicites interdits.
+    for source in [
+        "1n + 1",
+        "1 * 2n",
+        "+1n",
+        "Math.abs(1n)",
+        "1n >>> 0n",
+        "BigInt(undefined)",
+        "new BigInt(1)",
+        "JSON.stringify({ a: 1n })",
+        "BigInt.asIntN(8, 1)",
+        "isNaN(1n)",
+    ] {
+        assert!(
+            eval(source).contains("TypeError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+    for source in [
+        "1n / 0n",
+        "1n % 0n",
+        "2n ** -1n",
+        "BigInt(1.5)",
+        "BigInt(NaN)",
+        "2n ** (2n ** 30n)",
+        "(1n).toString(1)",
+        "1n << (2n ** 40n)",
+    ] {
+        assert!(
+            eval(source).contains("RangeError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+    assert!(eval("BigInt('1.5')").contains("SyntaxError"));
+    for source in ["1.5n", "1e3n", "01n", "1n2", ".5n"] {
+        assert!(
+            eval(source).contains("SyntaxError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+}
+
+#[test]
+fn bigint_typed_arrays() {
+    assert_eq!(
+        eval(
+            "const a = new BigInt64Array([1n, -1n, 2n ** 63n]); const u = new BigUint64Array(a.buffer);
+             const v = new DataView(new ArrayBuffer(8)); v.setBigInt64(0, -2n); a[0] = 5n;
+             [a.join(), u[1], typeof a[0], a.map(x => x * 2n).join(), a.toSorted().join(), a.includes(5n), a.fill(7n, 2).join(),
+              v.getBigUint64(0), v.getBigInt64(0), v.getUint8(7), BigInt64Array.BYTES_PER_ELEMENT, BigInt64Array.of(3n).with(0, 4n).join()].join('|')"
+        ),
+        "5,-1,-9223372036854775808|18446744073709551615|bigint|10,-2,0|-9223372036854775808,-1,5|true|5,-1,7|18446744073709551614|-2|254|8|4"
+    );
+    for source in [
+        "new BigInt64Array([1])",
+        "new BigInt64Array(1)[0] = 1",
+        "new Uint8Array([1n])",
+        "new BigInt64Array(new Uint8Array(1))",
+        "new BigInt64Array(1).fill(1)",
+    ] {
+        assert!(
+            eval(source).contains("TypeError"),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+}
+
+#[test]
+fn dates() {
+    assert_eq!(
+        eval(
+            "const d = new Date(2022, 1, 1, 10, 20, 30, 456);
+             [d.getTime(), d.getFullYear(), d.getMonth(), d.getDate(), d.getDay(), d.getHours(), d.getMinutes(), d.getSeconds(),
+              d.getMilliseconds(), d.toISOString(), d.toUTCString(), d.toDateString(), d.getTimezoneOffset(), JSON.stringify(d)].join('|')"
+        ),
+        "1643710830456|2022|1|1|2|10|20|30|456|2022-02-01T10:20:30.456Z|Tue, 01 Feb 2022 10:20:30 GMT|Tue Feb 01 2022|0|\"2022-02-01T10:20:30.456Z\""
+    );
+    assert_eq!(
+        eval(
+            "const d = new Date(0); d.setFullYear(2000, 1, 29); d.setHours(25); const a = d.toISOString();
+             d.setMonth(12); d.setDate(0); d.setMilliseconds(-1);
+             [a, d.toISOString(), d.setTime(NaN), d.getFullYear(), String(d), d.setFullYear(1999), d.getMonth()].join('|')"
+        ),
+        "2000-03-01T01:00:00.000Z|2000-12-31T00:59:59.999Z|NaN|NaN|Invalid Date|915148800000|0"
+    );
+    assert_eq!(
+        eval(
+            "[Date.UTC(2020, 0), Date.parse('2020-01-01'), Date.parse('Wed, 01 Jan 2020 00:00:00 GMT'), Date.parse('x'), new Date('2020-01-01T00:00:00+01:00').getTime(),
+              new Date(99, 0).getFullYear(), new Date(new Date(5)).getTime(), new Date(8.64e15 + 1).getTime(), typeof Date(), typeof Date.now(), new Date(2020, 0) < new Date(2021, 0)].join('|')"
+        ),
+        "1577836800000|1577836800000|1577836800000|NaN|1577833200000|1999|5|NaN|string|number|true"
+    );
+    // Une date préfère la chaîne dans `+`, le nombre dans les opérations numériques.
+    assert_eq!(
+        eval(
+            "const d = new Date(86400000); [typeof (d + 1), d - 1, +d, d == d.toString(), `${d}` === d.toString(), d[Symbol.toPrimitive]('number')].join('|')"
+        ),
+        "string|86399999|86400000|true|true|86400000"
+    );
+    assert_eq!(
+        eval("const o = { [Symbol.toPrimitive](h) { return h; } }; [`${o}`, o + '', o * 1].join()"),
+        "string,default,NaN"
+    );
+    assert!(eval("new Date(NaN).toISOString()").contains("RangeError"));
+    assert!(eval("Date.prototype.getTime.call({})").contains("TypeError"));
+    assert!(eval("({ [Symbol.toPrimitive]() { return {}; } }) + 1").contains("TypeError"));
+    assert_eq!(
+        eval("new Date(NaN).toJSON() + Object.prototype.toString.call(new Date())"),
+        "null[object Date]"
+    );
+}
+
 #[test]
 fn garbage_collection_reclaims_memory() {
     let mut vm = Vm::new();
@@ -1132,10 +1789,7 @@ fn console_and_unsupported_features() {
     );
     assert!(vm.take_console().is_empty());
 
-    assert!(matches!(
-        vm.eval("async function* f() {}"),
-        Err(EvalError::Syntax(_))
-    ));
+    assert!(matches!(vm.eval("with (a) {}"), Err(EvalError::Syntax(_))));
     assert!(eval("/(/.test('aa')").contains("SyntaxError"));
     assert_eq!(eval("new Function('a', 'b', 'return a + b')(2, 3)"), "5");
     assert!(eval("return 1").contains("SyntaxError"));

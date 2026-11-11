@@ -2574,6 +2574,7 @@ name = "oxyde_content"
 version = "0.1.0"
 dependencies = [
  "image",
+ "oxyde_bindings",
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",

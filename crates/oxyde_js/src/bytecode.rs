@@ -50,6 +50,24 @@ pub(crate) enum Op {
         dst: Reg,
         src: Reg,
     },
+    /// Comme `Yield`, mais pour `await` : la coroutine attend la promesse
+    /// `src` au lieu de rendre une valeur à son appelant.
+    Await {
+        dst: Reg,
+        src: Reg,
+    },
+    /// `dst = src ± 1` (`++`, `--`) ; `src` est déjà numérique (nombre ou
+    /// `BigInt`).
+    Step {
+        dst: Reg,
+        src: Reg,
+        increment: bool,
+    },
+    /// Itérateur asynchrone de `src` (`for await`, `yield*` async).
+    AsyncIterStart {
+        dst: Reg,
+        src: Reg,
+    },
     LoadConst {
         dst: Reg,
         index: u32,

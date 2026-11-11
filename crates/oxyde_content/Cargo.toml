@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
+oxyde_bindings.workspace = true
 oxyde_css.workspace = true
 oxyde_dom.workspace = true
 oxyde_html.workspace = true

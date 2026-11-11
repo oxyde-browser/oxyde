@@ -87,6 +87,7 @@ pub(crate) struct Property {
 #[derive(Clone, Debug)]
 pub(crate) enum Expr {
     Number(f64),
+    BigInt(Arc<crate::bigint::BigInt>),
     String(Arc<str>),
     Bool(bool),
     Null,
@@ -271,6 +272,8 @@ pub(crate) enum Stmt {
         object: Expr,
         body: Box<Stmt>,
         of: bool,
+        /// `for await (… of …)`.
+        is_await: bool,
     },
     While {
         test: Expr,

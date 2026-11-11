@@ -4,8 +4,8 @@
 //! `/` ouvre une expression rationnelle et quand reprendre un gabarit après
 //! une substitution `${…}`.
 //!
-//! LIMITES CONNUES : pas d'échappements Unicode dans les identifiants, pas de
-//! littéraux `BigInt`, pas de commentaires HTML (`<!--`).
+//! LIMITES CONNUES : pas d'échappements Unicode dans les identifiants ni de
+//! commentaires HTML (`<!--`).
 
 /// Erreur de syntaxe, avec sa position dans le source.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +33,8 @@ impl std::error::Error for SyntaxError {}
 /// Unité lexicale.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Tok {
+    /// Littéral `BigInt` (`123n`).
+    BigInt(std::sync::Arc<crate::bigint::BigInt>),
     /// Identifiant ou mot-clé.
     Ident(String),
     /// Nom privé (`#x`).
@@ -232,12 +234,16 @@ impl Lexer {
             (Some('0'), Some('b' | 'B')) => Some(2),
             _ => None,
         };
+        // Chiffres et base de la partie entière, tant que le littéral peut
+        // encore être un `BigInt` (ni point, ni exposant, ni zéro de tête).
+        let mut integer: Option<(String, u32)> = None;
         let value = if let Some(radix) = radix {
             self.pos += 2;
             let digits = self.digits(radix);
             if digits.is_empty() {
                 return Err(self.error_at(start, "littéral numérique invalide"));
             }
+            integer = Some((digits.clone(), radix));
             // Accumulation en flottant : exacte jusqu'à 2^53, arrondie au-delà comme en JS.
             digits
                 .chars()
@@ -245,7 +251,11 @@ impl Lexer {
                 .fold(0.0_f64, |acc, d| acc * f64::from(radix) + f64::from(d))
         } else {
             let mut text = self.digits(10);
+            if text == "0" || !text.starts_with('0') {
+                integer = Some((text.clone(), 10));
+            }
             if self.peek(0) == Some('.') {
+                integer = None;
                 self.pos += 1;
                 text.push('.');
                 text.push_str(&self.digits(10));
@@ -253,6 +263,7 @@ impl Lexer {
             if matches!(self.peek(0), Some('e' | 'E')) {
                 let sign = usize::from(matches!(self.peek(1), Some('+' | '-')));
                 if self.peek(1 + sign).is_some_and(|c| c.is_ascii_digit()) {
+                    integer = None;
                     text.push('e');
                     if sign == 1 {
                         text.push(self.src[self.pos + 1]);
@@ -272,7 +283,20 @@ impl Lexer {
         };
         match self.peek(0) {
             Some('n') => {
-                Err(self.error_at(start, "les littéraux BigInt ne sont pas pris en charge"))
+                let parsed = integer.and_then(|(digits, radix)| {
+                    crate::bigint::BigInt::parse_digits(&digits, radix)
+                });
+                let Some(big) = parsed else {
+                    return Err(self.error_at(start, "littéral BigInt invalide"));
+                };
+                self.pos += 1;
+                if self
+                    .peek(0)
+                    .is_some_and(|c| is_id_start(c) || c.is_ascii_digit())
+                {
+                    return Err(self.error_at(self.pos, "identifiant collé à un nombre"));
+                }
+                Ok(Tok::BigInt(std::sync::Arc::new(big)))
             }
             Some(c) if is_id_start(c) || c.is_ascii_digit() => {
                 Err(self.error_at(self.pos, "identifiant collé à un nombre"))
@@ -589,7 +613,7 @@ c" '😀'"#
             .and_then(|_| Lexer::new("a\n  'x").skip_then_next())
             .expect_err("erreur");
         assert_eq!((err.line, err.column), (2, 3));
-        assert!(Lexer::new("1n").next().is_err());
+        assert!(Lexer::new("1.5n").next().is_err());
         assert!(Lexer::new("/* x").next().is_err());
         assert!(Lexer::new("3in").next().is_err());
     }

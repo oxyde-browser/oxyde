@@ -3,8 +3,7 @@
 //! LIMITES CONNUES : `return()` sur un générateur suspendu n'exécute pas ses
 //! blocs `finally` ; `yield*` ne transmet au générateur délégué ni les valeurs
 //! envoyées par `next(v)` ni `throw()`, et vaut `undefined` ; tous les
-//! générateurs partagent un même prototype (`f.prototype` n'est pas consulté) ;
-//! pas de générateurs async.
+//! générateurs partagent un même prototype (`f.prototype` n'est pas consulté).
 
 use super::arg;
 use crate::value::Value;
@@ -15,7 +14,7 @@ fn resume(vm: &mut Vm, this: &Value, mode: Resume) -> JsResult {
         return Err(vm.type_error("le receveur n'est pas un générateur"));
     };
     Ok(match vm.resume(generator, mode)? {
-        CoOutcome::Yield(value) => vm.iter_result(value, false),
+        CoOutcome::Yield(value) | CoOutcome::Await(value) => vm.iter_result(value, false),
         CoOutcome::Return(value) => vm.iter_result(value, true),
     })
 }
