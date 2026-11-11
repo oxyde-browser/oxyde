@@ -94,6 +94,8 @@ struct FuncState {
     /// Sauts « valeur nulle » des chaînes optionnelles en cours.
     optional_chains: Vec<Vec<usize>>,
     arguments_reg: Option<Reg>,
+    /// Code en mode strict.
+    strict: bool,
     uses_arguments: bool,
     param_count: u16,
     is_async: bool,
@@ -122,12 +124,13 @@ pub(crate) struct Compiler {
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
 /// est celle de la dernière instruction-expression de premier niveau.
-pub(crate) fn compile_script(body: &[Stmt]) -> CResult<Arc<FunctionProto>> {
+pub(crate) fn compile_script(body: &[Stmt], strict: bool) -> CResult<Arc<FunctionProto>> {
     let mut compiler = Compiler {
         funcs: Vec::new(),
         name_hint: None,
     };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
+    compiler.f().strict = strict;
     compiler.push_scope();
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
@@ -316,6 +319,7 @@ impl Compiler {
             exits: Vec::new(),
             optional_chains: Vec::new(),
             arguments_reg: None,
+            strict: false,
             uses_arguments: false,
             param_count: 0,
             is_async: false,
@@ -338,6 +342,7 @@ impl Compiler {
             kind: state.kind,
             is_async: state.is_async,
             is_generator: state.is_generator,
+            strict: state.strict,
         })
     }
 
@@ -727,6 +732,7 @@ impl Compiler {
         self.push_function(kind, name, false);
         self.f().is_async = func.is_async;
         self.f().is_generator = func.is_generator;
+        self.f().strict = func.strict;
         self.push_scope();
         let entry = self.emit(Op::Nop);
 
@@ -898,6 +904,7 @@ impl Compiler {
                     },
                     is_arrow: false,
                     is_method: true,
+                    strict: true,
                 };
                 &synthesized
             }
@@ -995,6 +1002,7 @@ impl Compiler {
                         is_method: true,
                         is_async: false,
                         is_generator: false,
+                        strict: true,
                     };
                     statics.push((computed.then_some(key), Arc::new(initializer)));
                     if computed {
@@ -1026,6 +1034,7 @@ impl Compiler {
                 is_method: true,
                 is_async: false,
                 is_generator: false,
+                strict: true,
             };
             let reg = self.alloc()?;
             let index = self.function(&initializer, FunctionKind::Method, false)?;

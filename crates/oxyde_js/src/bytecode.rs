@@ -421,6 +421,9 @@ pub(crate) struct FunctionProto {
     pub(crate) is_async: bool,
     /// Générateur : l'appel rend un objet générateur.
     pub(crate) is_generator: bool,
+    /// Code en mode strict : une écriture refusée lève `TypeError` et `this`
+    /// n'est pas converti en objet.
+    pub(crate) strict: bool,
 }
 
 impl FunctionProto {

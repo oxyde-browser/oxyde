@@ -330,6 +330,22 @@ pub(crate) enum Kind {
         class: u32,
         data: u64,
     },
+    /// Objet exotique `Proxy`.
+    Proxy(ProxyData),
+    /// Objet `arguments` : ses éléments et sa longueur sont des propriétés
+    /// ordinaires.
+    Arguments,
+}
+
+/// Cible et gestionnaire d'un `Proxy` ; `None` une fois le proxy révoqué.
+#[derive(Clone, Debug)]
+pub(crate) struct ProxyData {
+    pub(crate) target: Option<ObjId>,
+    pub(crate) handler: Option<ObjId>,
+    /// La cible était appelable à la création.
+    pub(crate) callable: bool,
+    /// La cible était un constructeur à la création.
+    pub(crate) constructor: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -340,6 +356,9 @@ pub(crate) struct Object {
     pub(crate) symbols: IndexMap<Symbol, Property>,
     pub(crate) kind: Kind,
     pub(crate) extensible: bool,
+    /// Propriétés virtuelles d'une fonction (`name`, `length`) supprimées ;
+    /// voir [`crate::internal::DELETED_NAME`].
+    pub(crate) deleted_virtual: u8,
 }
 
 impl Object {
@@ -350,6 +369,7 @@ impl Object {
             symbols: IndexMap::new(),
             kind,
             extensible: true,
+            deleted_virtual: 0,
         }
     }
 
@@ -376,7 +396,11 @@ impl Object {
     pub(crate) fn is_callable(&self) -> bool {
         matches!(
             self.kind,
-            Kind::Closure(_) | Kind::Native { .. } | Kind::NativeData { .. } | Kind::Bound { .. }
+            Kind::Closure(_)
+                | Kind::Native { .. }
+                | Kind::NativeData { .. }
+                | Kind::Bound { .. }
+                | Kind::Proxy(ProxyData { callable: true, .. })
         )
     }
 }
@@ -527,6 +551,7 @@ impl Heap {
             }
             match &object.kind {
                 Kind::Ordinary
+                | Kind::Arguments
                 | Kind::Native { .. }
                 | Kind::Error
                 | Kind::Host { .. }
@@ -552,6 +577,10 @@ impl Heap {
                     args.iter().for_each(|v| push(v, &mut pending));
                 }
                 Kind::Primitive(value) => push(value, &mut pending),
+                Kind::Proxy(proxy) => {
+                    pending.extend(proxy.target);
+                    pending.extend(proxy.handler);
+                }
                 Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),
                 Kind::Coroutine(coroutine) => {
                     pending.extend(coroutine.promise);

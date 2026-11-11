@@ -12,7 +12,7 @@ use crate::vm::{JsResult, Vm};
 
 /// Écart maximal toléré entre la longueur d'un tableau et un index écrit
 /// au-delà : borne la mémoire qu'un script peut réserver d'un coup.
-const MAX_ARRAY_GAP: usize = 1 << 24;
+pub(crate) const MAX_ARRAY_GAP: usize = 1 << 24;
 
 /// Unité UTF-16 d'index `index` de `s`, sous forme de chaîne.
 pub(crate) fn char_at(s: &str, index: usize) -> Option<String> {
@@ -114,10 +114,10 @@ impl Vm {
                 char_at(s, array_index(key)?).map(|c| Ok(Value::string(&c)))
             }
             Kind::Closure(c) => match key {
-                "name" if !self.heap.get(id).props.contains_key("name") => {
+                "name" if self.closure_virtual(id, key) => {
                     Some(Ok(Value::String(Arc::clone(&c.proto.name))))
                 }
-                "length" if !self.heap.get(id).props.contains_key("length") => {
+                "length" if self.closure_virtual(id, key) => {
                     Some(Ok(Value::Number(f64::from(c.proto.param_count))))
                 }
                 "prototype" if !self.heap.get(id).props.contains_key("prototype") => {
@@ -160,6 +160,9 @@ impl Vm {
         // (voir `set_prototype`), mais on reste défensif.
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
+            if self.is_proxy(obj) {
+                return self.proxy_get(obj, &PropertyKey::String(Arc::from(key)), receiver);
+            }
             if let Some(result) = self.exotic_get(obj, key) {
                 return result;
             }
@@ -252,6 +255,10 @@ impl Vm {
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
+            // Les membres privés ne passent jamais par les trappes.
+            if !symbol.is_private() && self.is_proxy(obj) {
+                return self.proxy_get(obj, &PropertyKey::Symbol(symbol.clone()), receiver);
+            }
             let object = self.heap.get(obj);
             match object.symbols.get(symbol).map(|p| &p.slot) {
                 Some(Slot::Data(value)) => return Ok(value.clone()),
@@ -286,25 +293,6 @@ impl Vm {
         }
     }
 
-    /// Vrai si `key` existe sur `id` ou sa chaîne de prototypes.
-    pub(crate) fn has_key(&self, id: ObjId, key: &PropertyKey) -> bool {
-        match key {
-            PropertyKey::String(s) => self.has_property(id, s),
-            PropertyKey::Symbol(symbol) => {
-                let mut current = Some(id);
-                for _ in 0..10_000 {
-                    let Some(obj) = current else { return false };
-                    let object = self.heap.get(obj);
-                    if object.symbols.contains_key(symbol) {
-                        return true;
-                    }
-                    current = object.proto;
-                }
-                false
-            }
-        }
-    }
-
     /// Vrai si `key` est une propriété propre de `id`.
     pub(crate) fn has_own_key(&self, id: ObjId, key: &PropertyKey) -> bool {
         match key {
@@ -318,8 +306,18 @@ impl Vm {
     /// # Errors
     /// Comme [`Vm::set`].
     pub fn set_key(&mut self, target: &Value, key: &PropertyKey, value: Value) -> JsResult<()> {
+        self.put_key(target, key, value).map(|_| ())
+    }
+
+    /// Comme [`Vm::set_key`], et dit si l'écriture a eu lieu.
+    pub(crate) fn put_key(
+        &mut self,
+        target: &Value,
+        key: &PropertyKey,
+        value: Value,
+    ) -> JsResult<bool> {
         let symbol = match key {
-            PropertyKey::String(s) => return self.set(target, s, value),
+            PropertyKey::String(s) => return self.put(target, s, value),
             PropertyKey::Symbol(symbol) => symbol,
         };
         let id = match target {
@@ -330,9 +328,34 @@ impl Vm {
                     key.describe()
                 )));
             }
-            _ => return Ok(()),
+            _ => return Ok(false),
         };
-        // Propriété propre, puis mutateur ou lecture seule hérités.
+        if symbol.is_private() {
+            return self.set_private(id, target, symbol, value).map(|()| true);
+        }
+        // Chemin rapide : propriété de données propre.
+        let object = self.heap.get_mut(id);
+        if !matches!(object.kind, Kind::Proxy(_))
+            && let Some(property) = object.symbols.get_mut(symbol)
+            && let Slot::Data(slot) = &mut property.slot
+        {
+            let writable = property.writable;
+            if writable {
+                *slot = value;
+            }
+            return Ok(writable);
+        }
+        self.set_with_receiver(id, key, value, target)
+    }
+
+    /// Écrit le membre privé `symbol` : il doit déjà exister.
+    fn set_private(
+        &mut self,
+        id: ObjId,
+        target: &Value,
+        symbol: &Symbol,
+        value: Value,
+    ) -> JsResult<()> {
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
@@ -363,36 +386,18 @@ impl Vm {
             }
         }
         // Un membre privé n'est jamais créé par affectation.
-        if symbol.is_private() {
-            return Err(self.type_error(&format!(
-                "l'objet n'a pas de membre privé {}",
-                symbol.description().unwrap_or("")
-            )));
-        }
-        let object = self.heap.get_mut(id);
-        if object.extensible {
-            object.symbols.insert(symbol.clone(), Property::data(value));
-        }
-        Ok(())
+        Err(self.type_error(&format!(
+            "l'objet n'a pas de membre privé {}",
+            symbol.description().unwrap_or("")
+        )))
     }
 
     /// Supprime la propriété `key` (chaîne ou symbole).
     pub(crate) fn delete_key(&mut self, target: &Value, key: &PropertyKey) -> JsResult<bool> {
-        let symbol = match key {
-            PropertyKey::String(s) => return self.delete(target, s),
-            PropertyKey::Symbol(symbol) => symbol,
-        };
-        let Some(id) = target.as_object() else {
-            return Ok(true);
-        };
-        let object = self.heap.get_mut(id);
-        match object.symbols.get(symbol) {
-            Some(p) if !p.configurable => Ok(false),
-            Some(_) => {
-                object.symbols.shift_remove(symbol);
-                Ok(true)
-            }
-            None => Ok(true),
+        match (target, key) {
+            (_, PropertyKey::String(s)) => self.delete(target, s),
+            (Value::Object(id), _) => self.delete_property(*id, key),
+            _ => Ok(true),
         }
     }
 
@@ -451,7 +456,7 @@ impl Vm {
                 key == "length" || array_index(key).is_some_and(|i| i < utf16_len(s))
             }
             Kind::Closure(c) => {
-                matches!(key, "name" | "length") || (key == "prototype" && c.proto.is_constructor())
+                self.closure_virtual(id, key) || (key == "prototype" && c.proto.is_constructor())
             }
             _ => false,
         }
@@ -463,6 +468,13 @@ impl Vm {
     /// `TypeError` si `target` est `null` ou `undefined` ; toute valeur levée
     /// par un mutateur.
     pub fn set(&mut self, target: &Value, key: &str, value: Value) -> JsResult<()> {
+        self.put(target, key, value).map(|_| ())
+    }
+
+    /// Comme [`Vm::set`], et dit si l'écriture a eu lieu : `false` pour une
+    /// propriété en lecture seule, un accesseur sans mutateur ou un objet non
+    /// extensible.
+    pub(crate) fn put(&mut self, target: &Value, key: &str, value: Value) -> JsResult<bool> {
         let id = match target {
             Value::Object(id) => *id,
             Value::Undefined | Value::Null | Value::Hole => {
@@ -475,109 +487,45 @@ impl Vm {
                     "impossible d'écrire la propriété « {key} » de {shown}"
                 )));
             }
-            // Écrire sur une primitive est sans effet (hors mutateur hérité, non géré).
-            _ => return Ok(()),
+            // Primitive : seul un mutateur hérité peut agir.
+            Value::String(_) => self.intrinsics.string_proto,
+            Value::Number(_) => self.intrinsics.number_proto,
+            Value::Bool(_) => self.intrinsics.boolean_proto,
+            Value::Symbol(_) => self.intrinsics.symbol_proto,
+            Value::BigInt(_) => self.intrinsics.bigint_proto,
         };
-        if matches!(self.heap.get(id).kind, Kind::TypedArray(_))
-            && let Some(index) = canonical_numeric_index(key)
-        {
-            self.typed_store(id, index, &value)?;
-            return Ok(());
-        }
-        match &mut self.heap.get_mut(id).kind {
-            Kind::Array(items) => {
-                if let Some(index) = array_index(key) {
-                    if index < items.len() {
-                        items[index] = value;
-                        return Ok(());
+        if target.as_object().is_some() {
+            // Chemins rapides : élément dense d'un tableau, propriété de
+            // données propre.
+            let object = self.heap.get_mut(id);
+            let fast = match &mut object.kind {
+                Kind::Array(items) => match array_index(key) {
+                    Some(index) => {
+                        if let Some(slot) = items.get_mut(index)
+                            && *slot != Value::Hole
+                        {
+                            *slot = value;
+                            return Ok(true);
+                        }
+                        false
                     }
-                    if index - items.len() > MAX_ARRAY_GAP {
-                        return Err(self.error("RangeError", "index de tableau trop grand"));
-                    }
-                    items.resize(index, Value::Hole);
-                    items.push(value);
-                    return Ok(());
+                    None => key != "length",
+                },
+                Kind::Proxy(_) | Kind::TypedArray(_) | Kind::Host { .. } => false,
+                _ => true,
+            };
+            if fast
+                && let Some(property) = object.props.get_mut(key)
+                && let Slot::Data(slot) = &mut property.slot
+            {
+                let writable = property.writable;
+                if writable {
+                    *slot = value;
                 }
-                if key == "length" {
-                    let length = self.to_number(&value)?;
-                    #[expect(
-                        clippy::cast_possible_truncation,
-                        clippy::cast_sign_loss,
-                        reason = "validé juste après"
-                    )]
-                    let new_len = length as usize;
-                    #[expect(clippy::cast_precision_loss, reason = "comparaison de validation")]
-                    let valid = length >= 0.0 && length.fract() == 0.0 && new_len as f64 == length;
-                    let Kind::Array(items) = &mut self.heap.get_mut(id).kind else {
-                        return Ok(());
-                    };
-                    if !valid || new_len.saturating_sub(items.len()) > MAX_ARRAY_GAP {
-                        return Err(self.error("RangeError", "longueur de tableau invalide"));
-                    }
-                    items.resize(new_len, Value::Hole);
-                    return Ok(());
-                }
-            }
-            Kind::Host { class, data } => {
-                let (class, data) = (*class, *data);
-                if let Some(hooks) = self.host_hooks
-                    && let Some(result) = (hooks.set)(self, class, data, key, &value)
-                {
-                    return result;
-                }
-            }
-            _ => {}
-        }
-        // Propriété propre de données : écriture directe.
-        if let Some(property) = self.heap.get_mut(id).props.get_mut(key) {
-            match &mut property.slot {
-                Slot::Data(slot) => {
-                    if property.writable {
-                        *slot = value;
-                    }
-                    return Ok(());
-                }
-                Slot::Accessor { set, .. } => {
-                    let setter = *set;
-                    return match setter {
-                        Some(setter) => self
-                            .call(&Value::Object(setter), target, &[value])
-                            .map(|_| ()),
-                        None => Ok(()),
-                    };
-                }
+                return Ok(writable);
             }
         }
-        // Mutateur ou propriété en lecture seule hérités.
-        let mut current = self.heap.get(id).proto;
-        for _ in 0..10_000 {
-            let Some(obj) = current else { break };
-            let object = self.heap.get(obj);
-            match object.props.get(key) {
-                Some(Property {
-                    slot: Slot::Accessor { set, .. },
-                    ..
-                }) => {
-                    let setter = *set;
-                    return match setter {
-                        Some(setter) => self
-                            .call(&Value::Object(setter), target, &[value])
-                            .map(|_| ()),
-                        None => Ok(()),
-                    };
-                }
-                Some(Property {
-                    writable: false, ..
-                }) => return Ok(()),
-                Some(_) => break,
-                None => current = object.proto,
-            }
-        }
-        let object = self.heap.get_mut(id);
-        if object.extensible {
-            object.props.insert(Arc::from(key), Property::data(value));
-        }
-        Ok(())
+        self.set_with_receiver(id, &PropertyKey::String(Arc::from(key)), value, target)
     }
 
     pub(crate) fn set_element(
@@ -586,24 +534,43 @@ impl Vm {
         key: &Value,
         value: Value,
     ) -> JsResult<()> {
+        self.put_element(target, key, value).map(|_| ())
+    }
+
+    /// Écrit `target[key]` et dit si l'écriture a eu lieu.
+    pub(crate) fn put_element(
+        &mut self,
+        target: &Value,
+        key: &Value,
+        value: Value,
+    ) -> JsResult<bool> {
         if let (Value::Object(id), Value::Number(n)) = (target, key)
-            && let Kind::Array(items) = &mut self.heap.get_mut(*id).kind
             && *n >= 0.0
             && n.fract() == 0.0
         {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "entier positif vérifié"
-            )]
-            let index = *n as usize;
-            if let Some(slot) = items.get_mut(index) {
-                *slot = value;
-                return Ok(());
-            }
-            if index == items.len() {
-                items.push(value);
-                return Ok(());
+            let object = self.heap.get_mut(*id);
+            // Ajout en fin de tableau : direct si rien sur l'objet ne peut
+            // l'intercepter (longueur figée, objet non extensible).
+            let appendable = object.extensible && object.props.is_empty();
+            if let Kind::Array(items) = &mut object.kind {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "entier positif vérifié"
+                )]
+                let index = *n as usize;
+                let length = items.len();
+                if index == length && appendable {
+                    items.push(value);
+                    return Ok(true);
+                }
+                // Un trou peut cacher un accesseur ou un élément figé.
+                if let Some(slot) = items.get_mut(index)
+                    && *slot != Value::Hole
+                {
+                    *slot = value;
+                    return Ok(true);
+                }
             }
         }
         if let (Value::Object(id), Value::Number(n)) = (target, key)
@@ -619,41 +586,20 @@ impl Vm {
             )]
             let index = *n as usize;
             self.typed_store(*id, Some(index), &value)?;
-            return Ok(());
+            return Ok(true);
         }
         let key = self.to_key(key)?;
-        self.set_key(target, &key, value)
+        self.put_key(target, &key, value)
     }
 
     /// Supprime la propriété `key` ; renvoie `false` si elle n'est pas configurable.
     pub(crate) fn delete(&mut self, target: &Value, key: &str) -> JsResult<bool> {
-        let id = match target {
-            Value::Object(id) => *id,
+        match target {
+            Value::Object(id) => self.delete_property(*id, &PropertyKey::String(Arc::from(key))),
             Value::Undefined | Value::Null | Value::Hole => {
-                return Err(
-                    self.type_error(&format!("impossible de supprimer la propriété « {key} »"))
-                );
+                Err(self.type_error(&format!("impossible de supprimer la propriété « {key} »")))
             }
-            _ => return Ok(true),
-        };
-        // Un élément de tableau typé ne se supprime pas.
-        if let Some(present) = self.typed_has(id, key) {
-            return Ok(!present);
-        }
-        let object = self.heap.get_mut(id);
-        if let Kind::Array(items) = &mut object.kind
-            && let Some(slot) = array_index(key).and_then(|i| items.get_mut(i))
-        {
-            *slot = Value::Hole;
-            return Ok(true);
-        }
-        match object.props.get(key) {
-            Some(p) if !p.configurable => Ok(false),
-            Some(_) => {
-                object.props.shift_remove(key);
-                Ok(true)
-            }
-            None => Ok(true),
+            _ => Ok(true),
         }
     }
 
@@ -661,30 +607,36 @@ impl Vm {
     /// création. `only_enumerable` écarte les propriétés non énumérables.
     pub(crate) fn own_keys(&self, id: ObjId, only_enumerable: bool) -> Vec<JsStr> {
         let object = self.heap.get(id);
-        let mut keys: Vec<JsStr> = Vec::new();
+        let mut indices: Vec<(usize, JsStr)> = Vec::new();
+        let mut is_array = false;
         match &object.kind {
             Kind::Array(items) => {
-                keys.extend(
+                is_array = true;
+                indices.extend(
                     items
                         .iter()
                         .enumerate()
                         .filter(|(_, v)| **v != Value::Hole)
-                        .map(|(i, _)| Arc::from(i.to_string())),
+                        .map(|(i, _)| (i, Arc::from(i.to_string()))),
                 );
             }
             Kind::Primitive(Value::String(s)) => {
-                keys.extend((0..utf16_len(s)).map(|i| Arc::from(i.to_string())))
+                indices.extend((0..utf16_len(s)).map(|i| (i, Arc::from(i.to_string()))));
             }
             Kind::TypedArray(_) => {
                 let length = self.typed_length(id).unwrap_or(0);
-                keys.extend((0..length).map(|i| Arc::from(i.to_string())));
+                indices.extend((0..length).map(|i| (i, Arc::from(i.to_string()))));
             }
             _ => {}
         }
-        let mut indices: Vec<(usize, JsStr)> = Vec::new();
+        let dense = indices.len();
         let mut names: Vec<JsStr> = Vec::new();
         for (key, property) in &object.props {
             if only_enumerable && !property.enumerable {
+                continue;
+            }
+            // Marque d'une longueur figée, pas une propriété (voir `internal`).
+            if is_array && &**key == "length" {
                 continue;
             }
             match array_index(key) {
@@ -692,39 +644,71 @@ impl Vm {
                 None => names.push(Arc::clone(key)),
             }
         }
-        indices.sort_by_key(|(index, _)| *index);
-        keys.extend(indices.into_iter().map(|(_, key)| key));
+        if indices.len() > dense {
+            indices.sort_by_key(|(index, _)| *index);
+        }
+        let mut keys: Vec<JsStr> = indices.into_iter().map(|(_, key)| key).collect();
         keys.extend(names);
         keys
     }
 
-    /// Clés visitées par `for…in` : énumérables, propres puis héritées.
-    pub(crate) fn for_in_keys(&self, target: &Value) -> Vec<JsStr> {
-        let mut keys: Vec<JsStr> = Vec::new();
+    /// Clés visitées par `for…in` : énumérables, propres puis héritées ; une
+    /// propriété propre, même non énumérable, masque celle du prototype.
+    pub(crate) fn for_in_keys(&mut self, target: &Value) -> JsResult<Vec<JsStr>> {
         let mut current = match target {
             Value::Object(id) => Some(*id),
             Value::String(s) => {
-                return (0..utf16_len(s))
+                return Ok((0..utf16_len(s))
                     .map(|i| Arc::from(i.to_string()))
-                    .collect();
+                    .collect());
             }
             _ => None,
         };
+        let mut keys: Vec<JsStr> = Vec::new();
+        let mut seen: std::collections::HashSet<JsStr> = std::collections::HashSet::new();
         for _ in 0..10_000 {
             let Some(id) = current else { break };
-            for key in self.own_keys(id, true) {
-                if !keys.contains(&key) {
+            for key in self.enumerable_own_keys(id)? {
+                if !seen.contains(&key) {
                     keys.push(key);
                 }
             }
-            current = self.heap.get(id).proto;
+            current = self.get_prototype_of(id)?;
+            if current.is_some() {
+                let all = if self.is_proxy(id) {
+                    self.own_property_keys(id)?
+                        .into_iter()
+                        .filter_map(|key| match key {
+                            PropertyKey::String(name) => Some(name),
+                            PropertyKey::Symbol(_) => None,
+                        })
+                        .collect()
+                } else {
+                    self.own_keys(id, false)
+                };
+                seen.extend(all);
+            }
         }
-        keys
+        Ok(keys)
     }
 
     /// Copie dans `target` les propriétés propres énumérables de `source`
     /// (`{...source}`, `Object.assign`).
     pub(crate) fn copy_properties(&mut self, target: &Value, source: &Value) -> JsResult<()> {
+        if let Value::Object(id) = source
+            && self.is_proxy(*id)
+        {
+            for key in self.own_property_keys(*id)? {
+                if self
+                    .get_own_property(*id, &key)?
+                    .is_some_and(|desc| desc.is_enumerable())
+                {
+                    let value = self.get_key(source, &key)?;
+                    self.set_key(target, &key, value)?;
+                }
+            }
+            return Ok(());
+        }
         let keys = match source {
             Value::Object(id) => self.own_keys(*id, true),
             Value::String(s) => (0..utf16_len(s))
@@ -976,6 +960,7 @@ impl Vm {
             Kind::Native { constructor, .. } => *constructor,
             Kind::Closure(c) => c.proto.is_constructor(),
             Kind::Bound { target, .. } => self.is_constructor(&Value::Object(*target)),
+            Kind::Proxy(proxy) => proxy.constructor,
             _ => false,
         }
     }

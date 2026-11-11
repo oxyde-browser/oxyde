@@ -1,8 +1,7 @@
 //! Bibliothèque standard : objets globaux d'ECMAScript.
 //!
-//! LIMITES CONNUES : pas de `Proxy` ni d'`Intl` ;
-//! `WeakMap` et `WeakSet` retiennent leurs clés ; `Object.freeze` ne fige pas
-//! les éléments d'un tableau.
+//! LIMITES CONNUES : pas d'`Intl` ; `WeakMap` et `WeakSet` retiennent leurs
+//! clés.
 
 mod array;
 mod async_generator;
@@ -12,6 +11,7 @@ mod date;
 mod generator;
 mod json;
 pub(crate) mod promise;
+pub(crate) mod proxy;
 mod reflect;
 pub(crate) mod regexp;
 mod string;
@@ -21,7 +21,8 @@ mod typed_array;
 use std::sync::Arc;
 
 use crate::heap::{Kind, Object, Property, Slot};
-use crate::value::{ObjId, PropertyKey, Value, array_index, number_to_string};
+use crate::internal::{Descriptor, key_value, same_value};
+use crate::value::{ObjId, PropertyKey, Value, number_to_string};
 use crate::vm::{JsResult, NativeFn, Vm};
 
 /// Argument d'index `i`, ou `undefined`.
@@ -133,6 +134,7 @@ pub(crate) fn install(vm: &mut Vm) {
     promise::install(vm);
     regexp::install(vm);
     reflect::install(vm);
+    proxy::install(vm);
 }
 
 // ---- Object ------------------------------------------------------------------
@@ -153,57 +155,117 @@ fn object_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 
 fn object_keys(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let keys = target
-        .as_object()
-        .map(|id| vm.own_keys(id, true))
-        .unwrap_or_default();
+    let keys = match target.as_object() {
+        Some(id) => vm.enumerable_own_keys(id)?,
+        None => Vec::new(),
+    };
     Ok(vm.new_array(keys.into_iter().map(Value::String).collect()))
+}
+
+/// `EnumerableOwnProperties` (ECMA-262 §7.3.23) : valeurs, ou paires
+/// `[clé, valeur]`, des propriétés propres énumérables de clé chaîne.
+fn enumerable_own_values(vm: &mut Vm, target: &Value, entries: bool) -> JsResult<Vec<Value>> {
+    let Some(id) = target.as_object() else {
+        return Ok(Vec::new());
+    };
+    let mut values = Vec::new();
+    for key in vm.own_property_keys(id)? {
+        let PropertyKey::String(name) = &key else {
+            continue;
+        };
+        // Relu à chaque clé : une lecture précédente a pu la supprimer.
+        if !vm
+            .get_own_property(id, &key)?
+            .is_some_and(|desc| desc.is_enumerable())
+        {
+            continue;
+        }
+        let value = vm.get(target, name)?;
+        values.push(if entries {
+            vm.new_array(vec![Value::String(Arc::clone(name)), value])
+        } else {
+            value
+        });
+    }
+    Ok(values)
 }
 
 fn object_values(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let keys = target
-        .as_object()
-        .map(|id| vm.own_keys(id, true))
-        .unwrap_or_default();
-    let mut values = Vec::with_capacity(keys.len());
-    for key in keys {
-        values.push(vm.get(&target, &key)?);
-    }
+    let values = enumerable_own_values(vm, &target, false)?;
     Ok(vm.new_array(values))
 }
 
 fn object_entries(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let keys = target
-        .as_object()
-        .map(|id| vm.own_keys(id, true))
-        .unwrap_or_default();
-    let mut entries = Vec::with_capacity(keys.len());
-    for key in keys {
-        let value = vm.get(&target, &key)?;
-        entries.push(vm.new_array(vec![Value::String(key), value]));
-    }
+    let entries = enumerable_own_values(vm, &target, true)?;
     Ok(vm.new_array(entries))
 }
 
 fn object_from_entries(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let result = Value::Object(vm.new_object());
+    let result = vm.new_object();
     for entry in vm.iterate_to_vec(&arg(args, 0))? {
+        if entry.as_object().is_none() {
+            return Err(vm.type_error("Object.fromEntries : chaque entrée doit être un objet"));
+        }
         let key = vm.get(&entry, "0")?;
-        let key = vm.to_property_key(&key)?;
         let value = vm.get(&entry, "1")?;
-        vm.set(&result, &key, value)?;
+        let key = vm.to_key(&key)?;
+        vm.create_data_property(result, &key, value)?;
     }
-    Ok(result)
+    Ok(Value::Object(result))
 }
 
 fn object_assign(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
     for source in args.iter().skip(1) {
-        vm.copy_properties(&target, source)?;
+        if source.is_nullish() {
+            continue;
+        }
+        let from = vm.to_object(source)?;
+        let Some(id) = from.as_object() else {
+            continue;
+        };
+        for key in vm.own_property_keys(id)? {
+            if !vm
+                .get_own_property(id, &key)?
+                .is_some_and(|desc| desc.is_enumerable())
+            {
+                continue;
+            }
+            let value = vm.get_key(&from, &key)?;
+            if !vm.put_key(&target, &key, value)? {
+                return Err(vm.type_error(&format!(
+                    "Object.assign : la propriété « {} » ne peut pas être écrite",
+                    key.describe()
+                )));
+            }
+        }
     }
     Ok(target)
+}
+
+/// `ObjectDefineProperties` (ECMA-262 §20.1.2.3.1) : tous les descripteurs
+/// sont lus avant la première définition.
+fn define_properties(vm: &mut Vm, id: ObjId, properties: &Value) -> JsResult<()> {
+    let properties = vm.to_object(properties)?;
+    let Some(source) = properties.as_object() else {
+        return Ok(());
+    };
+    let mut descriptors = Vec::new();
+    for key in vm.own_property_keys(source)? {
+        if vm
+            .get_own_property(source, &key)?
+            .is_some_and(|desc| desc.is_enumerable())
+        {
+            let descriptor = vm.get_key(&properties, &key)?;
+            descriptors.push((key, vm.to_descriptor(&descriptor)?));
+        }
+    }
+    for (key, descriptor) in descriptors {
+        vm.define_or_throw(id, &key, descriptor)?;
+    }
+    Ok(())
 }
 
 fn object_create(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -212,24 +274,28 @@ fn object_create(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         Value::Object(id) => Some(id),
         _ => return Err(vm.type_error("Object.create : le prototype doit être un objet ou null")),
     };
-    let object = Value::Object(vm.heap.alloc(Object::new(proto, Kind::Ordinary)));
-    if let Value::Object(descriptors) = arg(args, 1) {
-        for key in vm.own_keys(descriptors, true) {
-            let descriptor = vm.get(&Value::Object(descriptors), &key)?;
-            define_from_descriptor(vm, &object, &PropertyKey::String(key), &descriptor)?;
-        }
+    let object = vm.heap.alloc(Object::new(proto, Kind::Ordinary));
+    let properties = arg(args, 1);
+    if properties != Value::Undefined {
+        define_properties(vm, object, &properties)?;
     }
-    Ok(object)
+    Ok(Value::Object(object))
 }
 
 fn object_get_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let proto = target.as_object().and_then(|id| vm.heap.get(id).proto);
+    let proto = match target.as_object() {
+        Some(id) => vm.get_prototype_of(id)?,
+        None => None,
+    };
     Ok(proto.map_or(Value::Null, Value::Object))
 }
 
 fn object_set_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = arg(args, 0);
+    if target.is_nullish() {
+        return Err(vm.type_error("Object.setPrototypeOf : la cible est null ou undefined"));
+    }
     let proto = match arg(args, 1) {
         Value::Null => None,
         Value::Object(id) => Some(id),
@@ -239,13 +305,16 @@ fn object_set_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResu
             );
         }
     };
-    if let Some(id) = target.as_object() {
-        vm.set_prototype(id, proto)?;
+    if let Some(id) = target.as_object()
+        && !vm.set_prototype_of(id, proto)?
+    {
+        return Err(vm.type_error("Object.setPrototypeOf : le prototype ne peut pas être changé"));
     }
     Ok(target)
 }
 
-/// Applique un descripteur de propriété (`{ value, writable, get, set… }`).
+/// Applique l'objet descripteur `descriptor` (`{ value, writable, get, set… }`)
+/// à la propriété `key` de `target`.
 pub(super) fn define_from_descriptor(
     vm: &mut Vm,
     target: &Value,
@@ -255,59 +324,15 @@ pub(super) fn define_from_descriptor(
     let Some(id) = target.as_object() else {
         return Err(vm.type_error("Object.defineProperty : un objet est attendu"));
     };
-    if descriptor.as_object().is_none() {
-        return Err(vm.type_error("Object.defineProperty : le descripteur doit être un objet"));
-    }
-    let flag =
-        |vm: &mut Vm, name: &str| -> JsResult<bool> { Ok(vm.get(descriptor, name)?.truthy()) };
-    let (get, set) = (vm.get(descriptor, "get")?, vm.get(descriptor, "set")?);
-    let enumerable = flag(vm, "enumerable")?;
-    let configurable = flag(vm, "configurable")?;
-    let property = if get != Value::Undefined || set != Value::Undefined {
-        for accessor in [&get, &set] {
-            if *accessor != Value::Undefined && !is_callable(vm, accessor) {
-                return Err(
-                    vm.type_error("Object.defineProperty : get et set doivent être des fonctions")
-                );
-            }
-        }
-        Property {
-            slot: Slot::Accessor {
-                get: get.as_object(),
-                set: set.as_object(),
-            },
-            writable: true,
-            enumerable,
-            configurable,
-        }
-    } else {
-        let value = vm.get(descriptor, "value")?;
-        Property {
-            slot: Slot::Data(value),
-            writable: flag(vm, "writable")?,
-            enumerable,
-            configurable,
-        }
-    };
-    // Élément de tableau : la valeur va dans le stockage dense.
-    if let (Slot::Data(value), PropertyKey::String(name)) = (&property.slot, key)
-        && matches!(vm.heap.get(id).kind, Kind::Array(_))
-        && (array_index(name).is_some() || name.as_ref() == "length")
-    {
-        return vm.set(target, name, value.clone());
-    }
-    if vm.heap.get(id).prop(key).is_some_and(|p| !p.configurable) {
-        return Err(vm.type_error(&format!(
-            "la propriété « {} » ne peut pas être redéfinie",
-            key.describe()
-        )));
-    }
-    vm.heap.get_mut(id).insert_prop(key.clone(), property);
-    Ok(())
+    let descriptor = vm.to_descriptor(descriptor)?;
+    vm.define_or_throw(id, key, descriptor)
 }
 
 fn object_define_property(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = arg(args, 0);
+    if target.as_object().is_none() {
+        return Err(vm.type_error("Object.defineProperty : un objet est attendu"));
+    }
     let key = vm.to_key(&arg(args, 1))?;
     define_from_descriptor(vm, &target, &key, &arg(args, 2))?;
     Ok(target)
@@ -315,36 +340,32 @@ fn object_define_property(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResul
 
 fn object_define_properties(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = arg(args, 0);
-    let descriptors = object_arg(vm, &args[args.len().min(1)..], "Object.defineProperties")?;
-    for key in vm.own_keys(descriptors, true) {
-        let descriptor = vm.get(&Value::Object(descriptors), &key)?;
-        define_from_descriptor(vm, &target, &PropertyKey::String(key), &descriptor)?;
-    }
+    let id = object_arg(vm, args, "Object.defineProperties")?;
+    define_properties(vm, id, &arg(args, 1))?;
     Ok(target)
 }
 
-fn object_get_own_property_names(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+/// Clés propres de l'argument converti en objet : chaînes ou symboles.
+fn own_keys_of(vm: &mut Vm, args: &[Value], symbols: bool) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let mut keys = target
-        .as_object()
-        .map(|id| vm.own_keys(id, false))
-        .unwrap_or_default();
-    if target
-        .as_object()
-        .is_some_and(|id| matches!(vm.heap.get(id).kind, Kind::Array(_)))
-    {
-        keys.push(Arc::from("length"));
-    }
-    Ok(vm.new_array(keys.into_iter().map(Value::String).collect()))
+    let keys = match target.as_object() {
+        Some(id) => vm.own_property_keys(id)?,
+        None => Vec::new(),
+    };
+    let keys = keys
+        .iter()
+        .filter(|key| matches!(key, PropertyKey::Symbol(_)) == symbols)
+        .map(key_value)
+        .collect();
+    Ok(vm.new_array(keys))
+}
+
+fn object_get_own_property_names(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    own_keys_of(vm, args, false)
 }
 
 fn object_get_own_property_symbols(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let target = vm.to_object(&arg(args, 0))?;
-    let symbols = target
-        .as_object()
-        .map(|id| vm.own_symbols(id, false))
-        .unwrap_or_default();
-    Ok(vm.new_array(symbols.into_iter().map(Value::Symbol).collect()))
+    own_keys_of(vm, args, true)
 }
 
 fn object_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -356,133 +377,154 @@ fn object_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value]
     }
 }
 
+fn object_get_own_property_descriptors(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let target = vm.to_object(&arg(args, 0))?;
+    let result = vm.new_object();
+    if let Some(id) = target.as_object() {
+        for key in vm.own_property_keys(id)? {
+            let descriptor = own_property_descriptor(vm, id, &key)?;
+            if descriptor != Value::Undefined {
+                vm.create_data_property(result, &key, descriptor)?;
+            }
+        }
+    }
+    Ok(Value::Object(result))
+}
+
 /// Descripteur de la propriété propre `key` de `id`, ou `undefined`.
 pub(super) fn own_property_descriptor(vm: &mut Vm, id: ObjId, key: &PropertyKey) -> JsResult {
-    if !vm.has_own_key(id, key) {
-        return Ok(Value::Undefined);
+    Ok(match vm.get_own_property(id, key)? {
+        Some(descriptor) => vm.from_descriptor(&descriptor),
+        None => Value::Undefined,
+    })
+}
+
+/// `SetIntegrityLevel` (ECMA-262 §7.3.15) : scelle ou fige `id`.
+fn set_integrity(vm: &mut Vm, id: ObjId, frozen: bool, what: &str) -> JsResult<()> {
+    if !vm.prevent_extensions(id)? {
+        return Err(vm.type_error(&format!(
+            "{what} : l'objet ne peut pas être rendu non extensible"
+        )));
     }
-    let target = Value::Object(id);
-    let descriptor = Value::Object(vm.new_object());
-    match vm.heap.get(id).prop(key).cloned() {
-        Some(Property {
-            slot: Slot::Accessor { get, set },
-            enumerable,
-            configurable,
-            ..
-        }) => {
-            vm.set(
-                &descriptor,
-                "get",
-                get.map_or(Value::Undefined, Value::Object),
-            )?;
-            vm.set(
-                &descriptor,
-                "set",
-                set.map_or(Value::Undefined, Value::Object),
-            )?;
-            vm.set(&descriptor, "enumerable", Value::Bool(enumerable))?;
-            vm.set(&descriptor, "configurable", Value::Bool(configurable))?;
-        }
-        Some(Property {
-            slot: Slot::Data(value),
-            writable,
-            enumerable,
-            configurable,
-        }) => {
-            vm.set(&descriptor, "value", value)?;
-            vm.set(&descriptor, "writable", Value::Bool(writable))?;
-            vm.set(&descriptor, "enumerable", Value::Bool(enumerable))?;
-            vm.set(&descriptor, "configurable", Value::Bool(configurable))?;
-        }
-        // Propriété virtuelle d'un objet exotique (élément de tableau, `length`,
-        // nom d'une fonction…).
-        None => {
-            let name = match key {
-                PropertyKey::String(name) => &**name,
-                PropertyKey::Symbol(_) => "",
+    for key in vm.own_property_keys(id)? {
+        let descriptor = if frozen {
+            let Some(current) = vm.get_own_property(id, &key)? else {
+                continue;
             };
-            let (writable, enumerable, configurable) = match &vm.heap.get(id).kind {
-                // `name` et `length` d'une fonction : figés mais reconfigurables.
-                Kind::Closure(_) if name == "prototype" => (true, false, false),
-                Kind::Closure(_) => (false, false, true),
-                // Caractères d'une chaîne : en lecture seule.
-                Kind::Primitive(_) => (false, name != "length", false),
-                _ => (true, name != "length", name != "length"),
-            };
-            let value = vm.get_key(&target, key)?;
-            vm.set(&descriptor, "value", value)?;
-            vm.set(&descriptor, "writable", Value::Bool(writable))?;
-            vm.set(&descriptor, "enumerable", Value::Bool(enumerable))?;
-            vm.set(&descriptor, "configurable", Value::Bool(configurable))?;
+            Descriptor {
+                configurable: Some(false),
+                writable: (!current.is_accessor()).then_some(false),
+                ..Descriptor::default()
+            }
+        } else {
+            Descriptor {
+                configurable: Some(false),
+                ..Descriptor::default()
+            }
+        };
+        vm.define_or_throw(id, &key, descriptor)?;
+    }
+    Ok(())
+}
+
+/// `TestIntegrityLevel` (ECMA-262 §7.3.16).
+fn test_integrity(vm: &mut Vm, id: ObjId, frozen: bool) -> JsResult<bool> {
+    if vm.is_extensible(id)? {
+        return Ok(false);
+    }
+    for key in vm.own_property_keys(id)? {
+        if let Some(current) = vm.get_own_property(id, &key)?
+            && (current.is_configurable()
+                || (frozen && !current.is_accessor() && current.is_writable()))
+        {
+            return Ok(false);
         }
     }
-    Ok(descriptor)
+    Ok(true)
 }
 
 fn object_freeze(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = arg(args, 0);
     if let Some(id) = target.as_object() {
-        let object = vm.heap.get_mut(id);
-        object.extensible = false;
-        for property in object.props.values_mut() {
-            property.writable = false;
-            property.configurable = false;
-        }
+        set_integrity(vm, id, true, "Object.freeze")?;
+    }
+    Ok(target)
+}
+
+fn object_seal(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let target = arg(args, 0);
+    if let Some(id) = target.as_object() {
+        set_integrity(vm, id, false, "Object.seal")?;
     }
     Ok(target)
 }
 
 fn object_is_frozen(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let frozen = arg(args, 0).as_object().is_none_or(|id| {
-        let object = vm.heap.get(id);
-        !object.extensible
-            && object
-                .props
-                .values()
-                .all(|p| !p.configurable && !p.writable)
-    });
-    Ok(Value::Bool(frozen))
+    Ok(Value::Bool(match arg(args, 0).as_object() {
+        Some(id) => test_integrity(vm, id, true)?,
+        None => true,
+    }))
+}
+
+fn object_is_sealed(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    Ok(Value::Bool(match arg(args, 0).as_object() {
+        Some(id) => test_integrity(vm, id, false)?,
+        None => true,
+    }))
 }
 
 fn object_prevent_extensions(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = arg(args, 0);
-    if let Some(id) = target.as_object() {
-        vm.heap.get_mut(id).extensible = false;
+    if let Some(id) = target.as_object()
+        && !vm.prevent_extensions(id)?
+    {
+        return Err(vm.type_error(
+            "Object.preventExtensions : l'objet ne peut pas être rendu non extensible",
+        ));
     }
     Ok(target)
+}
+
+fn object_is_extensible(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    Ok(Value::Bool(match arg(args, 0).as_object() {
+        Some(id) => vm.is_extensible(id)?,
+        None => false,
+    }))
+}
+
+fn object_is(_vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    Ok(Value::Bool(same_value(&arg(args, 0), &arg(args, 1))))
 }
 
 fn object_has_own(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
     let key = vm.to_key(&arg(args, 1))?;
-    Ok(Value::Bool(
-        target
-            .as_object()
-            .is_some_and(|id| vm.has_own_key(id, &key)),
-    ))
+    Ok(Value::Bool(match target.as_object() {
+        Some(id) => vm.get_own_property(id, &key)?.is_some(),
+        None => false,
+    }))
 }
 
 fn object_proto_has_own_property(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let key = vm.to_key(&arg(args, 0))?;
     let target = vm.to_object(this)?;
-    Ok(Value::Bool(
-        target
-            .as_object()
-            .is_some_and(|id| vm.has_own_key(id, &key)),
-    ))
+    Ok(Value::Bool(match target.as_object() {
+        Some(id) => vm.get_own_property(id, &key)?.is_some(),
+        None => false,
+    }))
 }
 
 fn object_proto_is_prototype_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let Some(proto) = this.as_object() else {
+    let Some(mut current) = arg(args, 0).as_object() else {
         return Ok(Value::Bool(false));
     };
-    let mut current = arg(args, 0)
-        .as_object()
-        .and_then(|id| vm.heap.get(id).proto);
+    let Some(proto) = vm.to_object(this)?.as_object() else {
+        return Ok(Value::Bool(false));
+    };
     for _ in 0..10_000 {
-        match current {
+        match vm.get_prototype_of(current)? {
             Some(p) if p == proto => return Ok(Value::Bool(true)),
-            Some(p) => current = vm.heap.get(p).proto,
+            Some(p) => current = p,
             None => break,
         }
     }
@@ -490,15 +532,14 @@ fn object_proto_is_prototype_of(vm: &mut Vm, this: &Value, args: &[Value]) -> Js
 }
 
 fn object_proto_property_is_enumerable(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let key = vm.to_property_key(&arg(args, 0))?;
-    let Some(id) = this.as_object() else {
-        return Ok(Value::Bool(false));
-    };
-    let enumerable = match vm.heap.get(id).props.get(&key) {
-        Some(p) => p.enumerable,
-        None => vm.has_own(id, &key) && key.as_ref() != "length",
-    };
-    Ok(Value::Bool(enumerable))
+    let key = vm.to_key(&arg(args, 0))?;
+    let target = vm.to_object(this)?;
+    Ok(Value::Bool(match target.as_object() {
+        Some(id) => vm
+            .get_own_property(id, &key)?
+            .is_some_and(|desc| desc.is_enumerable()),
+        None => false,
+    }))
 }
 
 pub(super) fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -512,11 +553,14 @@ pub(super) fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value])
         Value::BigInt(_) => "BigInt",
         Value::Object(id) => match &vm.heap.get(*id).kind {
             Kind::Array(_) => "Array",
+            Kind::Proxy(_) if array::is_array(vm, this) => "Array",
+            Kind::Proxy(proxy) if proxy.callable => "Function",
             Kind::Closure(_)
             | Kind::Native { .. }
             | Kind::NativeData { .. }
             | Kind::Bound { .. } => "Function",
             Kind::Error => "Error",
+            Kind::Arguments => "Arguments",
             Kind::Date(_) => "Date",
             Kind::RegExp { .. } => "RegExp",
             Kind::Primitive(Value::Bool(_)) => "Boolean",
@@ -541,21 +585,88 @@ fn object_proto_value_of(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult
 
 fn object_proto_get_proto(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let target = vm.to_object(this)?;
-    Ok(target
-        .as_object()
-        .and_then(|id| vm.heap.get(id).proto)
-        .map_or(Value::Null, Value::Object))
+    let proto = match target.as_object() {
+        Some(id) => vm.get_prototype_of(id)?,
+        None => None,
+    };
+    Ok(proto.map_or(Value::Null, Value::Object))
 }
 
 fn object_proto_set_proto(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    if let Some(id) = this.as_object() {
-        match arg(args, 0) {
-            Value::Null => vm.set_prototype(id, None)?,
-            Value::Object(proto) => vm.set_prototype(id, Some(proto))?,
-            _ => {}
-        }
+    if this.is_nullish() {
+        return Err(vm.type_error("__proto__ : this est null ou undefined"));
+    }
+    let proto = match arg(args, 0) {
+        Value::Null => None,
+        Value::Object(proto) => Some(proto),
+        _ => return Ok(Value::Undefined),
+    };
+    if let Some(id) = this.as_object()
+        && !vm.set_prototype_of(id, proto)?
+    {
+        return Err(vm.type_error("__proto__ : le prototype ne peut pas être changé"));
     }
     Ok(Value::Undefined)
+}
+
+/// `__defineGetter__` et `__defineSetter__` (annexe B).
+fn define_accessor(vm: &mut Vm, this: &Value, args: &[Value], getter: bool) -> JsResult {
+    let target = vm.to_object(this)?;
+    let function = arg(args, 1);
+    if !is_callable(vm, &function) {
+        return Err(vm.type_error("une fonction est attendue"));
+    }
+    let key = vm.to_key(&arg(args, 0))?;
+    let mut descriptor = Descriptor {
+        enumerable: Some(true),
+        configurable: Some(true),
+        ..Descriptor::default()
+    };
+    if getter {
+        descriptor.get = Some(function);
+    } else {
+        descriptor.set = Some(function);
+    }
+    if let Some(id) = target.as_object() {
+        vm.define_or_throw(id, &key, descriptor)?;
+    }
+    Ok(Value::Undefined)
+}
+
+fn object_proto_define_getter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    define_accessor(vm, this, args, true)
+}
+
+fn object_proto_define_setter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    define_accessor(vm, this, args, false)
+}
+
+/// `__lookupGetter__` et `__lookupSetter__` (annexe B).
+fn lookup_accessor(vm: &mut Vm, this: &Value, args: &[Value], getter: bool) -> JsResult {
+    let target = vm.to_object(this)?;
+    let key = vm.to_key(&arg(args, 0))?;
+    let mut current = target.as_object();
+    for _ in 0..10_000 {
+        let Some(id) = current else { break };
+        if let Some(descriptor) = vm.get_own_property(id, &key)? {
+            let accessor = if getter {
+                descriptor.get
+            } else {
+                descriptor.set
+            };
+            return Ok(accessor.unwrap_or(Value::Undefined));
+        }
+        current = vm.get_prototype_of(id)?;
+    }
+    Ok(Value::Undefined)
+}
+
+fn object_proto_lookup_getter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    lookup_accessor(vm, this, args, true)
+}
+
+fn object_proto_lookup_setter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    lookup_accessor(vm, this, args, false)
 }
 
 fn install_object(vm: &mut Vm) {
@@ -579,10 +690,18 @@ fn install_object(vm: &mut Vm) {
             2,
             object_get_own_property_descriptor,
         ),
+        (
+            "getOwnPropertyDescriptors",
+            1,
+            object_get_own_property_descriptors,
+        ),
         ("freeze", 1, object_freeze),
         ("isFrozen", 1, object_is_frozen),
+        ("seal", 1, object_seal),
+        ("isSealed", 1, object_is_sealed),
         ("preventExtensions", 1, object_prevent_extensions),
-        ("seal", 1, object_prevent_extensions),
+        ("isExtensible", 1, object_is_extensible),
+        ("is", 2, object_is),
         ("hasOwn", 2, object_has_own),
     ];
     for (name, arity, func) in statics {
@@ -599,6 +718,10 @@ fn install_object(vm: &mut Vm) {
         ("toString", 0, object_proto_to_string),
         ("toLocaleString", 0, object_proto_to_string),
         ("valueOf", 0, object_proto_value_of),
+        ("__defineGetter__", 2, object_proto_define_getter),
+        ("__defineSetter__", 2, object_proto_define_setter),
+        ("__lookupGetter__", 1, object_proto_lookup_getter),
+        ("__lookupSetter__", 1, object_proto_lookup_setter),
     ];
     for (name, arity, func) in methods {
         vm.define_method(proto, name, *arity, *func);
@@ -721,6 +844,18 @@ fn install_function(vm: &mut Vm) {
     vm.define_method(proto, "apply", 2, function_apply);
     vm.define_method(proto, "bind", 1, function_bind);
     vm.define_method(proto, "toString", 0, function_to_string);
+    // `Function.prototype` est lui-même une fonction : longueur 0, nom vide.
+    for (name, value) in [("length", Value::Number(0.0)), ("name", Value::string(""))] {
+        vm.heap.get_mut(proto).props.insert(
+            Arc::from(name),
+            Property {
+                slot: Slot::Data(value),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
 }
 
 // ---- Erreurs -------------------------------------------------------------------

@@ -1947,6 +1947,220 @@ fn early_errors() {
 }
 
 #[test]
+fn property_descriptors() {
+    // Un descripteur partiel ne touche que les attributs qu'il nomme.
+    assert_eq!(
+        eval(
+            "var o = { x: 1 }; Object.defineProperty(o, 'x', { enumerable: false });
+             var d = Object.getOwnPropertyDescriptor(o, 'x');
+             Object.defineProperty(o, 'y', { value: 2 }); o.y = 3;
+             var e = Object.getOwnPropertyDescriptor(o, 'y');
+             [d.value, d.writable, d.enumerable, d.configurable, o.y, e.writable, e.enumerable, e.configurable, Object.keys(o).length].join()"
+        ),
+        "1,true,false,true,2,false,false,false,0"
+    );
+    // Une propriété non configurable refuse d'être redéfinie autrement.
+    assert!(
+        eval("var o = {}; Object.defineProperty(o, 'x', { value: 1 }); Object.defineProperty(o, 'x', { value: 2 })")
+            .contains("TypeError")
+    );
+    assert_eq!(
+        eval(
+            "var o = {}; Object.defineProperty(o, 'x', { value: 1 }); [Reflect.defineProperty(o, 'x', { value: 1 }), Reflect.defineProperty(o, 'x', { get() {} }), Reflect.set(o, 'x', 5), delete o.x].join()"
+        ),
+        "true,false,false,false"
+    );
+    assert!(eval("Object.defineProperty({}, 'x', { get() {}, value: 1 })").contains("TypeError"));
+    // Tableaux : accesseur sur un index, longueur, gel.
+    assert_eq!(
+        eval(
+            "var a = [1, 2, 3]; Object.defineProperty(a, 1, { get() { return 9 } }); a[1] = 5; a.length = 2;
+             var b = Object.freeze([1, 2]); b[0] = 5; b[5] = 1;
+             var c = [1, 2, 3]; Object.defineProperty(c, 1, { configurable: false }); c.length = 0;
+             [a.join(), a.length, Object.keys(a).join('|'), b.join(), b.length, Object.isFrozen(b), c.length, Object.getOwnPropertyDescriptor(b, 'length').writable].join()"
+        ),
+        "1,9,2,0|1,1,2,2,true,2,false"
+    );
+    assert!(eval("[].length = -1").contains("RangeError"));
+    // Intégrité, extensibilité, Object.is.
+    assert_eq!(
+        eval(
+            "var s = Object.seal({ a: 1 }); s.a = 2; s.b = 3; delete s.a;
+             var p = Object.preventExtensions({}); p.x = 1;
+             [s.a, s.b, Object.isSealed(s), Object.isFrozen(s), Object.isExtensible(p), p.x, Object.is(NaN, NaN), Object.is(0, -0),
+              Object.keys(Object.getOwnPropertyDescriptors({ a: 1, get b() { return 1 } })).join('|')].join()"
+        ),
+        "2,,true,false,false,,true,false,a|b"
+    );
+    // `name` et `length` d'une fonction : figés mais supprimables.
+    assert_eq!(
+        eval(
+            "function f(a, b) {} f.name = 'x'; var avant = [f.name, f.length, Reflect.ownKeys(f).join('|')].join();
+             delete f.name; delete f.length; [avant, f.name, f.length, f.hasOwnProperty('name'), Reflect.ownKeys(f).join('|')].join()"
+        ),
+        "f,2,length|name|prototype,,0,false,prototype"
+    );
+    // Une propriété propre non énumérable masque celle du prototype dans for…in.
+    assert_eq!(
+        eval(
+            "var proto = { a: 1, b: 2 }; var o = Object.create(proto, { a: { value: 3, enumerable: false } }); o.c = 4;
+             var seen = []; for (var k in o) seen.push(k); seen.join()"
+        ),
+        "c,b"
+    );
+    assert_eq!(
+        eval(
+            "class A { static [Symbol.hasInstance](v) { return v === 1 } } [1 instanceof A, 2 instanceof A].join()"
+        ),
+        "true,false"
+    );
+    assert_eq!(
+        eval(
+            "var o = {}; o.__defineGetter__('x', function () { return 7 }); [o.x, typeof o.__lookupGetter__('x'), o.__lookupSetter__('x')].join()"
+        ),
+        "7,function,"
+    );
+}
+
+#[test]
+fn proxies() {
+    assert_eq!(
+        eval(
+            "var journal = [];
+             var p = new Proxy({ a: 1 }, {
+                 get(t, k, r) { journal.push('get ' + String(k)); return k === 'b' ? 42 : Reflect.get(t, k, r); },
+                 set(t, k, v, r) { journal.push('set ' + k); return Reflect.set(t, k, v * 2, r); },
+                 has(t, k) { return k === 'z' || k in t; },
+                 deleteProperty(t, k) { journal.push('delete ' + k); return delete t[k]; },
+                 ownKeys(t) { return [...Reflect.ownKeys(t), 'q']; },
+                 getOwnPropertyDescriptor(t, k) { return k === 'q' ? { value: 1, enumerable: true, configurable: true } : Reflect.getOwnPropertyDescriptor(t, k); },
+                 defineProperty(t, k, d) { journal.push('define ' + k); return Reflect.defineProperty(t, k, d); },
+             });
+             p.c = 5; delete p.a; Object.defineProperty(p, 'd', { value: 1, configurable: true });
+             [p.b, p.c, 'z' in p, 'a' in p, Object.keys(p).join('|'), typeof p, journal.join('|')].join()"
+        ),
+        "42,10,true,false,c|q,object,set c|define c|delete a|define d|get b|get c"
+    );
+    // Sans trappe, tout va à la cible ; un proxy de tableau reste un tableau.
+    assert_eq!(
+        eval(
+            "var t = [1, 2]; var p = new Proxy(t, {}); p.push(3);
+             [t.length, Array.isArray(p), Object.prototype.toString.call(p), JSON.stringify(Object.getOwnPropertyNames(p)), p instanceof Array].join()"
+        ),
+        "3,true,[object Array],[\"0\",\"1\",\"2\",\"length\"],true"
+    );
+    // Appel et construction.
+    assert_eq!(
+        eval(
+            "var f = new Proxy(function (a) { return a * 2; }, {
+                 apply(t, self, args) { return t(...args) + 1; },
+                 construct(t, args, nt) { return { v: args[0], nt: nt === f }; },
+             });
+             var g = new Proxy(class { constructor(x) { this.x = x; } }, {});
+             [f(2), new f(7).v, new f(7).nt, typeof f, new g(3).x, typeof new Proxy({}, {})].join()"
+        ),
+        "5,7,true,function,3,object"
+    );
+    // Prototype, extensibilité, for…in et affectation à travers un prototype.
+    assert_eq!(
+        eval(
+            "var proto = { h: 1 };
+             var p = new Proxy({}, { getPrototypeOf() { return proto; }, isExtensible(t) { return Reflect.isExtensible(t); } });
+             var enfant = Object.create(new Proxy({}, { set(t, k, v, r) { return Reflect.defineProperty(r, 'vu', { value: k, enumerable: true, configurable: true }); }, ownKeys() { return ['m']; },
+                 getOwnPropertyDescriptor() { return { value: 1, enumerable: true, configurable: true }; } }));
+             enfant.x = 1; var cles = []; for (var k in enfant) cles.push(k);
+             [Object.getPrototypeOf(p) === proto, p instanceof Object, Object.isExtensible(p), enfant.vu, 'x' in enfant, cles.join('|')].join()"
+        ),
+        "true,true,true,x,false,vu|m"
+    );
+    // Invariants : une trappe ne peut pas mentir sur une propriété figée.
+    for source in [
+        "var t = {}; Object.defineProperty(t, 'x', { value: 1 }); new Proxy(t, { get() { return 2; } }).x",
+        "var t = {}; Object.defineProperty(t, 'x', { value: 1 }); 'x' in new Proxy(t, { has() { return false; } })",
+        "var t = Object.preventExtensions({ a: 1 }); Object.keys(new Proxy(t, { ownKeys() { return []; } }))",
+        "var t = {}; Object.defineProperty(t, 'x', { value: 1 }); delete new Proxy(t, { deleteProperty() { return true; } }).x",
+        "Object.getPrototypeOf(new Proxy({}, { getPrototypeOf() { return 1; } }))",
+        "new Proxy({}, { get: 1 }).x",
+        "Proxy({}, {})",
+        "new Proxy(1, {})",
+        "new (new Proxy(() => {}, {}))()",
+    ] {
+        assert!(eval(source).contains("TypeError"), "{source}");
+    }
+    // Révocation.
+    assert_eq!(
+        eval(
+            "var r = Proxy.revocable({ a: 1 }, {}); var avant = r.proxy.a; r.revoke(); r.revoke();
+             var apres; try { r.proxy.a; } catch (e) { apres = e.name; } [avant, apres, typeof r.proxy].join()"
+        ),
+        "1,TypeError,object"
+    );
+}
+
+#[test]
+fn strict_mode_at_runtime() {
+    // Hors mode strict, une écriture refusée est silencieuse.
+    assert_eq!(
+        eval(
+            "var o = Object.freeze({ a: 1 }); o.a = 2; o.b = 3; var g = { get x() { return 1; } }; g.x = 2;
+             non_declaree = 5; [o.a, o.b, g.x, delete o.a, non_declaree, (function () { return this === globalThis; })(),
+              (function () { return typeof this; }).call(1)].join()"
+        ),
+        "1,,1,false,5,true,object"
+    );
+    // En mode strict, chacune lève une erreur et `this` n'est pas converti.
+    for (source, expected) in [
+        ("'use strict'; Object.freeze({ a: 1 }).a = 2", "TypeError"),
+        (
+            "'use strict'; Object.preventExtensions({}).b = 1",
+            "TypeError",
+        ),
+        (
+            "'use strict'; ({ get x() { return 1; } }).x = 2",
+            "TypeError",
+        ),
+        (
+            "'use strict'; delete Object.freeze({ a: 1 }).a",
+            "TypeError",
+        ),
+        (
+            "'use strict'; var a = Object.freeze([1]); a[0] = 2",
+            "TypeError",
+        ),
+        ("'use strict'; 'abc'.length = 1", "TypeError"),
+        ("'use strict'; non_declaree = 5", "ReferenceError"),
+        (
+            "function f() { 'use strict'; undefined_ici = 1; } f()",
+            "ReferenceError",
+        ),
+        (
+            "class C { m() { Object.freeze(this).x = 1; } } new C().m()",
+            "TypeError",
+        ),
+    ] {
+        assert!(
+            eval(source).contains(expected),
+            "{source} → {}",
+            eval(source)
+        );
+    }
+    assert_eq!(
+        eval(
+            "'use strict'; [(function () { return this; })() === undefined, (function () { return typeof this; }).call(1),
+              (() => this === globalThis)(), typeof (function () { return this; }).call('a')].join()"
+        ),
+        "true,number,true,string"
+    );
+    // Le mode est celui de la fonction, pas de l'appelant.
+    assert_eq!(
+        eval(
+            "function laxiste() { return this === globalThis; } (function () { 'use strict'; return laxiste(); })()"
+        ),
+        "true"
+    );
+}
+
+#[test]
 fn garbage_collection_reclaims_memory() {
     let mut vm = Vm::new();
     let before = vm.live_objects();

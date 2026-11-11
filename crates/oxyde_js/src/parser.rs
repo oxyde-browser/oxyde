@@ -154,27 +154,35 @@ struct Parser {
 /// Ce n'est pas un identifiant : aucun script ne peut la désigner.
 pub(crate) const DEFAULT_EXPORT: &str = "*default*";
 
+/// Script analysé : ses instructions et son mode.
+#[derive(Debug)]
+pub(crate) struct Script {
+    pub(crate) body: Vec<Stmt>,
+    /// Le script commence par la directive `"use strict"`.
+    pub(crate) strict: bool,
+}
+
 /// Analyse un script complet.
-pub(crate) fn parse_program(source: &str) -> PResult<Vec<Stmt>> {
+pub(crate) fn parse_program(source: &str) -> PResult<Script> {
     parse_script(source, false)
 }
 
 /// Analyse le source passé à `eval`. `new.target` et `super.x` y sont
 /// acceptés, faute de savoir ici d'où vient l'appel.
-pub(crate) fn parse_eval(source: &str) -> PResult<Vec<Stmt>> {
+pub(crate) fn parse_eval(source: &str) -> PResult<Script> {
     parse_script(source, true)
 }
 
-fn parse_script(source: &str, in_function: bool) -> PResult<Vec<Stmt>> {
+fn parse_script(source: &str, in_function: bool) -> PResult<Script> {
     let mut parser = Parser::new(source, false)?;
     parser.in_function = in_function;
     parser.super_property = in_function;
     let mut body = Vec::new();
-    parser.directives(&mut body)?;
+    let strict = parser.directives(&mut body)?;
     while parser.tok.tok != Tok::Eof {
         body.push(parser.statement()?);
     }
-    Ok(body)
+    Ok(Script { body, strict })
 }
 
 /// Analyse un module : ses instructions (les déclarations `import` et
@@ -1361,6 +1369,7 @@ impl Parser {
         self.in_params = false;
         let checked_name = if is_method { None } else { name.as_deref() };
         let parsed = self.function_parts(checked_name, is_method, was_strict);
+        let strict = self.strict;
         self.restore_state(saved);
         let (params, rest, body) = parsed?;
         // L'accolade fermante, lue hors du mode strict éventuel du corps.
@@ -1374,6 +1383,7 @@ impl Parser {
             is_method,
             is_async,
             is_generator,
+            strict,
         })
     }
 
@@ -1489,6 +1499,7 @@ impl Parser {
             is_method: true,
             is_async: false,
             is_generator: false,
+            strict: true,
         })
     }
 
@@ -1877,6 +1888,7 @@ impl Parser {
                 .and_then(|()| self.assignment())
                 .map(|value| vec![Stmt::Return(Some(value))])
         };
+        let strict = self.strict;
         self.restore_state(saved);
         let body = body?;
         if block {
@@ -1892,6 +1904,7 @@ impl Parser {
             is_method: false,
             is_async,
             is_generator: false,
+            strict,
         })))
     }
 
@@ -2673,7 +2686,9 @@ mod tests {
     use super::*;
 
     fn parse(src: &str) -> Vec<Stmt> {
-        parse_program(src).unwrap_or_else(|e| panic!("{src}\n→ {e}"))
+        parse_program(src)
+            .unwrap_or_else(|e| panic!("{src}\n→ {e}"))
+            .body
     }
 
     fn fails(src: &str) -> bool {

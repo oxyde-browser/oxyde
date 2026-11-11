@@ -24,6 +24,7 @@ mod builtins;
 mod bytecode;
 mod compiler;
 mod heap;
+mod internal;
 pub mod lexer;
 mod module;
 mod object;
@@ -75,8 +76,9 @@ impl Vm {
     /// [`EvalError::Syntax`] si le source est invalide, [`EvalError::Thrown`]
     /// si le script lève une exception non rattrapée.
     pub fn eval(&mut self, source: &str) -> Result<Value, EvalError> {
-        let program = parser::parse_program(source).map_err(EvalError::Syntax)?;
-        let proto = compiler::compile_script(&program).map_err(EvalError::Syntax)?;
+        let script = parser::parse_program(source).map_err(EvalError::Syntax)?;
+        let proto =
+            compiler::compile_script(&script.body, script.strict).map_err(EvalError::Syntax)?;
         let result = self.run_script(proto);
         // Fin de la tâche : les réactions de promesses en attente s'exécutent.
         self.run_microtasks();
@@ -91,7 +93,7 @@ impl Vm {
     /// une exception `SyntaxError`.
     pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
         let proto = parser::parse_eval(source)
-            .and_then(|program| compiler::compile_script(&program))
+            .and_then(|script| compiler::compile_script(&script.body, script.strict))
             .map_err(|error| self.error("SyntaxError", &error.message))?;
         self.run_script(proto)
     }

@@ -1,13 +1,10 @@
 //! `Reflect`.
 //!
-//! LIMITES CONNUES : `Reflect.set` ignore son quatrième argument (receveur) et
-//! renvoie toujours `true` ; `Reflect.defineProperty` renvoie `false` pour
-//! tout refus, sans distinguer les causes.
+//! Chaque fonction applique la méthode interne de même nom (voir
+//! [`crate::internal`]).
 
-use std::sync::Arc;
-
-use super::{arg, define_from_descriptor, own_property_descriptor};
-use crate::heap::Kind;
+use super::{arg, own_property_descriptor};
+use crate::internal::key_value;
 use crate::value::{ObjId, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
@@ -19,7 +16,7 @@ fn target(vm: &mut Vm, args: &[Value], method: &str) -> JsResult<ObjId> {
 }
 
 /// `CreateListFromArrayLike` : éléments `0..length` d'un objet.
-pub(super) fn list_from_array_like(vm: &mut Vm, value: &Value) -> JsResult<Vec<Value>> {
+pub(crate) fn list_from_array_like(vm: &mut Vm, value: &Value) -> JsResult<Vec<Value>> {
     /// Borne la mémoire qu'une « liste » de longueur déclarée peut réserver.
     const MAX_LIST: f64 = 1_000_000.0;
     if value.as_object().is_none() {
@@ -65,21 +62,17 @@ fn reflect_construct(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn reflect_define_property(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    target(vm, args, "defineProperty")?;
+    let id = target(vm, args, "defineProperty")?;
     let key = vm.to_key(&arg(args, 1))?;
-    let descriptor = arg(args, 2);
-    if descriptor.as_object().is_none() {
-        return Err(vm.type_error("Reflect.defineProperty : le descripteur doit être un objet"));
-    }
-    Ok(Value::Bool(
-        define_from_descriptor(vm, &arg(args, 0), &key, &descriptor).is_ok(),
-    ))
+    let descriptor = vm.to_descriptor(&arg(args, 2))?;
+    vm.define_own_property(id, &key, descriptor)
+        .map(Value::Bool)
 }
 
 fn reflect_delete_property(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    target(vm, args, "deleteProperty")?;
+    let id = target(vm, args, "deleteProperty")?;
     let key = vm.to_key(&arg(args, 1))?;
-    vm.delete_key(&arg(args, 0), &key).map(Value::Bool)
+    vm.delete_property(id, &key).map(Value::Bool)
 }
 
 fn reflect_get(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -90,16 +83,17 @@ fn reflect_get(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn reflect_set(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    target(vm, args, "set")?;
+    let id = target(vm, args, "set")?;
     let key = vm.to_key(&arg(args, 1))?;
-    vm.set_key(&arg(args, 0), &key, arg(args, 2))?;
-    Ok(Value::Bool(true))
+    let receiver = args.get(3).cloned().unwrap_or_else(|| arg(args, 0));
+    vm.set_with_receiver(id, &key, arg(args, 2), &receiver)
+        .map(Value::Bool)
 }
 
 fn reflect_has(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let id = target(vm, args, "has")?;
     let key = vm.to_key(&arg(args, 1))?;
-    Ok(Value::Bool(vm.has_key(id, &key)))
+    vm.has_property_op(id, &key).map(Value::Bool)
 }
 
 fn reflect_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -110,7 +104,7 @@ fn reflect_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value
 
 fn reflect_get_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let id = target(vm, args, "getPrototypeOf")?;
-    Ok(vm.heap.get(id).proto.map_or(Value::Null, Value::Object))
+    Ok(vm.get_prototype_of(id)?.map_or(Value::Null, Value::Object))
 }
 
 fn reflect_set_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -124,37 +118,22 @@ fn reflect_set_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsRes
             );
         }
     };
-    if vm.heap.get(id).proto == proto {
-        return Ok(Value::Bool(true));
-    }
-    if !vm.heap.get(id).extensible {
-        return Ok(Value::Bool(false));
-    }
-    Ok(Value::Bool(vm.set_prototype(id, proto).is_ok()))
+    vm.set_prototype_of(id, proto).map(Value::Bool)
 }
 
 fn reflect_is_extensible(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let id = target(vm, args, "isExtensible")?;
-    Ok(Value::Bool(vm.heap.get(id).extensible))
+    vm.is_extensible(id).map(Value::Bool)
 }
 
 fn reflect_prevent_extensions(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let id = target(vm, args, "preventExtensions")?;
-    vm.heap.get_mut(id).extensible = false;
-    Ok(Value::Bool(true))
+    vm.prevent_extensions(id).map(Value::Bool)
 }
 
 fn reflect_own_keys(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let id = target(vm, args, "ownKeys")?;
-    let mut keys: Vec<Value> = vm
-        .own_keys(id, false)
-        .into_iter()
-        .map(Value::String)
-        .collect();
-    if matches!(vm.heap.get(id).kind, Kind::Array(_)) {
-        keys.push(Value::String(Arc::from("length")));
-    }
-    keys.extend(vm.own_symbols(id, false).into_iter().map(Value::Symbol));
+    let keys = vm.own_property_keys(id)?.iter().map(key_value).collect();
     Ok(vm.new_array(keys))
 }
 

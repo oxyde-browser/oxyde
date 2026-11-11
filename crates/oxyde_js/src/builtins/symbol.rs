@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use super::{arg, constructor, getter};
-use crate::heap::{IterState, Kind};
+use crate::heap::{IterState, Kind, Property, Slot};
 use crate::value::{Symbol, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
@@ -116,8 +116,25 @@ pub(super) fn install(vm: &mut Vm) {
         ("hasInstance", &known.has_instance),
         ("toPrimitive", &known.to_primitive),
         ("toStringTag", &known.to_string_tag),
+        ("isConcatSpreadable", &known.is_concat_spreadable),
+        ("species", &known.species),
+        ("unscopables", &known.unscopables),
+        ("match", &known.match_),
+        ("matchAll", &known.match_all),
+        ("replace", &known.replace),
+        ("search", &known.search),
+        ("split", &known.split),
     ] {
-        vm.define_hidden(ctor, name, Value::Symbol(symbol.clone()));
+        // Les symboles connus sont des propriétés figées de `Symbol`.
+        vm.heap.get_mut(ctor).props.insert(
+            Arc::from(name),
+            Property {
+                slot: Slot::Data(Value::Symbol(symbol.clone())),
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        );
     }
     let methods: &[(&str, u32, NativeFn)] = &[
         ("toString", 0, symbol_to_string),

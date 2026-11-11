@@ -78,13 +78,14 @@ fn set(vm: &mut Vm, target: &Target, index: usize, value: Value) -> JsResult<()>
 }
 
 /// Vrai si l'élément `index` existe (propriété propre ou héritée).
-fn has(vm: &Vm, target: &Target, index: usize) -> bool {
+fn has(vm: &mut Vm, target: &Target, index: usize) -> JsResult<bool> {
     if let Kind::Array(items) = &vm.heap.get(target.id).kind
         && items.get(index).is_some_and(|v| *v != Value::Hole)
     {
-        return true;
+        return Ok(true);
     }
-    vm.has_property(target.id, &index.to_string())
+    let key = PropertyKey::String(Arc::from(index.to_string()));
+    vm.has_property_op(target.id, &key)
 }
 
 fn delete(vm: &mut Vm, target: &Target, index: usize) -> JsResult<()> {
@@ -103,10 +104,18 @@ fn check_length(vm: &mut Vm, len: usize) -> JsResult<()> {
     Ok(())
 }
 
-fn is_array(vm: &Vm, value: &Value) -> bool {
-    value
-        .as_object()
-        .is_some_and(|id| matches!(vm.heap.get(id).kind, Kind::Array(_)))
+pub(super) fn is_array(vm: &Vm, value: &Value) -> bool {
+    let mut current = value.as_object();
+    // Un proxy est un tableau si sa cible en est un.
+    for _ in 0..10_000 {
+        let Some(id) = current else { return false };
+        match &vm.heap.get(id).kind {
+            Kind::Array(_) => return true,
+            Kind::Proxy(proxy) => current = proxy.target,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Éléments d'un vrai tableau sans trou, pour les chemins rapides : dans ce
@@ -230,7 +239,7 @@ fn shift(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let first = get(vm, &t, 0)?;
     for k in 1..t.len {
         vm.tick(1)?;
-        if has(vm, &t, k) {
+        if has(vm, &t, k)? {
             let value = get(vm, &t, k)?;
             set(vm, &t, k - 1, value)?;
         } else {
@@ -258,7 +267,7 @@ fn unshift(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         }
         for k in (0..t.len).rev() {
             vm.tick(1)?;
-            if has(vm, &t, k) {
+            if has(vm, &t, k)? {
                 let value = get(vm, &t, k)?;
                 set(vm, &t, k + count, value)?;
             } else {
@@ -310,7 +319,7 @@ fn splice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let mut removed = Vec::with_capacity(count);
     for k in 0..count {
         vm.tick(1)?;
-        removed.push(if has(vm, &t, start + k) {
+        removed.push(if has(vm, &t, start + k)? {
             get(vm, &t, start + k)?
         } else {
             Value::Hole
@@ -322,7 +331,7 @@ fn splice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         for k in 0..tail {
             vm.tick(1)?;
             let (from, to) = (start + count + k, start + added + k);
-            if has(vm, &t, from) {
+            if has(vm, &t, from)? {
                 let value = get(vm, &t, from)?;
                 set(vm, &t, to, value)?;
             } else {
@@ -337,7 +346,7 @@ fn splice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         for k in (0..tail).rev() {
             vm.tick(1)?;
             let (from, to) = (start + count + k, start + added + k);
-            if has(vm, &t, from) {
+            if has(vm, &t, from)? {
                 let value = get(vm, &t, from)?;
                 set(vm, &t, to, value)?;
             } else {
@@ -357,7 +366,7 @@ pub(super) fn reverse(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     for lower in 0..t.len / 2 {
         vm.tick(1)?;
         let upper = t.len - 1 - lower;
-        let (has_lower, has_upper) = (has(vm, &t, lower), has(vm, &t, upper));
+        let (has_lower, has_upper) = (has(vm, &t, lower)?, has(vm, &t, upper)?);
         let low = if has_lower {
             Some(get(vm, &t, lower)?)
         } else {
@@ -403,7 +412,7 @@ pub(super) fn copy_within(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
     for step in 0..count {
         vm.tick(1)?;
         let offset = if backwards { count - 1 - step } else { step };
-        if has(vm, &t, from + offset) {
+        if has(vm, &t, from + offset)? {
             let value = get(vm, &t, from + offset)?;
             set(vm, &t, to + offset, value)?;
         } else {
@@ -424,7 +433,7 @@ fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let mut out = Vec::with_capacity(count);
     for k in start..start + count {
         vm.tick(1)?;
-        out.push(if has(vm, &t, k) {
+        out.push(if has(vm, &t, k)? {
             get(vm, &t, k)?
         } else {
             Value::Hole
@@ -436,13 +445,23 @@ fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn concat(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let receiver = vm.to_object(this)?;
     let mut out = Vec::new();
+    let spreadable_key = PropertyKey::Symbol(vm.well_known.is_concat_spreadable.clone());
     for value in std::iter::once(&receiver).chain(args) {
-        if is_array(vm, value) {
+        // `IsConcatSpreadable` : la propriété l'emporte sur la nature de l'objet.
+        let spreadable = if value.as_object().is_some() {
+            match vm.get_key(value, &spreadable_key)? {
+                Value::Undefined => is_array(vm, value),
+                flag => flag.truthy(),
+            }
+        } else {
+            false
+        };
+        if spreadable {
             let t = target(vm, value)?;
             check_length(vm, out.len().saturating_add(t.len))?;
             for k in 0..t.len {
                 vm.tick(1)?;
-                out.push(if has(vm, &t, k) {
+                out.push(if has(vm, &t, k)? {
                     get(vm, &t, k)?
                 } else {
                     Value::Hole
@@ -529,14 +548,22 @@ fn with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     if index < 0.0 || index >= t.len as f64 {
         return Err(vm.error("RangeError", "index hors du tableau"));
     }
-    let mut out = snapshot(vm, &t)?;
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "index vérifié dans [0, len)"
     )]
-    if let Some(slot) = out.get_mut(index as usize) {
-        *slot = arg(args, 1);
+    let replaced = index as usize;
+    check_length(vm, t.len)?;
+    let mut out = Vec::with_capacity(t.len);
+    for k in 0..t.len {
+        vm.tick(1)?;
+        // L'élément remplacé n'est pas lu.
+        out.push(if k == replaced {
+            arg(args, 1)
+        } else {
+            get(vm, &t, k)?
+        });
     }
     Ok(vm.new_array(out))
 }
@@ -552,7 +579,7 @@ pub(super) fn index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let needle = arg(args, 0);
     for k in from..t.len {
         vm.tick(1)?;
-        if has(vm, &t, k) && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
+        if has(vm, &t, k)? && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
             return Ok(number(k));
         }
     }
@@ -587,7 +614,7 @@ pub(super) fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResu
     let needle = arg(args, 0);
     for k in (0..=last).rev() {
         vm.tick(1)?;
-        if has(vm, &t, k) && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
+        if has(vm, &t, k)? && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
             return Ok(number(k));
         }
     }
@@ -651,7 +678,7 @@ fn each(
     for step in 0..t.len {
         vm.tick(1)?;
         let k = if reverse { t.len - 1 - step } else { step };
-        if skip_holes && !has(vm, &t, k) {
+        if skip_holes && !has(vm, &t, k)? {
             continue;
         }
         let value = get(vm, &t, k)?;
@@ -770,7 +797,7 @@ fn reduce_impl(vm: &mut Vm, this: &Value, args: &[Value], reverse: bool) -> JsRe
                 vm.tick(1)?;
                 let k = index(step);
                 step += 1;
-                if has(vm, &t, k) {
+                if has(vm, &t, k)? {
                     first = Some(get(vm, &t, k)?);
                 }
             }
@@ -786,7 +813,7 @@ fn reduce_impl(vm: &mut Vm, this: &Value, args: &[Value], reverse: bool) -> JsRe
         vm.tick(1)?;
         let k = index(step);
         step += 1;
-        if has(vm, &t, k) {
+        if has(vm, &t, k)? {
             let value = get(vm, &t, k)?;
             acc = vm.call(
                 &callback,
@@ -885,7 +912,7 @@ fn sort(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let mut values = Vec::new();
     for k in 0..t.len {
         vm.tick(1)?;
-        if has(vm, &t, k) {
+        if has(vm, &t, k)? {
             values.push(get(vm, &t, k)?);
         }
     }
@@ -896,7 +923,7 @@ fn sort(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     }
     for k in count..t.len {
         vm.tick(1)?;
-        if has(vm, &t, k) {
+        if has(vm, &t, k)? {
             delete(vm, &t, k)?;
         }
     }
@@ -917,7 +944,7 @@ fn flatten(vm: &mut Vm, source: &Value, depth: usize, out: &mut Vec<Value>) -> J
     let t = target(vm, source)?;
     for k in 0..t.len {
         vm.tick(1)?;
-        if !has(vm, &t, k) {
+        if !has(vm, &t, k)? {
             continue;
         }
         let value = get(vm, &t, k)?;

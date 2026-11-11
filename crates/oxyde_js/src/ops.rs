@@ -309,25 +309,52 @@ impl Vm {
 
     /// `value instanceof constructor`.
     pub(crate) fn instance_of(&mut self, value: &Value, constructor: &Value) -> JsResult<bool> {
+        if constructor.as_object().is_none() {
+            return Err(self.type_error("l'opérande droit de instanceof n'est pas un objet"));
+        }
+        let key = PropertyKey::Symbol(self.well_known.has_instance.clone());
+        let method = self.get_key(constructor, &key)?;
+        if !method.is_nullish() {
+            if !crate::builtins::is_callable(self, &method) {
+                return Err(self.type_error("Symbol.hasInstance n'est pas une fonction"));
+            }
+            return Ok(self
+                .call(&method, constructor, std::slice::from_ref(value))?
+                .truthy());
+        }
+        if !crate::builtins::is_callable(self, constructor) {
+            return Err(self.type_error("l'opérande droit de instanceof n'est pas une fonction"));
+        }
+        self.ordinary_has_instance(value, constructor)
+    }
+
+    /// `OrdinaryHasInstance` (ECMA-262 §7.3.21).
+    pub(crate) fn ordinary_has_instance(
+        &mut self,
+        value: &Value,
+        constructor: &Value,
+    ) -> JsResult<bool> {
         let Some(ctor) = constructor
             .as_object()
             .filter(|c| self.heap.get(*c).is_callable())
         else {
-            return Err(self.type_error("l'opérande droit de instanceof n'est pas une fonction"));
+            return Ok(false);
         };
         // Fonction liée : on teste contre la fonction d'origine.
         if let Kind::Bound { target, .. } = &self.heap.get(ctor).kind {
             let target = Value::Object(*target);
             return self.instance_of(value, &target);
         }
-        let Some(proto) = self.get(constructor, "prototype")?.as_object() else {
+        let Some(mut current) = value.as_object() else {
             return Ok(false);
         };
-        let mut current = value.as_object().and_then(|id| self.heap.get(id).proto);
+        let Some(proto) = self.get(constructor, "prototype")?.as_object() else {
+            return Err(self.type_error("le prototype du constructeur n'est pas un objet"));
+        };
         for _ in 0..10_000 {
-            match current {
+            match self.get_prototype_of(current)? {
                 Some(p) if p == proto => return Ok(true),
-                Some(p) => current = self.heap.get(p).proto,
+                Some(p) => current = p,
                 None => break,
             }
         }
@@ -521,7 +548,7 @@ impl Vm {
                     return Err(self.type_error("l'opérande droit de « in » n'est pas un objet"));
                 };
                 let key = self.to_key(a)?;
-                Ok(Value::Bool(self.has_key(id, &key)))
+                Ok(Value::Bool(self.has_property_op(id, &key)?))
             }
             BinaryOp::Instanceof => Ok(Value::Bool(self.instance_of(a, b)?)),
         }

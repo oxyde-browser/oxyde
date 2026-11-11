@@ -256,8 +256,9 @@ impl Vm {
         if self.modules.len() >= MAX_MODULES || depth > MAX_DEPTH {
             return Err(self.error("RangeError", "trop de modules imbriqués ou chargés"));
         }
-        let parsed = parser::parse_module(source)
-            .and_then(|(body, info)| compiler::compile_script(&body).map(|proto| (proto, info)));
+        let parsed = parser::parse_module(source).and_then(|(body, info)| {
+            compiler::compile_script(&body, true).map(|proto| (proto, info))
+        });
         let (proto, info) = match parsed {
             Ok(parsed) => parsed,
             Err(error) => {

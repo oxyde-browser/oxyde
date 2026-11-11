@@ -95,6 +95,14 @@ pub(crate) struct WellKnown {
     pub(crate) has_instance: Symbol,
     pub(crate) to_primitive: Symbol,
     pub(crate) to_string_tag: Symbol,
+    pub(crate) is_concat_spreadable: Symbol,
+    pub(crate) species: Symbol,
+    pub(crate) unscopables: Symbol,
+    pub(crate) match_: Symbol,
+    pub(crate) match_all: Symbol,
+    pub(crate) replace: Symbol,
+    pub(crate) search: Symbol,
+    pub(crate) split: Symbol,
 }
 
 struct Frame {
@@ -246,6 +254,14 @@ impl Vm {
             has_instance: known(3, "Symbol.hasInstance"),
             to_primitive: known(4, "Symbol.toPrimitive"),
             to_string_tag: known(5, "Symbol.toStringTag"),
+            is_concat_spreadable: known(6, "Symbol.isConcatSpreadable"),
+            species: known(7, "Symbol.species"),
+            unscopables: known(8, "Symbol.unscopables"),
+            match_: known(9, "Symbol.match"),
+            match_all: known(10, "Symbol.matchAll"),
+            replace: known(11, "Symbol.replace"),
+            search: known(12, "Symbol.search"),
+            split: known(13, "Symbol.split"),
         };
         let mut vm = Self {
             heap,
@@ -256,7 +272,7 @@ impl Vm {
             intrinsics,
             error_protos: IndexMap::new(),
             well_known,
-            next_symbol: 6,
+            next_symbol: 14,
             symbol_registry: IndexMap::new(),
             native_depth: 0,
             regex_cache: std::collections::HashMap::new(),
@@ -638,7 +654,14 @@ impl Vm {
         };
         let proto = Arc::clone(&c.proto);
         let scope = c.scope;
+        let lexical_this = c.bound_this.is_some();
         let this = c.bound_this.clone().unwrap_or(this);
+        // Hors mode strict, `this` est toujours un objet.
+        let this = if proto.strict || lexical_this || construct {
+            this
+        } else {
+            self.sloppy_this(this)
+        };
         let base = self.stack.len();
         if self.frames.len() >= MAX_FRAMES || base + usize::from(proto.registers) > MAX_STACK {
             return Err(self.error("RangeError", "pile d'appels dépassée"));
@@ -665,6 +688,29 @@ impl Vm {
             scope,
         });
         Ok(())
+    }
+
+    /// `this` d'une fonction en mode non strict (ECMA-262 §10.2.1.2) :
+    /// l'objet global pour `undefined` et `null`, un objet enveloppe pour une
+    /// primitive.
+    fn sloppy_this(&mut self, this: Value) -> Value {
+        match this {
+            Value::Undefined | Value::Null => Value::Object(self.global),
+            Value::Object(_) | Value::Hole => this,
+            primitive => self.to_object(&primitive).unwrap_or(primitive),
+        }
+    }
+
+    /// Vrai si le code en cours d'exécution est en mode strict.
+    fn strict(&self) -> bool {
+        self.frames.last().is_some_and(|f| f.proto.strict)
+    }
+
+    /// Erreur d'une écriture refusée en mode strict.
+    fn rejected_write(&mut self, key: &str) -> Value {
+        self.type_error(&format!(
+            "impossible d'écrire la propriété « {key} » (mode strict)"
+        ))
     }
 
     /// Objet où le code courant résout ses noms de premier niveau : la portée
@@ -737,6 +783,7 @@ impl Vm {
                 )?;
                 self.run_nested(depth)
             }
+            Kind::Proxy(proxy) if proxy.callable => self.proxy_call(id, this, args),
             _ => Err(self.type_error("la valeur appelée n'est pas une fonction")),
         }
     }
@@ -837,6 +884,7 @@ impl Vm {
                 self.push_frame(id, this, args.to_vec(), new_target.clone(), None, true)?;
                 self.run_nested(depth)
             }
+            Kind::Proxy(proxy) if proxy.constructor => self.proxy_construct(id, args, new_target),
             _ => Err(self.type_error("la valeur n'est pas un constructeur")),
         }
     }
@@ -1089,7 +1137,19 @@ impl Vm {
                 } else {
                     scope
                 };
-                self.set(&Value::Object(target), &name, value)?;
+                if self.strict() {
+                    // Affecter une variable non déclarée est une erreur.
+                    if !self.has_property(target, &name) {
+                        return Err(
+                            self.error("ReferenceError", &format!("{name} n'est pas défini"))
+                        );
+                    }
+                    if !self.put(&Value::Object(target), &name, value)? {
+                        return Err(self.rejected_write(&name));
+                    }
+                } else {
+                    self.set(&Value::Object(target), &name, value)?;
+                }
             }
             Op::InitGlobal { name, src } => {
                 let (name, value) = (self.name(name), self.reg(src));
@@ -1097,6 +1157,11 @@ impl Vm {
                 if value == Value::Hole {
                     // Déclaration `var` : ne remplace pas une variable existante.
                     if !self.heap.get(scope).props.contains_key(&name) {
+                        if !self.heap.get(scope).extensible {
+                            return Err(self.type_error(&format!(
+                                "impossible de déclarer « {name} » : l'objet global n'est pas extensible"
+                            )));
+                        }
                         self.heap
                             .get_mut(scope)
                             .props
@@ -1151,7 +1216,9 @@ impl Vm {
             }
             Op::SetProp { obj, name, src } => {
                 let (target, name, value) = (self.reg(obj), self.name(name), self.reg(src));
-                self.set(&target, &name, value)?;
+                if !self.put(&target, &name, value)? && self.strict() {
+                    return Err(self.rejected_write(&name));
+                }
             }
             Op::GetElem { dst, obj, key } => {
                 let (target, key) = (self.reg(obj), self.reg(key));
@@ -1160,17 +1227,31 @@ impl Vm {
             }
             Op::SetElem { obj, key, src } => {
                 let (target, key, value) = (self.reg(obj), self.reg(key), self.reg(src));
-                self.set_element(&target, &key, value)?;
+                if !self.put_element(&target, &key, value)? && self.strict() {
+                    let shown = self.display(&key);
+                    return Err(self.rejected_write(&shown));
+                }
             }
             Op::DeleteProp { dst, obj, name } => {
                 let (target, name) = (self.reg(obj), self.name(name));
                 let deleted = self.delete(&target, &name)?;
+                if !deleted && self.strict() {
+                    return Err(self.type_error(&format!(
+                        "impossible de supprimer la propriété « {name} » (mode strict)"
+                    )));
+                }
                 self.set_reg(dst, Value::Bool(deleted));
             }
             Op::DeleteElem { dst, obj, key } => {
                 let target = self.reg(obj);
                 let key = self.to_key(&self.reg(key))?;
                 let deleted = self.delete_key(&target, &key)?;
+                if !deleted && self.strict() {
+                    return Err(self.type_error(&format!(
+                        "impossible de supprimer la propriété « {} » (mode strict)",
+                        key.describe()
+                    )));
+                }
                 self.set_reg(dst, Value::Bool(deleted));
             }
             Op::GetSuper { dst, key } => {
@@ -1492,7 +1573,7 @@ impl Vm {
                 }
             }
             Op::ForInStart { dst, obj } => {
-                let keys = self.for_in_keys(&self.reg(obj));
+                let keys = self.for_in_keys(&self.reg(obj))?;
                 let iter = self.new_iterator(IterState::Keys { keys, index: 0 });
                 self.set_reg(dst, iter);
             }
@@ -1529,13 +1610,29 @@ impl Vm {
                 self.set_reg(dst, array);
             }
             Op::Arguments { dst } => {
-                let args = self
-                    .frames
-                    .last()
-                    .map(|f| f.args.clone())
-                    .unwrap_or_default();
-                let array = self.new_array(args);
-                self.set_reg(dst, array);
+                let (args, callee) = match self.frames.last() {
+                    Some(f) => (f.args.clone(), (!f.proto.strict).then_some(f.closure)),
+                    None => (Vec::new(), None),
+                };
+                // LIMITE : les éléments ne sont pas liés aux paramètres.
+                let object = self.heap.alloc(Object::new(
+                    Some(self.intrinsics.object_proto),
+                    Kind::Arguments,
+                ));
+                #[expect(clippy::cast_precision_loss, reason = "nombre d'arguments petit")]
+                let length = Value::Number(args.len() as f64);
+                let props = &mut self.heap.get_mut(object).props;
+                for (index, value) in args.into_iter().enumerate() {
+                    props.insert(Arc::from(index.to_string()), Property::data(value));
+                }
+                props.insert(Arc::from("length"), Property::hidden(length));
+                if let Some(callee) = callee {
+                    props.insert(Arc::from("callee"), Property::hidden(Value::Object(callee)));
+                }
+                let values = self.get(&Value::Object(self.intrinsics.array_proto), "values")?;
+                let iterator = self.well_known.iterator.clone();
+                self.define_hidden_symbol(object, &iterator, values);
+                self.set_reg(dst, Value::Object(object));
             }
             Op::RegExp {
                 dst,
@@ -1715,6 +1812,11 @@ impl Vm {
     /// Un générateur ne démarre qu'au premier `next()` ; une fonction async
     /// s'exécute tout de suite jusqu'à son premier `await`.
     fn start_coroutine(&mut self, closure: ObjId, this: Value, args: Vec<Value>) -> JsResult {
+        let sloppy = matches!(
+            &self.heap.get(closure).kind,
+            Kind::Closure(c) if !c.proto.strict && c.bound_this.is_none()
+        );
+        let this = if sloppy { self.sloppy_this(this) } else { this };
         let kind = match &self.heap.get(closure).kind {
             Kind::Closure(c) if c.proto.is_async && c.proto.is_generator => CoKind::AsyncGenerator,
             Kind::Closure(c) if c.proto.is_async => CoKind::Async,

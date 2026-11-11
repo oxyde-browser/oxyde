@@ -223,6 +223,8 @@ pub(crate) struct Function {
     pub(crate) is_async: bool,
     /// `function*` ou méthode `*nom() {}`.
     pub(crate) is_generator: bool,
+    /// Le corps est du code en mode strict.
+    pub(crate) strict: bool,
 }
 
 #[derive(Clone, Debug)]
