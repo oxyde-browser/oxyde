@@ -2674,6 +2674,13 @@ name = "oxyde_sandbox"
 version = "0.1.0"
 
 [[package]]
+name = "oxyde_test262"
+version = "0.1.0"
+dependencies = [
+ "oxyde_js",
+]
+
+[[package]]
 name = "oxyde_text"
 version = "0.1.0"
 dependencies = [

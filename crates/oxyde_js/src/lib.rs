@@ -83,6 +83,16 @@ impl Vm {
         })
     }
 
+    /// Compile et exécute `source` comme un script global depuis du code en
+    /// cours d'exécution (`eval`, `Function`). Une erreur de syntaxe devient
+    /// une exception `SyntaxError`.
+    pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
+        let proto = parser::parse_program(source)
+            .and_then(|program| compiler::compile_script(&program))
+            .map_err(|error| self.error("SyntaxError", &error.message))?;
+        self.run_script(proto)
+    }
+
     /// Messages écrits par `console.*` depuis le dernier appel, dans l'ordre.
     pub fn take_console(&mut self) -> Vec<ConsoleMessage> {
         std::mem::take(&mut self.console)

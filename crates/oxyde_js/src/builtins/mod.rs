@@ -10,6 +10,7 @@ mod collections;
 mod generator;
 mod json;
 pub(crate) mod promise;
+mod reflect;
 pub(crate) mod regexp;
 mod string;
 pub(crate) mod symbol;
@@ -124,6 +125,7 @@ pub(crate) fn install(vm: &mut Vm) {
     generator::install(vm);
     promise::install(vm);
     regexp::install(vm);
+    reflect::install(vm);
 }
 
 // ---- Object ------------------------------------------------------------------
@@ -237,7 +239,7 @@ fn object_set_prototype_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResu
 }
 
 /// Applique un descripteur de propriété (`{ value, writable, get, set… }`).
-fn define_from_descriptor(
+pub(super) fn define_from_descriptor(
     vm: &mut Vm,
     target: &Value,
     key: &PropertyKey,
@@ -340,15 +342,21 @@ fn object_get_own_property_symbols(vm: &mut Vm, _this: &Value, args: &[Value]) -
 
 fn object_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let target = vm.to_object(&arg(args, 0))?;
-    let key = vm.to_property_key(&arg(args, 1))?;
-    let Some(id) = target.as_object() else {
-        return Ok(Value::Undefined);
-    };
-    if !vm.has_own(id, &key) {
+    let key = vm.to_key(&arg(args, 1))?;
+    match target.as_object() {
+        Some(id) => own_property_descriptor(vm, id, &key),
+        None => Ok(Value::Undefined),
+    }
+}
+
+/// Descripteur de la propriété propre `key` de `id`, ou `undefined`.
+pub(super) fn own_property_descriptor(vm: &mut Vm, id: ObjId, key: &PropertyKey) -> JsResult {
+    if !vm.has_own_key(id, key) {
         return Ok(Value::Undefined);
     }
+    let target = Value::Object(id);
     let descriptor = Value::Object(vm.new_object());
-    match vm.heap.get(id).props.get(&key).cloned() {
+    match vm.heap.get(id).prop(key).cloned() {
         Some(Property {
             slot: Slot::Accessor { get, set },
             enumerable,
@@ -379,21 +387,26 @@ fn object_get_own_property_descriptor(vm: &mut Vm, _this: &Value, args: &[Value]
             vm.set(&descriptor, "enumerable", Value::Bool(enumerable))?;
             vm.set(&descriptor, "configurable", Value::Bool(configurable))?;
         }
-        // Propriété virtuelle d'un objet exotique (élément de tableau, `length`…).
+        // Propriété virtuelle d'un objet exotique (élément de tableau, `length`,
+        // nom d'une fonction…).
         None => {
-            let value = vm.get(&target, &key)?;
+            let name = match key {
+                PropertyKey::String(name) => &**name,
+                PropertyKey::Symbol(_) => "",
+            };
+            let (writable, enumerable, configurable) = match &vm.heap.get(id).kind {
+                // `name` et `length` d'une fonction : figés mais reconfigurables.
+                Kind::Closure(_) if name == "prototype" => (true, false, false),
+                Kind::Closure(_) => (false, false, true),
+                // Caractères d'une chaîne : en lecture seule.
+                Kind::Primitive(_) => (false, name != "length", false),
+                _ => (true, name != "length", name != "length"),
+            };
+            let value = vm.get_key(&target, key)?;
             vm.set(&descriptor, "value", value)?;
-            vm.set(&descriptor, "writable", Value::Bool(true))?;
-            vm.set(
-                &descriptor,
-                "enumerable",
-                Value::Bool(key.as_ref() != "length"),
-            )?;
-            vm.set(
-                &descriptor,
-                "configurable",
-                Value::Bool(key.as_ref() != "length"),
-            )?;
+            vm.set(&descriptor, "writable", Value::Bool(writable))?;
+            vm.set(&descriptor, "enumerable", Value::Bool(enumerable))?;
+            vm.set(&descriptor, "configurable", Value::Bool(configurable))?;
         }
     }
     Ok(descriptor)
@@ -599,11 +612,28 @@ fn install_object(vm: &mut Vm) {
 
 // ---- Function ----------------------------------------------------------------
 
-fn function_ctor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    Err(vm.error(
-        "EvalError",
-        "la création de code à partir de chaînes (Function, eval) n'est pas prise en charge",
-    ))
+/// `new Function(p1, p2, …, corps)` : la fonction est créée dans la portée
+/// globale, comme le veut le langage.
+fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let mut texts = Vec::with_capacity(args.len());
+    for value in args {
+        texts.push(vm.to_string(value)?);
+    }
+    let body = texts.pop().unwrap_or_else(|| Arc::from(""));
+    let params = texts.join(",");
+    // Les sauts de ligne isolent un éventuel commentaire en fin de paramètres ou de corps.
+    vm.eval_global(&format!("(function anonymous({params}\n) {{\n{body}\n}})"))
+}
+
+/// `eval(code)`.
+///
+/// LIMITE : le code est toujours évalué dans la portée globale (« eval
+/// indirect ») ; il ne voit pas les variables locales de l'appelant.
+fn global_eval(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    match arg(args, 0) {
+        Value::String(source) => vm.eval_global(&source),
+        other => Ok(other),
+    }
 }
 
 fn function_call(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1085,6 +1115,7 @@ fn install_globals(vm: &mut Vm) {
     vm.define_hidden(global, "Infinity", Value::Number(f64::INFINITY));
     vm.define_hidden(global, "undefined", Value::Undefined);
     let functions: &[(&str, u32, NativeFn)] = &[
+        ("eval", 1, global_eval),
         ("isNaN", 1, global_is_nan),
         ("isFinite", 1, global_is_finite),
         ("parseFloat", 1, global_parse_float),

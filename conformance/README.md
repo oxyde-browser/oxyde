@@ -10,10 +10,16 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
 | Web Platform Tests (sous-ensembles DOM, CSS) | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
-| test262 | `oxyde_js` | **pas encore branchée** — le moteur exécute un sous-ensemble du langage (voir plus bas) |
+| test262 | `oxyde_js` | **branchée** : 20 076 tests réussis sur 48 795 (41,1 %), détail par dossier dans [test262.md](test262.md) |
 
-Tant que ces suites ne tournent pas, aucun taux de réussite ne peut être annoncé : les tests
-actuels sont les tests unitaires de chaque crate (`cargo test --workspace`).
+Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
+les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
+
+test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
+suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus
+gros manques qu'il révèle : générateurs async, tableaux typés et `ArrayBuffer`, `BigInt`,
+`Temporal`, modules, `Proxy`, erreurs de syntaxe précoces non détectées, méthodes de tableau
+appliquées à des objets ordinaires.
 
 ## Écarts connus
 
@@ -61,8 +67,10 @@ actuels sont les tests unitaires de chaque crate (`cargo test --workspace`).
 
 ### JavaScript (`oxyde_js`) et DOM scriptable
 - Absents du langage : modules, générateurs async et `for await`,
-  `BigInt`, `Proxy`/`Reflect`, tableaux typés, gabarits étiquetés, `eval`. La syntaxe non prise
+  `BigInt`, `Proxy`/`Reflect`, tableaux typés, gabarits étiquetés, `with`. La syntaxe non prise
   en charge est refusée avec une erreur explicite.
+- `eval` et `Function` évaluent toujours dans la portée globale : `eval` ne voit pas les
+  variables locales de l'appelant. Le mode strict (`"use strict"`) n'est pas distingué.
 - `Symbol` : `Symbol.toPrimitive` et `Symbol.hasInstance` existent mais ne sont pas consultés
   par les conversions ni par `instanceof`.
 - Itération : `for…of`, la décomposition et `...` suivent `Symbol.iterator`, sauf pour les
