@@ -1159,6 +1159,62 @@ fn global_encode_uri(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::string(&out))
 }
 
+/// `escape` (annexe B) : `%XX` pour une unité de code sous 256, `%uXXXX`
+/// au-delà ; lettres, chiffres et `@*_+-./` sont conservés.
+fn global_escape(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let text = vm.to_string(&arg(args, 0))?;
+    let mut out = String::with_capacity(text.len());
+    for unit in text.encode_utf16() {
+        match u8::try_from(unit) {
+            Ok(byte) if byte.is_ascii_alphanumeric() || b"@*_+-./".contains(&byte) => {
+                out.push(char::from(byte));
+            }
+            Ok(byte) => out.push_str(&format!("%{byte:02X}")),
+            Err(_) => out.push_str(&format!("%u{unit:04X}")),
+        }
+    }
+    Ok(Value::string(&out))
+}
+
+/// `unescape` (annexe B) : inverse de `escape` ; une séquence mal formée est
+/// laissée telle quelle.
+fn global_unescape(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let text = vm.to_string(&arg(args, 0))?;
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let hex = |slice: &[u16]| -> Option<u16> {
+        let mut value = 0_u16;
+        for unit in slice {
+            let digit = char::from_u32(u32::from(*unit))?.to_digit(16)?;
+            value = value * 16 + u16::try_from(digit).ok()?;
+        }
+        Some(value)
+    };
+    let mut out: Vec<u16> = Vec::with_capacity(units.len());
+    let mut index = 0;
+    while let Some(unit) = units.get(index) {
+        if *unit == u16::from(b'%') {
+            let long = (units.get(index + 1) == Some(&u16::from(b'u')))
+                .then(|| units.get(index + 2..index + 6))
+                .flatten()
+                .and_then(hex);
+            if let Some(code) = long {
+                out.push(code);
+                index += 6;
+                continue;
+            }
+            if let Some(code) = units.get(index + 1..index + 3).and_then(hex) {
+                out.push(code);
+                index += 3;
+                continue;
+            }
+        }
+        out.push(*unit);
+        index += 1;
+    }
+    // LIMITE : un demi-substitut isolé devient U+FFFD (chaînes en UTF-8).
+    Ok(Value::string(&String::from_utf16_lossy(&out)))
+}
+
 fn global_decode_uri_component(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let text = vm.to_string(&arg(args, 0))?;
     let bytes = text.as_bytes();
@@ -1241,6 +1297,8 @@ fn install_globals(vm: &mut Vm) {
         ("encodeURI", 1, global_encode_uri),
         ("decodeURIComponent", 1, global_decode_uri_component),
         ("decodeURI", 1, global_decode_uri_component),
+        ("escape", 1, global_escape),
+        ("unescape", 1, global_unescape),
     ];
     for (name, arity, func) in functions {
         vm.define_method(global, name, *arity, *func);

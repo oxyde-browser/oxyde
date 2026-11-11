@@ -2086,6 +2086,42 @@ fn iterator_helpers_and_set_operations() {
 }
 
 #[test]
+fn generator_parameters_and_block_functions() {
+    // Les paramètres d'un générateur sont liés à l'appel, le corps au premier `next()`.
+    assert_eq!(
+        eval(
+            "var log = []; function* g(a = log.push('param')) { log.push('corps'); yield 1; }
+             var it = g(); log.push('appel'); it.next();
+             function* h([x]) {} var erreur; try { h(null); } catch (e) { erreur = e.name; }
+             var tot = g(); [log.join('|'), erreur, JSON.stringify(tot.return(4)), JSON.stringify(tot.next())].join()"
+        ),
+        "param|appel|corps|param,TypeError,{\"value\":4,\"done\":true},{\"done\":true}"
+    );
+    assert!(
+        eval("async function* ag(a = (() => { throw new RangeError('p'); })()) {} ag()")
+            .contains("RangeError")
+    );
+    // Annexe B.3.3 : hors mode strict, une fonction déclarée dans un bloc
+    // devient aussi une variable de la fonction englobante, une fois le bloc exécuté.
+    assert_eq!(
+        eval(
+            "var r = [typeof f]; { function f() { return 1; } } r.push(typeof f, f());
+             if (true) function g() { return 2; } r.push(g());
+             (function () { r.push(typeof h); { function h() {} } r.push(typeof h); })();
+             { let k; { function k() {} } } r.push(typeof k);
+             try { throw {}; } catch ({ m }) { { function m() {} } } r.push(typeof m);
+             switch (1) { case 1: function sw() { return 7; } } r.push(sw());
+             r.join()"
+        ),
+        "undefined,function,1,2,undefined,function,undefined,undefined,7"
+    );
+    assert_eq!(
+        eval("'use strict'; { function s() {} } typeof s"),
+        "undefined"
+    );
+}
+
+#[test]
 fn property_descriptors() {
     // Un descripteur partiel ne touche que les attributs qu'il nomme.
     assert_eq!(

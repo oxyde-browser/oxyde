@@ -29,6 +29,54 @@ fn string(s: &str) -> JsResult {
     Ok(Value::string(s))
 }
 
+/// `CreateHTML` (ECMA-262 §B.2.2.2.1) : entoure la chaîne d'une balise, avec
+/// un attribut éventuel dont les guillemets sont échappés.
+fn create_html(
+    vm: &mut Vm,
+    this: &Value,
+    tag: &str,
+    attribute: Option<(&str, &Value)>,
+) -> JsResult {
+    let text = this_str(vm, this)?;
+    let mut out = format!("<{tag}");
+    if let Some((name, value)) = attribute {
+        let value = vm.to_string(value)?;
+        out.push_str(&format!(" {name}=\"{}\"", value.replace('"', "&quot;")));
+    }
+    out.push_str(&format!(">{text}</{tag}>"));
+    string(&out)
+}
+
+/// Méthodes HTML de `String.prototype` (annexe B) : `balise` sans attribut,
+/// ou `balise attribut` dont la valeur est le premier argument.
+macro_rules! html_methods {
+    ($($name:ident => $tag:literal $(, $attribute:literal)?;)*) => {
+        $(
+            fn $name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+                let _ = args;
+                let attribute: Option<(&str, Value)> = None $(.or(Some(($attribute, arg(args, 0)))))?;
+                create_html(vm, this, $tag, attribute.as_ref().map(|(name, value)| (*name, value)))
+            }
+        )*
+    };
+}
+
+html_methods! {
+    html_anchor => "a", "name";
+    html_big => "big";
+    html_blink => "blink";
+    html_bold => "b";
+    html_fixed => "tt";
+    html_fontcolor => "font", "color";
+    html_fontsize => "font", "size";
+    html_italics => "i";
+    html_link => "a", "href";
+    html_small => "small";
+    html_strike => "strike";
+    html_sub => "sub";
+    html_sup => "sup";
+}
+
 #[expect(
     clippy::cast_precision_loss,
     reason = "longueur de chaîne petite devant 2^53"
@@ -742,6 +790,19 @@ pub(super) fn install(vm: &mut Vm) {
         ("trim", 0, trim),
         ("trimStart", 0, trim_start),
         ("trimEnd", 0, trim_end),
+        ("anchor", 1, html_anchor),
+        ("big", 0, html_big),
+        ("blink", 0, html_blink),
+        ("bold", 0, html_bold),
+        ("fixed", 0, html_fixed),
+        ("fontcolor", 1, html_fontcolor),
+        ("fontsize", 1, html_fontsize),
+        ("italics", 0, html_italics),
+        ("link", 1, html_link),
+        ("small", 0, html_small),
+        ("strike", 0, html_strike),
+        ("sub", 0, html_sub),
+        ("sup", 0, html_sup),
         ("padStart", 2, pad_start),
         ("padEnd", 2, pad_end),
         ("repeat", 1, repeat),
@@ -758,6 +819,13 @@ pub(super) fn install(vm: &mut Vm) {
     ];
     for (name, arity, func) in methods {
         vm.define_method(proto, name, *arity, *func);
+    }
+    // `trimLeft` et `trimRight` sont les fonctions mêmes de `trimStart` et
+    // `trimEnd` (annexe B).
+    for (alias, name) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
+        if let Ok(function) = vm.get(&Value::Object(proto), name) {
+            vm.define_hidden(proto, alias, function);
+        }
     }
 
     let proto = vm.intrinsics.number_proto;

@@ -106,6 +106,11 @@ struct FuncState {
     arguments_reg: Option<Reg>,
     /// Code en mode strict.
     strict: bool,
+    /// Annexe B.3.3 : fonctions de blocs qui sont aussi des variables de
+    /// cette fonction.
+    annex_b: Vec<JsStr>,
+    /// Nombre de portées ouvertes au niveau du corps de la fonction.
+    top_scopes: usize,
     uses_arguments: bool,
     param_count: u16,
     is_async: bool,
@@ -158,7 +163,7 @@ pub(crate) fn compile_script(
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
     check_declarations(body, true, &[])?;
-    compiler.hoist_vars(body)?;
+    compiler.hoist_vars(body, &[])?;
     compiler.declare_block(body)?;
     for stmt in body {
         compiler.statement(stmt)?;
@@ -236,6 +241,115 @@ fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr]) -> CResult<()> 
         }
     }
     Ok(())
+}
+
+/// Noms liés par les déclarations `let`, `const` et `class` directes de `body`.
+fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
+    for stmt in body {
+        match stmt {
+            Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
+                for (pattern, _) in decls {
+                    pattern_names(pattern, out);
+                }
+            }
+            Stmt::Class(class) => out.extend(class.name.clone()),
+            _ => {}
+        }
+    }
+}
+
+/// Annexe B.3.3 : noms des fonctions déclarées dans un bloc qui, hors mode
+/// strict, deviennent aussi des variables de la fonction englobante. Une
+/// telle fonction est écartée si un `var` du même nom à sa place entrerait en
+/// conflit avec une liaison lexicale d'un bloc englobant (`shadow`).
+fn block_functions(stmts: &[Stmt], nested: bool, shadow: &mut Vec<JsStr>, out: &mut Vec<JsStr>) {
+    for stmt in stmts {
+        block_functions_in(stmt, nested, shadow, out);
+    }
+}
+
+fn block_functions_in(stmt: &Stmt, nested: bool, shadow: &mut Vec<JsStr>, out: &mut Vec<JsStr>) {
+    let block = |body: &[Stmt], shadow: &mut Vec<JsStr>, out: &mut Vec<JsStr>| {
+        let mark = shadow.len();
+        lexical_names(body, shadow);
+        block_functions(body, true, shadow, out);
+        shadow.truncate(mark);
+    };
+    match stmt {
+        Stmt::Function(func) if nested && !func.is_async && !func.is_generator => {
+            if let Some(name) = &func.name
+                && !shadow.contains(name)
+                && !out.contains(name)
+            {
+                out.push(Arc::clone(name));
+            }
+        }
+        Stmt::Block(body) => block(body, shadow, out),
+        Stmt::If {
+            then, otherwise, ..
+        } => {
+            block_functions_in(then, true, shadow, out);
+            if let Some(otherwise) = otherwise {
+                block_functions_in(otherwise, true, shadow, out);
+            }
+        }
+        Stmt::For { init, body, .. } => {
+            let mark = shadow.len();
+            if let Some(ForInit::Decl(VarKind::Let | VarKind::Const, decls)) = init {
+                for (pattern, _) in decls {
+                    pattern_names(pattern, shadow);
+                }
+            }
+            block_functions_in(body, true, shadow, out);
+            shadow.truncate(mark);
+        }
+        Stmt::ForIn { target, body, .. } => {
+            let mark = shadow.len();
+            if let ForTarget::Decl(VarKind::Let | VarKind::Const, pattern) = target {
+                pattern_names(pattern, shadow);
+            }
+            block_functions_in(body, true, shadow, out);
+            shadow.truncate(mark);
+        }
+        Stmt::While { body, .. }
+        | Stmt::DoWhile { body, .. }
+        | Stmt::Labeled(_, body)
+        | Stmt::With(_, body) => block_functions_in(body, true, shadow, out),
+        Stmt::Try {
+            block: tried,
+            param,
+            handler,
+            finalizer,
+        } => {
+            block(tried, shadow, out);
+            if let Some(handler) = handler {
+                // Un paramètre de `catch` déstructuré est une liaison
+                // lexicale ; un simple identifiant ne gêne pas (B.3.5).
+                let mark = shadow.len();
+                if let Some(pattern) = param
+                    && !matches!(pattern, Pattern::Ident(_))
+                {
+                    pattern_names(pattern, shadow);
+                }
+                block(handler, shadow, out);
+                shadow.truncate(mark);
+            }
+            if let Some(finalizer) = finalizer {
+                block(finalizer, shadow, out);
+            }
+        }
+        Stmt::Switch { cases, .. } => {
+            let mark = shadow.len();
+            for (_, body) in cases {
+                lexical_names(body, shadow);
+            }
+            for (_, body) in cases {
+                block_functions(body, true, shadow, out);
+            }
+            shadow.truncate(mark);
+        }
+        _ => {}
+    }
 }
 
 fn var_names(stmts: &[Stmt], out: &mut Vec<JsStr>) {
@@ -345,6 +459,8 @@ impl Compiler {
             optional_chains: Vec::new(),
             arguments_reg: None,
             strict: false,
+            annex_b: Vec::new(),
+            top_scopes: 0,
             uses_arguments: false,
             param_count: 0,
             is_async: false,
@@ -751,9 +867,21 @@ impl Compiler {
     }
 
     /// Déclare dans la portée de fonction courante les noms `var` de `body`.
-    fn hoist_vars(&mut self, body: &[Stmt]) -> CResult<()> {
+    fn hoist_vars(&mut self, body: &[Stmt], params: &[JsStr]) -> CResult<()> {
         let mut names = Vec::new();
         var_names(body, &mut names);
+        self.f().top_scopes = self.f().scopes.len();
+        if !self.f().strict {
+            // Annexe B.3.3 : une fonction déclarée dans un bloc est aussi une
+            // variable de la fonction englobante.
+            let mut shadow: Vec<JsStr> = params.to_vec();
+            shadow.push(Arc::from("arguments"));
+            lexical_names(body, &mut shadow);
+            let mut functions = Vec::new();
+            block_functions(body, false, &mut shadow, &mut functions);
+            names.extend(functions.iter().cloned());
+            self.f().annex_b = functions;
+        }
         let script = self.at_script_level();
         for name in names {
             if script {
@@ -929,8 +1057,17 @@ impl Compiler {
             pattern_names(rest, &mut param_names);
         }
         check_declarations(&func.body, true, &param_names)?;
-        self.hoist_vars(&func.body)?;
+        self.hoist_vars(&func.body, &param_names)?;
         self.declare_block(&func.body)?;
+        if func.is_generator {
+            // `yield` initial : l'appel s'arrête ici, paramètres liés ; le
+            // corps ne commence qu'au premier `next()`.
+            let mark = self.mark();
+            let scratch = self.alloc()?;
+            self.emit(Op::LoadUndefined { dst: scratch });
+            self.emit_yield(scratch, scratch, None)?;
+            self.free_to(mark);
+        }
         for stmt in &func.body {
             self.statement(stmt)?;
         }
@@ -1208,6 +1345,16 @@ impl Compiler {
 
     // ---- Instructions ------------------------------------------------------
 
+    /// Branche d'un `if`. Une déclaration de fonction qui en tient lieu se
+    /// comporte comme si un bloc l'entourait (annexe B.3.4).
+    fn branch(&mut self, stmt: &Stmt) -> CResult<()> {
+        if matches!(stmt, Stmt::Function(_)) {
+            self.statements(std::slice::from_ref(stmt))
+        } else {
+            self.statement(stmt)
+        }
+    }
+
     fn statements(&mut self, body: &[Stmt]) -> CResult<()> {
         check_declarations(body, false, &[])?;
         self.push_scope();
@@ -1349,7 +1496,46 @@ impl Compiler {
 
     fn statement_inner(&mut self, stmt: &Stmt) -> CResult<()> {
         match stmt {
-            Stmt::Empty | Stmt::Function(_) => {}
+            Stmt::Empty => {}
+            Stmt::Function(func) => {
+                // Annexe B.3.3 : à l'endroit de sa déclaration, la fonction
+                // du bloc est recopiée dans la variable de la fonction
+                // englobante.
+                if let Some(name) = &func.name
+                    && self.f().scopes.len() > self.f().top_scopes
+                    && self.f().annex_b.contains(name)
+                {
+                    let mark = self.mark();
+                    let value = self.load_plain(name, None)?;
+                    let top = self.f().top_scopes;
+                    let outer = self
+                        .f()
+                        .scopes
+                        .iter()
+                        .take(top)
+                        .rev()
+                        .find_map(|scope| scope.bindings.iter().rev().find(|b| b.name == *name))
+                        .map(|binding| binding.reg);
+                    match outer {
+                        Some(reg) if reg != value => {
+                            self.emit(Op::Move {
+                                dst: reg,
+                                src: value,
+                            });
+                        }
+                        Some(_) => {}
+                        None if self.f().is_script => {
+                            let index = self.string(name);
+                            self.emit(Op::SetGlobal {
+                                name: index,
+                                src: value,
+                            });
+                        }
+                        None => {}
+                    }
+                    self.free_to(mark);
+                }
+            }
             Stmt::Expr(expr) => {
                 // Dans un script, toute instruction-expression (même dans un
                 // bloc) fixe la valeur d'achèvement, gardée dans le registre 0.
@@ -1447,12 +1633,12 @@ impl Compiler {
                     target: 0,
                 });
                 self.free_to(mark);
-                self.statement(then)?;
+                self.branch(then)?;
                 match otherwise {
                     Some(otherwise) => {
                         let to_end = self.emit(Op::Jump { target: 0 });
                         self.patch(to_else);
-                        self.statement(otherwise)?;
+                        self.branch(otherwise)?;
                         self.patch(to_end);
                     }
                     None => self.patch(to_else),

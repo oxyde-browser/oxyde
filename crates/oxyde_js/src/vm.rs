@@ -1908,16 +1908,23 @@ impl Vm {
             busy: false,
         };
         if kind != CoKind::Async {
-            // Un générateur, async ou non, ne démarre qu'à sa première requête.
             let proto = if kind == CoKind::Generator {
                 self.intrinsics.generator_proto
             } else {
                 self.intrinsics.async_generator_proto
             };
-            return Ok(Value::Object(self.heap.alloc(Object::new(
+            let generator = self.heap.alloc(Object::new(
                 Some(proto),
                 Kind::Coroutine(Box::new(coroutine(None))),
-            ))));
+            ));
+            // Les paramètres sont liés dès l'appel : le corps s'exécute
+            // jusqu'au `yield` initial que le compilateur place après eux, et
+            // une erreur levée par un paramètre remonte à l'appelant.
+            self.enter_native()?;
+            let started = self.resume(generator, Resume::Next(Value::Undefined));
+            self.native_depth -= 1;
+            started?;
+            return Ok(Value::Object(generator));
         }
         let promise = self.new_promise();
         let coroutine = self.heap.alloc(Object::new(
