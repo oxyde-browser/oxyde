@@ -4,12 +4,12 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 38290 réussis sur 48795 (78.5 %).**
+**Total : 38525 réussis sur 48795 (79.0 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
 | `annexB/built-ins` | 241 | 177 | 73.4 % |
-| `annexB/language` | 845 | 787 | 93.1 % |
+| `annexB/language` | 845 | 804 | 95.1 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 0 | 0.0 % |
 | `built-ins/Array` | 3083 | 2795 | 90.7 % |
@@ -81,12 +81,12 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/computed-property-names` | 48 | 44 | 91.7 % |
 | `language/destructuring` | 19 | 18 | 94.7 % |
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
-| `language/eval-code` | 347 | 142 | 40.9 % |
+| `language/eval-code` | 347 | 191 | 55.0 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10451 | 93.7 % |
-| `language/function-code` | 217 | 216 | 99.5 % |
+| `language/expressions` | 11156 | 10544 | 94.5 % |
+| `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
-| `language/global-code` | 42 | 29 | 69.0 % |
+| `language/global-code` | 42 | 36 | 85.7 % |
 | `language/identifier-resolution` | 14 | 13 | 92.9 % |
 | `language/identifiers` | 268 | 208 | 77.6 % |
 | `language/import` | 129 | 15 | 11.6 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 8849 | 94.1 % |
+| `language/statements` | 9399 | 8917 | 94.9 % |
 | `language/types` | 113 | 105 | 92.9 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

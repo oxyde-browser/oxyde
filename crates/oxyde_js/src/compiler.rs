@@ -18,7 +18,7 @@ use crate::ast::{
     AssignOp, BinaryOp, Class, ClassMemberKind, Expr, ForInit, ForTarget, Function, LogicalOp,
     Param, Pattern, PropKey, PropKind, Stmt, UnaryOp, VarKind,
 };
-use crate::bytecode::{FunctionKind, FunctionProto, Op, Reg, UnaryKind, UpvalueDesc};
+use crate::bytecode::{EvalSite, FunctionKind, FunctionProto, Op, Reg, UnaryKind, UpvalueDesc};
 use crate::lexer::SyntaxError;
 use crate::value::{JsStr, Value};
 
@@ -27,6 +27,11 @@ type CResult<T> = Result<T, SyntaxError>;
 /// Préfixe du nom de la liaison cachée qui porte l'objet d'un `with` ; ce
 /// n'est pas un identifiant, aucun script ne peut la désigner.
 const WITH_PREFIX: &str = "%with";
+
+/// Préfixe de la liaison cachée qui porte, dans une fonction contenant un
+/// appel `eval(…)`, l'objet des variables que le code évalué y crée. Il
+/// commence par [`WITH_PREFIX`] : les noms s'y cherchent comme dans un `with`.
+const EVAL_VARS_PREFIX: &str = "%with-eval";
 
 /// Nom du paramètre de reste du constructeur implicite d'une classe
 /// dérivée ; ce n'est pas un identifiant.
@@ -45,6 +50,30 @@ enum BindKind {
     Var,
     Let,
     Const,
+    /// Nom d'une expression de fonction, visible dans son corps : une
+    /// affectation y est ignorée, ou lève `TypeError` en mode strict.
+    FnName,
+}
+
+impl BindKind {
+    /// Code de la nature d'une liaison dans un [`EvalSite`].
+    fn code(self) -> u8 {
+        match self {
+            Self::Var => 0,
+            Self::Let => 1,
+            Self::Const => 2,
+            Self::FnName => 3,
+        }
+    }
+
+    fn from_code(code: u8) -> Self {
+        match code {
+            1 => Self::Let,
+            2 => Self::Const,
+            3 => Self::FnName,
+            _ => Self::Var,
+        }
+    }
 }
 
 struct Binding {
@@ -95,6 +124,9 @@ struct FuncState {
     string_constants: HashMap<JsStr, u32>,
     functions: Vec<Arc<FunctionProto>>,
     templates: Vec<crate::bytecode::TemplateSite>,
+    eval_sites: Vec<Arc<EvalSite>>,
+    /// Appelant synthétique d'un `eval` direct : ses captures, par nom.
+    known_upvalues: Vec<(JsStr, u16, BindKind)>,
     upvalues: Vec<(UpvalueDesc, BindKind)>,
     scopes: Vec<Scope>,
     next_reg: Reg,
@@ -154,6 +186,13 @@ pub(crate) struct Compiler {
     /// Le code compilé est celui d'un `eval` : ses déclarations lexicales
     /// lui sont locales, et ses `var` aussi en mode strict.
     eval: bool,
+    /// Les fonctions déclarées au premier niveau du code d'`eval` sont globales.
+    eval_functions_global: bool,
+    /// Le code compilé est celui d'un `eval` direct, sous un appelant synthétique.
+    direct_eval: bool,
+    /// `eval` direct : liaison de l'objet où l'appelant garde les variables
+    /// créées par le code évalué.
+    eval_vars: Option<JsStr>,
 }
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
@@ -172,6 +211,9 @@ pub(crate) fn compile_script(
         with_count: 0,
         module,
         eval,
+        eval_functions_global: eval && !strict,
+        direct_eval: false,
+        eval_vars: None,
     };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
     compiler.f().strict = strict;
@@ -264,6 +306,106 @@ pub(crate) fn pattern_names(pattern: &Pattern, out: &mut Vec<JsStr>) {
 }
 
 /// Noms déclarés par `var` dans `stmts`, sans entrer dans les fonctions.
+/// Compile le code d'un `eval` direct comme une fonction fléchée sans
+/// paramètre, créée dans la fonction appelante décrite par `site` : elle en
+/// capture les liaisons et rend la valeur d'achèvement du code.
+pub(crate) fn compile_direct_eval(
+    body: &[Stmt],
+    strict: bool,
+    site: &EvalSite,
+) -> CResult<Arc<FunctionProto>> {
+    // Objet des variables d'`eval` de la fonction la plus proche.
+    let eval_vars = site
+        .locals
+        .iter()
+        .map(|(name, ..)| name)
+        .chain(site.upvalues.iter().map(|(name, ..)| name))
+        .find(|name| name.starts_with(EVAL_VARS_PREFIX))
+        .cloned();
+    let with_bindings = site
+        .locals
+        .iter()
+        .map(|(name, ..)| name)
+        .chain(site.upvalues.iter().map(|(name, ..)| name))
+        .filter(|name| name.starts_with(WITH_PREFIX))
+        .count();
+    let mut compiler = Compiler {
+        funcs: Vec::new(),
+        name_hint: None,
+        with_depth: with_bindings,
+        with_count: 0,
+        module: false,
+        eval: true,
+        eval_functions_global: site.top_level && !strict,
+        direct_eval: true,
+        eval_vars: eval_vars.filter(|_| !strict),
+    };
+    // Appelant synthétique : seules ses liaisons comptent.
+    compiler.push_function(FunctionKind::Normal, Arc::from("<appelant>"), false);
+    compiler.f().known_upvalues = site
+        .upvalues
+        .iter()
+        .map(|(name, index, kind)| (Arc::clone(name), *index, BindKind::from_code(*kind)))
+        .collect();
+    compiler.push_scope();
+    // Les objets de `with` et d'`eval` d'abord : les liaisons propres à
+    // l'appelant, déclarées ensuite, passent avant eux.
+    let (objects, plain): (Vec<_>, Vec<_>) = site
+        .locals
+        .iter()
+        .partition(|(name, ..)| name.starts_with(WITH_PREFIX));
+    for (name, reg, kind) in objects.into_iter().chain(plain) {
+        let kind = BindKind::from_code(*kind);
+        let initialized = matches!(kind, BindKind::Var | BindKind::FnName);
+        compiler.declare_at(name, kind, initialized, *reg);
+    }
+    compiler.push_function(FunctionKind::Arrow, Arc::from("<eval>"), true);
+    compiler.f().strict = strict;
+    compiler.push_scope();
+    // Registre 0 : valeur d'achèvement.
+    let completion = compiler.alloc()?;
+    compiler.emit(Op::LoadUndefined { dst: completion });
+    check_declarations(body, true, &[], strict)?;
+    // Au premier niveau d'un script, hors mode strict, les `var` du code
+    // évalué sont globaux ; ailleurs ils lui restent locaux.
+    let global_vars = site.top_level && !strict;
+    if global_vars {
+        let mut vars = Vec::new();
+        var_names(body, &mut vars);
+        for stmt in body {
+            if let Stmt::Function(func) = stmt {
+                vars.extend(func.name.clone());
+            }
+        }
+        for name in &vars {
+            let name = compiler.string(name);
+            compiler.emit(Op::CheckGlobalDecl {
+                name,
+                lexical: false,
+            });
+        }
+        for stmt in body {
+            if let Stmt::Function(func) = stmt
+                && let Some(name) = &func.name
+            {
+                let name = compiler.string(name);
+                compiler.emit(Op::CheckGlobalFunction { name });
+            }
+        }
+        compiler.hoist_vars(body, &[])?;
+    }
+    compiler.push_scope();
+    if !global_vars {
+        compiler.hoist_vars(body, &[])?;
+    }
+    compiler.declare_block(body)?;
+    for stmt in body {
+        compiler.statement(stmt)?;
+    }
+    compiler.emit(Op::Return { src: completion });
+    Ok(Arc::new(compiler.pop_function()?))
+}
+
 /// Erreurs précoces de redéclaration dans une liste d'instructions
 /// (ECMA-262 §14.2.1, §15.2.1, §16.1.1). `top` désigne un corps de fonction ou
 /// de script, où les fonctions se déclarent comme des `var` ; `outer` porte
@@ -532,6 +674,8 @@ impl Compiler {
             string_constants: HashMap::new(),
             functions: Vec::new(),
             templates: Vec::new(),
+            eval_sites: Vec::new(),
+            known_upvalues: Vec::new(),
             upvalues: Vec::new(),
             scopes: Vec::new(),
             next_reg: 0,
@@ -567,6 +711,7 @@ impl Compiler {
             constants: state.constants,
             functions: state.functions,
             templates: state.templates,
+            eval_sites: state.eval_sites,
             upvalues: state.upvalues.into_iter().map(|(desc, _)| desc).collect(),
             kind: state.kind,
             is_async: state.is_async,
@@ -726,7 +871,14 @@ impl Compiler {
     /// chaîne de captures nécessaire.
     fn resolve_upvalue(&mut self, func: usize, name: &str) -> CResult<Option<(u16, BindKind)>> {
         let Some(parent) = func.checked_sub(1) else {
-            return Ok(None);
+            // Appelant synthétique d'un `eval` direct : ses captures sont connues.
+            return Ok(self.funcs.get(func).and_then(|state| {
+                state
+                    .known_upvalues
+                    .iter()
+                    .find(|(known, ..)| &**known == name)
+                    .map(|(_, index, kind)| (*index, *kind))
+            }));
         };
         if let Some((reg, kind, _)) = self.find_local(parent, name, true) {
             let desc = UpvalueDesc {
@@ -777,6 +929,17 @@ impl Compiler {
                     } else if &*binding.name == name {
                         return chain;
                     }
+                }
+            }
+        }
+        // `eval` direct : les objets que l'appelant synthétique a capturés.
+        if let Some(caller) = self.funcs.first() {
+            for (known, ..) in &caller.known_upvalues {
+                if &**known == name {
+                    break;
+                }
+                if known.starts_with(WITH_PREFIX) {
+                    chain.push(Arc::clone(known));
                 }
             }
         }
@@ -923,6 +1086,14 @@ impl Compiler {
                 kind,
                 needs_check,
             } => {
+                if kind == BindKind::FnName && !init {
+                    // Nom d'une expression de fonction : immuable.
+                    if self.f().strict {
+                        let name = self.string(name);
+                        self.emit(Op::ThrowConstAssign { name });
+                    }
+                    return Ok(());
+                }
                 if kind == BindKind::Const && !init {
                     let name = self.string(name);
                     self.emit(Op::ThrowConstAssign { name });
@@ -946,7 +1117,12 @@ impl Compiler {
                 }
             }
             Resolved::Upvalue { index, kind } => {
-                if kind == BindKind::Const && !init {
+                if kind == BindKind::FnName && !init {
+                    if self.f().strict {
+                        let name = self.string(name);
+                        self.emit(Op::ThrowConstAssign { name });
+                    }
+                } else if kind == BindKind::Const && !init {
                     let name = self.string(name);
                     self.emit(Op::ThrowConstAssign { name });
                 } else {
@@ -1007,6 +1183,28 @@ impl Compiler {
                 self.free_to(mark);
                 continue;
             }
+            if self.direct_eval && self.funcs.len() == 2 && !self.f().strict {
+                // `eval` direct : un `var` déjà lié dans la fonction appelante
+                // désigne cette liaison ; sinon il devient une variable de
+                // l'appelant, gardée dans son objet des variables d'`eval`.
+                let in_caller = self.funcs[0].scopes.iter().any(|scope| {
+                    scope
+                        .bindings
+                        .iter()
+                        .any(|b| b.name == name && b.kind == BindKind::Var)
+                });
+                if in_caller {
+                    continue;
+                }
+                if let Some(vars) = self.eval_vars.clone() {
+                    let mark = self.mark();
+                    let obj = self.load_plain(&vars, None)?;
+                    let index = self.string(&name);
+                    self.emit(Op::DefineVar { obj, name: index });
+                    self.free_to(mark);
+                    continue;
+                }
+            }
             let current = self.funcs.len() - 1;
             let already = self.funcs[current]
                 .scopes
@@ -1026,10 +1224,13 @@ impl Compiler {
         let script = self.at_script_level();
         // Au premier niveau d'un `eval` non strict, les fonctions sont globales.
         let global_functions = script
-            || (self.eval
-                && self.funcs.len() == 1
-                && !self.f().strict
-                && self.f().scopes.len() == 2);
+            || (self.eval_functions_global && self.f().is_script && self.f().scopes.len() == 2);
+        // `eval` direct dans une fonction : ses fonctions de premier niveau
+        // deviennent des variables de l'appelant.
+        let caller_functions = self
+            .eval_vars
+            .clone()
+            .filter(|_| self.funcs.len() == 2 && self.f().is_script && self.f().scopes.len() == 2);
         if !script {
             for stmt in body {
                 match stmt {
@@ -1054,7 +1255,7 @@ impl Compiler {
                             self.emit(Op::LoadHole { dst: reg });
                         }
                     }
-                    Stmt::Function(func) if !global_functions => {
+                    Stmt::Function(func) if !global_functions && caller_functions.is_none() => {
                         if let Some(name) = &func.name {
                             let reg = self.declare(name, BindKind::Var, true)?;
                             self.emit(Op::LoadUndefined { dst: reg });
@@ -1080,6 +1281,14 @@ impl Compiler {
                         name,
                         src: tmp,
                         declared,
+                    });
+                } else if let Some(vars) = &caller_functions {
+                    let obj = self.load_plain(vars, None)?;
+                    let name = self.string(name);
+                    self.emit(Op::SetProp {
+                        obj,
+                        name,
+                        src: tmp,
                     });
                 } else {
                     self.store(name, tmp, true)?;
@@ -1114,8 +1323,19 @@ impl Compiler {
         self.f().is_async = func.is_async;
         self.f().is_generator = func.is_generator;
         self.f().strict = func.strict;
+        // Le nom d'une expression de fonction vit dans une portée à part,
+        // que les paramètres et les `var` du corps peuvent masquer.
+        if bind_self {
+            self.push_scope();
+        }
         self.push_scope();
         let entry = self.emit(Op::Nop);
+        // Une fonction non stricte qui appelle `eval(…)` garde un objet pour
+        // les variables que le code évalué y crée.
+        let eval_vars = func.has_direct_eval && !func.strict;
+        if eval_vars {
+            self.with_depth += 1;
+        }
 
         // Les arguments arrivent dans les premiers registres.
         let mut complex: Vec<(usize, Reg, &Param)> = Vec::new();
@@ -1155,8 +1375,47 @@ impl Compiler {
             self.declare_at(&Arc::from("arguments"), BindKind::Var, true, reg);
         }
         if bind_self && let Some(name) = &func.name {
-            let reg = self.declare(name, BindKind::Var, true)?;
+            let reg = self.alloc()?;
             self.emit(Op::LoadCallee { dst: reg });
+            let depth = self.f().scopes.len();
+            if let Some(scope) = depth
+                .checked_sub(2)
+                .and_then(|i| self.f().scopes.get_mut(i))
+            {
+                scope.bindings.push(Binding {
+                    name: Arc::clone(name),
+                    reg,
+                    kind: BindKind::FnName,
+                    initialized: true,
+                    captured: false,
+                });
+            }
+        }
+        if eval_vars {
+            // Objet sans prototype : seules les variables créées y figurent.
+            let reg = self.alloc()?;
+            self.emit(Op::NewObject { dst: reg });
+            let null = self.alloc()?;
+            self.emit(Op::LoadNull { dst: null });
+            self.emit(Op::SetProto {
+                obj: reg,
+                src: null,
+            });
+            let name: JsStr = Arc::from(format!("{EVAL_VARS_PREFIX}{}", self.with_count));
+            self.with_count += 1;
+            // Déclarée en tête de portée : les liaisons de la fonction passent avant.
+            if let Some(scope) = self.f().scopes.last_mut() {
+                scope.bindings.insert(
+                    0,
+                    Binding {
+                        name,
+                        reg,
+                        kind: BindKind::Var,
+                        initialized: true,
+                        captured: false,
+                    },
+                );
+            }
         }
         for (position, reg, param) in complex {
             if let Some(default) = &param.default {
@@ -1215,6 +1474,9 @@ impl Compiler {
         let tmp = self.alloc()?;
         self.emit(Op::LoadUndefined { dst: tmp });
         self.emit(Op::Return { src: tmp });
+        if eval_vars {
+            self.with_depth -= 1;
+        }
 
         let state = self.f();
         if state.uses_arguments
@@ -1309,6 +1571,7 @@ impl Compiler {
                     is_arrow: false,
                     is_method: true,
                     strict: true,
+                    has_direct_eval: false,
                 };
                 &synthesized
             }
@@ -1407,6 +1670,7 @@ impl Compiler {
                         is_async: false,
                         is_generator: false,
                         strict: true,
+                        has_direct_eval: false,
                     };
                     statics.push((computed.then_some(key), Arc::new(initializer)));
                     if computed {
@@ -1439,6 +1703,7 @@ impl Compiler {
                 is_async: false,
                 is_generator: false,
                 strict: true,
+                has_direct_eval: false,
             };
             let reg = self.alloc()?;
             let index = self.function(&initializer, FunctionKind::Method, false)?;
@@ -1682,6 +1947,38 @@ impl Compiler {
                             });
                         }
                         Some(_) => {}
+                        None if self.direct_eval && self.funcs.len() == 2 => {
+                            // `eval` direct : la variable est chez l'appelant,
+                            // dans une de ses liaisons ou dans son objet des
+                            // variables d'`eval` ; à défaut, elle est globale.
+                            let in_caller = self.funcs[0].scopes.iter().any(|scope| {
+                                scope
+                                    .bindings
+                                    .iter()
+                                    .any(|b| b.name == *name && b.kind == BindKind::Var)
+                            });
+                            let index = self.string(name);
+                            if in_caller
+                                && let Some((upvalue, _)) = self.resolve_upvalue(1, name)?
+                            {
+                                self.emit(Op::SetUpvalue {
+                                    index: upvalue,
+                                    src: value,
+                                });
+                            } else if let Some(vars) = self.eval_vars.clone() {
+                                let obj = self.load_plain(&vars, None)?;
+                                self.emit(Op::SetProp {
+                                    obj,
+                                    name: index,
+                                    src: value,
+                                });
+                            } else {
+                                self.emit(Op::SetGlobal {
+                                    name: index,
+                                    src: value,
+                                });
+                            }
+                        }
                         None if self.f().is_script => {
                             let index = self.string(name);
                             self.emit(Op::SetGlobal {
@@ -2516,6 +2813,53 @@ impl Compiler {
         Ok((func, this))
     }
 
+    /// Décrit, pour un appel `eval(…)`, tout ce que le code évalué pourra voir
+    /// de l'appelant. Chaque liaison visible est marquée capturée : le code
+    /// évalué y accède comme une fermeture.
+    fn eval_site(&mut self) -> CResult<u16> {
+        let current = self.funcs.len() - 1;
+        let mut names: Vec<JsStr> = Vec::new();
+        for state in self.funcs.iter().rev() {
+            for scope in state.scopes.iter().rev() {
+                for binding in scope.bindings.iter().rev() {
+                    if !names.contains(&binding.name) {
+                        names.push(Arc::clone(&binding.name));
+                    }
+                }
+            }
+        }
+        let mut locals = Vec::new();
+        let mut upvalues = Vec::new();
+        for name in names {
+            match self.resolve(&name)? {
+                Resolved::Local { reg, kind, .. } => {
+                    self.find_local(current, &name, true);
+                    locals.push((name, reg, kind.code()));
+                }
+                Resolved::Upvalue { index, kind } => {
+                    upvalues.push((name, index, kind.code()));
+                }
+                Resolved::Global => {}
+            }
+        }
+        let in_method = self.funcs.iter().any(|f| {
+            matches!(
+                f.kind,
+                FunctionKind::Method | FunctionKind::ClassConstructor { .. }
+            )
+        });
+        let site = EvalSite {
+            locals,
+            upvalues,
+            strict: self.f().strict,
+            top_level: self.funcs.len() == 1 && self.f().is_script,
+            in_method,
+        };
+        let index = u16::try_from(self.f().eval_sites.len()).unwrap_or(u16::MAX);
+        self.f().eval_sites.push(Arc::new(site));
+        Ok(index)
+    }
+
     /// Émet un `yield` qui rend `src` ; la valeur de reprise arrive dans
     /// `dst`. Le chemin de retour qui suit sert à `return(v)` : il exécute les
     /// blocs `finally` englobants, ferme l'itérateur délégué `inner`, puis
@@ -3065,12 +3409,19 @@ impl Compiler {
                     self.optional_jump(func);
                 }
                 let direct_eval =
-                    matches!(&**callee, Expr::Ident(name) if &**name == "eval") && self.f().strict;
+                    !*optional && matches!(&**callee, Expr::Ident(name) if &**name == "eval");
                 let arguments = self.arguments(args)?;
-                if direct_eval {
-                    self.emit(Op::StrictEval);
-                }
                 match arguments {
+                    Ok((first, argc)) if direct_eval => {
+                        let site = self.eval_site()?;
+                        self.emit(Op::DirectEval {
+                            dst,
+                            callee: func,
+                            first,
+                            argc,
+                            site,
+                        })
+                    }
                     Ok((first, argc)) => self.emit(Op::Call {
                         dst,
                         callee: func,

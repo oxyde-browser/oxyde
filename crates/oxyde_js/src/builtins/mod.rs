@@ -769,22 +769,17 @@ fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let body = texts.pop().unwrap_or_else(|| Arc::from(""));
     let params = texts.join(",");
     // Les sauts de ligne isolent un éventuel commentaire en fin de paramètres ou de corps.
-    vm.eval_global(
-        &format!("(function anonymous({params}\n) {{\n{body}\n}})"),
-        false,
-    )
+    vm.eval_global(&format!("(function anonymous({params}\n) {{\n{body}\n}})"))
 }
 
 /// `eval(code)`.
 ///
-/// LIMITE : le code est toujours évalué dans la portée globale (« eval
-/// indirect ») ; il ne voit pas les variables locales de l'appelant.
+/// Appelée comme une fonction ordinaire, c'est un « eval indirect » : le
+/// code est évalué dans la portée globale. L'appel écrit `eval(…)` est
+/// traité par la machine (voir `Op::DirectEval`).
 fn global_eval(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     match arg(args, 0) {
-        Value::String(source) => {
-            let strict = std::mem::take(&mut vm.strict_eval);
-            vm.eval_global(&source, strict)
-        }
+        Value::String(source) => vm.eval_global(&source),
         other => Ok(other),
     }
 }
@@ -1309,6 +1304,9 @@ fn install_globals(vm: &mut Vm) {
     ];
     for (name, arity, func) in functions {
         vm.define_method(global, name, *arity, *func);
+    }
+    if let Ok(Value::Object(eval)) = vm.get(&Value::Object(global), "eval") {
+        vm.eval_function = Some(eval);
     }
     let console = vm.new_object();
     let levels: &[(&str, NativeFn)] = &[

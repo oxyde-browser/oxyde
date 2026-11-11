@@ -91,8 +91,8 @@ impl Vm {
     /// Compile et exécute `source` comme un script global depuis du code en
     /// cours d'exécution (`eval`, `Function`). Une erreur de syntaxe devient
     /// une exception `SyntaxError`.
-    pub(crate) fn eval_global(&mut self, source: &str, strict: bool) -> JsResult {
-        let proto = parser::parse_eval(source, strict)
+    pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
+        let proto = parser::parse_eval(source, false)
             .and_then(|script| {
                 compiler::compile_script(&script.body, script.strict, false, false, true)
             })

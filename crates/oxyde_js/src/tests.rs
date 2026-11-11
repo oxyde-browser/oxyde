@@ -2162,6 +2162,65 @@ fn regexp_symbol_methods() {
 }
 
 #[test]
+fn direct_eval_and_global_lexicals() {
+    // `eval(…)` voit et modifie les variables de l'appelant ; ses `var` et
+    // ses fonctions deviennent des variables de la fonction appelante.
+    assert_eq!(
+        eval(
+            "function f(a) { var b = 2; let c = 3; eval('a = a + b + c; var d = 10; b = d; function g() { return 5; }');
+                             return [a, b, d, g()].join(); }
+             var x = 1;
+             function portee() { var x = 2; return eval('x') + ':' + (0, eval)('x') + ':' + eval?.('x'); }
+             function ceci() { return eval('this === globalThis') + ':' + eval('arguments.length'); }
+             function flechee(v) { return (() => eval('v * 2'))(); }
+             class C { #p = 7; m() { return eval('this.#p'); } }
+             [f(1), portee(), ceci(1, 2), flechee(21), new C().m(), (function () { return eval('1; if (true) { 2 }'); })()].join('|')"
+        ),
+        "6,10,10,5|2:1:1|true:2|42|7|2"
+    );
+    // En mode strict, les `var` du code évalué lui restent locaux.
+    assert_eq!(
+        eval(
+            "function strict() { 'use strict'; eval('var s = 1'); return typeof s; }
+             function masque() { var s = 0; function g() { 'use strict'; eval('var s = 1'); return s; } return g(); }
+             [strict(), masque(), eval('var haut = 5; haut'), typeof haut].join()"
+        ),
+        "undefined,0,5,number"
+    );
+    assert!(eval("eval('new.target')").contains("SyntaxError"));
+    // Le nom d'une expression de fonction est immuable, et masqué par ses paramètres.
+    assert_eq!(
+        eval(
+            "[(function B() { B = 1; return typeof B; })(), (function f(f) { return f; })(3), (function g() { var g = 4; return g; })(),
+              (function S() { 'use strict'; try { S = 1; } catch (e) { return e.name; } })()].join()"
+        ),
+        "function,3,4,TypeError"
+    );
+    // `let`, `const` et `class` de premier niveau ne sont pas des propriétés
+    // de l'objet global, mais restent visibles des scripts suivants.
+    assert_eq!(
+        eval(
+            "let a = 1; const b = 2; class K {} var v = 3; var r = [];
+             try { tot; } catch (e) { r.push(e.name); } let tot = 1;
+             try { b = 5; } catch (e) { r.push(e.name); }
+             try { (0, eval)('let a = 9'); r.push('local'); } catch (e) { r.push(e.name); }
+             [typeof globalThis.a, typeof globalThis.K, typeof globalThis.v, a + b, typeof K, r.join('|')].join()"
+        ),
+        "undefined,undefined,number,3,function,ReferenceError|TypeError|local"
+    );
+    let mut vm = Vm::new();
+    vm.eval("let partage = 1; var declare = 2;")
+        .expect("premier script");
+    assert_eq!(
+        vm.eval("partage + declare").expect("second script"),
+        Value::Number(3.0)
+    );
+    for source in ["let partage = 2;", "var partage;", "let declare;"] {
+        assert!(vm.eval(source).is_err(), "{source}");
+    }
+}
+
+#[test]
 fn property_descriptors() {
     // Un descripteur partiel ne touche que les attributs qu'il nomme.
     assert_eq!(

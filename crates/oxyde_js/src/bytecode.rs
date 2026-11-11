@@ -192,6 +192,12 @@ pub(crate) enum Op {
     CheckGlobalFunction {
         name: u32,
     },
+    /// `var name` créé par un `eval` direct chez l'appelant : définit la
+    /// propriété `name` de l'objet des variables d'`eval`, si elle manque.
+    DefineVar {
+        obj: Reg,
+        name: u32,
+    },
     /// Déclaration d'une fonction globale ; `declared` : par un script, et
     /// non par un `eval`.
     InitGlobalFunction {
@@ -205,9 +211,16 @@ pub(crate) enum Op {
         dst: Reg,
         index: u32,
     },
-    /// Précède l'appel `eval(…)` écrit dans du code strict : le code évalué
-    /// hérite de ce mode.
-    StrictEval,
+    /// Appel écrit `eval(…)` : si la fonction appelée est bien `eval`, le
+    /// code est évalué dans la portée de l'appelant décrite par le site
+    /// `site` ; sinon c'est un appel ordinaire.
+    DirectEval {
+        dst: Reg,
+        callee: Reg,
+        first: Reg,
+        argc: u16,
+        site: u16,
+    },
     /// `{ __proto__: src }` : `src` devient le prototype de `obj` s'il est un
     /// objet ou `null` ; toute autre valeur est ignorée.
     SetProto {
@@ -497,6 +510,24 @@ impl Op {
     }
 }
 
+/// Site d'un appel `eval(…)` : ce que le code évalué voit de l'appelant.
+/// Chaque liaison porte son nom, son emplacement et sa nature (un code
+/// propre au compilateur).
+#[derive(Clone, Debug)]
+pub(crate) struct EvalSite {
+    /// Liaisons de la fonction appelante : registre.
+    pub(crate) locals: Vec<(JsStr, Reg, u8)>,
+    /// Liaisons des fonctions englobantes : index de capture de l'appelant.
+    pub(crate) upvalues: Vec<(JsStr, u16, u8)>,
+    /// L'appel est écrit dans du code strict.
+    pub(crate) strict: bool,
+    /// L'appelant est le code de premier niveau d'un script : les `var` du
+    /// code évalué sont globaux.
+    pub(crate) top_level: bool,
+    /// L'appelant est dans une méthode : `super.x` est permis.
+    pub(crate) in_method: bool,
+}
+
 /// Morceaux d'un gabarit étiqueté : interprétés, puis bruts.
 pub(crate) type TemplateSite = (Vec<Option<JsStr>>, Vec<JsStr>);
 
@@ -518,6 +549,8 @@ pub(crate) struct FunctionProto {
     /// Gabarits étiquetés : morceaux interprétés (`None` : échappement
     /// invalide) et bruts.
     pub(crate) templates: Vec<TemplateSite>,
+    /// Sites des appels `eval(…)` de la fonction.
+    pub(crate) eval_sites: Vec<Arc<EvalSite>>,
     pub(crate) upvalues: Vec<UpvalueDesc>,
     pub(crate) kind: FunctionKind,
     /// Fonction async : l'appel rend une promesse.

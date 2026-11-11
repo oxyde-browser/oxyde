@@ -235,6 +235,9 @@ pub(crate) struct Function {
     pub(crate) is_generator: bool,
     /// Le corps est du code en mode strict.
     pub(crate) strict: bool,
+    /// La fonction (ou une fonction fléchée qu'elle contient) appelle
+    /// `eval(…)` : le code évalué peut y créer des variables.
+    pub(crate) has_direct_eval: bool,
 }
 
 #[derive(Clone, Debug)]

@@ -147,6 +147,8 @@ struct Parser {
     private_scopes: Vec<PrivateScope>,
     /// Le module emploie `await` au premier niveau.
     top_level_await: bool,
+    /// Un appel `eval(…)` a été lu dans la fonction en cours d'analyse.
+    saw_eval: bool,
     /// Position du premier `{ a = 1 }` (ou `__proto__` en double) qui n'est
     /// valide que si l'objet se révèle être un motif d'affectation.
     cover_init: Option<usize>,
@@ -166,24 +168,55 @@ pub(crate) struct Script {
 
 /// Analyse un script complet.
 pub(crate) fn parse_program(source: &str) -> PResult<Script> {
-    parse_script(source, false, false)
+    parse_script(source, false, false, &[], false)
 }
 
-/// Analyse le source passé à `eval`. `new.target` et `super.x` y sont
-/// acceptés, faute de savoir ici d'où vient l'appel.
+/// Analyse le source passé à un `eval` indirect : du code global.
 pub(crate) fn parse_eval(source: &str, strict: bool) -> PResult<Script> {
-    parse_script(source, true, strict)
+    parse_script(source, false, false, &[], strict)
 }
 
-fn parse_script(source: &str, in_function: bool, strict: bool) -> PResult<Script> {
+/// Analyse le source passé à un `eval` direct. `in_function` : l'appelant
+/// est dans une fonction (`new.target` permis) ; `in_method` : dans une
+/// méthode (`super.x` permis) ; `private_names` : noms privés visibles.
+pub(crate) fn parse_direct_eval(
+    source: &str,
+    strict: bool,
+    in_function: bool,
+    in_method: bool,
+    private_names: &[Arc<str>],
+) -> PResult<Script> {
+    parse_script(source, in_function, in_method, private_names, strict)
+}
+
+fn parse_script(
+    source: &str,
+    in_function: bool,
+    in_method: bool,
+    private_names: &[Arc<str>],
+    strict: bool,
+) -> PResult<Script> {
     let mut parser = Parser::new(source, false)?;
     parser.in_function = in_function;
-    parser.super_property = in_function;
+    parser.super_property = in_method;
     parser.strict = strict;
+    if !private_names.is_empty() {
+        // Noms privés des classes qui entourent l'appel à `eval`.
+        parser.private_scopes.push(PrivateScope {
+            declared: private_names
+                .iter()
+                .map(|name| (Arc::clone(name), PrivateKind::Field, false))
+                .collect(),
+            used: Vec::new(),
+        });
+    }
     let mut body = Vec::new();
     let strict = parser.directives(&mut body)? || strict;
     while parser.tok.tok != Tok::Eof {
         body.push(parser.statement()?);
+    }
+    if let Some(scope) = parser.private_scopes.pop() {
+        parser.close_private_scope(scope)?;
     }
     Ok(Script { body, strict })
 }
@@ -265,6 +298,7 @@ impl Parser {
             in_generator: false,
             module,
             top_level_await: false,
+            saw_eval: false,
             strict: module,
             in_function: false,
             super_property: false,
@@ -1406,7 +1440,9 @@ impl Parser {
         self.no_return = false;
         self.in_params = false;
         let checked_name = if is_method { None } else { name.as_deref() };
+        let outer_eval = std::mem::replace(&mut self.saw_eval, false);
         let parsed = self.function_parts(checked_name, is_method, was_strict);
+        let has_direct_eval = std::mem::replace(&mut self.saw_eval, outer_eval);
         let strict = self.strict;
         self.restore_state(saved);
         let (params, rest, body) = parsed?;
@@ -1422,6 +1458,7 @@ impl Parser {
             is_async,
             is_generator,
             strict,
+            has_direct_eval,
         })
     }
 
@@ -1538,6 +1575,7 @@ impl Parser {
             is_async: false,
             is_generator: false,
             strict: true,
+            has_direct_eval: false,
         })
     }
 
@@ -1943,6 +1981,7 @@ impl Parser {
             is_async,
             is_generator: false,
             strict,
+            has_direct_eval: self.saw_eval,
         })))
     }
 
@@ -1954,6 +1993,7 @@ impl Parser {
         }
         let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
         self.advance()?;
+        let outer_eval = std::mem::replace(&mut self.saw_eval, false);
         let attempt: PResult<Option<(Vec<Param>, Option<Pattern>)>> = match &self.tok.tok {
             Tok::Ident(name) if !RESERVED.contains(&name.as_str()) => {
                 match self.peek_is_punct("=>") {
@@ -1978,10 +2018,13 @@ impl Parser {
         match attempt {
             Ok(Some((params, rest))) => {
                 self.advance()?;
-                self.arrow_body(params, rest, true).map(Some)
+                let arrow = self.arrow_body(params, rest, true);
+                self.saw_eval = outer_eval;
+                arrow.map(Some)
             }
             _ => {
                 (self.lexer, self.tok, self.cover_init) = saved;
+                self.saw_eval = outer_eval;
                 Ok(None)
             }
         }
@@ -2010,16 +2053,22 @@ impl Parser {
     /// Tente de lire `(params) =>` ; restaure l'état et renvoie `None` si ce n'en est pas un.
     fn try_arrow(&mut self) -> PResult<Option<Expr>> {
         let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
+        // Un `eval(…)` lu dans les paramètres ou le corps est celui de la
+        // fonction fléchée, pas de la fonction qui l'entoure.
+        let outer_eval = std::mem::replace(&mut self.saw_eval, false);
         let attempt = self
             .params()
             .map(|parsed| (self.is_punct("=>") && !self.tok.newline_before).then_some(parsed));
         match attempt {
             Ok(Some((params, rest))) => {
                 self.advance()?;
-                self.arrow_body(params, rest, false).map(Some)
+                let arrow = self.arrow_body(params, rest, false);
+                self.saw_eval = outer_eval;
+                arrow.map(Some)
             }
             _ => {
                 (self.lexer, self.tok, self.cover_init) = saved;
+                self.saw_eval = outer_eval;
                 Ok(None)
             }
         }
@@ -2052,7 +2101,8 @@ impl Parser {
                     return self.error("saut de ligne interdit avant « => »");
                 }
                 self.advance()?;
-                return self.arrow_body(
+                let outer_eval = std::mem::replace(&mut self.saw_eval, false);
+                let arrow = self.arrow_body(
                     vec![Param {
                         pattern: Pattern::Ident(name),
                         default: None,
@@ -2060,6 +2110,8 @@ impl Parser {
                     None,
                     false,
                 );
+                self.saw_eval = outer_eval;
+                return arrow;
             }
             Tok::Ident(name)
                 if (name == "yield" && !self.in_generator)
@@ -2399,6 +2451,9 @@ impl Parser {
                     optional: false,
                 };
             } else if self.is_punct("(") {
+                if matches!(&expr, Expr::Ident(name) if &**name == "eval") {
+                    self.saw_eval = true;
+                }
                 let saved_no_in = std::mem::replace(&mut self.no_in, false);
                 let args = self.arguments();
                 self.no_in = saved_no_in;

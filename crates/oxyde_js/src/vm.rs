@@ -201,8 +201,9 @@ pub struct Vm {
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
     pub(crate) native_new_target: Value,
-    /// Le prochain appel est un `eval(…)` écrit dans du code strict.
-    pub(crate) strict_eval: bool,
+    /// La fonction `eval` d'origine : un appel écrit `eval(…)` qui la
+    /// désigne est un « eval direct ».
+    pub(crate) eval_function: Option<ObjId>,
     /// Racines déclarées par l'hôte (écouteurs, minuteurs…).
     roots: Vec<Value>,
     /// Données de l'hôte accessibles aux fonctions natives.
@@ -328,7 +329,7 @@ impl Vm {
             rejections: Vec::new(),
             constructing: false,
             native_new_target: Value::Undefined,
-            strict_eval: false,
+            eval_function: None,
             roots: Vec::new(),
             host: None,
             host_hooks: None,
@@ -794,6 +795,84 @@ impl Vm {
         let done = self.get(result, "done")?.truthy();
         let value = self.get(result, "value")?;
         Ok((value, done, done && returning))
+    }
+
+    /// Crée, dans le cadre courant, la fermeture de la fonction `proto` : elle
+    /// capture les registres et les captures du cadre que `proto` désigne.
+    fn new_closure(&mut self, proto: Arc<FunctionProto>) -> Option<ObjId> {
+        let frame = self.frames.last()?;
+        let (base, parent, this) = (frame.base, frame.closure, frame.this.clone());
+        let scope = frame.scope;
+        let mut upvalues = Vec::with_capacity(proto.upvalues.len());
+        for desc in &proto.upvalues {
+            let id = if desc.from_parent_register {
+                self.capture(base + usize::from(desc.index))
+            } else {
+                match &self.heap.get(parent).kind {
+                    Kind::Closure(c) => c.upvalues.get(usize::from(desc.index)).copied(),
+                    _ => None,
+                }
+                .unwrap_or_else(|| self.heap.alloc_upvalue(Upvalue::Closed(Value::Undefined)))
+            };
+            upvalues.push(id);
+        }
+        let is_arrow = proto.kind == FunctionKind::Arrow;
+        // Une fonction fléchée hérite de l'objet d'attache (pour `super`).
+        let home = match (&self.heap.get(parent).kind, is_arrow) {
+            (Kind::Closure(c), true) => c.home,
+            _ => None,
+        };
+        let closure = Closure {
+            proto,
+            upvalues,
+            bound_this: is_arrow.then_some(this),
+            home,
+            parent: None,
+            fields: None,
+            scope,
+        };
+        Some(self.heap.alloc(Object::new(
+            Some(self.intrinsics.function_proto),
+            Kind::Closure(closure),
+        )))
+    }
+
+    /// `eval` direct (ECMA-262 §19.2.1.1) : évalue `source` dans la portée
+    /// de l'appelant. Le code est compilé comme une fonction fléchée créée
+    /// dans le cadre courant, dont elle capture les variables.
+    fn direct_eval(&mut self, source: &str, site: u16) -> JsResult {
+        let Some(site) = self
+            .frames
+            .last()
+            .and_then(|frame| frame.proto.eval_sites.get(usize::from(site)).cloned())
+        else {
+            return Ok(Value::Undefined);
+        };
+        let private_names: Vec<JsStr> = site
+            .locals
+            .iter()
+            .map(|(name, ..)| name)
+            .chain(site.upvalues.iter().map(|(name, ..)| name))
+            .filter_map(|name| name.strip_prefix('#').map(Arc::from))
+            .collect();
+        let compiled = crate::parser::parse_direct_eval(
+            source,
+            site.strict,
+            !site.top_level,
+            site.in_method,
+            &private_names,
+        )
+        .and_then(|script| {
+            crate::compiler::compile_direct_eval(&script.body, script.strict, &site)
+        });
+        let proto = match compiled {
+            Ok(proto) => proto,
+            Err(error) => return Err(self.error("SyntaxError", &error.message)),
+        };
+        let Some(closure) = self.new_closure(proto) else {
+            return Ok(Value::Undefined);
+        };
+        self.call(&Value::Object(closure), &Value::Undefined, &[])
     }
 
     /// `GetTemplateObject` (ECMA-262 §13.2.8.4) : tableau figé des morceaux
@@ -1502,6 +1581,16 @@ impl Vm {
                     .props
                     .insert(name, Property::data(value));
             }
+            Op::DefineVar { obj, name } => {
+                let name = self.name(name);
+                if let Some(id) = self.reg(obj).as_object() {
+                    self.heap
+                        .get_mut(id)
+                        .props
+                        .entry(name)
+                        .or_insert_with(|| Property::data(Value::Undefined));
+                }
+            }
             Op::CheckGlobalFunction { name } => {
                 let name = self.name(name);
                 let scope = self.scope();
@@ -1525,7 +1614,6 @@ impl Vm {
                 let object = self.template_object(index)?;
                 self.set_reg(dst, object);
             }
-            Op::StrictEval => self.strict_eval = true,
             Op::ToObject { dst, src } => {
                 let object = self.to_object(&self.reg(src))?;
                 self.set_reg(dst, object);
@@ -1811,48 +1899,13 @@ impl Vm {
                 }
             }
             Op::Closure { dst, index } => {
-                let Some(frame) = self.frames.last() else {
+                let proto = self
+                    .frames
+                    .last()
+                    .and_then(|frame| frame.proto.functions.get(index as usize).cloned());
+                let Some(id) = proto.and_then(|proto| self.new_closure(proto)) else {
                     return Ok(None);
                 };
-                let Some(proto) = frame.proto.functions.get(index as usize).cloned() else {
-                    return Ok(None);
-                };
-                let (base, parent, this) = (frame.base, frame.closure, frame.this.clone());
-                let scope = frame.scope;
-                let mut upvalues = Vec::with_capacity(proto.upvalues.len());
-                for desc in &proto.upvalues {
-                    let id = if desc.from_parent_register {
-                        self.capture(base + usize::from(desc.index))
-                    } else {
-                        match &self.heap.get(parent).kind {
-                            Kind::Closure(c) => c.upvalues.get(usize::from(desc.index)).copied(),
-                            _ => None,
-                        }
-                        .unwrap_or_else(|| {
-                            self.heap.alloc_upvalue(Upvalue::Closed(Value::Undefined))
-                        })
-                    };
-                    upvalues.push(id);
-                }
-                let is_arrow = proto.kind == FunctionKind::Arrow;
-                // Une fonction fléchée hérite de l'objet d'attache (pour `super`).
-                let home = match (&self.heap.get(parent).kind, is_arrow) {
-                    (Kind::Closure(c), true) => c.home,
-                    _ => None,
-                };
-                let closure = Closure {
-                    proto,
-                    upvalues,
-                    bound_this: is_arrow.then_some(this),
-                    home,
-                    parent: None,
-                    fields: None,
-                    scope,
-                };
-                let id = self.heap.alloc(Object::new(
-                    Some(self.intrinsics.function_proto),
-                    Kind::Closure(closure),
-                ));
                 self.set_reg(dst, Value::Object(id));
             }
             Op::Call {
@@ -1865,10 +1918,30 @@ impl Vm {
                 let (callee, this) = (self.reg(callee), self.reg(this));
                 let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
                 self.check_callable(&callee)?;
-                let called = self.call_from_loop(dst, &callee, this, args);
-                // Consommé par `eval` ; sans objet pour toute autre fonction.
-                self.strict_eval = false;
-                called?;
+                self.call_from_loop(dst, &callee, this, args)?;
+            }
+            Op::DirectEval {
+                dst,
+                callee,
+                first,
+                argc,
+                site,
+            } => {
+                let callee = self.reg(callee);
+                let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
+                self.check_callable(&callee)?;
+                let is_eval =
+                    callee.as_object().is_some() && callee.as_object() == self.eval_function;
+                if !is_eval {
+                    self.call_from_loop(dst, &callee, Value::Undefined, args)?;
+                    return Ok(None);
+                }
+                let result = match args.into_iter().next() {
+                    Some(Value::String(source)) => self.direct_eval(&source, site)?,
+                    Some(other) => other,
+                    None => Value::Undefined,
+                };
+                self.set_reg(dst, result);
             }
             Op::CallSpread {
                 dst,
