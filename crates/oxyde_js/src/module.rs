@@ -292,7 +292,7 @@ impl Vm {
             return Err(self.error("RangeError", "trop de modules imbriqués ou chargés"));
         }
         let parsed = parser::parse_module(source).and_then(|(body, info)| {
-            compiler::compile_script(&body, true, info.has_top_level_await)
+            compiler::compile_script(&body, true, info.has_top_level_await, true, false)
                 .map(|proto| (proto, info))
         });
         let (proto, info) = match parsed {

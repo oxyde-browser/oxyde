@@ -118,10 +118,12 @@ pub(crate) enum Op {
         name: u32,
         src: Reg,
     },
-    /// Définit (ou redéfinit) une variable globale déclarée.
+    /// Définit (ou redéfinit) une variable globale déclarée ; `declared` :
+    /// par le `var` d'un script, et non par un `eval`.
     InitGlobal {
         name: u32,
         src: Reg,
+        declared: bool,
     },
     /// `typeof nom` : ne lève pas d'erreur si le nom n'existe pas.
     TypeofGlobal {
@@ -168,15 +170,34 @@ pub(crate) enum Op {
     DelegateStep {
         base: Reg,
     },
+    /// Avant toute liaison d'un script : `SyntaxError` si la déclaration
+    /// globale `name` entre en collision avec une déclaration d'un script
+    /// précédent. `lexical` : `let`, `const` ou `class` ; sinon `var` ou fonction.
+    CheckGlobalDecl {
+        name: u32,
+        lexical: bool,
+    },
+    /// Crée la liaison lexicale globale `name`, non initialisée.
+    DeclareLexical {
+        name: u32,
+    },
+    /// Initialise la liaison lexicale globale `name` ; `constant` : `const`.
+    InitLexical {
+        name: u32,
+        src: Reg,
+        constant: bool,
+    },
     /// `CanDeclareGlobalFunction` : `TypeError` si l'objet global ne peut pas
     /// recevoir la fonction `name`.
     CheckGlobalFunction {
         name: u32,
     },
-    /// Déclaration d'une fonction globale.
+    /// Déclaration d'une fonction globale ; `declared` : par un script, et
+    /// non par un `eval`.
     InitGlobalFunction {
         name: u32,
         src: Reg,
+        declared: bool,
     },
     /// Objet des morceaux d'un gabarit étiqueté : le même à chaque
     /// évaluation du même gabarit.

@@ -119,6 +119,9 @@ impl Vm {
         if !source.is_nullish() {
             let key = PropertyKey::Symbol(self.well_known.async_iterator.clone());
             let method = self.get_key(source, &key)?;
+            if !method.is_nullish() && !is_callable(self, &method) {
+                return Err(self.type_error("Symbol.asyncIterator n'est pas une fonction"));
+            }
             if is_callable(self, &method) {
                 let iterator = self.call(&method, source, &[])?;
                 if iterator.as_object().is_none() {

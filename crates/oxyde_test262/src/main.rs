@@ -167,9 +167,17 @@ fn host_detach(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Null)
 }
 
+/// `$262.evalScript(source)` : évalue `source` comme un script distinct.
+fn host_eval_script(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    match args.first() {
+        Some(Value::String(source)) => vm.eval_script(source),
+        _ => Ok(Value::Undefined),
+    }
+}
+
 /// Objet `$262` minimal exposé aux tests.
 const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach, \
-     evalScript: function (source) { return (0, eval)(source); } };";
+     evalScript: __evalScript };";
 
 /// Chargeur de modules : lit le fichier désigné par `specifier`, relatif au
 /// module qui l'importe. L'identifiant d'un module est son chemin.
@@ -199,6 +207,7 @@ fn run_once(
     let global = vm.global();
     vm.define_method(global, "print", 1, host_print);
     vm.define_method(global, "__detach", 1, host_detach);
+    vm.define_method(global, "__evalScript", 1, host_eval_script);
 
     if !meta.has("raw") {
         let mut prelude = String::from(HOST_OBJECT);

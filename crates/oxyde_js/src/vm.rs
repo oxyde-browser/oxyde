@@ -168,6 +168,12 @@ pub struct Vm {
     pub(crate) regexp_originals: Vec<(JsStr, ObjId)>,
     /// Accesseur d'origine de `RegExp[Symbol.species]`.
     pub(crate) regexp_species: Option<ObjId>,
+    /// Environnement lexical global : liaisons `let`, `const` et `class` de
+    /// premier niveau des scripts. Une valeur « trou » : pas encore
+    /// initialisée ; non inscriptible : `const`.
+    global_lexicals: ObjId,
+    /// Noms déclarés par `var` ou par une fonction au premier niveau d'un script.
+    global_vars: std::collections::HashSet<JsStr>,
     /// Objets des gabarits étiquetés déjà évalués, par fonction compilée et
     /// index ; la fonction est gardée pour que son adresse reste la sienne.
     template_objects: std::collections::HashMap<(usize, u32), (Arc<FunctionProto>, ObjId)>,
@@ -276,6 +282,7 @@ impl Vm {
             date_proto: proto(&mut heap, Kind::Ordinary),
         };
         let global = proto(&mut heap, Kind::Ordinary);
+        let global_lexicals = heap.alloc(Object::new(None, Kind::Ordinary));
         let known = |id: u64, name: &str| Symbol::new(id, Some(Arc::from(name)));
         let well_known = WellKnown {
             iterator: known(1, "Symbol.iterator"),
@@ -307,6 +314,8 @@ impl Vm {
             regex_cache: std::collections::HashMap::new(),
             regexp_originals: Vec::new(),
             regexp_species: None,
+            global_lexicals,
+            global_vars: std::collections::HashSet::new(),
             template_objects: std::collections::HashMap::new(),
             regex_input: None,
             typed_protos: Vec::new(),
@@ -468,6 +477,7 @@ impl Vm {
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
             .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
             .chain(self.pending_throw.iter().cloned())
+            .chain(std::iter::once(Value::Object(self.global_lexicals)))
             .chain(
                 self.template_objects
                     .values()
@@ -834,6 +844,30 @@ impl Vm {
             Value::Object(_) | Value::Hole => this,
             primitive => self.to_object(&primitive).unwrap_or(primitive),
         }
+    }
+
+    /// Valeur de la liaison lexicale globale `name`, vue depuis la portée
+    /// `scope` (une liaison propre à un module la masque). `ReferenceError`
+    /// si elle n'est pas encore initialisée.
+    fn global_lexical(&mut self, scope: ObjId, name: &JsStr) -> JsResult<Option<Value>> {
+        let binding = match self.heap.get(self.global_lexicals).props.get(name) {
+            Some(binding) => binding,
+            None => return Ok(None),
+        };
+        let Slot::Data(value) = &binding.slot else {
+            return Ok(None);
+        };
+        let value = value.clone();
+        if scope != self.global && self.has_own(scope, name) {
+            return Ok(None);
+        }
+        if value == Value::Hole {
+            return Err(self.error(
+                "ReferenceError",
+                &format!("{name} est utilisé avant son initialisation"),
+            ));
+        }
+        Ok(Some(value))
     }
 
     /// Vrai si le code en cours d'exécution est en mode strict.
@@ -1256,6 +1290,10 @@ impl Vm {
             }
             Op::GetGlobal { dst, name } => {
                 let (name, scope) = (self.name(name), self.scope());
+                if let Some(value) = self.global_lexical(scope, &name)? {
+                    self.set_reg(dst, value);
+                    return Ok(None);
+                }
                 if !self.has_property(scope, &name) {
                     return Err(self.error("ReferenceError", &format!("{name} n'est pas défini")));
                 }
@@ -1265,6 +1303,18 @@ impl Vm {
             Op::SetGlobal { name, src } => {
                 let (name, value) = (self.name(name), self.reg(src));
                 let scope = self.scope();
+                if self.global_lexical(scope, &name)?.is_some() {
+                    let lexicals = self.global_lexicals;
+                    match self.heap.get_mut(lexicals).props.get_mut(&name) {
+                        Some(binding) if binding.writable => binding.slot = Slot::Data(value),
+                        _ => {
+                            return Err(
+                                self.type_error(&format!("affectation à la constante {name}"))
+                            );
+                        }
+                    }
+                    return Ok(None);
+                }
                 // Dans un module, affecter une variable globale existante ne
                 // doit pas créer une liaison locale qui la masquerait.
                 let target = if scope != self.global
@@ -1289,9 +1339,60 @@ impl Vm {
                     self.set(&Value::Object(target), &name, value)?;
                 }
             }
-            Op::InitGlobal { name, src } => {
+            Op::CheckGlobalDecl { name, lexical } => {
+                let name = self.name(name);
+                let lexicals = self.heap.get(self.global_lexicals);
+                let collides = if lexical {
+                    lexicals.props.contains_key(&name)
+                        || self.global_vars.contains(&name)
+                        || self
+                            .heap
+                            .get(self.global)
+                            .props
+                            .get(&name)
+                            .is_some_and(|p| !p.configurable)
+                } else {
+                    lexicals.props.contains_key(&name)
+                };
+                if collides {
+                    return Err(self.error("SyntaxError", &format!("« {name} » est déjà déclaré")));
+                }
+            }
+            Op::DeclareLexical { name } => {
+                let name = self.name(name);
+                let lexicals = self.global_lexicals;
+                self.heap
+                    .get_mut(lexicals)
+                    .props
+                    .insert(name, Property::data(Value::Hole));
+            }
+            Op::InitLexical {
+                name,
+                src,
+                constant,
+            } => {
+                let (name, value) = (self.name(name), self.reg(src));
+                let lexicals = self.global_lexicals;
+                self.heap.get_mut(lexicals).props.insert(
+                    name,
+                    Property {
+                        slot: Slot::Data(value),
+                        writable: !constant,
+                        enumerable: true,
+                        configurable: false,
+                    },
+                );
+            }
+            Op::InitGlobal {
+                name,
+                src,
+                declared,
+            } => {
                 let (name, value) = (self.name(name), self.reg(src));
                 let scope = self.scope();
+                if declared && scope == self.global {
+                    self.global_vars.insert(Arc::clone(&name));
+                }
                 if value == Value::Hole {
                     // Déclaration `var` : ne remplace pas une variable existante.
                     if !self.heap.get(scope).props.contains_key(&name) {
@@ -1314,7 +1415,9 @@ impl Vm {
             }
             Op::TypeofGlobal { dst, name } => {
                 let (name, scope) = (self.name(name), self.scope());
-                let value = if self.has_property(scope, &name) {
+                let value = if let Some(value) = self.global_lexical(scope, &name)? {
+                    value
+                } else if self.has_property(scope, &name) {
                     self.get(&Value::Object(scope), &name)?
                 } else {
                     Value::Undefined
@@ -1384,9 +1487,16 @@ impl Vm {
                 self.set_reg(base + 5, Value::Bool(done));
                 self.set_reg(base + 6, Value::Bool(returning));
             }
-            Op::InitGlobalFunction { name, src } => {
+            Op::InitGlobalFunction {
+                name,
+                src,
+                declared,
+            } => {
                 let (name, value) = (self.name(name), self.reg(src));
                 let scope = self.scope();
+                if declared && scope == self.global {
+                    self.global_vars.insert(Arc::clone(&name));
+                }
                 self.heap
                     .get_mut(scope)
                     .props

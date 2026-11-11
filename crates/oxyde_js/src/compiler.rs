@@ -118,6 +118,9 @@ struct FuncState {
     /// Paramètres pas encore liés pendant l'évaluation d'une valeur par
     /// défaut : les lire lève `ReferenceError`.
     dead_params: Vec<JsStr>,
+    /// Une déclaration lexicale de premier niveau d'un script est en cours
+    /// de compilation ; le booléen dit si c'est un `const`.
+    global_lexical: Option<bool>,
     is_async: bool,
     is_generator: bool,
 }
@@ -145,6 +148,12 @@ pub(crate) struct Compiler {
     with_depth: usize,
     /// Nombre d'instructions `with` compilées : numérote leurs liaisons.
     with_count: usize,
+    /// Le code compilé est un module : ses déclarations de premier niveau
+    /// vivent dans la portée du module, pas dans l'environnement global.
+    module: bool,
+    /// Le code compilé est celui d'un `eval` : ses déclarations lexicales
+    /// lui sont locales, et ses `var` aussi en mode strict.
+    eval: bool,
 }
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
@@ -153,12 +162,16 @@ pub(crate) fn compile_script(
     body: &[Stmt],
     strict: bool,
     is_async: bool,
+    module: bool,
+    eval: bool,
 ) -> CResult<Arc<FunctionProto>> {
     let mut compiler = Compiler {
         funcs: Vec::new(),
         name_hint: None,
         with_depth: 0,
         with_count: 0,
+        module,
+        eval,
     };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
     compiler.f().strict = strict;
@@ -168,16 +181,56 @@ pub(crate) fn compile_script(
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
     check_declarations(body, true, &[], strict)?;
+    if !module && !(eval && strict) {
+        // Collisions avec les scripts précédents, vérifiées avant toute liaison.
+        let mut lexical = Vec::new();
+        if !eval {
+            lexical_names(body, &mut lexical);
+        }
+        let mut vars = Vec::new();
+        var_names(body, &mut vars);
+        for stmt in body {
+            if let Stmt::Function(func) = stmt {
+                vars.extend(func.name.clone());
+            }
+        }
+        for (names, is_lexical) in [(&lexical, true), (&vars, false)] {
+            for name in names {
+                let name = compiler.string(name);
+                compiler.emit(Op::CheckGlobalDecl {
+                    name,
+                    lexical: is_lexical,
+                });
+            }
+        }
+        for name in &lexical {
+            let name = compiler.string(name);
+            compiler.emit(Op::DeclareLexical { name });
+        }
+    }
     // Avant toute liaison : chaque fonction globale doit pouvoir être déclarée.
     for stmt in body {
         if let Stmt::Function(func) = stmt
             && let Some(name) = &func.name
+            && !(eval && strict)
         {
             let name = compiler.string(name);
             compiler.emit(Op::CheckGlobalFunction { name });
         }
     }
-    compiler.hoist_vars(body, &[])?;
+    if eval {
+        // Code d'`eval` : ses déclarations lexicales vivent dans une portée
+        // qui lui est propre ; ses `var` sont globaux, sauf en mode strict.
+        if !strict {
+            compiler.hoist_vars(body, &[])?;
+        }
+        compiler.push_scope();
+        if strict {
+            compiler.hoist_vars(body, &[])?;
+        }
+    } else {
+        compiler.hoist_vars(body, &[])?;
+    }
     compiler.declare_block(body)?;
     for stmt in body {
         compiler.statement(stmt)?;
@@ -495,6 +548,7 @@ impl Compiler {
             param_count: 0,
             length: 0,
             dead_params: Vec::new(),
+            global_lexical: None,
             is_async: false,
             is_generator: false,
         });
@@ -900,11 +954,20 @@ impl Compiler {
                 }
             }
             Resolved::Global => {
+                let lexical = self.f().global_lexical;
                 let name = self.string(name);
-                self.emit(if init {
-                    Op::InitGlobal { name, src }
-                } else {
-                    Op::SetGlobal { name, src }
+                self.emit(match (init, lexical) {
+                    (true, Some(constant)) => Op::InitLexical {
+                        name,
+                        src,
+                        constant,
+                    },
+                    (true, None) => Op::InitGlobal {
+                        name,
+                        src,
+                        declared: false,
+                    },
+                    (false, _) => Op::SetGlobal { name, src },
                 });
             }
         }
@@ -935,9 +998,11 @@ impl Compiler {
                 let tmp = self.alloc()?;
                 self.emit(Op::LoadHole { dst: tmp });
                 let index = self.string(&name);
+                let declared = !self.eval;
                 self.emit(Op::InitGlobal {
                     name: index,
                     src: tmp,
+                    declared,
                 });
                 self.free_to(mark);
                 continue;
@@ -959,6 +1024,12 @@ impl Compiler {
     /// instructions directes d'un bloc, puis crée ses fonctions.
     fn declare_block(&mut self, body: &[Stmt]) -> CResult<()> {
         let script = self.at_script_level();
+        // Au premier niveau d'un `eval` non strict, les fonctions sont globales.
+        let global_functions = script
+            || (self.eval
+                && self.funcs.len() == 1
+                && !self.f().strict
+                && self.f().scopes.len() == 2);
         if !script {
             for stmt in body {
                 match stmt {
@@ -983,7 +1054,7 @@ impl Compiler {
                             self.emit(Op::LoadHole { dst: reg });
                         }
                     }
-                    Stmt::Function(func) => {
+                    Stmt::Function(func) if !global_functions => {
                         if let Some(name) = &func.name {
                             let reg = self.declare(name, BindKind::Var, true)?;
                             self.emit(Op::LoadUndefined { dst: reg });
@@ -1001,10 +1072,15 @@ impl Compiler {
                 let tmp = self.alloc()?;
                 let index = self.function(func, FunctionKind::Normal, false)?;
                 self.emit(Op::Closure { dst: tmp, index });
-                if script {
+                if global_functions {
                     // Fonction globale : la déclaration peut être refusée.
                     let name = self.string(name);
-                    self.emit(Op::InitGlobalFunction { name, src: tmp });
+                    let declared = !self.eval;
+                    self.emit(Op::InitGlobalFunction {
+                        name,
+                        src: tmp,
+                        declared,
+                    });
                 } else {
                     self.store(name, tmp, true)?;
                 }
@@ -1529,6 +1605,22 @@ impl Compiler {
     }
 
     fn var_declaration(&mut self, kind: VarKind, decls: &[(Pattern, Option<Expr>)]) -> CResult<()> {
+        // `let` et `const` de premier niveau d'un script vont dans
+        // l'environnement lexical global.
+        let global = kind != VarKind::Var && !self.module && self.at_script_level();
+        if global {
+            self.f().global_lexical = Some(kind == VarKind::Const);
+        }
+        let result = self.var_declaration_inner(kind, decls);
+        self.f().global_lexical = None;
+        result
+    }
+
+    fn var_declaration_inner(
+        &mut self,
+        kind: VarKind,
+        decls: &[(Pattern, Option<Expr>)],
+    ) -> CResult<()> {
         let init = kind != VarKind::Var;
         for (pattern, value) in decls {
             let mark = self.mark();
@@ -1615,7 +1707,12 @@ impl Compiler {
             Stmt::Class(class) => {
                 let reg = self.class(class, None)?;
                 if let Some(name) = &class.name {
-                    self.store(name, reg, true)?;
+                    if !self.module && self.at_script_level() {
+                        self.f().global_lexical = Some(false);
+                    }
+                    let stored = self.store(name, reg, true);
+                    self.f().global_lexical = None;
+                    stored?;
                 }
             }
             Stmt::Return(value) => {
