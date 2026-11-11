@@ -20,6 +20,8 @@ oxyde_text = { path = "crates/oxyde_text" }
 oxyde_net = { path = "crates/oxyde_net" }
 oxyde_gpu = { path = "crates/oxyde_gpu" }
 oxyde_ui = { path = "crates/oxyde_ui" }
+oxyde_content = { path = "crates/oxyde_content" }
+oxyde_js = { path = "crates/oxyde_js" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

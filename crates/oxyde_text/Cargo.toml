@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "oxyde_text"
 description = "Texte d'Oxyde : polices, mise en forme et coupure de lignes (Parley)."
 version.workspace = true

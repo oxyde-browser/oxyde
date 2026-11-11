@@ -1,0 +1,22 @@
+[package]
+name = "oxyde_content"
+description = "Page web d'Oxyde : du HTML à la liste d'affichage (pendant de //content/renderer)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif", "bmp", "ico"] }
+oxyde_css.workspace = true
+oxyde_dom.workspace = true
+oxyde_html.workspace = true
+oxyde_js.workspace = true
+oxyde_layout.workspace = true
+oxyde_paint.workspace = true
+oxyde_text.workspace = true
+url = "2"
+
+[lints]
+workspace = true

@@ -21,7 +21,12 @@ impl Color {
     /// Blanc opaque.
     pub const WHITE: Self = Self::rgb(255, 255, 255);
     /// Transparent.
-    pub const TRANSPARENT: Self = Self { r: 0, g: 0, b: 0, a: 0 };
+    pub const TRANSPARENT: Self = Self {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0,
+    };
 
     /// Couleur opaque.
     #[must_use]
@@ -78,16 +83,26 @@ fn clamp_u8(v: f32) -> u8 {
 }
 
 fn hex_color(hex: &str) -> Option<Color> {
-    let digits: Option<Vec<u8>> =
-        hex.chars().map(|c| c.to_digit(16).and_then(|d| u8::try_from(d).ok())).collect();
+    let digits: Option<Vec<u8>> = hex
+        .chars()
+        .map(|c| c.to_digit(16).and_then(|d| u8::try_from(d).ok()))
+        .collect();
     let d = digits?;
     Some(match d.as_slice() {
         [r, g, b] => Color::rgb(r * 17, g * 17, b * 17),
-        [r, g, b, a] => Color { r: r * 17, g: g * 17, b: b * 17, a: a * 17 },
+        [r, g, b, a] => Color {
+            r: r * 17,
+            g: g * 17,
+            b: b * 17,
+            a: a * 17,
+        },
         [r1, r2, g1, g2, b1, b2] => Color::rgb(r1 * 16 + r2, g1 * 16 + g2, b1 * 16 + b2),
-        [r1, r2, g1, g2, b1, b2, a1, a2] => {
-            Color { r: r1 * 16 + r2, g: g1 * 16 + g2, b: b1 * 16 + b2, a: a1 * 16 + a2 }
-        }
+        [r1, r2, g1, g2, b1, b2, a1, a2] => Color {
+            r: r1 * 16 + r2,
+            g: g1 * 16 + g2,
+            b: b1 * 16 + b2,
+            a: a1 * 16 + a2,
+        },
         _ => return None,
     })
 }
@@ -119,7 +134,11 @@ fn alpha_arg(token: Option<&&Token>) -> Option<u8> {
 fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
     let h = h.rem_euclid(360.0) / 360.0;
     let (s, l) = (s.clamp(0.0, 1.0), l.clamp(0.0, 1.0));
-    let q = if l < 0.5 { l * (1.0 + s) } else { l + s - l * s };
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
     let p = 2.0 * l - q;
     let channel = |mut t: f32| {
         t = t.rem_euclid(1.0);
@@ -151,7 +170,12 @@ fn color_function(name: &str, args: &[Token]) -> Option<Color> {
                 Token::Ident(_) => Some(0),
                 _ => None,
             };
-            Some(Color { r: channel(args[0])?, g: channel(args[1])?, b: channel(args[2])?, a })
+            Some(Color {
+                r: channel(args[0])?,
+                g: channel(args[1])?,
+                b: channel(args[2])?,
+                a,
+            })
         }
         "hsl" | "hsla" => {
             let hue = match args[0] {
@@ -204,7 +228,10 @@ pub fn parse_color(tokens: &[Token]) -> Option<(ParsedColor, usize)> {
         Token::Function(name) => {
             let close = matching_close(tokens, 0);
             let args = trim(tokens.get(1..close)?);
-            Some((ParsedColor::Color(color_function(name, args)?), (close + 1).min(tokens.len())))
+            Some((
+                ParsedColor::Color(color_function(name, args)?),
+                (close + 1).min(tokens.len()),
+            ))
         }
         _ => None,
     }
@@ -379,10 +406,34 @@ mod tests {
     fn colors() {
         assert_eq!(color("#0E1116"), Some(Color::rgb(0x0e, 0x11, 0x16)));
         assert_eq!(color("#fff"), Some(Color::WHITE));
-        assert_eq!(color("#0008"), Some(Color { r: 0, g: 0, b: 0, a: 0x88 }));
+        assert_eq!(
+            color("#0008"),
+            Some(Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 0x88
+            })
+        );
         assert_eq!(color("rgb(76, 201, 168)"), Some(Color::rgb(76, 201, 168)));
-        assert_eq!(color("rgb(100% 0% 0% / 50%)"), Some(Color { r: 255, g: 0, b: 0, a: 128 }));
-        assert_eq!(color("rgba(0,0,0,0.45)"), Some(Color { r: 0, g: 0, b: 0, a: 115 }));
+        assert_eq!(
+            color("rgb(100% 0% 0% / 50%)"),
+            Some(Color {
+                r: 255,
+                g: 0,
+                b: 0,
+                a: 128
+            })
+        );
+        assert_eq!(
+            color("rgba(0,0,0,0.45)"),
+            Some(Color {
+                r: 0,
+                g: 0,
+                b: 0,
+                a: 115
+            })
+        );
         assert_eq!(color("hsl(120, 100%, 25%)"), Some(Color::rgb(0, 128, 0)));
         assert_eq!(color("RebeccaPurple"), Some(Color::rgb(102, 51, 153)));
         assert_eq!(color("transparent"), Some(Color::TRANSPARENT));

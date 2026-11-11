@@ -1,0 +1,48 @@
+# Configuration de cargo-deny : fait respecter la règle « 100 % Rust » et les licences.
+# Lancer avec : cargo deny check
+
+# Seule plateforme livrée pour l'instant. Sur d'autres cibles, winit amène du
+# code C (`cc` via `android-activity` sur Android et `wayland-backend` sur
+# Linux) : à traiter au jalon 10, en ajoutant ici chaque cible portée.
+[graph]
+targets = ["x86_64-pc-windows-msvc"]
+
+[bans]
+multiple-versions = "allow"
+# Crates qui compilent ou embarquent du code C/C++/assembleur.
+deny = [
+    { crate = "cc", use-instead = "une dépendance en Rust pur" },
+    { crate = "cmake", use-instead = "une dépendance en Rust pur" },
+    { crate = "bindgen", use-instead = "une dépendance en Rust pur" },
+    { crate = "ring", use-instead = "rustls-rustcrypto" },
+    { crate = "aws-lc-rs", use-instead = "rustls-rustcrypto" },
+    { crate = "aws-lc-sys", use-instead = "rustls-rustcrypto" },
+    { crate = "openssl-sys", use-instead = "rustls" },
+    { crate = "libz-sys", use-instead = "miniz_oxide" },
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+    "BSL-1.0",
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+
+[advisories]
+ignore = [
+    # `paste` (macro procédurale, exécutée à la compilation seulement) est
+    # archivé par son auteur, sans vulnérabilité connue. Il vient de
+    # rustls-rustcrypto ; à retirer quand ce fournisseur TLS sera réévalué.
+    { id = "RUSTSEC-2024-0436", reason = "non maintenu, pas de faille ; dépendance de rustls-rustcrypto" },
+]

@@ -1,0 +1,29 @@
+[package]
+name = "oxyde"
+description = "Oxyde, navigateur web écrit en Rust."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+accesskit = "0.25"
+accesskit_winit = "0.34"
+anyhow = "1"
+arboard = { version = "3", default-features = false }
+base64 = "0.23"
+oxyde_content.workspace = true
+oxyde_css.workspace = true
+oxyde_gpu.workspace = true
+oxyde_net.workspace = true
+oxyde_paint.workspace = true
+oxyde_text.workspace = true
+oxyde_ui.workspace = true
+percent-encoding = "2"
+png = "0.18"
+url = "2"
+winit = "0.30"
+
+[lints]
+workspace = true

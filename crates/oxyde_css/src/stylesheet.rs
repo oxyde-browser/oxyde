@@ -24,7 +24,9 @@ enum Feature {
     MaxWidth(f32),
     MinHeight(f32),
     MaxHeight(f32),
-    Orientation { portrait: bool },
+    Orientation {
+        portrait: bool,
+    },
     /// Caractéristique constante (vraie ou fausse quel que soit l'affichage).
     Const(bool),
 }
@@ -74,7 +76,9 @@ fn media_length(tokens: &[Token]) -> Option<f32> {
 
 fn parse_feature(tokens: &[Token]) -> Feature {
     let tokens = trim(tokens);
-    let Some(Token::Ident(name)) = tokens.first() else { return Feature::Const(false) };
+    let Some(Token::Ident(name)) = tokens.first() else {
+        return Feature::Const(false);
+    };
     let name = name.to_ascii_lowercase();
     let rest = trim(&tokens[1..]);
     // Forme `nom: valeur`.
@@ -109,7 +113,9 @@ fn parse_feature(tokens: &[Token]) -> Feature {
             [Token::Delim('<'), ..] => (1, false, true),
             _ => return Feature::Const(false),
         };
-        let Some(v) = media_length(trim(&rest[op_len..])) else { return Feature::Const(false) };
+        let Some(v) = media_length(trim(&rest[op_len..])) else {
+            return Feature::Const(false);
+        };
         return match (name.as_str(), greater) {
             ("width", true) => Feature::MinWidth(v),
             ("width", false) => Feature::MaxWidth(v),
@@ -131,7 +137,11 @@ pub fn parse_media_list(tokens: &[Token]) -> MediaList {
     let mut queries = Vec::new();
     for part in split_top_level(tokens, &Token::Comma) {
         let part = trim(part);
-        let mut query = MediaQuery { negated: false, type_matches: true, features: Vec::new() };
+        let mut query = MediaQuery {
+            negated: false,
+            type_matches: true,
+            features: Vec::new(),
+        };
         let mut i = 0;
         while i < part.len() {
             match &part[i] {
@@ -143,7 +153,9 @@ pub fn parse_media_list(tokens: &[Token]) -> MediaList {
                 },
                 Token::OpenParen => {
                     let close = matching_close(part, i);
-                    query.features.push(parse_feature(part.get(i + 1..close).unwrap_or(&[])));
+                    query
+                        .features
+                        .push(parse_feature(part.get(i + 1..close).unwrap_or(&[])));
                     i = close;
                 }
                 Token::Whitespace => {}
@@ -237,9 +249,14 @@ fn parse_rules(tokens: &[Token], media: &[MediaList], out: &mut Vec<Rule>, depth
                 }
                 let close = matching_close(tokens, end);
                 if let Some(selectors) = parse_selector_list(trim(&tokens[i..end])) {
-                    let declarations = parse_declarations(tokens.get(end + 1..close).unwrap_or(&[]));
+                    let declarations =
+                        parse_declarations(tokens.get(end + 1..close).unwrap_or(&[]));
                     if !declarations.is_empty() {
-                        out.push(Rule { selectors, declarations, media: media.to_vec() });
+                        out.push(Rule {
+                            selectors,
+                            declarations,
+                            media: media.to_vec(),
+                        });
                     }
                 }
                 i = close + 1;
@@ -252,8 +269,14 @@ fn parse_rules(tokens: &[Token], media: &[MediaList], out: &mut Vec<Rule>, depth
 mod tests {
     use super::*;
 
-    const WIDE: Viewport = Viewport { width: 1440.0, height: 900.0 };
-    const NARROW: Viewport = Viewport { width: 390.0, height: 844.0 };
+    const WIDE: Viewport = Viewport {
+        width: 1440.0,
+        height: 900.0,
+    };
+    const NARROW: Viewport = Viewport {
+        width: 390.0,
+        height: 844.0,
+    };
 
     #[test]
     fn rules_and_recovery() {
@@ -281,7 +304,11 @@ mod tests {
              @layer base { e { color: red } }",
         );
         let active = |v: Viewport| -> Vec<bool> {
-            sheet.rules.iter().map(|r| r.media.iter().all(|m| m.matches(v))).collect()
+            sheet
+                .rules
+                .iter()
+                .map(|r| r.media.iter().all(|m| m.matches(v)))
+                .collect()
         };
         assert_eq!(active(WIDE), [true, false, false, false, true]);
         assert_eq!(active(NARROW), [false, true, false, false, true]);

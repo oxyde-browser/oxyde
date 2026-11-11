@@ -1,0 +1,597 @@
+//! Tas d'objets et ramasse-miettes traçant (marquage puis balayage).
+//!
+//! Le tas est une arène : les objets vivent dans un `Vec` et sont désignés
+//! par leur index ([`ObjId`]). Ce choix garde le moteur en Rust sûr, sans
+//! aucun pointeur brut. Les emplacements libérés sont réutilisés.
+//!
+//! INVARIANT : un `ObjId` atteignable depuis les racines désigne toujours un
+//! emplacement occupé. Un identifiant périmé ne peut pas provoquer d'accès
+//! mémoire invalide : il désigne au pire un autre objet ou l'objet vide.
+
+use std::sync::Arc;
+
+use indexmap::IndexMap;
+
+use crate::bytecode::{FunctionProto, Reg};
+use crate::value::{JsStr, ObjId, PropertyKey, Symbol, Value};
+use crate::vm::{NativeDataFn, NativeFn};
+
+/// Référence à une cellule de variable capturée par une fermeture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct UpId(pub(crate) u32);
+
+/// Variable capturée : encore dans la pile de registres, ou déplacée dans le tas.
+#[derive(Clone, Debug)]
+pub(crate) enum Upvalue {
+    /// Index absolu dans la pile de registres.
+    Open(usize),
+    Closed(Value),
+}
+
+/// Contenu d'une propriété.
+#[derive(Clone, Debug)]
+pub(crate) enum Slot {
+    Data(Value),
+    Accessor {
+        get: Option<ObjId>,
+        set: Option<ObjId>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Property {
+    pub(crate) slot: Slot,
+    pub(crate) writable: bool,
+    pub(crate) enumerable: bool,
+    pub(crate) configurable: bool,
+}
+
+impl Property {
+    /// Propriété de données ordinaire (créée par affectation).
+    pub(crate) fn data(value: Value) -> Self {
+        Self {
+            slot: Slot::Data(value),
+            writable: true,
+            enumerable: true,
+            configurable: true,
+        }
+    }
+
+    /// Propriété de données non énumérable (méthodes des objets natifs).
+    pub(crate) fn hidden(value: Value) -> Self {
+        Self {
+            slot: Slot::Data(value),
+            writable: true,
+            enumerable: false,
+            configurable: true,
+        }
+    }
+}
+
+/// Clé normalisée de `Map` et `Set` (égalité « SameValueZero »).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum MapKey {
+    Undefined,
+    Null,
+    Bool(bool),
+    /// Bits du nombre, `-0` ramené à `+0` et `NaN` canonique.
+    Number(u64),
+    String(JsStr),
+    Symbol(Symbol),
+    Object(ObjId),
+}
+
+impl MapKey {
+    pub(crate) fn from_value(value: &Value) -> Self {
+        match value {
+            Value::Undefined | Value::Hole => Self::Undefined,
+            Value::Null => Self::Null,
+            Value::Bool(b) => Self::Bool(*b),
+            Value::Number(n) => {
+                let normalized = if *n == 0.0 {
+                    0.0
+                } else if n.is_nan() {
+                    f64::NAN
+                } else {
+                    *n
+                };
+                Self::Number(normalized.to_bits())
+            }
+            Value::String(s) => Self::String(Arc::clone(s)),
+            Value::Symbol(s) => Self::Symbol(s.clone()),
+            Value::Object(id) => Self::Object(*id),
+        }
+    }
+}
+
+/// Fonction JavaScript compilée, avec les variables qu'elle capture.
+#[derive(Clone, Debug)]
+pub(crate) struct Closure {
+    pub(crate) proto: Arc<FunctionProto>,
+    pub(crate) upvalues: Vec<UpId>,
+    /// `this` lexical d'une fonction fléchée.
+    pub(crate) bound_this: Option<Value>,
+    /// Objet d'attache d'une méthode, pour résoudre `super`.
+    pub(crate) home: Option<ObjId>,
+    /// Constructeur de la classe mère (`super(...)`).
+    pub(crate) parent: Option<ObjId>,
+    /// Fonction d'initialisation des champs d'instance de la classe.
+    pub(crate) fields: Option<ObjId>,
+}
+
+/// État d'un itérateur interne (`for…in`, `for…of`).
+#[derive(Clone, Debug)]
+pub(crate) enum IterState {
+    /// Clés énumérables d'un objet, figées au début de la boucle.
+    Keys { keys: Vec<JsStr>, index: usize },
+    /// Éléments d'un tableau, relus à chaque tour.
+    Array { target: ObjId, index: usize },
+    /// Valeurs figées (chaînes, `Map`, `Set`, itérables convertis).
+    Values { values: Vec<Value>, index: usize },
+    /// Objet respectant le protocole d'itération (`next()` → `{ value, done }`).
+    Protocol { iterator: Value, next: Value },
+}
+
+/// Cadre d'exécution d'une coroutine suspendue, sorti de la pile.
+#[derive(Clone, Debug)]
+pub(crate) struct SavedFrame {
+    pub(crate) closure: ObjId,
+    pub(crate) proto: Arc<FunctionProto>,
+    pub(crate) pc: usize,
+    pub(crate) this: Value,
+    pub(crate) new_target: Value,
+    pub(crate) args: Vec<Value>,
+    pub(crate) handlers: Vec<(u32, Reg)>,
+    /// Fenêtre de registres au moment de la suspension.
+    pub(crate) registers: Vec<Value>,
+    /// Variables capturées qui étaient encore dans la pile : (registre, cellule).
+    /// Leur valeur vit dans la cellule pendant la suspension.
+    pub(crate) upvalues: Vec<(usize, UpId)>,
+    /// Registre qui reçoit la valeur transmise à la reprise.
+    pub(crate) resume_reg: Reg,
+}
+
+/// État d'une coroutine (générateur ou fonction async).
+#[derive(Clone, Debug)]
+pub(crate) enum CoState {
+    /// Créée mais pas encore démarrée.
+    Start {
+        closure: ObjId,
+        this: Value,
+        args: Vec<Value>,
+    },
+    Suspended(Box<SavedFrame>),
+    Running,
+    Done,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Coroutine {
+    pub(crate) state: CoState,
+    /// Promesse rendue par l'appel d'une fonction async ; `None` : générateur.
+    pub(crate) promise: Option<ObjId>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum PromiseState {
+    Pending,
+    Fulfilled(Value),
+    Rejected(Value),
+}
+
+/// Réaction enregistrée par `then` sur une promesse en attente.
+#[derive(Clone, Debug)]
+pub(crate) struct Reaction {
+    pub(crate) on_fulfilled: Value,
+    pub(crate) on_rejected: Value,
+    /// Promesse dérivée, résolue avec le résultat du gestionnaire.
+    pub(crate) target: Option<ObjId>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PromiseData {
+    pub(crate) state: PromiseState,
+    pub(crate) reactions: Vec<Reaction>,
+    /// Vrai dès qu'un gestionnaire a été attaché (rejets non gérés).
+    pub(crate) handled: bool,
+}
+
+/// Nature d'un objet (emplacements internes).
+#[derive(Clone, Debug)]
+pub(crate) enum Kind {
+    Ordinary,
+    Array(Vec<Value>),
+    Closure(Closure),
+    Native {
+        func: NativeFn,
+        constructor: bool,
+    },
+    /// Fonction native accompagnée de valeurs capturées.
+    NativeData {
+        func: NativeDataFn,
+        data: Vec<Value>,
+    },
+    Coroutine(Box<Coroutine>),
+    Promise(Box<PromiseData>),
+    /// Expression rationnelle compilée, avec le texte de son motif.
+    RegExp {
+        regex: Arc<crate::regexp::Regex>,
+        source: JsStr,
+    },
+    Bound {
+        target: ObjId,
+        this: Value,
+        args: Vec<Value>,
+    },
+    Error,
+    /// Objet enveloppe de `Boolean`, `Number` ou `String`.
+    Primitive(Value),
+    Map(IndexMap<MapKey, (Value, Value)>),
+    Set(IndexMap<MapKey, Value>),
+    Iterator(IterState),
+    /// Objet de l'hôte (nœud du DOM…) : classe et donnée opaques pour le moteur.
+    Host {
+        class: u32,
+        data: u64,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Object {
+    pub(crate) proto: Option<ObjId>,
+    pub(crate) props: IndexMap<JsStr, Property>,
+    /// Propriétés dont la clé est un symbole (vide pour la plupart des objets).
+    pub(crate) symbols: IndexMap<Symbol, Property>,
+    pub(crate) kind: Kind,
+    pub(crate) extensible: bool,
+}
+
+impl Object {
+    pub(crate) fn new(proto: Option<ObjId>, kind: Kind) -> Self {
+        Self {
+            proto,
+            props: IndexMap::new(),
+            symbols: IndexMap::new(),
+            kind,
+            extensible: true,
+        }
+    }
+
+    /// Propriété propre désignée par `key`.
+    pub(crate) fn prop(&self, key: &PropertyKey) -> Option<&Property> {
+        match key {
+            PropertyKey::String(s) => self.props.get(s),
+            PropertyKey::Symbol(s) => self.symbols.get(s),
+        }
+    }
+
+    /// Crée ou remplace la propriété propre `key`.
+    pub(crate) fn insert_prop(&mut self, key: PropertyKey, property: Property) {
+        match key {
+            PropertyKey::String(s) => {
+                self.props.insert(s, property);
+            }
+            PropertyKey::Symbol(s) => {
+                self.symbols.insert(s, property);
+            }
+        }
+    }
+
+    pub(crate) fn is_callable(&self) -> bool {
+        matches!(
+            self.kind,
+            Kind::Closure(_) | Kind::Native { .. } | Kind::NativeData { .. } | Kind::Bound { .. }
+        )
+    }
+}
+
+/// Nombre d'allocations entre deux passages du ramasse-miettes, au minimum.
+const GC_MIN_THRESHOLD: usize = 4096;
+
+pub(crate) struct Heap {
+    objects: Vec<Option<Object>>,
+    free: Vec<u32>,
+    upvalues: Vec<Option<Upvalue>>,
+    free_upvalues: Vec<u32>,
+    /// Objet renvoyé en lecture pour un identifiant périmé ; jamais modifié.
+    empty: Object,
+    /// Reçoit les écritures faites à travers un identifiant périmé.
+    scratch: Object,
+    allocated_since_gc: usize,
+    threshold: usize,
+    /// Nombre de passages du ramasse-miettes (pour les tests et le diagnostic).
+    pub(crate) collections: usize,
+}
+
+impl Heap {
+    pub(crate) fn new() -> Self {
+        Self {
+            objects: Vec::new(),
+            free: Vec::new(),
+            upvalues: Vec::new(),
+            free_upvalues: Vec::new(),
+            empty: Object::new(None, Kind::Ordinary),
+            scratch: Object::new(None, Kind::Ordinary),
+            allocated_since_gc: 0,
+            threshold: GC_MIN_THRESHOLD,
+            collections: 0,
+        }
+    }
+
+    pub(crate) fn alloc(&mut self, object: Object) -> ObjId {
+        self.allocated_since_gc += 1;
+        if let Some(index) = self.free.pop()
+            && let Some(slot) = self.objects.get_mut(index as usize)
+        {
+            *slot = Some(object);
+            return ObjId(index);
+        }
+        let index = u32::try_from(self.objects.len()).unwrap_or(u32::MAX);
+        self.objects.push(Some(object));
+        ObjId(index)
+    }
+
+    pub(crate) fn get(&self, id: ObjId) -> &Object {
+        self.objects
+            .get(id.0 as usize)
+            .and_then(Option::as_ref)
+            .unwrap_or(&self.empty)
+    }
+
+    pub(crate) fn get_mut(&mut self, id: ObjId) -> &mut Object {
+        match self.objects.get_mut(id.0 as usize) {
+            Some(Some(object)) => object,
+            // Identifiant périmé : les écritures partent dans un objet jetable, remis à neuf.
+            _ => {
+                self.scratch = Object::new(None, Kind::Ordinary);
+                &mut self.scratch
+            }
+        }
+    }
+
+    /// Nombre d'objets vivants.
+    pub(crate) fn live_objects(&self) -> usize {
+        self.objects.len() - self.free.len()
+    }
+
+    pub(crate) fn alloc_upvalue(&mut self, upvalue: Upvalue) -> UpId {
+        if let Some(index) = self.free_upvalues.pop()
+            && let Some(slot) = self.upvalues.get_mut(index as usize)
+        {
+            *slot = Some(upvalue);
+            return UpId(index);
+        }
+        let index = u32::try_from(self.upvalues.len()).unwrap_or(u32::MAX);
+        self.upvalues.push(Some(upvalue));
+        UpId(index)
+    }
+
+    pub(crate) fn upvalue(&self, id: UpId) -> Option<&Upvalue> {
+        self.upvalues.get(id.0 as usize).and_then(Option::as_ref)
+    }
+
+    pub(crate) fn upvalue_mut(&mut self, id: UpId) -> Option<&mut Upvalue> {
+        self.upvalues
+            .get_mut(id.0 as usize)
+            .and_then(Option::as_mut)
+    }
+
+    /// Vrai si assez d'objets ont été alloués pour justifier une collecte.
+    pub(crate) fn should_collect(&self) -> bool {
+        self.allocated_since_gc >= self.threshold
+    }
+
+    /// Marque tout ce qui est atteignable depuis `roots` (valeurs) et
+    /// `upvalue_roots` (cellules encore ouvertes), puis libère le reste.
+    pub(crate) fn collect(&mut self, roots: impl Iterator<Item = Value>, upvalue_roots: &[UpId]) {
+        let mut marked = vec![false; self.objects.len()];
+        let mut marked_upvalues = vec![false; self.upvalues.len()];
+        let mut pending: Vec<ObjId> = Vec::new();
+        let mut pending_upvalues: Vec<UpId> = upvalue_roots.to_vec();
+        let push = |value: &Value, pending: &mut Vec<ObjId>| {
+            if let Value::Object(id) = value {
+                pending.push(*id);
+            }
+        };
+        for root in roots {
+            push(&root, &mut pending);
+        }
+        loop {
+            if let Some(up) = pending_upvalues.pop() {
+                let Some(flag) = marked_upvalues.get_mut(up.0 as usize) else {
+                    continue;
+                };
+                if std::mem::replace(flag, true) {
+                    continue;
+                }
+                if let Some(Upvalue::Closed(value)) = self.upvalue(up) {
+                    push(value, &mut pending);
+                }
+                continue;
+            }
+            let Some(id) = pending.pop() else { break };
+            let Some(flag) = marked.get_mut(id.0 as usize) else {
+                continue;
+            };
+            if std::mem::replace(flag, true) {
+                continue;
+            }
+            let Some(Some(object)) = self.objects.get(id.0 as usize) else {
+                continue;
+            };
+            pending.extend(object.proto);
+            for property in object.props.values().chain(object.symbols.values()) {
+                match &property.slot {
+                    Slot::Data(value) => push(value, &mut pending),
+                    Slot::Accessor { get, set } => {
+                        pending.extend(*get);
+                        pending.extend(*set);
+                    }
+                }
+            }
+            match &object.kind {
+                Kind::Ordinary
+                | Kind::Native { .. }
+                | Kind::Error
+                | Kind::Host { .. }
+                | Kind::RegExp { .. } => {}
+                Kind::Array(items) => items.iter().for_each(|v| push(v, &mut pending)),
+                Kind::Closure(closure) => {
+                    pending_upvalues.extend(&closure.upvalues);
+                    if let Some(this) = &closure.bound_this {
+                        push(this, &mut pending);
+                    }
+                    pending.extend(closure.home);
+                    pending.extend(closure.parent);
+                    pending.extend(closure.fields);
+                }
+                Kind::Bound { target, this, args } => {
+                    pending.push(*target);
+                    push(this, &mut pending);
+                    args.iter().for_each(|v| push(v, &mut pending));
+                }
+                Kind::Primitive(value) => push(value, &mut pending),
+                Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),
+                Kind::Coroutine(coroutine) => {
+                    pending.extend(coroutine.promise);
+                    match &coroutine.state {
+                        CoState::Start {
+                            closure,
+                            this,
+                            args,
+                        } => {
+                            pending.push(*closure);
+                            push(this, &mut pending);
+                            args.iter().for_each(|v| push(v, &mut pending));
+                        }
+                        CoState::Suspended(frame) => {
+                            pending.push(frame.closure);
+                            push(&frame.this, &mut pending);
+                            push(&frame.new_target, &mut pending);
+                            frame.args.iter().for_each(|v| push(v, &mut pending));
+                            frame.registers.iter().for_each(|v| push(v, &mut pending));
+                            pending_upvalues.extend(frame.upvalues.iter().map(|(_, id)| *id));
+                        }
+                        CoState::Running | CoState::Done => {}
+                    }
+                }
+                Kind::Promise(promise) => {
+                    match &promise.state {
+                        PromiseState::Pending => {}
+                        PromiseState::Fulfilled(value) | PromiseState::Rejected(value) => {
+                            push(value, &mut pending);
+                        }
+                    }
+                    for reaction in &promise.reactions {
+                        push(&reaction.on_fulfilled, &mut pending);
+                        push(&reaction.on_rejected, &mut pending);
+                        pending.extend(reaction.target);
+                    }
+                }
+                Kind::Map(map) => {
+                    for (key, value) in map.values() {
+                        push(key, &mut pending);
+                        push(value, &mut pending);
+                    }
+                }
+                Kind::Set(set) => set.values().for_each(|v| push(v, &mut pending)),
+                Kind::Iterator(state) => match state {
+                    IterState::Keys { .. } => {}
+                    IterState::Array { target, .. } => pending.push(*target),
+                    IterState::Values { values, .. } => {
+                        values.iter().for_each(|v| push(v, &mut pending))
+                    }
+                    IterState::Protocol { iterator, next } => {
+                        push(iterator, &mut pending);
+                        push(next, &mut pending);
+                    }
+                },
+            }
+        }
+        for (index, slot) in self.objects.iter_mut().enumerate() {
+            if slot.is_some() && !marked.get(index).copied().unwrap_or(false) {
+                *slot = None;
+                self.free.push(u32::try_from(index).unwrap_or(u32::MAX));
+            }
+        }
+        for (index, slot) in self.upvalues.iter_mut().enumerate() {
+            if slot.is_some() && !marked_upvalues.get(index).copied().unwrap_or(false) {
+                *slot = None;
+                self.free_upvalues
+                    .push(u32::try_from(index).unwrap_or(u32::MAX));
+            }
+        }
+        self.allocated_since_gc = 0;
+        // Prochaine collecte quand le tas aura doublé, pour amortir le coût du marquage.
+        self.threshold = (self.live_objects() * 2).max(GC_MIN_THRESHOLD);
+        self.collections += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ordinary(heap: &mut Heap) -> ObjId {
+        heap.alloc(Object::new(None, Kind::Ordinary))
+    }
+
+    #[test]
+    fn unreachable_objects_are_freed_and_slots_reused() {
+        let mut heap = Heap::new();
+        let root = ordinary(&mut heap);
+        let child = ordinary(&mut heap);
+        let garbage = ordinary(&mut heap);
+        heap.get_mut(root)
+            .props
+            .insert(Arc::from("c"), Property::data(Value::Object(child)));
+        // Cycle entre deux objets inatteignables.
+        let cycle = ordinary(&mut heap);
+        heap.get_mut(garbage).proto = Some(cycle);
+        heap.get_mut(cycle)
+            .props
+            .insert(Arc::from("g"), Property::data(Value::Object(garbage)));
+
+        heap.collect(std::iter::once(Value::Object(root)), &[]);
+        assert_eq!(heap.live_objects(), 2);
+        assert_eq!(heap.collections, 1);
+        assert!(heap.get(root).props.contains_key("c"));
+        let reused = ordinary(&mut heap);
+        assert!(
+            reused == garbage || reused == cycle,
+            "un emplacement libéré est réutilisé"
+        );
+    }
+
+    #[test]
+    fn closed_upvalues_keep_their_values_alive() {
+        let mut heap = Heap::new();
+        let captured = ordinary(&mut heap);
+        let up = heap.alloc_upvalue(Upvalue::Closed(Value::Object(captured)));
+        let dead_up = heap.alloc_upvalue(Upvalue::Closed(Value::Null));
+        heap.collect(std::iter::empty(), &[up]);
+        assert_eq!(heap.live_objects(), 1);
+        assert!(heap.upvalue(up).is_some());
+        assert!(heap.upvalue(dead_up).is_none());
+    }
+
+    #[test]
+    fn stale_ids_are_harmless() {
+        let mut heap = Heap::new();
+        let id = ordinary(&mut heap);
+        heap.collect(std::iter::empty(), &[]);
+        assert!(heap.get(id).props.is_empty());
+        heap.get_mut(id)
+            .props
+            .insert(Arc::from("x"), Property::data(Value::Null));
+        assert!(heap.get(ObjId(9999)).props.is_empty());
+    }
+
+    #[test]
+    fn map_keys_follow_same_value_zero() {
+        let key = |v: Value| MapKey::from_value(&v);
+        assert_eq!(key(Value::Number(0.0)), key(Value::Number(-0.0)));
+        assert_eq!(key(Value::Number(f64::NAN)), key(Value::Number(-f64::NAN)));
+        assert_ne!(key(Value::Number(1.0)), key(Value::string("1")));
+    }
+}

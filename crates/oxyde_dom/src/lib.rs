@@ -65,7 +65,10 @@ impl ElementData {
     /// Valeur de l'attribut `name`, s'il existe.
     #[must_use]
     pub fn attr(&self, name: &str) -> Option<&str> {
-        self.attrs.iter().find(|a| a.name == name).map(|a| a.value.as_str())
+        self.attrs
+            .iter()
+            .find(|a| a.name == name)
+            .map(|a| a.value.as_str())
     }
 
     /// Vrai si l'attribut `name` est présent.
@@ -180,6 +183,14 @@ impl Document {
         NodeId(0)
     }
 
+    /// Identifiant du nœud d'index `index` dans l'arène, s'il existe.
+    #[must_use]
+    pub fn id_from_index(&self, index: usize) -> Option<NodeId> {
+        (index < self.nodes.len())
+            .then(|| u32::try_from(index).ok().map(NodeId))
+            .flatten()
+    }
+
     /// Nombre de nœuds dans l'arène (attachés ou non).
     #[must_use]
     pub fn len(&self) -> usize {
@@ -244,9 +255,70 @@ impl Document {
         id
     }
 
+    /// Remplace le texte d'un nœud texte ou commentaire ; sans effet sur les autres nœuds.
+    pub fn set_text(&mut self, id: NodeId, text: &str) {
+        if let NodeData::Text(t) | NodeData::Comment(t) = &mut self.node_mut(id).data {
+            text.clone_into(t);
+        }
+    }
+
+    /// Fixe l'attribut `name` de l'élément `id` (créé s'il n'existe pas).
+    pub fn set_attr(&mut self, id: NodeId, name: &str, value: &str) {
+        if let Some(element) = self.element_mut(id) {
+            match element.attrs.iter_mut().find(|a| a.name == name) {
+                Some(attr) => value.clone_into(&mut attr.value),
+                None => element.attrs.push(Attribute {
+                    name: name.to_owned(),
+                    value: value.to_owned(),
+                }),
+            }
+        }
+    }
+
+    /// Retire l'attribut `name` de l'élément `id`.
+    pub fn remove_attr(&mut self, id: NodeId, name: &str) {
+        if let Some(element) = self.element_mut(id) {
+            element.attrs.retain(|a| a.name != name);
+        }
+    }
+
+    /// Détache tous les enfants de `id`.
+    pub fn remove_children(&mut self, id: NodeId) {
+        while let Some(child) = self.node(id).first_child {
+            self.detach(child);
+        }
+    }
+
+    /// Vrai si `ancestor` est `node` ou l'un de ses ancêtres.
+    #[must_use]
+    pub fn contains(&self, ancestor: NodeId, node: NodeId) -> bool {
+        ancestor == node || self.ancestors(node).any(|a| a == ancestor)
+    }
+
+    /// Copie dans ce document le sous-arbre `node` du document `source` ;
+    /// renvoie la racine de la copie, détachée.
+    pub fn import(&mut self, source: &Document, node: NodeId) -> NodeId {
+        // Parcours itératif : (nœud source, parent de la copie).
+        let root = self.push(source.node(node).data.clone());
+        let mut pending: Vec<(NodeId, NodeId)> = source.children(node).map(|c| (c, root)).collect();
+        pending.reverse();
+        while let Some((src, parent)) = pending.pop() {
+            let copy = self.push(source.node(src).data.clone());
+            self.append_child(parent, copy);
+            let before = pending.len();
+            pending.extend(source.children(src).map(|c| (c, copy)));
+            pending[before..].reverse();
+        }
+        root
+    }
+
     /// Crée un élément détaché.
     pub fn create_element(&mut self, name: &str, ns: Namespace, attrs: Vec<Attribute>) -> NodeId {
-        self.push(NodeData::Element(ElementData { name: name.to_owned(), ns, attrs }))
+        self.push(NodeData::Element(ElementData {
+            name: name.to_owned(),
+            ns,
+            attrs,
+        }))
     }
 
     /// Crée un nœud texte détaché.
@@ -392,7 +464,8 @@ impl Document {
     /// Premier élément descendant de `id` portant le nom HTML `name`.
     #[must_use]
     pub fn find_html_element(&self, id: NodeId, name: &str) -> Option<NodeId> {
-        self.descendants(id).find(|n| self.element(*n).is_some_and(|e| e.is_html(name)))
+        self.descendants(id)
+            .find(|n| self.element(*n).is_some_and(|e| e.is_html(name)))
     }
 
     /// Concatène le texte de tous les descendants de `id`.
@@ -426,11 +499,18 @@ impl Document {
         // `write!` vers une `String` ne peut pas échouer.
         let _ = match &self.node(id).data {
             NodeData::Document => Ok(()),
-            NodeData::Doctype { name, public_id, system_id } => {
+            NodeData::Doctype {
+                name,
+                public_id,
+                system_id,
+            } => {
                 if public_id.is_empty() && system_id.is_empty() {
                     writeln!(out, "| {indent}<!DOCTYPE {name}>")
                 } else {
-                    writeln!(out, "| {indent}<!DOCTYPE {name} \"{public_id}\" \"{system_id}\">")
+                    writeln!(
+                        out,
+                        "| {indent}<!DOCTYPE {name} \"{public_id}\" \"{system_id}\">"
+                    )
                 }
             }
             NodeData::Element(e) => {

@@ -305,8 +305,14 @@ impl Lexer<'_> {
 /// Découpe `source` en jetons ; les blancs consécutifs sont fusionnés.
 #[must_use]
 pub fn tokenize(source: &str) -> Vec<Token> {
-    let chars: Vec<char> = source.chars().map(|c| if c == '\0' { '\u{fffd}' } else { c }).collect();
-    let mut lexer = Lexer { chars: &chars, pos: 0 };
+    let chars: Vec<char> = source
+        .chars()
+        .map(|c| if c == '\0' { '\u{fffd}' } else { c })
+        .collect();
+    let mut lexer = Lexer {
+        chars: &chars,
+        pos: 0,
+    };
     let mut out = Vec::new();
     while let Some(token) = lexer.next() {
         if token == Token::Whitespace && out.last() == Some(&Token::Whitespace) {
@@ -365,8 +371,14 @@ pub fn split_top_level<'a>(tokens: &'a [Token], sep: &Token) -> Vec<&'a [Token]>
 /// Retire les blancs en tête et en queue.
 #[must_use]
 pub fn trim(tokens: &[Token]) -> &[Token] {
-    let start = tokens.iter().position(|t| *t != Token::Whitespace).unwrap_or(tokens.len());
-    let end = tokens.iter().rposition(|t| *t != Token::Whitespace).map_or(start, |i| i + 1);
+    let start = tokens
+        .iter()
+        .position(|t| *t != Token::Whitespace)
+        .unwrap_or(tokens.len());
+    let end = tokens
+        .iter()
+        .rposition(|t| *t != Token::Whitespace)
+        .map_or(start, |i| i + 1);
     &tokens[start..end]
 }
 
