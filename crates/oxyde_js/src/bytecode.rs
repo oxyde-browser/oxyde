@@ -363,6 +363,26 @@ pub(crate) enum Op {
         key: Reg,
         src: Reg,
     },
+    /// `using` : crée la pile de ressources d'une portée.
+    UsingStack {
+        dst: Reg,
+    },
+    /// `using x = src` : inscrit la ressource dans la pile.
+    UsingAdd {
+        stack: Reg,
+        src: Reg,
+        is_async: bool,
+    },
+    /// Libère les ressources de la pile, de la dernière à la première ;
+    /// `error` est l'exception en cours si `has_error`. `dst` reçoit la
+    /// promesse à attendre quand la libération est asynchrone.
+    UsingDispose {
+        dst: Reg,
+        stack: Reg,
+        error: Reg,
+        has_error: bool,
+        is_async: bool,
+    },
     /// Nomme d'après `key` la fonction anonyme `func` (clé calculée d'un
     /// littéral d'objet).
     NameMember {

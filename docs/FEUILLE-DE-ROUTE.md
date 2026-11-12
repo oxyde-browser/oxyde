@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **42 992 tests de test262 sur 48 795 (88,1 %)** ; il en reste 5 803.
+- `oxyde_js` réussit **43 123 tests de test262 sur 48 795 (88,4 %)** ; il en reste 5 672.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -136,8 +136,12 @@ aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isol
 
 - **`using` et `DisposableStack`** (338) : les intégrés sont faits (`Symbol.dispose`,
   `Symbol.asyncDispose`, `DisposableStack`, `AsyncDisposableStack`, libération des
-  itérateurs : 236 tests), écrits en JavaScript embarqué. Restent les déclarations
-  `using` et `await using`.
+  itérateurs : 236 tests), écrits en JavaScript embarqué, ainsi que les déclarations
+  `using` et `await using` (131 tests) : dans les blocs, les corps de fonction et de
+  module, et les têtes de boucle. Une portée qui en déclare tient une pile de ressources,
+  vidée à sa sortie, par un saut comme par une exception. Au passage, les noms liés par
+  la tête d'un `for…in` ou `for…of` sont en zone morte pendant l'évaluation de l'objet
+  parcouru.
 - **`import defer`, `import source`, attributs d'importation** (320).
 - **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
   `includes` et `join` (210 tests). Restent 3 tests qui écrivent `length = 2^32 - 1` sur

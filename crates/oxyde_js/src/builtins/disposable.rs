@@ -7,7 +7,21 @@
 //! les marques internes des piles sont des champs privés.
 
 use crate::value::Value;
-use crate::vm::Vm;
+use crate::vm::{JsResult, Vm};
+
+/// Emplacement interne de l'objet global où vivent les opérations de `using`.
+const USING_SLOT: &str = "usingOperations";
+
+impl Vm {
+    /// Opération `name` de `using` (`newStack`, `addResource`, `disposeSync`,
+    /// `disposeAsync`) dans le royaume courant.
+    pub(crate) fn using_operation(&mut self, name: &str) -> JsResult {
+        match self.slot(self.global, USING_SLOT) {
+            Some(parts) => self.get(&parts, name),
+            None => Err(self.type_error("« using » n'est pas disponible dans ce royaume")),
+        }
+    }
+}
 
 /// Installe les piles de ressources et les méthodes de libération des
 /// itérateurs dans le royaume courant.
@@ -15,6 +29,9 @@ pub(super) fn install(vm: &mut Vm) {
     let Ok(parts) = vm.eval_script(include_str!("disposable.js")) else {
         return;
     };
+    // Les opérations de `using` : gardées dans un emplacement interne de
+    // l'objet global, hors de portée des scripts.
+    vm.set_slot(vm.global, USING_SLOT, parts.clone());
     let known = vm.well_known.clone();
     for name in ["DisposableStack", "AsyncDisposableStack"] {
         if let Ok(class) = vm.get(&parts, name) {

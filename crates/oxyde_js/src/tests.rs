@@ -2949,3 +2949,95 @@ fn disposable_stacks() {
         "[Symbol.iterator],true,false"
     );
 }
+
+#[test]
+fn using_declarations() {
+    let prelude = "var log = []; \
+        function res(name) { return { [Symbol.dispose]() { log.push(name); } }; } ";
+    let run = |body: &str| eval(&format!("{prelude}{body}"));
+    // Libération en sortie de bloc, dans l'ordre inverse des déclarations.
+    assert_eq!(
+        run("{ using a = res('a'), b = res('b'); using c = null; log.push('corps'); } log.join()"),
+        "corps,b,a"
+    );
+    // À la sortie par `return`, `break` ou `continue`, et par exception.
+    assert_eq!(
+        run("function f() { using a = res('a'); return log.length; } [f(), log.join()].join(' ')"),
+        "0 a"
+    );
+    assert_eq!(
+        run(
+            "for (var i = 0; i < 3; i++) { using a = res(i); if (i == 1) continue; \
+             if (i == 2) break; log.push('x'); } log.join()"
+        ),
+        "x,0,1,2"
+    );
+    assert_eq!(
+        run("try { using a = res('a'); throw new Error('boum'); } \
+             catch (e) { log.push(e.message); } log.join()"),
+        "a,boum"
+    );
+    // Une libération qui lève enveloppe l'exception en cours.
+    assert_eq!(
+        run(
+            "try { using a = { [Symbol.dispose]() { throw new Error('fin'); } }; \
+             throw new Error('corps'); } \
+             catch (e) { [e.name, e.error.message, e.suppressed.message].join() }"
+        ),
+        "SuppressedError,fin,corps"
+    );
+    // Boucles : ressource de la boucle entière, ou d'un tour.
+    assert_eq!(
+        run("for (using a = res('a'), n = null; log.length < 2;) log.push('tour'); log.join()"),
+        "tour,tour,a"
+    );
+    assert_eq!(
+        run("for (using a of [res(1), res(2)]) log.push('tour'); log.join()"),
+        "tour,1,tour,2"
+    );
+    // Liaison constante, en zone morte avant son initialisation.
+    assert!(run("{ using a = res('a'); a = 1; }").contains("TypeError"));
+    assert!(run("{ a; using a = res('a'); }").contains("ReferenceError"));
+    assert!(run("{ using a = 1; }").contains("TypeError"));
+    assert!(run("{ using a = {}; }").contains("TypeError"));
+    // Syntaxe : ni au premier niveau d'un script, ni dans une clause de
+    // `switch`, ni sans initialisation, ni avec un motif.
+    for source in [
+        "using a = null;",
+        "switch (1) { case 1: using a = null; }",
+        "{ using a; }",
+        "{ using {a} = null; }",
+        "if (1) using a = null;",
+        "for (using a in {}) ;",
+        "function f() { await using a = null; }",
+    ] {
+        assert!(eval(source).contains("SyntaxError"), "{source}");
+    }
+    // `using` reste un identifiant ordinaire.
+    assert_eq!(eval("var using = 2; using\n* 3"), "6");
+    assert_eq!(
+        eval("var using = [7]; var x = 0; for (using of [5]) ; using"),
+        "5"
+    );
+    // `await using` : la libération asynchrone est attendue.
+    let mut vm = Vm::new();
+    let step = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    assert_eq!(
+        step(
+            &mut vm,
+            "var log = []; \
+             (async function () { \
+               { await using a = { async [Symbol.asyncDispose]() { await null; log.push('a'); } }; \
+                 using b = { [Symbol.dispose]() { log.push('b'); } }; \
+                 log.push('corps'); } \
+               log.push('suite'); \
+               for await (using c of [{ [Symbol.dispose]() { log.push('c'); } }]) log.push('tour'); \
+             })().then(() => log.push('fin')); log.join()"
+        ),
+        "corps,b"
+    );
+    assert_eq!(step(&mut vm, "log.join()"), "corps,b,a,suite,tour,c,fin");
+}

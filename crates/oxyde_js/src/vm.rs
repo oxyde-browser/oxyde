@@ -2400,6 +2400,53 @@ impl Vm {
                         .insert_prop(key, Property::data(value));
                 }
             }
+            Op::UsingStack { dst } => {
+                let create = self.using_operation("newStack")?;
+                let stack = self.call(&create, &Value::Undefined, &[])?;
+                self.set_reg(dst, stack);
+            }
+            Op::UsingAdd {
+                stack,
+                src,
+                is_async,
+            } => {
+                let add = self.using_operation("addResource")?;
+                let args = [self.reg(stack), self.reg(src), Value::Bool(is_async)];
+                self.call(&add, &Value::Undefined, &args)?;
+            }
+            Op::UsingDispose {
+                dst,
+                stack,
+                error,
+                has_error,
+                is_async,
+            } => {
+                let name = if is_async {
+                    "disposeAsync"
+                } else {
+                    "disposeSync"
+                };
+                let dispose = self.using_operation(name)?;
+                let pending = if has_error {
+                    self.reg(error)
+                } else {
+                    Value::Undefined
+                };
+                let stack_value = self.reg(stack);
+                let empty = is_async && self.get(&stack_value, "top")? == Value::Null;
+                if empty && has_error {
+                    // Aucune ressource : l'exception en cours repart telle quelle.
+                    return Err(pending);
+                }
+                let result = if empty {
+                    // Rien à libérer, donc rien à attendre.
+                    Value::Bool(false)
+                } else {
+                    let args = [stack_value, Value::Bool(has_error), pending];
+                    self.call(&dispose, &Value::Undefined, &args)?
+                };
+                self.set_reg(dst, result);
+            }
             Op::NameMember { func, key } => {
                 let key = self.to_key(&self.reg(key))?;
                 let value = self.reg(func);

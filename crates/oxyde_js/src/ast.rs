@@ -7,6 +7,17 @@ pub(crate) enum VarKind {
     Var,
     Let,
     Const,
+    /// `using x = …` : constante dont la ressource est libérée en sortie de portée.
+    Using,
+    /// `await using x = …` : de même, la libération étant attendue.
+    AwaitUsing,
+}
+
+impl VarKind {
+    /// Vrai pour `using` et `await using`.
+    pub(crate) fn is_using(self) -> bool {
+        matches!(self, Self::Using | Self::AwaitUsing)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

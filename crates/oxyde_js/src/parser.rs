@@ -149,6 +149,9 @@ struct Parser {
     no_return: bool,
     /// Vrai pendant l'analyse de paramètres : `yield` et `await` y sont interdits.
     in_params: bool,
+    /// Vrai là où une déclaration `using` est interdite : au premier niveau
+    /// d'un script et directement dans une clause de `switch`.
+    no_using: bool,
     /// Étiquettes des instructions englobantes de la fonction courante.
     labels: Vec<Arc<str>>,
     /// Corps de classes en cours d'analyse, du plus externe au plus interne.
@@ -327,6 +330,7 @@ impl Parser {
             in_static_block: false,
             no_return: false,
             in_params: false,
+            no_using: !module,
             labels: Vec::new(),
             private_scopes: Vec::new(),
             cover_init: None,
@@ -931,6 +935,7 @@ impl Parser {
     /// Le booléen dit si le corps porte la directive `"use strict"`.
     fn function_body(&mut self) -> PResult<(Vec<Stmt>, bool)> {
         self.expect_punct("{")?;
+        let no_using = std::mem::replace(&mut self.no_using, false);
         let mut body = Vec::new();
         let directive = self.directives(&mut body)?;
         while !self.is_punct("}") {
@@ -939,7 +944,68 @@ impl Parser {
             }
             body.push(self.statement()?);
         }
+        self.no_using = no_using;
         Ok((body, directive))
+    }
+
+    /// Vrai si le jeton courant ouvre une déclaration `using` : le mot
+    /// `using`, suivi sur la même ligne d'un nom de liaison.
+    fn using_follows(&self) -> PResult<bool> {
+        if !self.is_kw("using") || self.tok.escaped {
+            return Ok(false);
+        }
+        let next = self.lexer.clone().next()?;
+        Ok(!next.newline_before
+            && matches!(&next.tok, Tok::Ident(word) if word != "in" && word != "instanceof"))
+    }
+
+    /// Vrai si le jeton courant ouvre une déclaration `await using`, là où
+    /// `await` est un opérateur.
+    /// Comme [`Self::using_follows`], dans la tête d'un `for` : `using of`
+    /// n'y ouvre pas une déclaration.
+    fn for_using_follows(&self) -> PResult<bool> {
+        if !self.using_follows()? {
+            return Ok(false);
+        }
+        let mut probe = self.lexer.clone();
+        if !matches!(&probe.next()?.tok, Tok::Ident(word) if word == "of") {
+            return Ok(true);
+        }
+        // `using of = …` déclare une liaison nommée `of`.
+        Ok(probe.next()?.tok == Tok::Punct("="))
+    }
+
+    fn await_using_follows(&self) -> PResult<bool> {
+        if !self.is_kw("await") || self.tok.escaped || !self.in_async {
+            return Ok(false);
+        }
+        let mut probe = self.lexer.clone();
+        let using = probe.next()?;
+        if using.newline_before
+            || using.escaped
+            || !matches!(&using.tok, Tok::Ident(word) if word == "using")
+        {
+            return Ok(false);
+        }
+        let name = probe.next()?;
+        Ok(!name.newline_before
+            && matches!(&name.tok, Tok::Ident(word) if word != "in" && word != "instanceof"))
+    }
+
+    /// `using x = …;` ou `await using x = …;` ; le jeton courant est `using`
+    /// ou `await`.
+    fn using_declaration(&mut self, kind: VarKind) -> PResult<Stmt> {
+        if self.no_using {
+            return self.error("déclaration « using » interdite ici");
+        }
+        if kind == VarKind::AwaitUsing {
+            self.top_level_await |= self.module && !self.in_function;
+            self.advance()?;
+        }
+        self.advance()?;
+        let decls = self.declarators(kind)?;
+        self.semicolon()?;
+        Ok(Stmt::VarDecl(kind, decls))
     }
 
     /// Instruction en position de corps (`if`, boucle) : les déclarations y
@@ -957,6 +1023,12 @@ impl Parser {
                 }
                 "async" if self.async_function_follows()? => {
                     return self.error("déclaration de fonction interdite ici");
+                }
+                "using" if self.using_follows()? => {
+                    return self.error("déclaration interdite ici");
+                }
+                "await" if self.await_using_follows()? => {
+                    return self.error("déclaration interdite ici");
                 }
                 "let" => {
                     let next = self.peek()?;
@@ -1002,6 +1074,8 @@ impl Parser {
         let lexical = self.is_kw("const")
             || self.is_kw("class")
             || (self.is_kw("async") && self.async_function_follows()?)
+            || self.using_follows()?
+            || self.await_using_follows()?
             || (self.is_kw("let") && {
                 let next = self.peek()?;
                 matches!(next.tok, Tok::Punct("["))
@@ -1018,6 +1092,7 @@ impl Parser {
 
     fn block(&mut self) -> PResult<Vec<Stmt>> {
         self.expect_punct("{")?;
+        let no_using = std::mem::replace(&mut self.no_using, false);
         let mut body = Vec::new();
         while !self.is_punct("}") {
             if self.tok.tok == Tok::Eof {
@@ -1025,6 +1100,7 @@ impl Parser {
             }
             body.push(self.statement()?);
         }
+        self.no_using = no_using;
         self.advance()?;
         Ok(body)
     }
@@ -1064,6 +1140,8 @@ impl Parser {
                 self.semicolon()?;
                 Ok(Stmt::VarDecl(VarKind::Let, decls))
             }
+            "using" if self.using_follows()? => self.using_declaration(VarKind::Using),
+            "await" if self.await_using_follows()? => self.using_declaration(VarKind::AwaitUsing),
             "function" => {
                 let start = self.tok.start;
                 self.advance()?;
@@ -1212,6 +1290,9 @@ impl Parser {
         let mut decls = Vec::new();
         loop {
             let pattern = self.binding_pattern()?;
+            if kind.is_using() && !matches!(pattern, Pattern::Ident(_)) {
+                return self.error("« using » ne lie que des identifiants");
+            }
             if kind != VarKind::Var {
                 let mut names = Vec::new();
                 crate::compiler::pattern_names(&pattern, &mut names);
@@ -1225,7 +1306,7 @@ impl Parser {
                 None
             };
             if init.is_none() && !self.no_in {
-                if kind == VarKind::Const {
+                if kind == VarKind::Const || kind.is_using() {
                     return self.error("une constante doit être initialisée");
                 }
                 if !matches!(pattern, Pattern::Ident(_)) {
@@ -1263,6 +1344,11 @@ impl Parser {
                 {
                     Some(VarKind::Let)
                 }
+                // `for (using of …)` : `using` y reste un identifiant.
+                Tok::Ident(w) if w == "using" && self.for_using_follows()? => Some(VarKind::Using),
+                Tok::Ident(w) if w == "await" && self.await_using_follows()? => {
+                    Some(VarKind::AwaitUsing)
+                }
                 _ => None,
             };
             // `for (async of …)` est interdit : il se lirait comme le début
@@ -1278,6 +1364,10 @@ impl Parser {
             self.no_in = true;
             let parsed = match decl_kind {
                 Some(kind) => {
+                    if kind == VarKind::AwaitUsing {
+                        self.top_level_await |= self.module && !self.in_function;
+                        self.advance()?;
+                    }
                     self.advance()?;
                     self.declarators(kind).map(|d| ForInit::Decl(kind, d))
                 }
@@ -1290,7 +1380,7 @@ impl Parser {
                 self.advance()?;
                 let target = match parsed {
                     ForInit::Decl(kind, mut decls) => {
-                        if decls.len() != 1 {
+                        if decls.len() != 1 || (kind.is_using() && !of) {
                             return self.error("déclaration invalide dans for…in / for…of");
                         }
                         let (pattern, init) = decls.remove(0);
@@ -1336,7 +1426,9 @@ impl Parser {
                     return self.error("« for await » exige la forme « of »");
                 }
                 let body = self.substatement(false)?;
-                if let ForTarget::Decl(VarKind::Let | VarKind::Const, pattern) = &target {
+                if let ForTarget::Decl(kind, pattern) = &target
+                    && *kind != VarKind::Var
+                {
                     let mut names = Vec::new();
                     crate::compiler::pattern_names(pattern, &mut names);
                     self.check_loop_names(&names, &body)?;
@@ -1359,7 +1451,9 @@ impl Parser {
             if let ForInit::Decl(kind, decls) = &parsed {
                 for (pattern, value) in decls {
                     if value.is_none()
-                        && (*kind == VarKind::Const || !matches!(pattern, Pattern::Ident(_)))
+                        && (*kind == VarKind::Const
+                            || kind.is_using()
+                            || !matches!(pattern, Pattern::Ident(_)))
                     {
                         return self.error("déclaration sans initialisation");
                     }
@@ -1469,6 +1563,8 @@ impl Parser {
                 Some(self.expression()?)
             };
             self.expect_punct(":")?;
+            // Pas de `using` directement dans une clause.
+            let no_using = std::mem::replace(&mut self.no_using, true);
             let mut body = Vec::new();
             while !self.is_kw("case") && !self.is_kw("default") && !self.is_punct("}") {
                 if self.tok.tok == Tok::Eof {
@@ -1476,6 +1572,7 @@ impl Parser {
                 }
                 body.push(self.statement()?);
             }
+            self.no_using = no_using;
             cases.push((test, body));
         }
         Ok(Stmt::Switch {
