@@ -107,8 +107,8 @@ pub(crate) enum Op {
         src: Reg,
         /// Second argument d'`import()` (`undefined` s'il est absent).
         options: Reg,
-        /// `import.source(…)` : la source du module, non son espace de noms.
-        source: bool,
+        /// Phase : 0 `import()`, 1 `import.source()`, 2 `import.defer()`.
+        source: u8,
     },
     /// Fonction en cours d'exécution (nom d'une expression de fonction nommée).
     LoadCallee {

@@ -188,8 +188,9 @@ pub(crate) enum Expr {
     SuperCall(Vec<Expr>),
     NewTarget,
     /// `import(spécificateur)` et son second argument éventuel (options) ;
-    /// le booléen distingue `import.source(spécificateur)`.
-    ImportCall(Box<Expr>, Option<Box<Expr>>, bool),
+    /// l'entier est la phase : 0 `import()`, 1 `import.source()`, 2
+    /// `import.defer()`.
+    ImportCall(Box<Expr>, Option<Box<Expr>>, u8),
     /// `yield expr`, `yield* expr` (dans un générateur seulement).
     Yield {
         arg: Option<Box<Expr>>,

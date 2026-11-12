@@ -37,8 +37,9 @@ pub(crate) enum Job {
         promise: ObjId,
         specifier: JsStr,
         referrer: JsStr,
-        /// `import.source(…)` : chargement seul, puis rejet.
-        source: bool,
+        /// Phase : 1 `import.source(…)`, chargement seul puis rejet ; 2
+        /// `import.defer(…)`, espace de noms différé.
+        source: u8,
     },
 }
 

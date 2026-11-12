@@ -182,6 +182,7 @@ impl Vm {
             if let Some(result) = self.exotic_get(obj, key) {
                 return result;
             }
+            self.touch_deferred(obj, Some(key))?;
             let object = self.heap.get(obj);
             match object.props.get(key).map(|p| &p.slot) {
                 Some(Slot::Data(value)) => return Ok(value.clone()),

@@ -3157,3 +3157,68 @@ fn import_attributes() {
         "7,TypeError,TypeError,TypeError"
     );
 }
+
+#[test]
+fn import_defer() {
+    // Le module différé n'est évalué qu'au premier usage d'une de ses
+    // propriétés ; ni un symbole ni `then` ne le déclenchent.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    "import defer * as lent from './lent';
+                     import './vif';
+                     globalThis.out = [globalThis.journal.join()];
+                     out.push(Object.prototype.toString.call(lent), lent.then, typeof lent[Symbol.iterator]);
+                     out.push(globalThis.journal.join());
+                     out.push(lent.valeur, globalThis.journal.join(), 'absent' in lent);"
+                ),
+                (
+                    "lent",
+                    "(globalThis.journal ??= []).push('lent'); export const valeur = 7; export const then = 1;"
+                ),
+                ("vif", "(globalThis.journal ??= []).push('vif');"),
+            ],
+            "out.join(' ')"
+        ),
+        "vif [object Deferred Module]  undefined vif 7 vif,lent false"
+    );
+    // Importé aussi sans `defer`, il est évalué normalement ; les deux
+    // espaces de noms sont des objets distincts.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    "import defer * as a from './dep'; import * as b from './dep';
+                     globalThis.out = [globalThis.vu, a === b, a.x === b.x].join();"
+                ),
+                ("dep", "globalThis.vu = 1; export const x = {};"),
+            ],
+            "out"
+        ),
+        "1,false,true"
+    );
+    // `import source` : un module JavaScript n'a pas de source à fournir.
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import source s from './dep';"),
+                ("dep", "export {};")
+            ],
+            "1"
+        )
+        .contains("SyntaxError")
+    );
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import defer x from './dep';"),
+                ("dep", "export default 1;")
+            ],
+            "1"
+        )
+        .contains("SyntaxError")
+    );
+}

@@ -482,10 +482,31 @@ impl Parser {
             self.module_request(info)?;
             return self.semicolon();
         }
+        // `import defer * as ns from …` et `import source x from …`.
+        let mut phase = 0u8;
+        if !self.tok.escaped {
+            let mut probe = self.lexer.clone();
+            let next = probe.next()?;
+            if self.is_kw("defer") && next.tok == Tok::Punct("*") {
+                phase = 2;
+            } else if self.is_kw("source")
+                && let Tok::Ident(word) = &next.tok
+                && (word != "from" || matches!(&probe.next()?.tok, Tok::Ident(w) if w == "from"))
+            {
+                phase = 1;
+            }
+            if phase != 0 {
+                self.advance()?;
+            }
+        }
         // (nom dans la source ; `None` : espace de noms, liaison locale).
         let mut bindings: Vec<(Option<Arc<str>>, Arc<str>)> = Vec::new();
         let mut more = true;
-        if matches!(self.tok.tok, Tok::Ident(_)) {
+        if phase == 1 {
+            // Une seule liaison, qui reçoit la source du module.
+            bindings.push((Some(Arc::from("default")), self.binding_ident()?));
+            more = false;
+        } else if phase == 0 && matches!(self.tok.tok, Tok::Ident(_)) {
             bindings.push((Some(Arc::from("default")), self.binding_ident()?));
             more = self.eat_punct(",")?;
         }
@@ -516,6 +537,11 @@ impl Parser {
         }
         let request = self.from_clause(info)?;
         self.semicolon()?;
+        if phase == 2
+            && let Some(count) = info.deferred.get_mut(request)
+        {
+            *count += 1;
+        }
         for (name, local) in bindings {
             if info.imports.iter().any(|i| i.local == local) {
                 return self.error(format!("« {local} » est importé deux fois"));
@@ -524,6 +550,7 @@ impl Parser {
                 request,
                 name,
                 local,
+                phase,
             });
         }
         Ok(())
@@ -2962,7 +2989,7 @@ impl Parser {
                     Ok(Expr::ImportCall(
                         Box::new(specifier),
                         options.map(Box::new),
-                        false,
+                        0,
                     ))
                 }
                 "import" if self.peek_is_punct(".")? => {
@@ -2970,8 +2997,8 @@ impl Parser {
                     self.advance()?;
                     // `import.source(x)` et `import.defer(x)` : un seul argument.
                     let phase = match &self.tok.tok {
-                        Tok::Ident(word) if !self.tok.escaped && word == "source" => Some(true),
-                        Tok::Ident(word) if !self.tok.escaped && word == "defer" => Some(false),
+                        Tok::Ident(word) if !self.tok.escaped && word == "source" => Some(1),
+                        Tok::Ident(word) if !self.tok.escaped && word == "defer" => Some(2),
                         _ => None,
                     };
                     if let Some(source) = phase

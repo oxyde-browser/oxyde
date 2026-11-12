@@ -201,6 +201,8 @@ pub struct Vm {
     pub(crate) typed_protos: Vec<ObjId>,
     /// Modules chargés, par identifiant.
     pub(crate) modules: IndexMap<JsStr, crate::module::ModuleRecord>,
+    /// Espaces de noms différés dont le module n'est pas encore évalué.
+    pub(crate) deferred_namespaces: std::collections::HashMap<ObjId, JsStr>,
     /// Fonction de l'hôte qui fournit le texte des modules importés.
     pub(crate) module_loader: Option<crate::module::ModuleLoader>,
     /// `Array.prototype[Symbol.iterator]` et `next` des itérateurs internes,
@@ -459,6 +461,7 @@ impl Vm {
             global_vars: std::collections::HashSet::new(),
             template_objects: std::collections::HashMap::new(),
             regex_input: None,
+            deferred_namespaces: std::collections::HashMap::new(),
             regexp_legacy: crate::builtins::regexp::LegacyStatics::default(),
             typed_protos: Vec::new(),
             modules: IndexMap::new(),

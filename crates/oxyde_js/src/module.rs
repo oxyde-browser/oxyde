@@ -60,6 +60,8 @@ pub(crate) struct Import {
     /// Nom exporté par la source ; `None` : l'espace de noms entier (`* as`).
     pub(crate) name: Option<JsStr>,
     pub(crate) local: JsStr,
+    /// 0 : importation ordinaire ; 1 : `import source` ; 2 : `import defer`.
+    pub(crate) phase: u8,
 }
 
 /// Ce qu'un module importe et exporte, relevé à l'analyse.
@@ -67,6 +69,10 @@ pub(crate) struct Import {
 pub(crate) struct ModuleInfo {
     /// Spécificateurs des modules demandés, sans doublon, dans l'ordre du texte.
     pub(crate) requests: Vec<JsStr>,
+    /// Pour chaque demande, le nombre de fois où elle est faite, et parmi
+    /// elles le nombre d'`import defer`.
+    pub(crate) uses: Vec<u32>,
+    pub(crate) deferred: Vec<u32>,
     pub(crate) imports: Vec<Import>,
     /// (nom exporté, liaison locale).
     pub(crate) local_exports: Vec<(JsStr, JsStr)>,
@@ -83,10 +89,22 @@ impl ModuleInfo {
     /// Index de `specifier` dans les modules demandés, ajouté au besoin.
     pub(crate) fn request(&mut self, specifier: &str) -> usize {
         if let Some(index) = self.requests.iter().position(|r| &**r == specifier) {
+            if let Some(count) = self.uses.get_mut(index) {
+                *count += 1;
+            }
             return index;
         }
         self.requests.push(Arc::from(specifier));
+        self.uses.push(1);
+        self.deferred.push(0);
         self.requests.len() - 1
+    }
+
+    /// Vrai si la demande `index` n'est faite que par des `import defer` :
+    /// le module n'est alors évalué qu'à son premier usage.
+    pub(crate) fn defer_only(&self, index: usize) -> bool {
+        let deferred = self.deferred.get(index).copied().unwrap_or(0);
+        deferred > 0 && self.uses.get(index).copied() == Some(deferred)
     }
 
     /// Vrai si `name` est déjà exporté par ce module.
@@ -116,6 +134,8 @@ pub(crate) struct ModuleRecord {
     deps: Vec<JsStr>,
     state: ModuleState,
     namespace: Option<ObjId>,
+    /// Espace de noms différé (`import defer`), distinct de l'ordinaire.
+    deferred_namespace: Option<ObjId>,
 }
 
 impl ModuleRecord {
@@ -123,6 +143,7 @@ impl ModuleRecord {
     pub(crate) fn trace(&self, out: &mut Vec<Value>) {
         out.push(Value::Object(self.scope));
         out.extend(self.namespace.map(Value::Object));
+        out.extend(self.deferred_namespace.map(Value::Object));
         if let ModuleState::Failed(value) = &self.state {
             out.push(value.clone());
         }
@@ -181,7 +202,7 @@ impl Vm {
         &mut self,
         specifier: &Value,
         scope: Option<ObjId>,
-        source: bool,
+        source: u8,
         options: &Value,
     ) -> Value {
         let promise = self.new_promise();
@@ -273,9 +294,28 @@ impl Vm {
         promise: ObjId,
         specifier: &JsStr,
         referrer: &JsStr,
-        source: bool,
+        source: u8,
     ) {
-        if source {
+        if source == 2 {
+            // `import.defer(…)` : chargé et lié, évalué au premier usage.
+            let before = self.modules.len();
+            let loaded = self
+                .load_request(specifier, referrer, 0)
+                .and_then(|id| self.link_modules().map(|()| id))
+                .and_then(|id| {
+                    self.evaluate_async_parts(&id, &mut Vec::new(), 0)?;
+                    self.module_namespace_of(&id, true)
+                });
+            match loaded {
+                Ok(namespace) => self.resolve_promise(promise, Value::Object(namespace)),
+                Err(thrown) => {
+                    self.modules.truncate(before);
+                    self.settle(promise, true, thrown);
+                }
+            }
+            return;
+        }
+        if source == 1 {
             let thrown = match self.load_only(specifier, referrer) {
                 Ok(()) => self.error(
                     "SyntaxError",
@@ -347,6 +387,7 @@ impl Vm {
                 deps: Vec::new(),
                 state: ModuleState::Loaded,
                 namespace: None,
+                deferred_namespace: None,
             },
         );
         Ok(key)
@@ -495,6 +536,7 @@ impl Vm {
                 deps: Vec::new(),
                 state: ModuleState::Loaded,
                 namespace: None,
+                deferred_namespace: None,
             },
         );
         let mut deps = Vec::with_capacity(info.requests.len());
@@ -525,9 +567,17 @@ impl Vm {
                 let Some(dep) = deps.get(import.request) else {
                     return Err(self.type_error(&format!("module {id} : dépendance non chargée")));
                 };
+                if import.phase == 1 {
+                    return Err(self.error(
+                        "SyntaxError",
+                        &format!("import source : le module « {dep} » n'a pas de source à fournir"),
+                    ));
+                }
                 let property = match &import.name {
                     None => Property {
-                        slot: Slot::Data(Value::Object(self.module_namespace(dep)?)),
+                        slot: Slot::Data(Value::Object(
+                            self.module_namespace_of(dep, import.phase == 2)?,
+                        )),
                         writable: false,
                         enumerable: true,
                         configurable: false,
@@ -673,20 +723,41 @@ impl Vm {
     /// Objet espace de noms du module `id` (`import * as ns`), créé au
     /// premier besoin.
     fn module_namespace(&mut self, id: &JsStr) -> JsResult<ObjId> {
-        if let Some(namespace) = self.modules.get(id).and_then(|r| r.namespace) {
+        self.module_namespace_of(id, false)
+    }
+
+    /// Espace de noms du module `id`. `deferred` : celui d'`import defer`,
+    /// objet distinct, qui n'expose pas `then` et dont le premier usage
+    /// d'une propriété évalue le module.
+    fn module_namespace_of(&mut self, id: &JsStr, deferred: bool) -> JsResult<ObjId> {
+        let known = self.modules.get(id).and_then(|r| {
+            if deferred {
+                r.deferred_namespace
+            } else {
+                r.namespace
+            }
+        });
+        if let Some(namespace) = known {
             return Ok(namespace);
         }
         let namespace = self.heap.alloc(Object::new(None, Kind::Ordinary));
         // Enregistré avant de résoudre les exports : un cycle d'importations
         // retrouve ce même objet.
         match self.modules.get_mut(id) {
+            Some(record) if deferred => record.deferred_namespace = Some(namespace),
             Some(record) => record.namespace = Some(namespace),
             None => return Err(self.type_error(&format!("module « {id} » non chargé"))),
+        }
+        if deferred {
+            self.deferred_namespaces.insert(namespace, Arc::clone(id));
         }
         let mut names = Vec::new();
         self.export_names(id, &mut Vec::new(), &mut names);
         names.sort();
         for name in names {
+            if deferred && &*name == "then" {
+                continue;
+            }
             if let Some((scope, local)) = self.resolve_export(id, &name, &mut Vec::new())? {
                 let property = self.live_binding(scope, &local);
                 self.heap.get_mut(namespace).props.insert(name, property);
@@ -696,7 +767,11 @@ impl Vm {
         self.heap.get_mut(namespace).insert_prop(
             PropertyKey::Symbol(tag),
             Property {
-                slot: Slot::Data(Value::string("Module")),
+                slot: Slot::Data(Value::string(if deferred {
+                    "Deferred Module"
+                } else {
+                    "Module"
+                })),
                 writable: false,
                 enumerable: false,
                 configurable: false,
@@ -704,6 +779,90 @@ impl Vm {
         );
         self.heap.get_mut(namespace).extensible = false;
         Ok(namespace)
+    }
+
+    /// Évalue, dans le graphe d'un module différé, ce qui ne peut pas
+    /// attendre : les modules qui emploient `await` au premier niveau, que
+    /// l'usage synchrone d'un espace de noms ne saurait lancer.
+    fn evaluate_async_parts(
+        &mut self,
+        id: &JsStr,
+        seen: &mut Vec<JsStr>,
+        depth: usize,
+    ) -> JsResult<()> {
+        if seen.contains(id) {
+            return Ok(());
+        }
+        seen.push(Arc::clone(id));
+        let Some(record) = self.modules.get(id) else {
+            return Ok(());
+        };
+        if !matches!(record.state, ModuleState::Loaded | ModuleState::Linked) {
+            return Ok(());
+        }
+        let (info, deps) = (Arc::clone(&record.info), record.deps.clone());
+        if info.has_top_level_await {
+            return self.evaluate_module(id, depth);
+        }
+        for (index, dep) in deps.iter().enumerate() {
+            if !info.defer_only(index) {
+                self.evaluate_async_parts(dep, seen, depth + 1)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Vrai si le module `id` ou l'une de ses dépendances est en cours
+    /// d'évaluation.
+    fn evaluating(&self, id: &JsStr, seen: &mut Vec<JsStr>) -> bool {
+        if seen.contains(id) {
+            return false;
+        }
+        seen.push(Arc::clone(id));
+        let Some(record) = self.modules.get(id) else {
+            return false;
+        };
+        match record.state {
+            ModuleState::Evaluating => true,
+            ModuleState::Evaluated | ModuleState::Failed(_) => false,
+            ModuleState::Loaded | ModuleState::Linked => {
+                let deps = record.deps.clone();
+                deps.iter().any(|dep| self.evaluating(dep, seen))
+            }
+        }
+    }
+
+    /// Usage d'un espace de noms différé : `object` en est-il un, et `key`
+    /// (`None` : l'énumération des clés) déclenche-t-elle l'évaluation de
+    /// son module ? Ni un symbole ni `then` ne la déclenchent.
+    ///
+    /// # Errors
+    /// `TypeError` si le module est en cours d'évaluation ; ce que lève le
+    /// module.
+    pub(crate) fn touch_deferred(&mut self, object: ObjId, key: Option<&str>) -> JsResult<()> {
+        if self.deferred_namespaces.is_empty() || key == Some("then") {
+            return Ok(());
+        }
+        let Some(id) = self.deferred_namespaces.get(&object).cloned() else {
+            return Ok(());
+        };
+        // Un identifiant d'objet réemployé n'est plus cet espace de noms.
+        let live = self
+            .modules
+            .get(&id)
+            .is_some_and(|record| record.deferred_namespace == Some(object));
+        if !live {
+            self.deferred_namespaces.remove(&object);
+            return Ok(());
+        }
+        if self.evaluating(&id, &mut Vec::new()) {
+            return Err(self.type_error(&format!(
+                "le module différé « {id} » est en cours d'évaluation"
+            )));
+        }
+        self.evaluate_module(&id, 0)?;
+        self.deferred_namespaces.remove(&object);
+        Ok(())
     }
 
     /// Évalue le module `id` après ses dépendances.
@@ -722,9 +881,15 @@ impl Vm {
         }
         record.state = ModuleState::Evaluating;
         let (scope, deps, proto) = (record.scope, record.deps.clone(), record.proto.take());
+        let info = Arc::clone(&record.info);
         let mut result = Ok(());
-        for dep in &deps {
-            result = self.evaluate_module(dep, depth + 1);
+        for (index, dep) in deps.iter().enumerate() {
+            // Demandée seulement par `import defer` : évaluée à son premier usage.
+            result = if info.defer_only(index) {
+                self.evaluate_async_parts(dep, &mut Vec::new(), depth + 1)
+            } else {
+                self.evaluate_module(dep, depth + 1)
+            };
             if result.is_err() {
                 break;
             }

@@ -319,6 +319,9 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_get_own_property(id, key);
         }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
+        }
         // Objet hôte : une clé que l'hôte annonce est une propriété propre,
         // en lecture seule, dont il sert la valeur.
         if let PropertyKey::String(name) = key
@@ -430,6 +433,9 @@ impl Vm {
     ) -> JsResult<bool> {
         if self.is_proxy(id) {
             return self.proxy_define_own_property(id, key, desc);
+        }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
         }
         if let PropertyKey::String(name) = key
             && let Some(cell) = self.mapped_argument(id, name)
@@ -693,6 +699,9 @@ impl Vm {
             if self.is_proxy(obj) {
                 return self.proxy_has(obj, key);
             }
+            if let PropertyKey::String(name) = key {
+                self.touch_deferred(obj, Some(name))?;
+            }
             if let PropertyKey::String(name) = key
                 && matches!(self.heap.get(obj).kind, Kind::TypedArray(_))
                 && let Some(index) = canonical_numeric_index(name)
@@ -733,6 +742,10 @@ impl Vm {
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
+            // Un espace de noms différé refuse l'écriture sans rien évaluer.
+            if !self.deferred_namespaces.is_empty() && self.deferred_namespaces.contains_key(&obj) {
+                return Ok(false);
+            }
             match &self.heap.get(obj).kind {
                 Kind::Proxy(_) => return self.proxy_set(obj, key, value, receiver),
                 Kind::TypedArray(_) => {
@@ -799,6 +812,9 @@ impl Vm {
     pub(crate) fn delete_property(&mut self, id: ObjId, key: &PropertyKey) -> JsResult<bool> {
         if self.is_proxy(id) {
             return self.proxy_delete(id, key);
+        }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
         }
         let name = match key {
             PropertyKey::String(name) => name,
@@ -888,6 +904,7 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_own_keys(id);
         }
+        self.touch_deferred(id, None)?;
         let own = self.ordinary_own_keys(id);
         // Objet hôte : les clés que l'hôte ajoute viennent en tête.
         if let Kind::Host { class, data } = &self.heap.get(id).kind {
@@ -954,6 +971,7 @@ impl Vm {
     /// `for…in`), dans l'ordre de `[[OwnPropertyKeys]]`.
     pub(crate) fn enumerable_own_keys(&mut self, id: ObjId) -> JsResult<Vec<JsStr>> {
         if !self.is_proxy(id) {
+            self.touch_deferred(id, None)?;
             return Ok(self.own_keys(id, true));
         }
         let mut keys = Vec::new();
