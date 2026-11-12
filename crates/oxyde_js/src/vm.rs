@@ -148,6 +148,9 @@ pub struct HostHooks {
     pub get: fn(&mut Vm, u32, u64, &str) -> Option<JsResult>,
     /// Écriture d'une propriété d'un objet hôte ; `None` : propriété ordinaire.
     pub set: fn(&mut Vm, u32, u64, &str, &Value) -> Option<JsResult<()>>,
+    /// Clés propres qu'un objet hôte ajoute aux siennes (les rangs d'une
+    /// collection, par exemple), dans l'ordre.
+    pub keys: fn(&mut Vm, u32, u64) -> Vec<String>,
 }
 
 /// Machine virtuelle JavaScript : un tas, un objet global, une pile.

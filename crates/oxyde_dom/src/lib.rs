@@ -240,6 +240,8 @@ pub struct Document {
     iterators: Vec<IteratorState>,
     /// Adresses des espaces de noms [`Namespace::Other`].
     namespaces: Vec<String>,
+    /// Compteur de modifications (voir [`Document::version`]).
+    version: u64,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -309,6 +311,7 @@ impl Document {
             ranges: Vec::new(),
             iterators: Vec::new(),
             namespaces: Vec::new(),
+            version: 0,
         }
     }
 
@@ -509,7 +512,16 @@ impl Document {
         self.group = 0;
     }
 
+    /// Compteur qui avance à chaque modification de l'arbre, d'un attribut
+    /// ou d'un texte : deux lectures à la même version voient le même
+    /// document.
+    #[must_use]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
     fn log(&mut self, mutation: impl FnOnce() -> Mutation) {
+        self.version = self.version.wrapping_add(1);
         if !self
             .mutations
             .as_ref()

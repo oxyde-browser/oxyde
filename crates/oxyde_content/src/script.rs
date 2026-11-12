@@ -29,6 +29,7 @@ mod attrs;
 mod documents;
 mod dom_ops;
 mod events;
+mod lists;
 mod mutation;
 mod range;
 mod storage;
@@ -44,6 +45,7 @@ const CLASS_STORAGE: u32 = 4;
 const CLASS_DATASET: u32 = 5;
 const CLASS_RANGE: u32 = 6;
 const CLASS_ATTRS: u32 = 7;
+const CLASS_LIVE: u32 = 8;
 
 /// Instructions accordées par défaut à une tâche (script, événement,
 /// minuteur) avant interruption : un script emballé ne fige pas l'onglet.
@@ -71,6 +73,8 @@ struct DomHost {
     wrappers: HashMap<u32, ObjId>,
     /// Nature des documents autres que celui de la page, par index de nœud.
     kinds: HashMap<u32, documents::DocumentKind>,
+    /// Collections vivantes créées par les scripts.
+    lists: Vec<lists::LiveList>,
     node_proto: ObjId,
     style_proto: ObjId,
     class_list_proto: ObjId,
@@ -708,10 +712,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             let found = element_sibling(doc, node, false);
             return Some(Ok(wrap_opt(vm, found)));
         }
-        "children" => {
-            let nodes: Vec<NodeId> = doc.children(node).filter(|c| is_element(doc, *c)).collect();
-            return Some(Ok(wrap_collection(vm, nodes)));
-        }
+        "children" => return Some(lists::same_object(vm, node, true)),
         "dataset" if is_element(doc, node) => {
             let proto = h.dataset_proto;
             return Some(Ok(Value::Object(vm.new_host_object(
@@ -720,10 +721,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 data,
             ))));
         }
-        "childNodes" => {
-            let nodes: Vec<NodeId> = doc.children(node).collect();
-            return Some(Ok(wrap_all(vm, nodes)));
-        }
+        "childNodes" => return Some(lists::same_object(vm, node, false)),
         "ownerDocument" => {
             let root = doc.owner(node);
             return Some(Ok(if is_document {
@@ -1001,6 +999,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
         }
         CLASS_RANGE => range::property(vm, data, key),
         CLASS_ATTRS => attrs::map_property(vm, data, key),
+        CLASS_LIVE => lists::property(vm, data, key),
         CLASS_STORAGE => {
             let area = usize::from(data != 0);
             match key {
@@ -1015,6 +1014,14 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
             storage::dataset_get(vm, node, key).map(|value| string(&value))
         }
         _ => None,
+    }
+}
+
+/// Clés propres que l'objet hôte ajoute aux siennes.
+fn host_keys(vm: &mut Vm, class: u32, data: u64) -> Vec<String> {
+    match class {
+        CLASS_LIVE => lists::keys(vm, data),
+        _ => Vec::new(),
     }
 }
 
@@ -1125,25 +1132,6 @@ fn get_element_by_id(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some(&*id)))
     });
     Ok(wrap_opt(vm, found))
-}
-
-fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    let names = vm.to_string(&arg(args, 0))?;
-    let wanted: Vec<&str> = names.split_ascii_whitespace().collect();
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n).is_some_and(|e| {
-                        !wanted.is_empty() && wanted.iter().all(|w| e.classes().any(|c| c == *w))
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_collection(vm, found))
 }
 
 fn create_element(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1355,8 +1343,12 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "matches", element_matches),
     ("", "closest", closest),
     ("", "getElementById", get_element_by_id),
-    ("", "getElementsByTagName", attrs::get_elements_by_tag_name),
-    ("", "getElementsByClassName", get_elements_by_class_name),
+    ("", "getElementsByTagName", lists::get_elements_by_tag_name),
+    (
+        "",
+        "getElementsByClassName",
+        lists::get_elements_by_class_name,
+    ),
     ("", "createElement", create_element),
     ("", "createTextNode", documents::create_text_node),
     ("", "contains", contains),
@@ -1410,7 +1402,7 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     (
         "",
         "getElementsByTagNameNS",
-        attrs::get_elements_by_tag_name_ns,
+        lists::get_elements_by_tag_name_ns,
     ),
     ("", "getAttributeNode", attrs::get_attribute_node),
     ("", "getAttributeNodeNS", attrs::get_attribute_node_ns),
@@ -1664,6 +1656,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         url: url.clone(),
         wrappers: HashMap::new(),
         kinds: HashMap::new(),
+        lists: Vec::new(),
         node_proto,
         style_proto,
         class_list_proto,
@@ -1689,6 +1682,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     vm.set_host_hooks(HostHooks {
         get: host_get,
         set: host_set,
+        keys: host_keys,
     });
     events::install_attributes(vm)?;
     if let Some(proto) = storage_proto {

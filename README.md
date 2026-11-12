@@ -95,7 +95,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   pas encore. Conformité mesurée : 83,3 % de test262
   ([conformance/test262.md](conformance/test262.md)) ; 91,5 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
-  dossier `dom/` des Web Platform Tests, 228 fichiers de test entièrement réussis sur 693 (32,9 %)
+  dossier `dom/` des Web Platform Tests, 245 fichiers de test entièrement réussis sur 693 (35,4 %)
   ([conformance/wpt.md](conformance/wpt.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en

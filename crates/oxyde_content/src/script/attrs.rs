@@ -12,10 +12,7 @@ use oxyde_js::{JsResult, Value, Vm};
 
 use super::documents::{created_by, is_element_local_name, is_html_document};
 use super::dom_ops::offset_arg;
-use super::{
-    CLASS_ATTRS, arg, dom_exception, host, node_arg, string, this_node, wrap, wrap_collection,
-    wrap_opt,
-};
+use super::{CLASS_ATTRS, arg, dom_exception, host, node_arg, string, this_node, wrap, wrap_opt};
 
 /// Emplacement qui garde l'objet `attributes` d'un élément.
 const ATTRIBUTES: &str = "élément.attributs";
@@ -572,55 +569,6 @@ pub(super) fn create_element_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> Js
             .create_element_ns(&name.local, name.ns, name.prefix.as_deref())
     });
     Ok(created_by(vm, this, node))
-}
-
-pub(super) fn get_elements_by_tag_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?;
-    let lowered = name.to_ascii_lowercase();
-    let document = super::documents::document_of(vm, scope);
-    let html = is_html_document(vm, document);
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n).is_some_and(|e| {
-                        *name == *"*"
-                            || if html && e.ns == Namespace::Html {
-                                e.qualified() == lowered
-                            } else {
-                                e.qualified() == *name
-                            }
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_collection(vm, found))
-}
-
-pub(super) fn get_elements_by_tag_name_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    if args.len() < 2 {
-        return Err(vm.error("TypeError", "getElementsByTagNameNS attend deux arguments"));
-    }
-    let namespace = namespace_arg(vm, &arg(args, 0))?;
-    let local = vm.to_string(&arg(args, 1))?;
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let ns = (namespace != "*").then(|| h.doc.namespace(&namespace));
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n).is_some_and(|e| {
-                        ns.is_none_or(|ns| e.ns == ns) && (*local == *"*" || e.name == *local)
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_collection(vm, found))
 }
 
 // ---- Recherche d'espaces de noms ----------------------------------------------------------
