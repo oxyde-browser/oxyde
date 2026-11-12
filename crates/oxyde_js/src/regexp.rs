@@ -15,7 +15,7 @@
 //! Les propriétés Unicode de `\p{…}` (catégories générales, écritures,
 //! propriétés binaires) viennent des tables d'ICU4X.
 
-use icu_properties::props::{GeneralCategory, GeneralCategoryGroup, Script};
+use icu_properties::props::{GeneralCategory, GeneralCategoryGroup, IdContinue, IdStart, Script};
 use icu_properties::script::ScriptWithExtensions;
 use icu_properties::{
     CodePointMapData, CodePointSetData, CodePointSetDataBorrowed, PropertyParser,
@@ -270,7 +270,8 @@ enum Node {
     WordBoundary {
         negated: bool,
     },
-    BackRef(usize),
+    /// Référence arrière : au groupe qui a participé, parmi ceux de même nom.
+    BackRef(Vec<usize>),
     Look {
         node: Box<Node>,
         behind: bool,
@@ -288,9 +289,93 @@ struct Parser {
     names: Vec<(String, usize)>,
     next_group: usize,
     depth: usize,
+    /// Nombre de disjonctions rencontrées : chacune a son numéro.
+    disjunctions: usize,
+    /// Disjonctions qui entourent la position courante, avec le rang de
+    /// l'alternative où l'on se trouve dans chacune.
+    path: Vec<(usize, usize)>,
+    /// Groupes nommés déjà définis, avec leur chemin.
+    defined: Vec<(String, Vec<(usize, usize)>)>,
 }
 
 type PResult<T> = Result<T, String>;
+
+/// Lit quatre chiffres hexadécimaux à partir de `pos`.
+fn hex4(chars: &[char], pos: usize) -> Option<u32> {
+    let digits = chars.get(pos..pos + 4)?;
+    digits
+        .iter()
+        .try_fold(0u32, |value, c| Some(value * 16 + c.to_digit(16)?))
+}
+
+/// Lit un nom de groupe à partir de `pos` (juste après `<`), `>` compris
+/// (ECMA-262 §22.2.1, `RegExpIdentifierName`) : lettres d'identifiant, `$`,
+/// `_`, et échappements `\uXXXX` ou `\u{X}`, quel que soit le drapeau `u`.
+/// Renvoie le nom et la position qui suit `>`.
+fn read_group_name(chars: &[char], mut pos: usize) -> PResult<(String, usize)> {
+    let invalid = || "nom de groupe invalide".to_owned();
+    let mut name = String::new();
+    loop {
+        let c = match chars.get(pos).copied() {
+            Some('>') if !name.is_empty() => return Ok((name, pos + 1)),
+            Some('\\') if chars.get(pos + 1) == Some(&'u') => {
+                pos += 2;
+                let code = if chars.get(pos) == Some(&'{') {
+                    let close = chars
+                        .get(pos..)
+                        .and_then(|rest| rest.iter().position(|c| *c == '}'))
+                        .ok_or_else(invalid)?;
+                    let digits = chars.get(pos + 1..pos + close).unwrap_or(&[]);
+                    if digits.is_empty() || digits.len() > 8 {
+                        return Err(invalid());
+                    }
+                    let code = digits
+                        .iter()
+                        .try_fold(0u32, |value, c| Some(value * 16 + c.to_digit(16)?))
+                        .ok_or_else(invalid)?;
+                    pos += close + 1;
+                    code
+                } else {
+                    let lead = hex4(chars, pos).ok_or_else(invalid)?;
+                    pos += 4;
+                    // Deux échappements qui se suivent forment une paire.
+                    let trail = (0xd800..0xdc00)
+                        .contains(&lead)
+                        .then(|| {
+                            (chars.get(pos) == Some(&'\\') && chars.get(pos + 1) == Some(&'u'))
+                                .then(|| hex4(chars, pos + 2))
+                                .flatten()
+                                .filter(|trail| (0xdc00..0xe000).contains(trail))
+                        })
+                        .flatten();
+                    match trail {
+                        Some(trail) => {
+                            pos += 6;
+                            0x10000 + ((lead - 0xd800) << 10) + (trail - 0xdc00)
+                        }
+                        None => lead,
+                    }
+                };
+                char::from_u32(code).ok_or_else(invalid)?
+            }
+            Some(c) => {
+                pos += 1;
+                c
+            }
+            None => return Err(invalid()),
+        };
+        let allowed = if name.is_empty() {
+            c == '$' || c == '_' || CodePointSetData::new::<IdStart>().contains(c)
+        } else {
+            matches!(c, '$' | '\u{200c}' | '\u{200d}')
+                || CodePointSetData::new::<IdContinue>().contains(c)
+        };
+        if !allowed {
+            return Err(invalid());
+        }
+        name.push(c);
+    }
+}
 
 /// Compte les groupes capturants et relève leurs noms, sans analyser le reste.
 fn scan_groups(chars: &[char]) -> PResult<(usize, Vec<(String, usize)>)> {
@@ -310,15 +395,9 @@ fn scan_groups(chars: &[char]) -> PResult<(usize, Vec<(String, usize)>)> {
                     && !matches!(chars.get(i + 3), Some('=' | '!'))
                 {
                     count += 1;
-                    let name: String = chars
-                        .get(i + 3..)
-                        .unwrap_or(&[])
-                        .iter()
-                        .take_while(|c| **c != '>')
-                        .collect();
-                    if names.iter().any(|(n, _)| *n == name) {
-                        return Err(format!("nom de groupe « {name} » répété"));
-                    }
+                    // Un même nom peut revenir dans des alternatives distinctes :
+                    // l'analyse complète le vérifie.
+                    let (name, _) = read_group_name(chars, i + 3)?;
                     names.push((name, count));
                 }
             }
@@ -357,9 +436,17 @@ impl Parser {
         if self.depth > DEPTH_LIMIT {
             return Err("groupes trop imbriqués".to_owned());
         }
-        let mut alternatives = vec![self.alternative()?];
-        while self.eat('|') {
-            alternatives.push(self.alternative()?);
+        let id = self.disjunctions;
+        self.disjunctions += 1;
+        let mut alternatives = Vec::new();
+        loop {
+            self.path.push((id, alternatives.len()));
+            let alternative = self.alternative();
+            self.path.pop();
+            alternatives.push(alternative?);
+            if !self.eat('|') {
+                break;
+            }
         }
         self.depth -= 1;
         Ok(if alternatives.len() == 1 {
@@ -513,11 +600,22 @@ impl Parser {
             self.pos += 2;
             None
         } else if self.looking_at("?<") {
-            self.pos += 2;
-            let name = self.group_name()?;
-            if name.is_empty() {
-                return Err("nom de groupe vide".to_owned());
+            let (name, next) = read_group_name(&self.chars, self.pos + 2)?;
+            self.pos = next;
+            // Deux groupes de même nom ne doivent pas pouvoir participer
+            // ensemble : il faut qu'une disjonction les sépare.
+            let clash = self.defined.iter().any(|(other, path)| {
+                *other == name
+                    && !path
+                        .iter()
+                        .zip(&self.path)
+                        .take_while(|(a, b)| a.0 == b.0)
+                        .any(|(a, b)| a.1 != b.1)
+            });
+            if clash {
+                return Err(format!("nom de groupe « {name} » répété"));
             }
+            self.defined.push((name, self.path.clone()));
             self.next_group += 1;
             Some(self.next_group)
         } else if self.peek() == Some('?') {
@@ -536,24 +634,6 @@ impl Parser {
             Ok(())
         } else {
             Err("parenthèse non fermée".to_owned())
-        }
-    }
-
-    /// Lit `nom>` (le `<` est déjà consommé).
-    fn group_name(&mut self) -> PResult<String> {
-        let mut name = String::new();
-        loop {
-            match self.peek() {
-                Some('>') => {
-                    self.pos += 1;
-                    return Ok(name);
-                }
-                Some(c) if c.is_alphanumeric() || c == '_' || c == '$' => {
-                    name.push(c);
-                    self.pos += 1;
-                }
-                _ => return Err("nom de groupe invalide".to_owned()),
-            }
         }
     }
 
@@ -699,11 +779,18 @@ impl Parser {
                 if !self.eat('<') {
                     return Err("référence nommée invalide".to_owned());
                 }
-                let name = self.group_name()?;
-                let Some((_, index)) = self.names.iter().find(|(n, _)| *n == name) else {
+                let (name, next) = read_group_name(&self.chars, self.pos)?;
+                self.pos = next;
+                let groups: Vec<usize> = self
+                    .names
+                    .iter()
+                    .filter(|(n, _)| *n == name)
+                    .map(|(_, index)| *index)
+                    .collect();
+                if groups.is_empty() {
                     return Err(format!("groupe « {name} » inconnu"));
-                };
-                return Ok((Node::BackRef(*index), true));
+                }
+                return Ok((Node::BackRef(groups), true));
             }
             '1'..='9' => {
                 // Référence arrière si le groupe existe ; sinon (annexe B)
@@ -715,7 +802,7 @@ impl Parser {
                     self.pos += 1;
                 }
                 if value <= self.total_groups {
-                    return Ok((Node::BackRef(value), true));
+                    return Ok((Node::BackRef(vec![value]), true));
                 }
                 if self.unicode {
                     return Err("référence à un groupe inexistant".to_owned());
@@ -830,7 +917,8 @@ enum Inst {
         negated: bool,
     },
     BackRef {
-        group: usize,
+        /// Groupes candidats : celui qui a participé est comparé.
+        groups: Vec<usize>,
         back: bool,
     },
     SetReg {
@@ -1043,9 +1131,9 @@ impl Compiler {
             Node::WordBoundary { negated } => {
                 self.emit(Inst::WordBoundary { negated: *negated })?;
             }
-            Node::BackRef(group) => {
+            Node::BackRef(groups) => {
                 self.emit(Inst::BackRef {
-                    group: *group,
+                    groups: groups.clone(),
                     back,
                 })?;
             }
@@ -1086,6 +1174,9 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Result<Regex, String> {
         names,
         next_group: 0,
         depth: 0,
+        disjunctions: 0,
+        path: Vec::new(),
+        defined: Vec::new(),
     };
     let node = parser.disjunction()?;
     if parser.pos < parser.chars.len() {
@@ -1284,10 +1375,13 @@ impl Machine<'_> {
                     let boundary = self.word_at(pos.checked_sub(1)) != self.word_at(Some(pos));
                     boundary != *negated
                 }
-                Inst::BackRef { group, back } => {
-                    let start = self.caps.get(group * 2).copied().flatten();
-                    let end = self.caps.get(group * 2 + 1).copied().flatten();
-                    match (start, end) {
+                Inst::BackRef { groups, back } => {
+                    let bounds = groups.iter().find_map(|group| {
+                        let start = self.caps.get(group * 2).copied().flatten()?;
+                        let end = self.caps.get(group * 2 + 1).copied().flatten()?;
+                        Some((start, end))
+                    });
+                    match (bounds.map(|b| b.0), bounds.map(|b| b.1)) {
                         // Un groupe qui n'a pas participé correspond au vide.
                         (Some(start), Some(end)) if start <= end => {
                             let len = end - start;
@@ -1768,6 +1862,56 @@ mod tests {
         assert_eq!(find("(?<=a+)b", "", "caab").as_deref(), Some("b"));
         assert_eq!(find("(?<=(a+?))b", "", "caab").as_deref(), Some("b|a"));
         assert_eq!(find("a{2}", "", "a"), None);
+    }
+
+    #[test]
+    fn group_names() {
+        // Un même nom dans des alternatives distinctes ; `\k` suit le groupe
+        // qui a participé.
+        let regex = compile(r"(?:(?<x>a)|(?<x>b))\k<x>", "").expect("motif valide");
+        assert_eq!(regex.names, [("x".to_owned(), 1), ("x".to_owned(), 2)]);
+        assert_eq!(
+            find(r"(?:(?<x>a)|(?<x>b))\k<x>", "", "abbaa").as_deref(),
+            Some("bb|-|b")
+        );
+        assert_eq!(
+            find(r"(?<y>.)(?:(?<x>a)|(?<x>b)|c)\k<x>", "", "zc").as_deref(),
+            Some("zc|z|-|-")
+        );
+        // Deux groupes de même nom qui peuvent participer ensemble : refusés.
+        for pattern in [
+            r"(?<x>a)(?<x>b)",
+            r"(?<x>a)|(?:b(?<x>c)(?<x>d))",
+            r"(?:(?<x>a)|b)(?<x>c)",
+            r"(?<x>a(?<x>b)|c)",
+        ] {
+            assert!(compile(pattern, "").is_err(), "{pattern}");
+        }
+        assert!(compile(r"(?<x>a)|(?:b|(?<x>c))|(?<x>d)", "").is_ok());
+        // Noms : lettres d'identifiant Unicode et échappements, avec ou sans `u`.
+        for flags in ["", "u"] {
+            for pattern in [
+                r"(?<π>a)\k<π>",
+                r"(?<\u{03C0}>a)\k<π>",
+                r"(?<\u03C0>a)",
+                r"(?<$_a1>a)",
+                r"(?<𝒜>a)",
+                r"(?<\uD835\uDC9C>a)\k<𝒜>",
+                "(?<a\u{200d}b>.)",
+            ] {
+                assert!(compile(pattern, flags).is_ok(), "{pattern} /{flags}");
+            }
+            for pattern in [
+                r"(?<>a)",
+                r"(?<1a>a)",
+                r"(?<a-b>a)",
+                r"(?<a",
+                r"(?<\u{110000}>a)",
+                r"(?<a>.)\k<b>",
+            ] {
+                assert!(compile(pattern, flags).is_err(), "{pattern} /{flags}");
+            }
+        }
     }
 
     #[test]

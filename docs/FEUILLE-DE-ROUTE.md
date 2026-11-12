@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **42 269 tests de test262 sur 48 795 (86,6 %)** ; il en reste 6 526.
+- `oxyde_js` réussit **42 296 tests de test262 sur 48 795 (86,7 %)** ; il en reste 6 499.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -118,8 +118,9 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
 - **Drapeau `v`** et **modificateurs** `(?i:…)` (221).
 - **Reste** (170) : faits, `RegExp.escape`, `RegExp.prototype.compile`, les propriétés
   statiques héritées (`RegExp.$1`, `lastMatch`…), le drapeau `d` (indices) et le
-  constructeur pour les objets qui se disent expressions rationnelles (93 tests). Restent
-  les groupes nommés en double et les noms de groupe en Unicode.
+  constructeur pour les objets qui se disent expressions rationnelles (93 tests), puis
+  les groupes nommés en double (permis dans des alternatives distinctes) et les noms de
+  groupe en Unicode, échappements compris (27 tests).
 
 ### F — Propositions récentes (938 tests)
 

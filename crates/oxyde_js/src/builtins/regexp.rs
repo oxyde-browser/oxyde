@@ -352,8 +352,22 @@ impl Vm {
             return Ok(Value::Undefined);
         }
         let groups = Value::Object(self.heap.alloc(Object::new(None, Kind::Ordinary)));
-        for (name, index) in &regex.names {
-            let value = items.get(*index).cloned().unwrap_or(Value::Undefined);
+        for (position, (name, index)) in regex.names.iter().enumerate() {
+            // Un nom porté par plusieurs groupes n'a qu'une propriété, à la
+            // place du premier : la valeur du groupe qui a participé.
+            if regex.names.iter().take(position).any(|(n, _)| n == name) {
+                continue;
+            }
+            let value = regex
+                .names
+                .iter()
+                .skip(position)
+                .filter(|(n, _)| n == name)
+                .filter_map(|(_, other)| items.get(*other))
+                .find(|value| **value != Value::Undefined)
+                .or_else(|| items.get(*index))
+                .cloned()
+                .unwrap_or(Value::Undefined);
             self.define_field(&groups, name, value)?;
         }
         Ok(groups)
@@ -770,9 +784,12 @@ pub(super) fn expand_template(
                     Some(len) => {
                         let name: String =
                             chars.get(i + 1..i + len).unwrap_or(&[]).iter().collect();
-                        if let Some((_, index)) = names.iter().find(|(n, _)| *n == name)
-                            && let Some(text) = group(*index)
-                        {
+                        // Parmi les groupes de ce nom, celui qui a participé.
+                        let text = names
+                            .iter()
+                            .filter(|(n, _)| *n == name)
+                            .find_map(|(_, index)| groups.get(index.checked_sub(1)?)?.as_deref());
+                        if let Some(text) = text {
                             out.push_str(text);
                         }
                         i += len + 1;

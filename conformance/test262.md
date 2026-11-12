@@ -4,11 +4,11 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 42269 réussis sur 48795 (86.6 %).**
+**Total : 42296 réussis sur 48795 (86.7 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
-| `annexB/built-ins` | 241 | 231 | 95.9 % |
+| `annexB/built-ins` | 241 | 232 | 96.3 % |
 | `annexB/language` | 845 | 815 | 96.4 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 25 | 100.0 % |
@@ -45,13 +45,13 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Promise` | 732 | 732 | 100.0 % |
 | `built-ins/Proxy` | 311 | 310 | 99.7 % |
 | `built-ins/Reflect` | 153 | 153 | 100.0 % |
-| `built-ins/RegExp` | 1879 | 1499 | 79.8 % |
+| `built-ins/RegExp` | 1879 | 1519 | 80.8 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 378 | 98.7 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
-| `built-ins/String` | 1223 | 1180 | 96.5 % |
+| `built-ins/String` | 1223 | 1182 | 96.6 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 93 | 94.9 % |
@@ -92,7 +92,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/import` | 129 | 15 | 11.6 % |
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
-| `language/literals` | 536 | 530 | 98.9 % |
+| `language/literals` | 536 | 534 | 99.6 % |
 | `language/module-code` | 599 | 532 | 88.8 % |
 | `language/punctuators` | 11 | 11 | 100.0 % |
 | `language/reserved-words` | 27 | 27 | 100.0 % |
