@@ -180,11 +180,18 @@ pub(crate) fn is_space(c: char) -> bool {
     )
 }
 
+/// Lettres qu'un repli de casse Unicode ramène à une lettre ASCII : avec les
+/// drapeaux `i` et `u`, elles comptent parmi les caractères de mot.
+fn folds_to_word(c: char) -> bool {
+    matches!(c, '\u{17f}' | '\u{212a}')
+}
+
 impl Builtin {
-    fn matches(self, c: char) -> bool {
+    /// `wide` : drapeaux `i` et `u` ensemble, qui élargissent `\w`.
+    fn matches(self, c: char, wide: bool) -> bool {
         match self {
             Self::Digit => c.is_ascii_digit(),
-            Self::Word => is_word(c),
+            Self::Word => is_word(c) || (wide && folds_to_word(c)),
             Self::Space => is_space(c),
             Self::Property(property) => property.matches(c),
         }
@@ -200,8 +207,13 @@ struct ClassSet {
 }
 
 /// Forme canonique d'un caractère pour la comparaison insensible à la casse
-/// (ECMA-262 §22.2.5.6, sans le drapeau `u`).
-fn canonical(c: char) -> char {
+/// (ECMA-262 §22.2.5.6). Avec le drapeau `u` (`unicode`), c'est le repli de
+/// casse simple d'Unicode, approché par la minuscule de la majuscule ; sans
+/// lui, la majuscule, qui ne ramène jamais une lettre non ASCII à l'ASCII.
+fn canonical(c: char, unicode: bool) -> char {
+    if unicode {
+        return simple_lower(simple_upper(c));
+    }
     if c.is_ascii() {
         return c.to_ascii_uppercase();
     }
@@ -209,6 +221,14 @@ fn canonical(c: char) -> char {
     match (upper.next(), upper.next()) {
         // Une lettre non ASCII ne se replie jamais sur une lettre ASCII.
         (Some(u), None) if !u.is_ascii() => u,
+        _ => c,
+    }
+}
+
+fn simple_upper(c: char) -> char {
+    let mut upper = c.to_uppercase();
+    match (upper.next(), upper.next()) {
+        (Some(u), None) => u,
         _ => c,
     }
 }
@@ -230,22 +250,47 @@ impl ClassSet {
         }
     }
 
-    fn contains(&self, c: char) -> bool {
+    fn contains(&self, c: char, wide: bool) -> bool {
         self.ranges.iter().any(|(lo, hi)| *lo <= c && c <= *hi)
             || self
                 .builtins
                 .iter()
-                .any(|(builtin, negated)| builtin.matches(c) != *negated)
+                .any(|(builtin, negated)| builtin.matches(c, wide) != *negated)
     }
 
-    fn matches(&self, c: char, ignore_case: bool) -> bool {
-        let hit = self.contains(c)
-            || (ignore_case && (self.contains(canonical(c)) || self.contains(simple_lower(c))));
+    /// `ignore_case` : insensible à la casse ; `unicode` : drapeau `u`.
+    fn matches(&self, c: char, ignore_case: bool, unicode: bool) -> bool {
+        let wide = ignore_case && unicode;
+        let hit = self.contains(c, wide)
+            || (ignore_case
+                && (self.contains(canonical(c, unicode), wide)
+                    || self.contains(simple_lower(c), wide)
+                    || (unicode && self.contains(simple_upper(c), wide))));
         hit != self.negated
     }
 }
 
 // ---- Arbre syntaxique ------------------------------------------------------------
+
+/// Drapeaux qu'un groupe peut changer pour son contenu : `i`, `m` et `s`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Modifiers {
+    ignore_case: bool,
+    multiline: bool,
+    dot_all: bool,
+}
+
+impl Modifiers {
+    /// Champ du drapeau `c`, s'il peut être modifié.
+    fn slot(&mut self, c: char) -> Option<&mut bool> {
+        match c {
+            'i' => Some(&mut self.ignore_case),
+            'm' => Some(&mut self.multiline),
+            's' => Some(&mut self.dot_all),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 enum Node {
@@ -255,6 +300,13 @@ enum Node {
     Class(ClassSet),
     Seq(Vec<Node>),
     Alt(Vec<Node>),
+    /// Groupe à modificateurs `(?ims-ims:…)` : drapeaux allumés (`on`) et
+    /// éteints (`off`) pour son contenu.
+    Modified {
+        node: Box<Node>,
+        on: Modifiers,
+        off: Modifiers,
+    },
     /// Groupe ; `Some(n)` : capturant, de numéro `n`.
     Group(Box<Node>, Option<usize>),
     Repeat {
@@ -596,6 +648,19 @@ impl Parser {
                 !behind && !self.unicode,
             ));
         }
+        if self.peek() == Some('?') && matches!(self.peek_at(1), Some('i' | 'm' | 's' | '-')) {
+            let (on, off) = self.modifiers()?;
+            let node = self.disjunction()?;
+            self.close_group()?;
+            return Ok((
+                Node::Modified {
+                    node: Box::new(node),
+                    on,
+                    off,
+                },
+                true,
+            ));
+        }
         let index = if self.looking_at("?:") {
             self.pos += 2;
             None
@@ -627,6 +692,37 @@ impl Parser {
         let node = self.disjunction()?;
         self.close_group()?;
         Ok((Node::Group(Box::new(node), index), true))
+    }
+
+    /// Lit `?ims-ims:` : les drapeaux à allumer, puis ceux à éteindre. Aucun
+    /// ne se répète, et `(?-:` ne modifie rien : c'est une erreur.
+    fn modifiers(&mut self) -> PResult<(Modifiers, Modifiers)> {
+        let invalid = || "modificateurs de groupe invalides".to_owned();
+        self.pos += 1;
+        let (mut on, mut off) = (Modifiers::default(), Modifiers::default());
+        let mut removing = false;
+        loop {
+            let c = self.peek().ok_or_else(invalid)?;
+            self.pos += 1;
+            match c {
+                ':' => break,
+                '-' if !removing => removing = true,
+                c => {
+                    // Un drapeau ne paraît qu'une fois, d'un côté ou de l'autre.
+                    let seen = on.slot(c).is_some_and(|slot| *slot)
+                        || off.slot(c).is_some_and(|slot| *slot);
+                    let target = if removing { &mut off } else { &mut on };
+                    match target.slot(c) {
+                        Some(slot) if !seen => *slot = true,
+                        _ => return Err(invalid()),
+                    }
+                }
+            }
+        }
+        if removing && on == Modifiers::default() && off == Modifiers::default() {
+            return Err(invalid());
+        }
+        Ok((on, off))
     }
 
     fn close_group(&mut self) -> PResult<()> {
@@ -893,16 +989,20 @@ impl Parser {
 
 #[derive(Clone, Debug)]
 enum Inst {
+    /// `fold` : comparaison insensible à la casse (`c` est déjà canonique).
     Char {
         c: char,
         back: bool,
+        fold: bool,
     },
     Any {
         back: bool,
+        dot_all: bool,
     },
     Class {
         set: usize,
         back: bool,
+        fold: bool,
     },
     Save(usize),
     /// Essaie `first`, puis `second` en cas d'échec.
@@ -911,15 +1011,22 @@ enum Inst {
         second: usize,
     },
     Jmp(usize),
-    Start,
-    End,
+    Start {
+        multiline: bool,
+    },
+    End {
+        multiline: bool,
+    },
     WordBoundary {
         negated: bool,
+        /// Drapeaux `i` et `u` ensemble : `\w` élargi.
+        wide: bool,
     },
     BackRef {
         /// Groupes candidats : celui qui a participé est comparé.
         groups: Vec<usize>,
         back: bool,
+        fold: bool,
     },
     SetReg {
         reg: usize,
@@ -987,7 +1094,11 @@ struct Compiler {
     insts: Vec<Inst>,
     sets: Vec<ClassSet>,
     registers: usize,
-    ignore_case: bool,
+    /// Drapeaux en vigueur à l'endroit que l'on compile : ceux de
+    /// l'expression, modifiés par les groupes `(?ims-ims:…)` traversés.
+    modifiers: Modifiers,
+    /// Drapeau `u` : il change la comparaison insensible à la casse.
+    unicode: bool,
 }
 
 impl Compiler {
@@ -1010,16 +1121,28 @@ impl Compiler {
         match node {
             Node::Empty => {}
             Node::Char(c) => {
-                let c = if self.ignore_case { canonical(*c) } else { *c };
-                self.emit(Inst::Char { c, back })?;
+                let fold = self.modifiers.ignore_case;
+                let c = if fold {
+                    canonical(*c, self.unicode)
+                } else {
+                    *c
+                };
+                self.emit(Inst::Char { c, back, fold })?;
             }
             Node::Any => {
-                self.emit(Inst::Any { back })?;
+                self.emit(Inst::Any {
+                    back,
+                    dot_all: self.modifiers.dot_all,
+                })?;
             }
             Node::Class(set) => {
                 self.sets.push(set.clone());
                 let set = self.sets.len() - 1;
-                self.emit(Inst::Class { set, back })?;
+                self.emit(Inst::Class {
+                    set,
+                    back,
+                    fold: self.modifiers.ignore_case,
+                })?;
             }
             Node::Seq(nodes) => {
                 if back {
@@ -1062,6 +1185,16 @@ impl Compiler {
                 }
             }
             Node::Group(inner, None) => self.node(inner, back)?,
+            Node::Modified { node, on, off } => {
+                let outer = self.modifiers;
+                let inner = &mut self.modifiers;
+                inner.ignore_case = (inner.ignore_case || on.ignore_case) && !off.ignore_case;
+                inner.multiline = (inner.multiline || on.multiline) && !off.multiline;
+                inner.dot_all = (inner.dot_all || on.dot_all) && !off.dot_all;
+                let compiled = self.node(node, back);
+                self.modifiers = outer;
+                compiled?;
+            }
             Node::Group(inner, Some(index)) => {
                 // À reculons, la fin du groupe est rencontrée la première.
                 let (first, second) = if back {
@@ -1123,18 +1256,26 @@ impl Compiler {
                 }
             }
             Node::Start => {
-                self.emit(Inst::Start)?;
+                self.emit(Inst::Start {
+                    multiline: self.modifiers.multiline,
+                })?;
             }
             Node::End => {
-                self.emit(Inst::End)?;
+                self.emit(Inst::End {
+                    multiline: self.modifiers.multiline,
+                })?;
             }
             Node::WordBoundary { negated } => {
-                self.emit(Inst::WordBoundary { negated: *negated })?;
+                self.emit(Inst::WordBoundary {
+                    negated: *negated,
+                    wide: self.unicode && self.modifiers.ignore_case,
+                })?;
             }
             Node::BackRef(groups) => {
                 self.emit(Inst::BackRef {
                     groups: groups.clone(),
                     back,
+                    fold: self.modifiers.ignore_case,
                 })?;
             }
             Node::Look {
@@ -1186,7 +1327,12 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Result<Regex, String> {
         insts: Vec::new(),
         sets: Vec::new(),
         registers: 0,
-        ignore_case: flags.ignore_case,
+        unicode: flags.unicode,
+        modifiers: Modifiers {
+            ignore_case: flags.ignore_case,
+            multiline: flags.multiline,
+            dot_all: flags.dot_all,
+        },
     };
     compiler.emit(Inst::Save(0))?;
     compiler.node(&node, false)?;
@@ -1247,10 +1393,6 @@ struct Machine<'a> {
 }
 
 impl Machine<'_> {
-    fn same(&self, a: char, b: char) -> bool {
-        a == b || (self.regex.flags.ignore_case && canonical(a) == canonical(b))
-    }
-
     /// Caractère à consommer à `pos` dans le sens demandé, et position suivante.
     fn next_char(&self, pos: usize, back: bool) -> Option<(char, usize)> {
         if back {
@@ -1264,28 +1406,30 @@ impl Machine<'_> {
     /// Vrai si l'atome d'un seul caractère `inst` accepte `c`.
     fn unit_matches(&self, inst: Option<&Inst>, c: char) -> bool {
         match inst {
-            Some(Inst::Char { c: wanted, .. }) => {
-                let found = if self.regex.flags.ignore_case {
-                    canonical(c)
+            Some(Inst::Char {
+                c: wanted, fold, ..
+            }) => {
+                let found = if *fold {
+                    canonical(c, self.regex.flags.unicode)
                 } else {
                     c
                 };
                 found == *wanted
             }
-            Some(Inst::Any { .. }) => self.regex.flags.dot_all || !is_line_terminator(c),
-            Some(Inst::Class { set, .. }) => self
+            Some(Inst::Any { dot_all, .. }) => *dot_all || !is_line_terminator(c),
+            Some(Inst::Class { set, fold, .. }) => self
                 .regex
                 .sets
                 .get(*set)
-                .is_some_and(|s| s.matches(c, self.regex.flags.ignore_case)),
+                .is_some_and(|s| s.matches(c, *fold, self.regex.flags.unicode)),
             _ => false,
         }
     }
 
-    fn word_at(&self, index: Option<usize>) -> bool {
+    fn word_at(&self, index: Option<usize>, wide: bool) -> bool {
         index
             .and_then(|i| self.input.get(i))
-            .is_some_and(|c| is_word(*c))
+            .is_some_and(|c| is_word(*c) || (wide && folds_to_word(*c)))
     }
 
     /// Exécute le programme à partir de `pc` et `pos`. `Ok(true)` : `Match`
@@ -1302,10 +1446,10 @@ impl Machine<'_> {
                 return Ok(false);
             };
             let ok = match inst {
-                Inst::Char { c, back } => match self.next_char(pos, *back) {
+                Inst::Char { c, back, fold } => match self.next_char(pos, *back) {
                     Some((found, next)) => {
-                        let found = if self.regex.flags.ignore_case {
-                            canonical(found)
+                        let found = if *fold {
+                            canonical(found, self.regex.flags.unicode)
                         } else {
                             found
                         };
@@ -1318,20 +1462,18 @@ impl Machine<'_> {
                     }
                     None => false,
                 },
-                Inst::Any { back } => match self.next_char(pos, *back) {
-                    Some((found, next))
-                        if self.regex.flags.dot_all || !is_line_terminator(found) =>
-                    {
+                Inst::Any { back, dot_all } => match self.next_char(pos, *back) {
+                    Some((found, next)) if *dot_all || !is_line_terminator(found) => {
                         pos = next;
                         true
                     }
                     _ => false,
                 },
-                Inst::Class { set, back } => {
+                Inst::Class { set, back, fold } => {
                     match self.next_char(pos, *back) {
                         Some((found, next))
                             if self.regex.sets.get(*set).is_some_and(|s| {
-                                s.matches(found, self.regex.flags.ignore_case)
+                                s.matches(found, *fold, self.regex.flags.unicode)
                             }) =>
                         {
                             pos = next;
@@ -1358,24 +1500,25 @@ impl Machine<'_> {
                     pc = *target;
                     continue;
                 }
-                Inst::Start => {
+                Inst::Start { multiline } => {
                     pos == 0
-                        || (self.regex.flags.multiline
+                        || (*multiline
                             && self
                                 .input
                                 .get(pos - 1)
                                 .is_some_and(|c| is_line_terminator(*c)))
                 }
-                Inst::End => {
+                Inst::End { multiline } => {
                     pos == self.input.len()
-                        || (self.regex.flags.multiline
+                        || (*multiline
                             && self.input.get(pos).is_some_and(|c| is_line_terminator(*c)))
                 }
-                Inst::WordBoundary { negated } => {
-                    let boundary = self.word_at(pos.checked_sub(1)) != self.word_at(Some(pos));
+                Inst::WordBoundary { negated, wide } => {
+                    let boundary =
+                        self.word_at(pos.checked_sub(1), *wide) != self.word_at(Some(pos), *wide);
                     boundary != *negated
                 }
-                Inst::BackRef { groups, back } => {
+                Inst::BackRef { groups, back, fold } => {
                     let bounds = groups.iter().find_map(|group| {
                         let start = self.caps.get(group * 2).copied().flatten()?;
                         let end = self.caps.get(group * 2 + 1).copied().flatten()?;
@@ -1395,7 +1538,13 @@ impl Machine<'_> {
                                     && (0..len).all(|i| {
                                         match (self.input.get(start + i), self.input.get(from + i))
                                         {
-                                            (Some(a), Some(b)) => self.same(*a, *b),
+                                            (Some(a), Some(b)) => {
+                                                let unicode = self.regex.flags.unicode;
+                                                a == b
+                                                    || (*fold
+                                                        && canonical(*a, unicode)
+                                                            == canonical(*b, unicode))
+                                            }
                                             _ => false,
                                         }
                                     })
@@ -1911,6 +2060,53 @@ mod tests {
             ] {
                 assert!(compile(pattern, flags).is_err(), "{pattern} /{flags}");
             }
+        }
+    }
+
+    #[test]
+    fn modifiers() {
+        // Un groupe allume ou éteint `i`, `m`, `s` pour son seul contenu.
+        assert_eq!(find("a(?i:b)c", "", "aBc").as_deref(), Some("aBc"));
+        assert_eq!(find("a(?i:b)c", "", "aBC"), None);
+        assert_eq!(find("a(?-i:b)c", "i", "AbC").as_deref(), Some("AbC"));
+        assert_eq!(find("a(?-i:b)c", "i", "ABC"), None);
+        assert_eq!(find("(?s:.)+", "", "a\nb").as_deref(), Some("a\nb"));
+        assert_eq!(find("(?-s:.)+", "s", "a\nb").as_deref(), Some("a"));
+        assert_eq!(find("(?m:^b)", "", "a\nb").as_deref(), Some("b"));
+        assert_eq!(find("(?-m:^b)", "m", "a\nb"), None);
+        assert_eq!(find("(?im-s:^B.)", "s", "a\nbc").as_deref(), Some("bc"));
+        // Imbrication, répétition, références et classes.
+        assert_eq!(
+            find("(?i:a(?-i:b)c)+", "", "AbCabc").as_deref(),
+            Some("AbCabc")
+        );
+        assert_eq!(find("(a)(?i:\\1)", "", "aA").as_deref(), Some("aA|a"));
+        assert_eq!(find("(?i:[a-c]+)d", "", "xABCd").as_deref(), Some("ABCd"));
+        // Avec `u`, le repli de casse d'Unicode : `ſ` et `K` valent `s` et `k`.
+        assert_eq!(find("(?i:s)", "u", "\u{17f}").as_deref(), Some("\u{17f}"));
+        assert_eq!(
+            find("(?i:\\w)", "u", "\u{212a}").as_deref(),
+            Some("\u{212a}")
+        );
+        assert_eq!(find("\\w", "u", "\u{17f}"), None);
+        assert_eq!(find("(?i:\\W)", "u", "\u{17f}"), None);
+        assert_eq!(find("(?i:\\b)s", "u", "\u{17f}s"), None);
+        for pattern in ["(?:a)", "(?i:)", "(?ims:a)", "(?-ims:a)", "(?i-ms:a)"] {
+            assert!(compile(pattern, "").is_ok(), "{pattern}");
+        }
+        for pattern in [
+            "(?-:a)",
+            "(?ii:a)",
+            "(?i-i:a)",
+            "(?i-mm:a)",
+            "(?x:a)",
+            "(?i",
+            "(?i)",
+            "(?i-s-m:a)",
+            "(?g:a)",
+            "(?-u:a)",
+        ] {
+            assert!(compile(pattern, "").is_err(), "{pattern}");
         }
     }
 
