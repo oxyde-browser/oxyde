@@ -1657,19 +1657,6 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     for (name, arity, func) in window_methods {
         vm.define_method(global, name, *arity, *func);
     }
-    // Prélude : `URL`, `URLSearchParams`, `Headers`… écrits en JavaScript.
-    let prelude = vm.eval_script(include_str!("script/prelude.js"))?;
-    let helpers = [
-        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
-        Value::Object(vm.new_function("changeUrl", 3, change_url)),
-    ];
-    vm.call(&prelude, &Value::Undefined, &helpers)?;
-    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
-    // qui reçoit le `fetch` d'origine.
-    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
-    let original_fetch = vm.get(&window, "fetch")?;
-    let xhr = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
-    vm.define_hidden(global, "XMLHttpRequest", xhr);
     define_getter(vm, global, "innerWidth", window_inner_width)?;
     define_getter(vm, global, "innerHeight", window_inner_height)?;
 
@@ -1716,6 +1703,21 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         vm.set(&location, key, Value::string(&value))?;
     }
     vm.define_hidden(global, "location", location);
+
+    // Prélude : `URL`, `Headers`, `AbortController`… écrits en JavaScript. Il
+    // s'appuie sur les objets installés ci-dessus.
+    let prelude = vm.eval_script(include_str!("script/prelude.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
+        Value::Object(vm.new_function("changeUrl", 3, change_url)),
+    ];
+    vm.call(&prelude, &Value::Undefined, &helpers)?;
+    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
+    // qui reçoit le `fetch` d'origine.
+    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
+    let original_fetch = vm.get(&window, "fetch")?;
+    let xhr = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    vm.define_hidden(global, "XMLHttpRequest", xhr);
     Ok(())
 }
 

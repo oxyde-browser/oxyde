@@ -309,4 +309,566 @@
   }
   tag(Headers, "Headers");
   expose("Headers", Headers);
+
+  // ---- Microtâches, erreurs, temps libre ------------------------------------------------------------
+  const resolved = Promise.resolve();
+  const then = Promise.prototype.then;
+  const consoleError = console.error.bind(console);
+  function reportError(error) {
+    consoleError("Exception non rattrapée : " + String(error));
+  }
+  expose("reportError", reportError);
+  expose("queueMicrotask", function queueMicrotask(callback) {
+    if (typeof callback !== "function") {
+      throw new TypeError("queueMicrotask : une fonction est attendue");
+    }
+    then.call(resolved, () => {
+      try {
+        callback();
+      } catch (error) {
+        reportError(error);
+      }
+    });
+  });
+  const startTimer = setTimeout;
+  const stopTimer = clearTimeout;
+  expose("requestIdleCallback", function requestIdleCallback(callback) {
+    return startTimer(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 1);
+  });
+  expose("cancelIdleCallback", function cancelIdleCallback(handle) {
+    stopTimer(handle);
+  });
+
+  // ---- Base64 (HTML Standard §8.3) -----------------------------------------------------------------------
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  function invalidCharacter(what) {
+    return new DOMException(what, "InvalidCharacterError");
+  }
+  expose("btoa", function btoa(data) {
+    const text = String(data);
+    let out = "";
+    for (let i = 0; i < text.length; i += 3) {
+      const codes = [text.charCodeAt(i), text.charCodeAt(i + 1), text.charCodeAt(i + 2)];
+      for (const code of codes) {
+        if (code > 255) throw invalidCharacter("btoa : caractère hors de la plage Latin-1");
+      }
+      const [a, b, c] = codes;
+      out += alphabet[a >> 2];
+      out += alphabet[((a & 3) << 4) | (b >> 4 || 0)];
+      out += i + 1 < text.length ? alphabet[((b & 15) << 2) | (c >> 6 || 0)] : "=";
+      out += i + 2 < text.length ? alphabet[c & 63] : "=";
+    }
+    return out;
+  });
+  expose("atob", function atob(data) {
+    let text = String(data).replace(/[\t\n\f\r ]/g, "");
+    if (text.length % 4 === 0) text = text.replace(/={1,2}$/, "");
+    if (text.length % 4 === 1 || /[^A-Za-z0-9+/]/.test(text)) {
+      throw invalidCharacter("atob : la chaîne n'est pas du base64 valide");
+    }
+    let out = "";
+    let buffer = 0;
+    let bits = 0;
+    for (const char of text) {
+      buffer = (buffer << 6) | alphabet.indexOf(char);
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        out += String.fromCharCode((buffer >> bits) & 255);
+      }
+    }
+    return out;
+  });
+
+  // ---- TextEncoder et TextDecoder (Encoding Standard, UTF-8 seulement) -----------------------------------------
+  function utf8Bytes(text) {
+    const bytes = [];
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      if (code < 0x80) {
+        bytes.push(code);
+      } else if (code < 0x800) {
+        bytes.push(0xc0 | (code >> 6), 0x80 | (code & 63));
+      } else if (code < 0x10000) {
+        bytes.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63));
+      } else {
+        bytes.push(
+          0xf0 | (code >> 18),
+          0x80 | ((code >> 12) & 63),
+          0x80 | ((code >> 6) & 63),
+          0x80 | (code & 63),
+        );
+      }
+    }
+    return bytes;
+  }
+  class TextEncoder {
+    get encoding() { return "utf-8"; }
+    encode(input = "") { return new Uint8Array(utf8Bytes(String(input))); }
+    encodeInto(source, destination) {
+      let read = 0;
+      let written = 0;
+      for (const char of String(source)) {
+        const bytes = utf8Bytes(char);
+        if (written + bytes.length > destination.length) break;
+        for (const byte of bytes) destination[written++] = byte;
+        read += char.length;
+      }
+      return { read, written };
+    }
+  }
+  tag(TextEncoder, "TextEncoder");
+  expose("TextEncoder", TextEncoder);
+
+  function bytesOf(input) {
+    if (input === undefined) return new Uint8Array(0);
+    if (input instanceof ArrayBuffer) return new Uint8Array(input);
+    if (ArrayBuffer.isView(input)) {
+      return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    }
+    throw new TypeError("TextDecoder.decode : un tampon d'octets est attendu");
+  }
+  class TextDecoder {
+    #fatal;
+    #ignoreBOM;
+    constructor(label = "utf-8", options = {}) {
+      const name = String(label).trim().toLowerCase();
+      if (!["utf-8", "utf8", "unicode-1-1-utf-8"].includes(name)) {
+        throw new RangeError("TextDecoder : encodage non pris en charge : " + name);
+      }
+      this.#fatal = Boolean(options && options.fatal);
+      this.#ignoreBOM = Boolean(options && options.ignoreBOM);
+    }
+    get encoding() { return "utf-8"; }
+    get fatal() { return this.#fatal; }
+    get ignoreBOM() { return this.#ignoreBOM; }
+    decode(input) {
+      const bytes = bytesOf(input);
+      let out = "";
+      let i = 0;
+      if (!this.#ignoreBOM && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) i = 3;
+      const invalid = () => {
+        if (this.#fatal) throw new TypeError("TextDecoder : la suite d'octets n'est pas de l'UTF-8");
+        out += "�";
+      };
+      while (i < bytes.length) {
+        const first = bytes[i++];
+        if (first < 0x80) {
+          out += String.fromCharCode(first);
+          continue;
+        }
+        // Nombre d'octets de suite, et bornes du premier d'entre eux.
+        let needed = 0;
+        let lower = 0x80;
+        let upper = 0xbf;
+        let code = 0;
+        if (first >= 0xc2 && first <= 0xdf) {
+          needed = 1;
+          code = first & 0x1f;
+        } else if (first >= 0xe0 && first <= 0xef) {
+          needed = 2;
+          code = first & 0x0f;
+          if (first === 0xe0) lower = 0xa0;
+          if (first === 0xed) upper = 0x9f;
+        } else if (first >= 0xf0 && first <= 0xf4) {
+          needed = 3;
+          code = first & 0x07;
+          if (first === 0xf0) lower = 0x90;
+          if (first === 0xf4) upper = 0x8f;
+        } else {
+          invalid();
+          continue;
+        }
+        let complete = true;
+        for (let k = 0; k < needed; k++) {
+          const next = bytes[i];
+          if (next === undefined || next < lower || next > upper) {
+            complete = false;
+            break;
+          }
+          code = (code << 6) | (next & 0x3f);
+          lower = 0x80;
+          upper = 0xbf;
+          i++;
+        }
+        if (complete) out += String.fromCodePoint(code);
+        else invalid();
+      }
+      return out;
+    }
+  }
+  tag(TextDecoder, "TextDecoder");
+  expose("TextDecoder", TextDecoder);
+
+  // ---- AbortController et AbortSignal (DOM Standard §3) -----------------------------------------------------------
+  const EventTargetBase = EventTarget;
+  const EventCtor = Event;
+  const signals = new WeakMap();
+  const signalKey = {};
+  class AbortSignal extends EventTargetBase {
+    constructor(key) {
+      if (key !== signalKey) throw new TypeError("AbortSignal : constructeur illégal");
+      super();
+      signals.set(this, { aborted: false, reason: undefined });
+    }
+    get aborted() { return signals.get(this).aborted; }
+    get reason() { return signals.get(this).reason; }
+    throwIfAborted() {
+      const state = signals.get(this);
+      if (state.aborted) throw state.reason;
+    }
+    static abort(reason) {
+      const signal = new AbortSignal(signalKey);
+      abortSignal(signal, reason);
+      return signal;
+    }
+    static timeout(milliseconds) {
+      const signal = new AbortSignal(signalKey);
+      startTimer(() => {
+        abortSignal(signal, new DOMException("le délai est écoulé", "TimeoutError"));
+      }, milliseconds);
+      return signal;
+    }
+    static any(list) {
+      const signal = new AbortSignal(signalKey);
+      for (const source of list) {
+        if (source.aborted) {
+          abortSignal(signal, source.reason);
+          break;
+        }
+        source.addEventListener("abort", () => abortSignal(signal, source.reason), { once: true });
+      }
+      return signal;
+    }
+  }
+  function abortSignal(signal, reason) {
+    const state = signals.get(signal);
+    if (state.aborted) return;
+    state.aborted = true;
+    state.reason = reason === undefined
+      ? new DOMException("l'opération a été abandonnée", "AbortError")
+      : reason;
+    signal.dispatchEvent(new EventCtor("abort"));
+  }
+  class AbortController {
+    #signal = new AbortSignal(signalKey);
+    get signal() { return this.#signal; }
+    abort(reason) { abortSignal(this.#signal, reason); }
+  }
+  tag(AbortSignal, "AbortSignal");
+  tag(AbortController, "AbortController");
+  expose("AbortSignal", AbortSignal);
+  expose("AbortController", AbortController);
+
+  // ---- structuredClone (HTML Standard §2.7) ---------------------------------------------------------------------------
+  function cloneValue(value, seen) {
+    if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+      if (typeof value === "symbol") {
+        throw new DOMException("un symbole ne peut pas être cloné", "DataCloneError");
+      }
+      return value;
+    }
+    if (typeof value === "function") {
+      throw new DOMException("une fonction ne peut pas être clonée", "DataCloneError");
+    }
+    if (seen.has(value)) return seen.get(value);
+    let copy;
+    if (value instanceof Date) {
+      copy = new Date(value.getTime());
+      seen.set(value, copy);
+    } else if (value instanceof RegExp) {
+      copy = new RegExp(value.source, value.flags);
+      seen.set(value, copy);
+    } else if (value instanceof Map) {
+      copy = new Map();
+      seen.set(value, copy);
+      for (const [key, item] of value) copy.set(cloneValue(key, seen), cloneValue(item, seen));
+    } else if (value instanceof Set) {
+      copy = new Set();
+      seen.set(value, copy);
+      for (const item of value) copy.add(cloneValue(item, seen));
+    } else if (value instanceof ArrayBuffer) {
+      copy = value.slice(0);
+      seen.set(value, copy);
+    } else if (ArrayBuffer.isView(value)) {
+      copy = value.slice ? value.slice() : new DataView(value.buffer.slice(0));
+      seen.set(value, copy);
+    } else if (value instanceof Error) {
+      copy = new value.constructor(value.message);
+      seen.set(value, copy);
+    } else if (Array.isArray(value)) {
+      copy = [];
+      seen.set(value, copy);
+      for (let i = 0; i < value.length; i++) {
+        if (i in value) copy[i] = cloneValue(value[i], seen);
+      }
+      copy.length = value.length;
+    } else if (typeof value.nodeType === "number") {
+      throw new DOMException("un nœud du DOM ne peut pas être cloné", "DataCloneError");
+    } else {
+      copy = {};
+      seen.set(value, copy);
+      for (const key of Object.keys(value)) copy[key] = cloneValue(value[key], seen);
+    }
+    return copy;
+  }
+  expose("structuredClone", function structuredClone(value) {
+    return cloneValue(value, new Map());
+  });
+
+  // ---- Événements d'interface (UI Events) ---------------------------------------------------------------------------------
+  // Fabrique une interface d'événement : chaque membre de `defaults` devient
+  // un attribut en lecture seule, initialisé depuis le dictionnaire reçu et
+  // converti au type de sa valeur par défaut.
+  function eventInterface(name, Base, defaults) {
+    const data = new WeakMap();
+    const keys = Object.keys(defaults);
+    const Interface = {
+      [name]: class extends Base {
+        constructor(type, init = {}) {
+          super(type, init);
+          const values = {};
+          for (const key of keys) {
+            const given = init === null || init === undefined ? undefined : init[key];
+            const fallback = defaults[key];
+            if (given === undefined) values[key] = fallback;
+            else if (typeof fallback === "boolean") values[key] = Boolean(given);
+            else if (typeof fallback === "number") values[key] = Number(given);
+            else if (typeof fallback === "string") values[key] = String(given);
+            else values[key] = given;
+          }
+          data.set(this, values);
+        }
+      },
+    }[name];
+    for (const key of keys) {
+      define(Interface.prototype, key, {
+        get() { return data.get(this)[key]; },
+        enumerable: true,
+        configurable: true,
+      });
+    }
+    tag(Interface, name);
+    expose(name, Interface);
+    return Interface;
+  }
+  const modifiers = { ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
+  const UIEvent = eventInterface("UIEvent", EventCtor, { view: null, detail: 0 });
+  const MouseEvent = eventInterface("MouseEvent", UIEvent, {
+    screenX: 0, screenY: 0, clientX: 0, clientY: 0, ...modifiers,
+    button: 0, buttons: 0, relatedTarget: null, movementX: 0, movementY: 0,
+  });
+  for (const [alias, source] of [["pageX", "clientX"], ["pageY", "clientY"], ["x", "clientX"],
+    ["y", "clientY"], ["offsetX", "clientX"], ["offsetY", "clientY"]]) {
+    define(MouseEvent.prototype, alias, {
+      get() { return this[source]; },
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  eventInterface("PointerEvent", MouseEvent, {
+    pointerId: 0, width: 1, height: 1, pressure: 0, pointerType: "", isPrimary: false,
+  });
+  eventInterface("WheelEvent", MouseEvent, { deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0 });
+  eventInterface("KeyboardEvent", UIEvent, {
+    key: "", code: "", location: 0, repeat: false, isComposing: false, ...modifiers,
+    keyCode: 0, charCode: 0, which: 0,
+  });
+  eventInterface("InputEvent", UIEvent, { data: null, inputType: "", isComposing: false });
+  eventInterface("FocusEvent", UIEvent, { relatedTarget: null });
+  eventInterface("ProgressEvent", EventCtor, { lengthComputable: false, loaded: 0, total: 0 });
+  eventInterface("ErrorEvent", EventCtor, {
+    message: "", filename: "", lineno: 0, colno: 0, error: undefined,
+  });
+  eventInterface("PopStateEvent", EventCtor, { state: null });
+  eventInterface("HashChangeEvent", EventCtor, { oldURL: "", newURL: "" });
+
+  // `document.createEvent(interface)` : un événement à initialiser ensuite.
+  const legacyEvents = {
+    event: "Event", events: "Event", htmlevents: "Event", customevent: "CustomEvent",
+    uievent: "UIEvent", uievents: "UIEvent", mouseevent: "MouseEvent",
+    mouseevents: "MouseEvent", keyboardevent: "KeyboardEvent", focusevent: "FocusEvent",
+  };
+  define(Document.prototype, "createEvent", {
+    value: function createEvent(kind) {
+      const name = legacyEvents[String(kind).toLowerCase()];
+      if (name === undefined) {
+        throw new DOMException("interface d'événement inconnue : " + String(kind), "NotSupportedError");
+      }
+      return new global[name]("");
+    },
+    writable: true,
+    configurable: true,
+  });
+
+  // ---- Éléments créés par constructeur, sérialisation -------------------------------------------------------------------------
+  expose("Image", function Image(width, height) {
+    if (!new.target) throw new TypeError("Image doit être appelé avec « new »");
+    const image = document.createElement("img");
+    if (width !== undefined) image.setAttribute("width", String(width));
+    if (height !== undefined) image.setAttribute("height", String(height));
+    return image;
+  });
+  expose("Option", function Option(text, value) {
+    if (!new.target) throw new TypeError("Option doit être appelé avec « new »");
+    const option = document.createElement("option");
+    if (text !== undefined) option.textContent = String(text);
+    if (value !== undefined) option.setAttribute("value", String(value));
+    return option;
+  });
+  class XMLSerializer {
+    serializeToString(node) {
+      if (node === null || typeof node !== "object" || typeof node.nodeType !== "number") {
+        throw new TypeError("XMLSerializer.serializeToString : un nœud est attendu");
+      }
+      const one = (item) => {
+        switch (item.nodeType) {
+          case 1: return item.outerHTML;
+          case 3: return item.data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          case 8: return "<!--" + item.data + "-->";
+          case 10: return "<!DOCTYPE " + item.name + ">";
+          default: return Array.from(item.childNodes, one).join("");
+        }
+      };
+      return one(node);
+    }
+  }
+  tag(XMLSerializer, "XMLSerializer");
+  expose("XMLSerializer", XMLSerializer);
+
+  // ---- Fenêtre, écran, navigateur --------------------------------------------------------------------------------------------------
+  const lazy = (target, name, get) => define(target, name, { get, enumerable: true, configurable: true });
+  const screen = {};
+  for (const [name, source] of [["width", "innerWidth"], ["height", "innerHeight"],
+    ["availWidth", "innerWidth"], ["availHeight", "innerHeight"]]) {
+    lazy(screen, name, () => global[source]);
+  }
+  screen.colorDepth = 24;
+  screen.pixelDepth = 24;
+  expose("screen", screen);
+  expose("devicePixelRatio", 1);
+  // LIMITE : la position de défilement appartient à l'interface ; les
+  // scripts voient 0 et leurs demandes de défilement sont sans effet.
+  for (const name of ["scrollX", "scrollY", "pageXOffset", "pageYOffset"]) expose(name, 0);
+  for (const name of ["scrollTo", "scroll", "scrollBy"]) expose(name, function () {});
+  Object.assign(navigator, {
+    onLine: true, platform: "Win32", vendor: "", cookieEnabled: false,
+    hardwareConcurrency: 1, maxTouchPoints: 0,
+    sendBeacon(url, data) {
+      try {
+        fetch(url, data === undefined || data === null ? { method: "POST" } : { method: "POST", body: data });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  });
+  if (typeof console.table !== "function") console.table = console.log;
+
+  // ---- matchMedia (CSSOM View) ----------------------------------------------------------------------------------------------------------
+  function featureMatches(feature) {
+    const match = /^\(\s*([a-z-]+)\s*(?::\s*([^)]+?)\s*)?\)$/.exec(feature);
+    if (match === null) return false;
+    const [, name, value] = match;
+    const pixels = value === undefined ? NaN : parseFloat(value) * (/(?:em|rem)$/.test(value) ? 16 : 1);
+    switch (name) {
+      case "min-width": return global.innerWidth >= pixels;
+      case "max-width": return global.innerWidth <= pixels;
+      case "min-height": return global.innerHeight >= pixels;
+      case "max-height": return global.innerHeight <= pixels;
+      case "width": return global.innerWidth === pixels;
+      case "height": return global.innerHeight === pixels;
+      case "orientation":
+        return (global.innerWidth >= global.innerHeight ? "landscape" : "portrait") === value;
+      case "prefers-color-scheme": return value === "light";
+      case "prefers-reduced-motion": return value === "no-preference";
+      case "hover": return value === "hover";
+      case "pointer": return value === "fine";
+      default: return false;
+    }
+  }
+  function queryMatches(query) {
+    return query.split(",").some((alternative) => {
+      let text = alternative.trim().toLowerCase();
+      let negate = false;
+      if (text.startsWith("not ")) {
+        negate = true;
+        text = text.slice(4).trim();
+      } else if (text.startsWith("only ")) {
+        text = text.slice(5).trim();
+      }
+      const result = text.split(/\s+and\s+/).every((part) => {
+        if (part === "all" || part === "screen" || part === "") return true;
+        if (part === "print" || part === "speech") return false;
+        return featureMatches(part);
+      });
+      return negate ? !result : result;
+    });
+  }
+  class MediaQueryList extends EventTargetBase {
+    #media;
+    constructor(key, media) {
+      if (key !== signalKey) throw new TypeError("MediaQueryList : constructeur illégal");
+      super();
+      this.#media = media;
+    }
+    get media() { return this.#media; }
+    get matches() { return queryMatches(this.#media); }
+    addListener(callback) { this.addEventListener("change", callback); }
+    removeListener(callback) { this.removeEventListener("change", callback); }
+  }
+  tag(MediaQueryList, "MediaQueryList");
+  expose("MediaQueryList", MediaQueryList);
+  expose("matchMedia", function matchMedia(query) {
+    return new MediaQueryList(signalKey, String(query));
+  });
+
+  // ---- performance (User Timing, simplifié) ------------------------------------------------------------------------------------------------
+  const entries = [];
+  const timeOrigin = Date.now() - performance.now();
+  Object.assign(performance, {
+    timeOrigin,
+    timing: { navigationStart: Math.round(timeOrigin) },
+    mark(name) {
+      const entry = { name: String(name), entryType: "mark", startTime: performance.now(), duration: 0 };
+      entries.push(entry);
+      return entry;
+    },
+    measure(name, start, end) {
+      const at = (mark, fallback) => {
+        if (mark === undefined) return fallback;
+        const found = entries.findLast((e) => e.entryType === "mark" && e.name === String(mark));
+        if (found === undefined) {
+          throw new DOMException("marque inconnue : " + String(mark), "SyntaxError");
+        }
+        return found.startTime;
+      };
+      const startTime = at(start, 0);
+      const entry = {
+        name: String(name), entryType: "measure", startTime,
+        duration: at(end, performance.now()) - startTime,
+      };
+      entries.push(entry);
+      return entry;
+    },
+    getEntries() { return entries.slice(); },
+    getEntriesByType(type) { return entries.filter((e) => e.entryType === type); },
+    getEntriesByName(name, type) {
+      return entries.filter((e) => e.name === name && (type === undefined || e.entryType === type));
+    },
+    clearMarks(name) {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].entryType === "mark" && (name === undefined || entries[i].name === name)) {
+          entries.splice(i, 1);
+        }
+      }
+    },
+    clearMeasures(name) {
+      for (let i = entries.length - 1; i >= 0; i--) {
+        if (entries[i].entryType === "measure" && (name === undefined || entries[i].name === name)) {
+          entries.splice(i, 1);
+        }
+      }
+    },
+  });
 })

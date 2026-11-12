@@ -1461,6 +1461,50 @@ mod tests {
     }
 
     #[test]
+    fn prelude_web_apis() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               log.push(btoa('Oxyde!'), atob('T3h5ZGUh'), atob(' T3g= '));
+               const bytes = new TextEncoder().encode('é€😀');
+               log.push(bytes.length, new TextDecoder().decode(bytes));
+               log.push(new TextDecoder().decode(new Uint8Array([0x41, 0xff, 0xe2, 0x82])));
+               const controller = new AbortController();
+               controller.signal.addEventListener('abort', () => log.push('abandon'));
+               controller.abort();
+               log.push(controller.signal.aborted, controller.signal.reason.name);
+               const source = { date: new Date(5), liste: [1, { a: new Map([[1, 2]]) }] };
+               source.soi = source;
+               const copy = structuredClone(source);
+               log.push(copy !== source, copy.soi === copy, copy.date.getTime());
+               log.push(copy.liste[1].a.get(1));
+               const key = new KeyboardEvent('keydown', { key: 'a', ctrlKey: 1, bubbles: true });
+               log.push(key.key, key.ctrlKey, key.bubbles, key instanceof UIEvent);
+               const mouse = new MouseEvent('click', { clientX: 4 });
+               log.push(mouse.pageX, mouse.button, mouse instanceof Event);
+               const legacy = document.createEvent('Event');
+               legacy.initEvent('vieux', true, false);
+               log.push(legacy.type, legacy.bubbles);
+               log.push(matchMedia('(min-width: 0px) and (max-width: 5000px)').matches);
+               log.push(matchMedia('print, (prefers-color-scheme: dark)').matches);
+               log.push(new XMLSerializer().serializeToString(document.createElement('br')));
+               log.push(new Image(3).getAttribute('width'), typeof performance.mark('m').startTime);
+               try { atob('@'); } catch (e) { log.push(e.name, e.code, e instanceof DOMException); }
+               queueMicrotask(() => { document.body.textContent = log.join('|'); });
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "T3h5ZGUh|Oxyde!|Ox|9|é€😀|A\u{fffd}\u{fffd}|abandon|true|AbortError|",
+                "true|true|5|2|a|true|true|true|4|0|true|vieux|true|true|false|<br>|3|number|",
+                "InvalidCharacterError|5|true"
+            )
+        );
+    }
+
+    #[test]
     fn storage_fragments_collections_and_dataset() {
         let mut p = page(
             "<p id=a data-user-id=7 name=n>x</p><p>y</p>
