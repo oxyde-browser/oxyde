@@ -12,7 +12,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 286 fichiers de test entièrement réussis sur 693 (41,3 %) ; 42936 sous-tests sur 49891, détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 538 fichiers entièrement réussis sur 2 267 (23,7 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 50 fichiers entièrement réussis sur 363 (13,8 %) ; détail dans [wpt-animations.md](wpt-animations.md). L'API Web Animations (`getAnimations`, `Element.animate`), dont dépendent la plupart de ces tests, reste à faire |
-| test262 | `oxyde_js` | **branchée** : 41 720 tests réussis sur 48 795 (85,5 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 41 821 tests réussis sur 48 795 (85,7 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
@@ -30,9 +30,9 @@ pilotés par WebDriver (`testdriver.js`), `Observable`.
 
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus
-gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul), erreurs de syntaxe précoces
-non détectées, `Proxy`, les méthodes d'`Iterator`, `with`, `SharedArrayBuffer` et `Atomics`,
-les membres privés statiques et `#x in obj`, `await` de premier niveau dans les modules.
+gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul), les expressions
+rationnelles (780), les méthodes d'`Iterator` (220), la gestion explicite des ressources
+(`using`, `DisposableStack` : 200), les attributs d'importation, `ShadowRealm`.
 
 ## Écarts connus
 
@@ -92,8 +92,10 @@ les membres privés statiques et `#x in obj`, `await` de premier niveau dans les
   n'est pas résolu (pas de carte d'importation).
 - `BigInt` : arithmétique en précision arbitraire écrite pour Oxyde, bornée à 2^22 bits
   (au-delà, `RangeError`).
-- Tableaux typés, `ArrayBuffer` (redimensionnable, transférable) et `DataView` : pas de
-  `SharedArrayBuffer` ni d'`Atomics` ; `Symbol.species` n'est pas consulté.
+- Tableaux typés, `ArrayBuffer` (redimensionnable, transférable, immuable), `DataView`,
+  `SharedArrayBuffer` et `Atomics` passent tous leurs tests. Dans une page, la promesse
+  d'`Atomics.waitAsync` se règle à la fin de la tâche suivante : rien ne réveille encore
+  une page au repos, et il n'y a pas de workers pour partager un tampon.
 - `Array` : méthodes génériques (tout objet muni d'une longueur) ; `Symbol.species` et
   `Symbol.isConcatSpreadable` ne sont pas consultés.
 - `Symbol` : `Symbol.toPrimitive` et `Symbol.hasInstance` existent mais ne sont pas consultés

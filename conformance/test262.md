@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 41720 réussis sur 48795 (85.5 %).**
+**Total : 41821 réussis sur 48795 (85.7 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -21,7 +21,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/AsyncGeneratorFunction` | 23 | 22 | 95.7 % |
 | `built-ins/AsyncGeneratorPrototype` | 48 | 45 | 93.8 % |
 | `built-ins/AsyncIteratorPrototype` | 13 | 0 | 0.0 % |
-| `built-ins/Atomics` | 389 | 288 | 74.0 % |
+| `built-ins/Atomics` | 389 | 389 | 100.0 % |
 | `built-ins/BigInt` | 77 | 76 | 98.7 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
 | `built-ins/DataView` | 560 | 560 | 100.0 % |

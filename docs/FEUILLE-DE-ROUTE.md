@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 720 tests de test262 sur 48 795 (85,5 %)** ; il en reste 7 075.
+- `oxyde_js` réussit **41 821 tests de test262 sur 48 795 (85,7 %)** ; il en reste 6 974.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -84,15 +84,16 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
 - **WeakRef, FinalizationRegistry, WeakMap, WeakSet** (130) : demande des références faibles
   dans le ramasse-miettes ; aujourd'hui `WeakMap` et `WeakSet` retiennent leurs clés.
 
-### D — Tampons partagés et tableaux typés (1 024 tests)
+### D — Tampons partagés et tableaux typés (1 024 tests) — faite
 
-- **SharedArrayBuffer et Atomics** (495) : `SharedArrayBuffer` est là (101 tests sur 104), sur
+- **SharedArrayBuffer et Atomics** (495) : `SharedArrayBuffer` est là (104 tests sur 104), sur
   un stockage dont les octets se partagent entre agents, ainsi qu'`Atomics` pour un agent
-  et plusieurs (275 sur 389) : `add`, `and`, `compareExchange`, `exchange`, `load`, `or`,
-  `store`, `sub`, `xor`, `isLockFree`, `wait`, `notify`, `pause`. Le lanceur fournit
-  `$262.agent` : chaque agent est un moteur sur son propre fil, et les tests vérifient la
-  mémoire réellement partagée et le réveil par `notify`. Reste `Atomics.waitAsync` (une
-  centaine de tests), qui demande une boucle d'événements dans le lanceur.
+  et plusieurs (389 sur 389) : `add`, `and`, `compareExchange`, `exchange`, `load`, `or`,
+  `store`, `sub`, `xor`, `isLockFree`, `wait`, `waitAsync`, `notify`, `pause`. Le lanceur
+  fournit `$262.agent` : chaque agent est un moteur sur son propre fil, et les tests
+  vérifient la mémoire réellement partagée et le réveil par `notify`. `waitAsync` inscrit
+  une attente et rend une promesse, réglée entre deux tâches par l'agent qui attend ; le
+  lanceur a pour cela une boucle d'événements (`setTimeout`, attentes en cours).
 - **TypedArray, ArrayBuffer, DataView** (529) : les constructeurs d'espèce sont consultés
   (`slice`, `filter`, `map`, `subarray`, `from`, `of`), les parcours lisent les éléments au
   fil de l'eau, `toLocaleString` appelle celui de chaque élément (TypedArray : 1 405 tests
@@ -104,7 +105,7 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   n'a pas de `prototype` objet, le prototype par défaut est pris dans son royaume, pour
   tous les constructeurs natifs (80 tests, dont une cinquantaine hors de cette étape).
   Tableaux typés, `ArrayBuffer`, `DataView` et `SharedArrayBuffer` passent désormais tous
-  leurs tests. Dans cette étape, il ne reste que `Atomics.waitAsync`.
+  leurs tests.
 
 ### E — Expressions rationnelles (855 tests)
 
@@ -258,7 +259,8 @@ lire ce que l'utilisateur peut lire ; `win32k` n'est pas verrouillé. Les cookie
 mémoire dans le processus réseau et sont perdus s'il s'arrête. Pas de processus GPU : la
 rastérisation reste dans le navigateur.
 
-Reste : `SharedArrayBuffer`, `Atomics` et workers (étape D de test262) ; le processus GPU ;
+Reste : les workers (`SharedArrayBuffer` et `Atomics` sont faits, étape D de test262) ; le
+processus GPU ;
 les cadres d'un autre site dans leur propre processus.
 
 ### Jalon 6 — Mise en page complète et compositeur

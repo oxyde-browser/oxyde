@@ -275,13 +275,49 @@ pub(crate) struct PromiseData {
     pub(crate) handled: bool,
 }
 
-/// Agent endormi par `Atomics.wait` sur un octet d'un tampon partagé.
+/// Boîte où `Atomics.notify` dépose, pour un agent, les jetons des attentes
+/// asynchrones qu'il vient de réveiller. L'agent la relève entre deux tâches.
+#[derive(Debug, Default)]
+pub(crate) struct AsyncMailbox {
+    woken: Mutex<Vec<u64>>,
+    signal: Condvar,
+}
+
+impl AsyncMailbox {
+    fn deliver(&self, token: u64) {
+        relock(&self.woken).push(token);
+        self.signal.notify_all();
+    }
+
+    /// Retire et rend les jetons déposés.
+    pub(crate) fn take(&self) -> Vec<u64> {
+        std::mem::take(&mut *relock(&self.woken))
+    }
+
+    /// Attend, `max` au plus, qu'un jeton soit déposé ; revient aussitôt
+    /// s'il y en a déjà un.
+    pub(crate) fn park(&self, max: std::time::Duration) {
+        let woken = relock(&self.woken);
+        if woken.is_empty() {
+            drop(
+                self.signal
+                    .wait_timeout(woken, max)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        }
+    }
+}
+
+/// Agent endormi par `Atomics.wait`, ou attente d'`Atomics.waitAsync`, sur
+/// un octet d'un tampon partagé.
 #[derive(Debug)]
 struct Waiter {
     id: u64,
     /// Décalage, dans le tampon, de l'élément attendu.
     index: usize,
     notified: bool,
+    /// Attente asynchrone : la boîte de son agent et le jeton à y déposer.
+    mailbox: Option<(Arc<AsyncMailbox>, u64)>,
 }
 
 #[derive(Debug, Default)]
@@ -400,6 +436,7 @@ impl SharedBytes {
             id,
             index,
             notified: false,
+            mailbox: None,
         });
         loop {
             let position = list.waiters.iter().position(|w| w.id == id);
@@ -432,22 +469,63 @@ impl SharedBytes {
         }
     }
 
-    /// `Atomics.notify` : réveille, dans l'ordre où ils se sont endormis,
-    /// `count` agents au plus qui attendent sur `index`. Renvoie leur nombre.
+    /// `Atomics.waitAsync` : inscrit une attente sur l'élément de décalage
+    /// `index` si `still_expected` est vrai à cet instant. Renvoie son
+    /// numéro, ou `None` si la valeur avait changé. Au réveil, `token` est
+    /// déposé dans `mailbox`.
+    pub(crate) fn wait_async(
+        &self,
+        index: usize,
+        mailbox: &Arc<AsyncMailbox>,
+        token: u64,
+        still_expected: impl FnOnce() -> bool,
+    ) -> Option<u64> {
+        let mut list = relock(&self.waiting);
+        if !self.atomically(still_expected) {
+            return None;
+        }
+        list.next_id = list.next_id.wrapping_add(1);
+        let id = list.next_id;
+        list.waiters.push(Waiter {
+            id,
+            index,
+            notified: false,
+            mailbox: Some((Arc::clone(mailbox), token)),
+        });
+        Some(id)
+    }
+
+    /// Retire l'attente asynchrone `id`, arrivée au terme de son délai.
+    /// `false` si elle n'y est plus : un `notify` l'a réveillée entre-temps.
+    pub(crate) fn cancel_async(&self, id: u64) -> bool {
+        let mut list = relock(&self.waiting);
+        let before = list.waiters.len();
+        list.waiters.retain(|w| w.id != id);
+        list.waiters.len() != before
+    }
+
+    /// `Atomics.notify` : réveille, dans l'ordre où ils se sont inscrits,
+    /// `count` dormeurs au plus qui attendent sur `index`. Renvoie leur
+    /// nombre. Une attente asynchrone quitte la liste aussitôt.
     pub(crate) fn notify(&self, index: usize, count: usize) -> usize {
         let mut list = relock(&self.waiting);
         let mut woken = 0;
-        for waiter in &mut list.waiters {
-            if woken == count {
-                break;
-            }
-            if waiter.index == index && !waiter.notified {
-                waiter.notified = true;
+        let mut asleep = false;
+        let waiters = std::mem::take(&mut list.waiters);
+        for mut waiter in waiters {
+            if woken < count && waiter.index == index && !waiter.notified {
                 woken += 1;
+                if let Some((mailbox, token)) = waiter.mailbox.take() {
+                    mailbox.deliver(token);
+                    continue;
+                }
+                waiter.notified = true;
+                asleep = true;
             }
+            list.waiters.push(waiter);
         }
         drop(list);
-        if woken > 0 {
+        if asleep {
             self.wake.notify_all();
         }
         woken

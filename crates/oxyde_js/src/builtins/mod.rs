@@ -6,6 +6,7 @@
 mod array;
 mod async_generator;
 mod atomics;
+pub(crate) use atomics::AsyncWait;
 mod base64;
 pub(crate) mod bigint;
 mod collections;

@@ -2669,3 +2669,54 @@ fn default_prototype_comes_from_the_realm_of_new_target() {
         "true"
     );
 }
+
+#[test]
+fn atomics_wait_async_settles_between_tasks() {
+    let mut vm = Vm::new();
+    let run = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    // Réponses immédiates : valeur différente, ou délai nul.
+    assert_eq!(
+        run(
+            &mut vm,
+            "var cells = new Int32Array(new SharedArrayBuffer(16)); var seen = []; \
+             var a = Atomics.waitAsync(cells, 0, 1), b = Atomics.waitAsync(cells, 0, 0, 0); \
+             [a.async, a.value, b.async, b.value].join()"
+        ),
+        "false,not-equal,false,timed-out"
+    );
+    // Réveil par `notify` : la promesse se règle à la fin de la tâche.
+    assert_eq!(
+        run(
+            &mut vm,
+            "var woken = Atomics.waitAsync(cells, 0, 0); \
+             woken.value.then(outcome => seen.push(outcome)); \
+             [woken.async, Atomics.notify(cells, 0), Atomics.notify(cells, 0)].join()"
+        ),
+        "true,1,0"
+    );
+    assert_eq!(run(&mut vm, "seen.join()"), "ok");
+    assert_eq!(vm.pending_async_waits(), 0);
+    // Délai : rien avant son terme, `timed-out` après.
+    assert_eq!(
+        run(
+            &mut vm,
+            "Atomics.waitAsync(cells, 1, 0, 20).value.then(outcome => seen.push(outcome)); \
+             seen.join()"
+        ),
+        "ok"
+    );
+    assert_eq!(vm.pending_async_waits(), 1);
+    let started = std::time::Instant::now();
+    while vm.pending_async_waits() > 0 && started.elapsed() < std::time::Duration::from_secs(5) {
+        vm.park_for_async_waits(std::time::Duration::from_millis(50));
+        vm.run_microtasks();
+    }
+    assert!(started.elapsed() >= std::time::Duration::from_millis(20));
+    assert_eq!(
+        run(&mut vm, "[seen.join(), Atomics.notify(cells, 1)].join(' ')"),
+        "ok,timed-out 0"
+    );
+}

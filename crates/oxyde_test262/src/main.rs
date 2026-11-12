@@ -31,6 +31,13 @@ use oxyde_js::{EvalError, JsResult, SharedStorage, Value, Vm};
 const SCOPES: [&str; 3] = ["language", "built-ins", "annexB"];
 /// Budget d'instructions d'un test : borne les boucles infinies.
 const BUDGET: u64 = 50_000_000;
+
+/// Temps qu'un test asynchrone peut passer à attendre ses minuteurs et ses
+/// attentes d'`Atomics.waitAsync` avant d'être déclaré inachevé.
+const LOOP_LIMIT: Duration = Duration::from_secs(20);
+
+/// Pause la plus longue de la boucle d'événements entre deux vérifications.
+const LOOP_PAUSE: Duration = Duration::from_millis(50);
 /// Pile des fils d'exécution des tests (récursions profondes).
 const STACK_BYTES: usize = 256 * 1024 * 1024;
 
@@ -175,11 +182,19 @@ struct AgentState {
     leaving: bool,
 }
 
+/// Minuteur posé par `setTimeout`.
+struct Timer {
+    callback: Value,
+    due: Instant,
+}
+
 /// État de l'hôte attaché à un moteur.
 #[derive(Default)]
 struct Host {
     /// Lignes écrites par `print`.
     lines: Vec<String>,
+    /// Minuteurs en attente.
+    timers: Vec<Timer>,
     hub: Option<Arc<Hub>>,
     /// Présent dans un agent, absent dans l'agent principal.
     agent: Option<AgentState>,
@@ -232,6 +247,7 @@ fn run_agent(source: &str, hub: Arc<Hub>, inbox: &mpsc::Receiver<Broadcast>) {
     vm.set_can_block(true);
     vm.host = Some(Box::new(Host {
         lines: Vec::new(),
+        timers: Vec::new(),
         hub: Some(hub),
         agent: Some(AgentState {
             callback: None,
@@ -253,7 +269,22 @@ fn run_agent(source: &str, hub: Arc<Hub>, inbox: &mpsc::Receiver<Broadcast>) {
         {
             return;
         }
-        let Ok((storage, number)) = inbox.recv() else {
+        // Tant qu'une attente d'`Atomics.waitAsync` est en cours, l'agent
+        // guette à la fois son réveil et les diffusions.
+        let received = if vm.pending_async_waits() > 0 {
+            match inbox.try_recv() {
+                Ok(message) => Ok(message),
+                Err(mpsc::TryRecvError::Empty) => {
+                    vm.park_for_async_waits(LOOP_PAUSE);
+                    vm.run_microtasks();
+                    continue;
+                }
+                Err(mpsc::TryRecvError::Disconnected) => Err(()),
+            }
+        } else {
+            inbox.recv().map_err(|_| ())
+        };
+        let Ok((storage, number)) = received else {
             // L'agent principal a terminé.
             return;
         };
@@ -362,6 +393,75 @@ fn agent_sleep(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
+/// `setTimeout(fonction, délai)` : le harnais s'en sert pour patienter sans
+/// occuper le moteur.
+fn host_set_timeout(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let callback = args.first().cloned().unwrap_or(Value::Undefined);
+    let delay = match args.get(1) {
+        Some(value) => vm.to_number(value)?,
+        None => 0.0,
+    };
+    let delay = if delay.is_finite() && delay > 0.0 {
+        Duration::from_secs_f64((delay / 1000.0).min(60.0))
+    } else {
+        Duration::ZERO
+    };
+    // La fonction reste vivante jusqu'à son appel.
+    vm.add_root(callback.clone());
+    if let Some(host) = host(vm) {
+        host.timers.push(Timer {
+            callback,
+            due: Instant::now() + delay,
+        });
+    }
+    Ok(Value::Undefined)
+}
+
+/// Boucle d'événements d'un test asynchrone : appelle les minuteurs échus et
+/// règle les attentes d'`Atomics.waitAsync`, jusqu'à ce que `finished` soit
+/// vrai, qu'il n'y ait plus rien à attendre ou que le temps imparti soit
+/// écoulé.
+fn run_event_loop(vm: &mut Vm, finished: impl Fn(&mut Vm) -> bool) {
+    let started = Instant::now();
+    loop {
+        // Règle aussi les attentes asynchrones arrivées à leur terme.
+        vm.run_microtasks();
+        if finished(vm) || vm.was_interrupted() || started.elapsed() > LOOP_LIMIT {
+            return;
+        }
+        let now = Instant::now();
+        let due = host(vm).and_then(|h| {
+            let (position, _) = h
+                .timers
+                .iter()
+                .enumerate()
+                .filter(|(_, timer)| timer.due <= now)
+                .min_by_key(|(_, timer)| timer.due)?;
+            Some(h.timers.remove(position))
+        });
+        if let Some(timer) = due {
+            vm.set_budget(Some(BUDGET));
+            // Une erreur du minuteur se voit à l'absence de `$DONE`.
+            let _ = vm.call(&timer.callback, &Value::Undefined, &[]);
+            vm.remove_root(&timer.callback);
+            continue;
+        }
+        let next = host(vm).and_then(|h| h.timers.iter().map(|timer| timer.due).min());
+        let waiting = vm.pending_async_waits() > 0;
+        if next.is_none() && !waiting {
+            return;
+        }
+        let pause = next.map_or(LOOP_PAUSE, |due| {
+            due.saturating_duration_since(now).min(LOOP_PAUSE)
+        });
+        if waiting {
+            vm.park_for_async_waits(pause);
+        } else {
+            std::thread::sleep(pause);
+        }
+    }
+}
+
 /// `$262.agent.monotonicNow()` : millisecondes depuis le début du test.
 fn agent_now(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     let elapsed = hub(vm).map_or(0.0, |hub| hub.epoch.elapsed().as_secs_f64() * 1000.0);
@@ -432,6 +532,7 @@ fn host_create_realm(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
 fn install_host(vm: &mut Vm) {
     let global = vm.global();
     vm.define_method(global, "print", 1, host_print);
+    vm.define_method(global, "setTimeout", 2, host_set_timeout);
     vm.define_method(global, "__detach", 1, host_detach);
     vm.define_method(global, "__evalScript", 1, host_eval_script);
     vm.define_method(global, "__createRealm", 0, host_create_realm);
@@ -527,6 +628,9 @@ fn run_once(
         return Outcome::Fail(error.to_string());
     }
     if meta.has("async") {
+        run_event_loop(&mut vm, |vm| {
+            host(vm).is_some_and(|h| h.lines.iter().any(|l| l.starts_with("Test262:Async")))
+        });
         let lines = host(&mut vm).map(|h| h.lines.clone()).unwrap_or_default();
         if let Some(failure) = lines
             .iter()

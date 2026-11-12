@@ -6,9 +6,16 @@
 //! écriture, d'où qu'elle vienne. Sur un tampon ordinaire, qu'un seul agent
 //! voit, l'opération est atomique par construction.
 //!
-//! LIMITES CONNUES : `Atomics.waitAsync` n'est pas fourni.
+//! `Atomics.waitAsync` n'endort personne : il inscrit une attente et rend
+//! une promesse. `notify` dépose un jeton dans la boîte de l'agent qui
+//! attend ; cet agent règle la promesse entre deux tâches, en vidant sa
+//! file de micro-tâches ([`Vm::settle_async_waits`]). Un hôte qui n'a plus
+//! rien à faire peut patienter avec [`Vm::park_for_async_waits`].
 
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use crate::heap::SharedBytes;
 
 use super::arg;
 use super::typed_array::{convert, decode_value, encode_value, number, to_index, validate};
@@ -212,14 +219,95 @@ fn atomics_is_lock_free(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult 
     ))
 }
 
-fn atomics_wait(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+/// Attente d'`Atomics.waitAsync` encore en cours.
+pub(crate) struct AsyncWait {
+    /// Jeton que `notify` dépose dans la boîte de l'agent.
+    token: u64,
+    /// Numéro de l'attente dans la liste du tampon.
+    waiter: u64,
+    shared: Arc<SharedBytes>,
+    /// Terme du délai ; `None` : attente sans limite.
+    deadline: Option<Instant>,
+    /// Promesse rendue au script.
+    pub(crate) promise: ObjId,
+}
+
+impl Vm {
+    /// Règle les promesses d'`Atomics.waitAsync` dont l'attente est finie :
+    /// `"ok"` pour celles qu'un `notify` a réveillées, `"timed-out"` pour
+    /// celles dont le délai est passé. Renvoie vrai s'il y en avait.
+    ///
+    /// Appelé au début de chaque vidage des micro-tâches ; un hôte dont la
+    /// boucle d'événements tourne à vide peut aussi l'appeler lui-même.
+    pub fn settle_async_waits(&mut self) -> bool {
+        if self.async_waits.is_empty() {
+            return false;
+        }
+        let woken = self.async_mailbox.take();
+        let now = Instant::now();
+        let mut settled = Vec::new();
+        let waits = std::mem::take(&mut self.async_waits);
+        for wait in waits {
+            if woken.contains(&wait.token) {
+                settled.push((wait.promise, "ok"));
+            } else if wait.deadline.is_some_and(|deadline| now >= deadline)
+                && wait.shared.cancel_async(wait.waiter)
+            {
+                // Retirée de la liste avant tout `notify` : le délai l'emporte.
+                settled.push((wait.promise, "timed-out"));
+            } else {
+                self.async_waits.push(wait);
+            }
+        }
+        let any = !settled.is_empty();
+        for (promise, outcome) in settled {
+            self.resolve_promise(promise, Value::string(outcome));
+        }
+        any
+    }
+
+    /// Nombre d'attentes d'`Atomics.waitAsync` encore en cours.
+    #[must_use]
+    pub fn pending_async_waits(&self) -> usize {
+        self.async_waits.len()
+    }
+
+    /// Patiente, `max` au plus, jusqu'au réveil d'une attente asynchrone ou
+    /// au terme du plus proche de leurs délais.
+    pub fn park_for_async_waits(&self, max: Duration) {
+        let now = Instant::now();
+        let nearest = self
+            .async_waits
+            .iter()
+            .filter_map(|wait| wait.deadline)
+            .map(|deadline| deadline.saturating_duration_since(now))
+            .min();
+        self.async_mailbox
+            .park(nearest.map_or(max, |nearest| nearest.min(max)));
+    }
+}
+
+/// Demande d'attente validée, commune à `wait` et `waitAsync`.
+struct WaitRequest {
+    shared: Arc<SharedBytes>,
+    /// Décalage de l'élément dans le tampon.
+    start: usize,
+    /// Délai ; `None` : sans limite.
+    timeout: Option<Duration>,
+    /// Vrai tant que l'élément vaut la valeur attendue.
+    still_expected: Box<dyn Fn() -> bool>,
+}
+
+/// Valide les arguments de `wait` (`blocking`) ou de `waitAsync`, dans
+/// l'ordre de la spécification.
+fn wait_request(vm: &mut Vm, args: &[Value], blocking: bool) -> JsResult<WaitRequest> {
     let (id, kind, length) = integer_array(vm, &arg(args, 0), true)?;
     let buffer = vm.typed_array(id).map(|view| view.buffer);
     let shared = buffer
         .and_then(|buffer| vm.buffer(buffer))
         .and_then(|b| b.shared.clone());
     let Some(shared) = shared else {
-        return Err(vm.type_error("Atomics.wait : le tampon doit être partagé"));
+        return Err(vm.type_error("Atomics : le tampon doit être partagé pour y attendre"));
     };
     let index = access_index(vm, &arg(args, 1), length)?;
     let expected = operand(vm, kind, &arg(args, 2))?;
@@ -232,7 +320,7 @@ fn atomics_wait(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             (timeout.max(0.0) / 1000.0).min(1.0e9),
         ))
     };
-    if !vm.can_block {
+    if blocking && !vm.can_block {
         return Err(vm.type_error("Atomics.wait : cet agent ne peut pas s'endormir"));
     }
     let (buffer, start) = element_offset(vm, id, index)?;
@@ -245,15 +333,67 @@ fn atomics_wait(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let Some(data) = vm.buffer(buffer).cloned() else {
         return Err(vm.type_error("un tableau typé est attendu"));
     };
-    let outcome = shared.wait(start, timeout, || {
-        data.read(start, size)
-            .is_some_and(|bytes| u64::from_le_bytes(bytes) & mask == expected)
-    });
+    Ok(WaitRequest {
+        shared,
+        start,
+        timeout,
+        still_expected: Box::new(move || {
+            data.read(start, size)
+                .is_some_and(|bytes| u64::from_le_bytes(bytes) & mask == expected)
+        }),
+    })
+}
+
+fn atomics_wait(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let request = wait_request(vm, args, true)?;
+    let outcome = request
+        .shared
+        .wait(request.start, request.timeout, &*request.still_expected);
     Ok(Value::string(match outcome {
         None => "not-equal",
         Some(true) => "ok",
         Some(false) => "timed-out",
     }))
+}
+
+/// `Atomics.waitAsync(tableau, index, valeur, délai)` : rend
+/// `{ async: false, value: "not-equal" | "timed-out" }` quand la réponse est
+/// immédiate, sinon `{ async: true, value: promesse }`.
+fn atomics_wait_async(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let request = wait_request(vm, args, false)?;
+    let immediate = |vm: &mut Vm, outcome: &str| -> JsResult {
+        let result = Value::Object(vm.new_object());
+        vm.set(&result, "async", Value::Bool(false))?;
+        vm.set(&result, "value", Value::string(outcome))?;
+        Ok(result)
+    };
+    if request.timeout == Some(Duration::ZERO) {
+        // Délai nul : rien n'est inscrit, la réponse ne dépend que de la valeur.
+        let same = request.shared.atomically(&*request.still_expected);
+        return immediate(vm, if same { "timed-out" } else { "not-equal" });
+    }
+    vm.wait_tokens = vm.wait_tokens.wrapping_add(1);
+    let token = vm.wait_tokens;
+    let mailbox = Arc::clone(&vm.async_mailbox);
+    let Some(waiter) =
+        request
+            .shared
+            .wait_async(request.start, &mailbox, token, &*request.still_expected)
+    else {
+        return immediate(vm, "not-equal");
+    };
+    let promise = vm.new_promise();
+    vm.async_waits.push(AsyncWait {
+        token,
+        waiter,
+        shared: request.shared,
+        deadline: request.timeout.map(|timeout| Instant::now() + timeout),
+        promise,
+    });
+    let result = Value::Object(vm.new_object());
+    vm.set(&result, "async", Value::Bool(true))?;
+    vm.set(&result, "value", Value::Object(promise))?;
+    Ok(result)
 }
 
 fn atomics_notify(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -320,6 +460,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("store", 3, atomics_store),
         ("sub", 3, atomics_sub),
         ("wait", 4, atomics_wait),
+        ("waitAsync", 4, atomics_wait_async),
         ("xor", 3, atomics_xor),
     ];
     for (name, arity, func) in methods {

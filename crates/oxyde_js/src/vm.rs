@@ -239,6 +239,12 @@ pub struct Vm {
     pub(crate) eval_function: Option<ObjId>,
     /// Racines déclarées par l'hôte (écouteurs, minuteurs…).
     roots: Vec<Value>,
+    /// Attentes d'`Atomics.waitAsync` en cours pour cet agent.
+    pub(crate) async_waits: Vec<crate::builtins::AsyncWait>,
+    /// Boîte où les autres agents déposent les réveils de ces attentes.
+    pub(crate) async_mailbox: Arc<crate::heap::AsyncMailbox>,
+    /// Dernier jeton donné à une attente asynchrone.
+    pub(crate) wait_tokens: u64,
     /// Données de l'hôte accessibles aux fonctions natives.
     pub host: Option<Box<dyn Any + Send>>,
     pub(crate) host_hooks: Option<HostHooks>,
@@ -466,6 +472,9 @@ impl Vm {
             array_ctor: None,
             eval_function: None,
             roots: Vec::new(),
+            async_waits: Vec::new(),
+            async_mailbox: Arc::default(),
+            wait_tokens: 0,
             host: None,
             host_hooks: None,
             budget: None,
@@ -733,6 +742,7 @@ impl Vm {
             .chain(self.stack.iter().cloned())
             .chain(frame_values)
             .chain(self.roots.iter().cloned())
+            .chain(self.async_waits.iter().map(|w| Value::Object(w.promise)))
             .chain(job_values)
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
             .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
