@@ -9,6 +9,7 @@
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use oxyde_compositor::{ROOT_SCROLLER, ScrollTree};
@@ -52,9 +53,40 @@ pub(crate) struct RemotePage {
     hover: Cell<Option<(f32, f32)>>,
     over_link: bool,
     crashed: bool,
-    /// Vrai si le document affiché est un fichier local : seul cas où le
-    /// processus de rendu peut demander des fichiers.
-    file_access: bool,
+    /// Site auquel ce processus est voué, tenu par le navigateur seul.
+    lock: Arc<Mutex<SiteLock>>,
+}
+
+/// Verrou de site d'un processus de rendu. Le navigateur le tient d'après ce
+/// qu'il a lui-même demandé et reçu du réseau, jamais d'après ce que le
+/// processus de rendu affirme : un processus pris ne peut pas s'attribuer le
+/// site d'un autre.
+#[derive(Debug, Default)]
+struct SiteLock {
+    /// Adresse du document que le processus affiche ; `None` tant qu'il
+    /// n'en a chargé aucun.
+    site: Option<Url>,
+    /// Navigation que le navigateur vient de lui confier : la seule
+    /// requête de document qu'il a le droit d'émettre.
+    expected: Option<Url>,
+    /// Adresse vers laquelle cette navigation a été redirigée, sur un
+    /// autre site : elle doit être reprise par un autre processus.
+    redirected: Option<Url>,
+}
+
+impl SiteLock {
+    /// Vrai si `url` est du site auquel le processus est voué.
+    fn allows(&self, url: &Url) -> bool {
+        self.site
+            .as_ref()
+            .is_some_and(|site| oxyde_net::same_site(site, url))
+    }
+}
+
+fn locked(lock: &Mutex<SiteLock>) -> std::sync::MutexGuard<'_, SiteLock> {
+    // Un verrou empoisonné garde un état lisible : le site reste celui que
+    // le navigateur y a inscrit.
+    lock.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 impl std::fmt::Debug for RemotePage {
@@ -128,7 +160,7 @@ impl RemotePage {
             hover: Cell::new(None),
             over_link: false,
             crashed: false,
-            file_access: false,
+            lock: Arc::default(),
         };
         page.load(url, post);
         Ok(page)
@@ -143,7 +175,18 @@ impl RemotePage {
     /// Fait charger `url` par le processus de rendu ; la fin du chargement
     /// arrive par [`RemotePage::take_commits`].
     pub(crate) fn load(&mut self, url: Url, post: Option<FormPost>) {
-        self.file_access = url.scheme() == "file";
+        {
+            let mut lock = locked(&self.lock);
+            if url.scheme() == "data" {
+                // Un document `data:` ne passe pas par le réseau : le
+                // processus le décode lui-même, et le navigateur l'y voue
+                // d'emblée.
+                lock.site = Some(url.clone());
+                lock.expected = None;
+            } else {
+                lock.expected = Some(url.clone());
+            }
+        }
         let message = ToRenderer::Load {
             url: url.to_string(),
             post,
@@ -156,6 +199,14 @@ impl RemotePage {
     /// Vrai si le processus de rendu tourne dans le bac à sable.
     pub(crate) fn is_sandboxed(&self) -> bool {
         self.process.is_sandboxed()
+    }
+
+    /// Vrai si ce processus peut charger `url` : il n'a encore rien
+    /// chargé, ou `url` est du site auquel il est voué. Sinon la navigation
+    /// revient à un autre processus.
+    pub(crate) fn can_host(&self, url: &Url) -> bool {
+        let lock = locked(&self.lock);
+        lock.site.is_none() || lock.allows(url)
     }
 
     /// Vrai si le processus de rendu a disparu.
@@ -172,11 +223,11 @@ impl RemotePage {
     /// et lui renvoie la réponse.
     fn serve(&self, id: u64, request: NetworkRequest) {
         let sender = self.sender.clone();
-        let file_access = self.file_access;
+        let lock = Arc::clone(&self.lock);
         let spawned = std::thread::Builder::new()
             .name("oxyde-reseau".to_owned())
             .spawn(move || {
-                let reply = answer(request, file_access);
+                let reply = answer(request, &lock);
                 // Le processus de rendu a pu disparaître entre-temps.
                 let _ = sender.send(&ToRenderer::Network { id, reply });
             });
@@ -218,7 +269,22 @@ impl RemotePage {
             match message {
                 FromRenderer::Network { id, request } => self.serve(id, request),
                 FromRenderer::Committed { url, error } => {
+                    // Redirection vers un autre site : la navigation est
+                    // reprise par un autre processus, et cet échec-ci n'est
+                    // pas montré.
+                    let redirected = locked(&self.lock).redirected.take();
+                    if let Some(url) = redirected {
+                        self.navigations.push(Navigation::Load {
+                            url,
+                            replace: true,
+                            post: None,
+                        });
+                        continue;
+                    }
                     if let Ok(url) = Url::parse(&url) {
+                        // L'adresse affichée est celle que le navigateur
+                        // connaît, pas celle que le processus annonce.
+                        let url = self.trusted_url(url);
                         self.url = url.clone();
                         self.scroll = ScrollTree::new();
                         self.commits.push(Commit { url, error });
@@ -242,7 +308,7 @@ impl RemotePage {
                             let [r, g, b, a] = frame.background;
                             self.background = Color { r, g, b, a };
                             if let Ok(url) = Url::parse(&frame.url) {
-                                self.url = url;
+                                self.url = self.trusted_url(url);
                             }
                             self.title = frame.title;
                             self.dirty = true;
@@ -256,14 +322,21 @@ impl RemotePage {
                         }
                     }
                 }
-                FromRenderer::Navigate(navigation) => self.navigations.push(navigation),
+                FromRenderer::Navigate(navigation) => {
+                    if self.may_navigate(&navigation) {
+                        self.navigations.push(navigation);
+                    }
+                }
                 FromRenderer::Clicked { url } => {
                     if let Ok(url) = Url::parse(&url) {
-                        self.navigations.push(Navigation::Load {
+                        let navigation = Navigation::Load {
                             url,
                             replace: false,
                             post: None,
-                        });
+                        };
+                        if self.may_navigate(&navigation) {
+                            self.navigations.push(navigation);
+                        }
                     }
                 }
                 FromRenderer::Hover { link } => {
@@ -277,6 +350,34 @@ impl RemotePage {
         redraw
     }
 
+    /// Adresse à afficher pour ce processus : `claimed` si elle est du site
+    /// auquel il est voué, sinon celle que le navigateur connaît déjà.
+    fn trusted_url(&self, claimed: Url) -> Url {
+        if locked(&self.lock).allows(&claimed) {
+            claimed
+        } else {
+            self.url.clone()
+        }
+    }
+
+    /// Vrai si le navigateur accepte cette navigation demandée par la page.
+    fn may_navigate(&self, navigation: &Navigation) -> bool {
+        let lock = locked(&self.lock);
+        match navigation {
+            // Une page du web n'ouvre pas un fichier local.
+            Navigation::Load { url, .. } => {
+                url.scheme() != "file"
+                    || lock
+                        .site
+                        .as_ref()
+                        .is_some_and(|site| site.scheme() == "file")
+            }
+            // Un changement d'adresse sans chargement reste sur le site.
+            Navigation::SameDocument { url, .. } => lock.allows(url),
+            Navigation::Reload | Navigation::Traverse(_) => true,
+        }
+    }
+
     /// Transmet au processus de rendu les zones que le compositeur vient de
     /// faire défiler.
     fn sync_scroll(&mut self) {
@@ -287,8 +388,17 @@ impl RemotePage {
     }
 }
 
-/// Répond à une requête réseau d'un processus de rendu.
-fn answer(request: NetworkRequest, file_access: bool) -> NetworkReply {
+/// Répond à une requête réseau d'un processus de rendu, dans les limites de
+/// son verrou de site :
+///
+/// - une requête de document n'est servie que si c'est la navigation que le
+///   navigateur lui a confiée ; sa réponse fixe le site du processus, et une
+///   redirection vers un autre site lui est refusée ;
+/// - une ressource, une requête de script ou un accès aux cookies ne sont
+///   servis qu'au nom d'un document de son site — c'est ce nom qui décide
+///   des cookies joints ;
+/// - un fichier local n'est lu que pour un document local.
+fn answer(request: NetworkRequest, lock: &Mutex<SiteLock>) -> NetworkReply {
     let invalid = |url: &str| {
         NetworkReply::Resource(Err(LoadError::other(
             "Adresse invalide",
@@ -296,26 +406,80 @@ fn answer(request: NetworkRequest, file_access: bool) -> NetworkReply {
             "ERR_INVALID_URL",
         )))
     };
-    // Un processus de rendu ne lit un fichier que pour un document local.
-    let allowed = |url: &Url| url.scheme() != "file" || file_access;
-    let refused = |url: &Url| {
+    let refused = |url: &Url, why: &str| {
         NetworkReply::Resource(Err(LoadError::other(
             "Accès refusé",
-            format!("{url} — une page web ne peut pas lire un fichier local."),
+            format!("{url} — {why}"),
             "ERR_ACCESS_DENIED",
         )))
     };
+    // Réponse à une requête de document : elle fixe le site du processus.
+    let commit = |target: &Url, result: Result<(Url, Vec<u8>), LoadError>| match result {
+        Ok((final_url, bytes)) => {
+            let mut lock = locked(lock);
+            if lock.site.is_some() && !lock.allows(&final_url) {
+                // Le processus a déjà affiché un autre site : ce document
+                // ira dans un processus à lui.
+                lock.redirected = Some(final_url);
+                drop(lock);
+                return refused(target, "redirection vers un autre site.");
+            }
+            lock.site = Some(final_url.clone());
+            NetworkReply::Resource(Ok((final_url.to_string(), Bytes(bytes))))
+        }
+        Err(error) => {
+            // Même en échec, le processus est voué au site demandé : la
+            // page d'erreur porte son adresse.
+            let mut lock = locked(lock);
+            if lock.site.is_none() {
+                lock.site = Some(target.clone());
+            }
+            NetworkReply::Resource(Err(error))
+        }
+    };
+    // Vrai si `target` est la navigation confiée au processus ; elle ne
+    // sert qu'une fois.
+    let expected = |target: &Url| {
+        let mut lock = locked(lock);
+        if lock.expected.as_ref() == Some(target) {
+            lock.expected = None;
+            true
+        } else {
+            false
+        }
+    };
     match request {
-        NetworkRequest::Get { url, initiator } => {
+        NetworkRequest::Get {
+            url,
+            initiator: None,
+        } => {
             let Ok(target) = Url::parse(&url) else {
                 return invalid(&url);
             };
-            if !allowed(&target) {
-                return refused(&target);
+            if !expected(&target) {
+                return refused(&target, "navigation que le navigateur n'a pas demandée.");
             }
-            let initiator = initiator.and_then(|i| Url::parse(&i).ok());
+            commit(&target, loader::fetch_from(&target, None))
+        }
+        NetworkRequest::Get {
+            url,
+            initiator: Some(initiator),
+        } => {
+            let (Ok(target), Ok(initiator)) = (Url::parse(&url), Url::parse(&initiator)) else {
+                return invalid(&url);
+            };
+            {
+                let lock = locked(lock);
+                if !lock.allows(&initiator) {
+                    return refused(&target, "ressource demandée au nom d'un autre site.");
+                }
+                // Un fichier local n'est lu que pour un document local.
+                if target.scheme() == "file" && initiator.scheme() != "file" {
+                    return refused(&target, "une page web ne peut pas lire un fichier local.");
+                }
+            }
             NetworkReply::Resource(
-                loader::fetch_from(&target, initiator.as_ref())
+                loader::fetch_from(&target, Some(&initiator))
                     .map(|(final_url, bytes)| (final_url.to_string(), Bytes(bytes))),
             )
         }
@@ -324,22 +488,32 @@ fn answer(request: NetworkRequest, file_access: bool) -> NetworkReply {
                 return invalid(&url);
             };
             if !matches!(target.scheme(), "http" | "https") {
-                return refused(&target);
+                return refused(&target, "un formulaire ne s'envoie qu'au web.");
             }
-            NetworkReply::Resource(
-                loader::post_http(&target, &form)
-                    .map(|(final_url, bytes)| (final_url.to_string(), Bytes(bytes))),
-            )
+            if !expected(&target) {
+                return refused(&target, "navigation que le navigateur n'a pas demandée.");
+            }
+            commit(&target, loader::post_http(&target, &form))
         }
-        NetworkRequest::Script(request) => NetworkReply::Script(loader::fetch_for_script(&request)),
+        NetworkRequest::Script(request) => {
+            if !locked(lock).allows(&request.initiator) {
+                return NetworkReply::Script(
+                    Err("requête émise au nom d'un autre site".to_owned()),
+                );
+            }
+            NetworkReply::Script(loader::fetch_for_script(&request))
+        }
         NetworkRequest::Cookies { document } => NetworkReply::Cookies(
             Url::parse(&document)
                 .ok()
+                .filter(|document| locked(lock).allows(document))
                 .and_then(|document| loader::read_cookies(&document))
                 .unwrap_or_default(),
         ),
         NetworkRequest::SetCookie { document, text } => {
-            if let Ok(document) = Url::parse(&document) {
+            if let Ok(document) = Url::parse(&document)
+                && locked(lock).allows(&document)
+            {
                 loader::write_cookie(&document, &text);
             }
             NetworkReply::Done
@@ -579,23 +753,39 @@ impl PageHost {
 mod tests {
     use super::*;
 
+    fn lock_on(site: Option<&str>, expected: Option<&str>) -> Mutex<SiteLock> {
+        let parse = |text: &str| Url::parse(text).expect("url");
+        Mutex::new(SiteLock {
+            site: site.map(parse),
+            expected: expected.map(parse),
+            redirected: None,
+        })
+    }
+
+    fn refusal(reply: &NetworkReply) -> Option<&str> {
+        match reply {
+            NetworkReply::Resource(Err(error)) => Some(error.code.as_str()),
+            _ => None,
+        }
+    }
+
     #[test]
     fn only_local_documents_may_read_files() {
         let path = std::env::current_exe().expect("exécutable de test");
         let file = Url::from_file_path(&path)
             .expect("chemin absolu")
             .to_string();
-        let get = || NetworkRequest::Get {
+        let get = |initiator: &str| NetworkRequest::Get {
             url: file.clone(),
-            initiator: None,
+            initiator: Some(initiator.to_owned()),
         };
         // Une page du web : refus, sans toucher au disque.
-        match answer(get(), false) {
-            NetworkReply::Resource(Err(error)) => assert_eq!(error.code, "ERR_ACCESS_DENIED"),
-            other => panic!("réponse inattendue : {other:?}"),
-        }
+        let web = lock_on(Some("https://exemple.test/"), None);
+        let reply = answer(get("https://exemple.test/page"), &web);
+        assert_eq!(refusal(&reply), Some("ERR_ACCESS_DENIED"));
         // Un document local : lecture accordée.
-        match answer(get(), true) {
+        let local = lock_on(Some("file:///C:/page.html"), None);
+        match answer(get("file:///C:/page.html"), &local) {
             NetworkReply::Resource(Ok((url, Bytes(bytes)))) => {
                 assert_eq!(url, file);
                 assert!(!bytes.is_empty());
@@ -610,15 +800,101 @@ mod tests {
                 body: Vec::new(),
             },
         };
-        assert!(matches!(answer(post, true), NetworkReply::Resource(Err(_))));
+        assert!(refusal(&answer(post, &local)).is_some());
         let garbage = NetworkRequest::Get {
             url: "pas une adresse".to_owned(),
             initiator: None,
         };
-        match answer(garbage, true) {
-            NetworkReply::Resource(Err(error)) => assert_eq!(error.code, "ERR_INVALID_URL"),
-            other => panic!("réponse inattendue : {other:?}"),
-        }
+        assert_eq!(refusal(&answer(garbage, &local)), Some("ERR_INVALID_URL"));
+    }
+
+    #[test]
+    fn a_renderer_only_acts_for_its_own_site() {
+        let site = lock_on(Some("https://exemple.test/"), None);
+        // Ressource demandée au nom d'un autre site : c'est ce nom qui
+        // choisirait les cookies joints.
+        let reply = answer(
+            NetworkRequest::Get {
+                url: "https://banque.test/compte".to_owned(),
+                initiator: Some("https://banque.test/".to_owned()),
+            },
+            &site,
+        );
+        assert_eq!(refusal(&reply), Some("ERR_ACCESS_DENIED"));
+        // Cookies d'un autre site : rien.
+        let reply = answer(
+            NetworkRequest::Cookies {
+                document: "https://banque.test/".to_owned(),
+            },
+            &site,
+        );
+        assert!(matches!(reply, NetworkReply::Cookies(text) if text.is_empty()));
+        // Requête de script au nom d'un autre site : refusée avant tout envoi.
+        let url = Url::parse("https://banque.test/api").expect("url");
+        let reply = answer(
+            NetworkRequest::Script(Box::new(oxyde_content::FetchRequest {
+                id: 1,
+                url: url.clone(),
+                method: "GET".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+                origin: None,
+                initiator: url,
+                needs_preflight: false,
+            })),
+            &site,
+        );
+        assert!(matches!(reply, NetworkReply::Script(Err(_))));
+        // Un processus qui n'a encore rien chargé n'agit pour personne.
+        let fresh = lock_on(None, None);
+        let reply = answer(
+            NetworkRequest::Get {
+                url: "https://exemple.test/a.css".to_owned(),
+                initiator: Some("https://exemple.test/".to_owned()),
+            },
+            &fresh,
+        );
+        assert_eq!(refusal(&reply), Some("ERR_ACCESS_DENIED"));
+    }
+
+    #[test]
+    fn document_requests_follow_the_navigation_the_browser_asked_for() {
+        let page = "data:text/html,<p>bonjour";
+        let navigation = || NetworkRequest::Get {
+            url: page.to_owned(),
+            initiator: None,
+        };
+        // Sans navigation confiée : refus.
+        let idle = lock_on(None, None);
+        assert_eq!(
+            refusal(&answer(navigation(), &idle)),
+            Some("ERR_ACCESS_DENIED")
+        );
+        assert!(locked(&idle).site.is_none());
+        // Navigation confiée : servie une fois, et elle fixe le site.
+        let fresh = lock_on(None, Some(page));
+        assert!(matches!(
+            answer(navigation(), &fresh),
+            NetworkReply::Resource(Ok(_))
+        ));
+        assert_eq!(locked(&fresh).site.as_ref().map(Url::as_str), Some(page));
+        assert_eq!(
+            refusal(&answer(navigation(), &fresh)),
+            Some("ERR_ACCESS_DENIED")
+        );
+        // Un processus voué à un site ne reçoit pas le document d'un autre :
+        // la navigation est mise de côté pour un autre processus.
+        let busy = lock_on(Some("file:///C:/page.html"), Some(page));
+        assert_eq!(
+            refusal(&answer(navigation(), &busy)),
+            Some("ERR_ACCESS_DENIED")
+        );
+        let lock = locked(&busy);
+        assert_eq!(lock.redirected.as_ref().map(Url::as_str), Some(page));
+        assert_eq!(
+            lock.site.as_ref().map(Url::as_str),
+            Some("file:///C:/page.html")
+        );
     }
 
     #[test]

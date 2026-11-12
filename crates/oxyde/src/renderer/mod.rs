@@ -7,10 +7,14 @@
 //! Le processus de rendu est lancé dans le bac à sable d'`oxyde_sandbox`
 //! (`--no-sandbox` y renonce, pour le diagnostic).
 //!
-//! LIMITES CONNUES : un processus par onglet, pas encore par site (une
-//! navigation vers un autre site garde le même processus) ; les cadres
-//! vivent dans le processus de leur page ; la lecture de l'arbre
-//! d'accessibilité d'une page distante n'est pas faite.
+//! Un processus de rendu est voué à un site : une navigation vers un autre
+//! site passe par un processus neuf, et le navigateur ne sert à un
+//! processus que les cookies et les ressources de son site.
+//!
+//! LIMITES CONNUES : les cadres vivent dans le processus de leur page, quel
+//! que soit leur site ; deux onglets du même site ont chacun leur
+//! processus ; le site est approché sans liste des suffixes publics ; la
+//! lecture de l'arbre d'accessibilité d'une page distante n'est pas faite.
 
 pub(crate) mod child;
 pub(crate) mod host;

@@ -225,16 +225,26 @@ Fait :
   mais pas de restriction par identifiants, que la résolution de noms refuse. Les fichiers
   locaux restent lus par le navigateur.
 
-Limites à ce stade : un processus par onglet et non par site ; les cadres vivent dans le
-processus de leur page ; l'accessibilité ne voit pas le contenu d'une page distante. Le bac
+- **Isolation des sites** : un processus de rendu est voué à un site. Une navigation vers
+  un autre site — y compris par redirection — passe par un processus neuf. Le navigateur
+  tient ce verrou d'après ce qu'il a lui-même demandé et reçu du réseau, jamais d'après ce
+  que le processus affirme : il ne lui sert un document que pour la navigation qu'il lui a
+  confiée, et des ressources, des requêtes de script ou des cookies qu'au nom d'un
+  document de son site ; l'adresse affichée et les changements d'adresse sans chargement
+  restent sur ce site ; une page du web n'ouvre pas un fichier local.
+
+Limites à ce stade : les cadres vivent dans le processus de leur page, quel que soit leur
+site ; deux onglets du même site ont chacun leur processus ; le site est approché sans la
+liste des suffixes publics ; une redirection vers un autre site est demandée deux fois au
+serveur ; l'accessibilité ne voit pas le contenu d'une page distante. Le bac
 à sable n'est pas un `AppContainer` : le processus de rendu peut encore lire ce qui est
 lisible par tous sur la machine et ouvrir des connexions réseau ; le processus réseau peut
 lire ce que l'utilisateur peut lire ; `win32k` n'est pas verrouillé. Les cookies vivent en
 mémoire dans le processus réseau et sont perdus s'il s'arrête. Pas de processus GPU : la
 rastérisation reste dans le navigateur.
 
-Ordre prévu : isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers (étape D de
-test262).
+Reste : `SharedArrayBuffer`, `Atomics` et workers (étape D de test262) ; le processus GPU ;
+les cadres d'un autre site dans leur propre processus.
 
 ### Jalon 6 — Mise en page complète et compositeur
 

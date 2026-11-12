@@ -869,8 +869,14 @@ impl Browser {
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) else {
             return true;
         };
-        match tab.page.remote_mut().filter(|remote| !remote.is_crashed()) {
-            // L'onglet a déjà son processus : il y charge la nouvelle page.
+        match tab
+            .page
+            .remote_mut()
+            .filter(|remote| !remote.is_crashed() && remote.can_host(url))
+        {
+            // L'onglet a déjà un processus voué à ce site : il y charge la
+            // nouvelle page. Pour un autre site, un processus neuf prend le
+            // relais et l'ancien s'arrête.
             Some(remote) => remote.load(url.clone(), post.cloned()),
             None => {
                 let viewport = loader::viewport_size();
@@ -883,7 +889,10 @@ impl Browser {
                 }
             }
         }
-        tab.pending_push = Some(push_history);
+        // Une navigation reprise après une redirection vers un autre site
+        // garde l'intention de celle qu'elle remplace.
+        let pushing = tab.pending_push.take().unwrap_or(false);
+        tab.pending_push = Some(push_history || pushing);
         true
     }
 
