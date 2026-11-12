@@ -8,17 +8,20 @@
 //! LIMITES CONNUES (suivies dans `conformance/`) :
 //! - `flex` et `grid` sont mis en page comme des blocs ;
 //! - tableaux : cellules de largeur égale, pas d'algorithme de tableau automatique ;
-//! - pas de flottants ni de positionnement (`float`, `position`) ;
+//! - pas de flottants (`float`) ; `position: sticky` vaut `relative` sans décalage ;
+//! - une boîte positionnée est peinte après le contenu de son bloc conteneur,
+//!   sans tenir compte de `z-index` ;
 //! - les marges verticales ne fusionnent qu'entre frères, pas entre parent et enfant ;
 //! - un élément en ligne contenant un bloc est traité comme un bloc ;
 //! - les boîtes en ligne n'ont ni bordure ni marge interne (seul leur fond est peint) ;
-//! - les hauteurs en pourcentage sont traitées comme `auto`.
+//! - une hauteur en pourcentage n'est résolue que si la hauteur du bloc
+//!   conteneur est imposée (sinon elle vaut `auto`).
 
 use std::sync::Arc;
 
 use oxyde_css::{
-    ComputedStyle, Display, Edges, LineHeight, ListStyle, Size, StyleMap, TextAlign, Viewport,
-    WhiteSpace,
+    ComputedStyle, Display, Edges, LineHeight, ListStyle, Position, Size, StyleMap, TextAlign,
+    Viewport, WhiteSpace,
 };
 use oxyde_dom::{Document, NodeData, NodeId};
 use oxyde_text::parley::{
@@ -164,6 +167,8 @@ pub fn layout_document(
         intrinsic,
         block_child_cache: vec![None; doc.len()],
         shrink_depth: 0,
+        out_of_flow: Vec::new(),
+        inline_origin: (0.0, 0.0),
     };
     let root = doc
         .children(doc.root())
@@ -172,15 +177,29 @@ pub fn layout_document(
         .filter(|(_, style)| style.display != Display::None)
         .map(|(node, style)| {
             let margin_top = px(style.margin.top, viewport.width);
-            engine.layout_box(
-                node,
-                style,
-                viewport.width,
-                0.0,
-                margin_top,
-                Width::Stretch,
-                0,
-            )
+            let space = Space {
+                cb_w: viewport.width,
+                cb_x: 0.0,
+                y: margin_top,
+                mode: Width::Stretch,
+                cb_h: Some(viewport.height),
+                fixed_h: None,
+            };
+            let mut root = engine.layout_box(node, style, space, 0);
+            // Bloc conteneur initial : les boîtes fixes, et les boîtes
+            // absolues sans ancêtre positionné, se placent dans la fenêtre.
+            let initial = Rect {
+                x: 0.0,
+                y: 0.0,
+                w: viewport.width,
+                h: viewport.height,
+            };
+            let pending = std::mem::take(&mut engine.out_of_flow);
+            for item in pending {
+                let placed = engine.layout_out_of_flow(item, initial);
+                root.children.push(placed);
+            }
+            root
         });
     let height = root.as_ref().map_or(0.0, |b| {
         b.border_box.y + b.border_box.h + px(b.style.margin.bottom, viewport.width)
@@ -238,6 +257,45 @@ enum Width {
     Fixed(f32),
 }
 
+/// Espace de contraintes d'une boîte : son bloc conteneur et ce que le
+/// parent lui impose.
+#[derive(Clone, Copy)]
+struct Space {
+    /// Largeur de la boîte de contenu du bloc conteneur.
+    cb_w: f32,
+    /// Abscisse de la boîte de contenu du bloc conteneur.
+    cb_x: f32,
+    /// Ordonnée du bord supérieur de bordure de la boîte.
+    y: f32,
+    /// Règle de calcul de la largeur.
+    mode: Width,
+    /// Hauteur du bloc conteneur, si elle est imposée (pour les pourcentages).
+    cb_h: Option<f32>,
+    /// Hauteur de contenu imposée par le parent (boîte positionnée étirée).
+    fixed_h: Option<f32>,
+}
+
+/// Boîte hors flux (`position: absolute` ou `fixed`) en attente de son bloc
+/// conteneur.
+struct OutOfFlow {
+    node: NodeId,
+    style: Arc<ComputedStyle>,
+    /// Position statique : celle qu'aurait la boîte dans le flux.
+    static_x: f32,
+    static_y: f32,
+    depth: usize,
+}
+
+/// Résout une hauteur : un pourcentage n'a de sens que si la hauteur du bloc
+/// conteneur est imposée.
+fn resolve_height(size: Size, cb_h: Option<f32>) -> Option<f32> {
+    match size {
+        Size::Auto => None,
+        Size::Px(v) => Some(v),
+        relative => cb_h.and_then(|h| relative.resolve(h)),
+    }
+}
+
 /// Élément d'un flux en ligne, dans l'ordre du document.
 enum InlineItem {
     Start {
@@ -247,7 +305,14 @@ enum InlineItem {
     End,
     Text(String),
     Box(usize),
+    /// Emplacement, dans la ligne, d'une boîte hors flux (rang dans la file
+    /// d'attente) : il donne sa position statique.
+    Anchor(usize),
 }
+
+/// Identifiant Parley du premier emplacement de boîte hors flux ; en dessous,
+/// ce sont les boîtes en ligne-bloc.
+const ANCHOR_BASE: u64 = 1 << 40;
 
 struct Engine<'a> {
     doc: &'a Document,
@@ -257,6 +322,11 @@ struct Engine<'a> {
     /// Cache : l'élément en ligne contient-il un enfant de niveau bloc ?
     block_child_cache: Vec<Option<bool>>,
     shrink_depth: usize,
+    /// Boîtes hors flux rencontrées, en attente de leur bloc conteneur.
+    out_of_flow: Vec<OutOfFlow>,
+    /// Origine du contexte en ligne en cours : position statique des boîtes
+    /// hors flux qu'il contient.
+    inline_origin: (f32, f32),
 }
 
 fn px(size: Size, base: f32) -> f32 {
@@ -285,6 +355,19 @@ fn last_baseline(fragments: &[Fragment]) -> Option<f32> {
         Fragment::Text(t) => t.layout.last_baseline().map(|b| t.y + b),
         Fragment::Box(b) => last_baseline(&b.children),
     })
+}
+
+/// Marge résultant de la fusion de deux marges adjacentes (CSS 2 §8.3.1) :
+/// la plus grande de deux marges positives, la plus négative de deux marges
+/// négatives, leur somme si elles sont de signes contraires.
+fn collapse(a: f32, b: f32) -> f32 {
+    if a >= 0.0 && b >= 0.0 {
+        a.max(b)
+    } else if a < 0.0 && b < 0.0 {
+        a.min(b)
+    } else {
+        a + b
+    }
 }
 
 fn collapsible_ws(c: char) -> bool {
@@ -397,19 +480,22 @@ impl Engine<'_> {
         result
     }
 
-    /// Met en page une boîte dont le bord supérieur de bordure est en `y` et
-    /// dont le bloc conteneur a pour boîte de contenu (`cb_x`, largeur `cb_w`).
-    #[expect(clippy::too_many_arguments, reason = "espace de contraintes explicite")]
+    /// Met en page une boîte dans l'espace de contraintes `space`.
     fn layout_box(
         &mut self,
         node: NodeId,
         style: &Arc<ComputedStyle>,
-        cb_w: f32,
-        cb_x: f32,
-        y: f32,
-        mode: Width,
+        space: Space,
         depth: usize,
     ) -> BoxFragment {
+        let Space {
+            cb_w,
+            cb_x,
+            y,
+            mode,
+            cb_h,
+            fixed_h,
+        } = space;
         let pad = edges_px(style.padding, cb_w);
         let bw = style.border_widths();
         let extras_w = pad.left + pad.right + bw.left + bw.right;
@@ -472,8 +558,26 @@ impl Engine<'_> {
 
         let content_x = border_x + bw.left + pad.left;
         let content_y = y + bw.top + pad.top;
-        let (mut children, mut content_h) =
-            self.layout_children(node, style, content_x, content_y, content_w, depth + 1);
+        let to_content_h = |outer: f32| {
+            if style.border_box {
+                (outer - extras_h).max(0.0)
+            } else {
+                outer
+            }
+        };
+        // Hauteur imposée : elle sert de base aux pourcentages des enfants.
+        let definite_h = fixed_h.or_else(|| resolve_height(style.height, cb_h).map(to_content_h));
+        // Les boîtes hors flux rencontrées plus bas attendent ce bloc conteneur.
+        let out_of_flow_start = self.out_of_flow.len();
+        let (mut children, mut content_h) = self.layout_children(
+            node,
+            style,
+            content_x,
+            content_y,
+            content_w,
+            definite_h,
+            depth + 1,
+        );
 
         let mut content_w = content_w;
         if shrink && self.shrink_depth < MAX_SHRINK_DEPTH {
@@ -485,42 +589,179 @@ impl Engine<'_> {
             if fitted < content_w - 0.5 {
                 self.shrink_depth += 1;
                 content_w = fitted;
-                (children, content_h) =
-                    self.layout_children(node, style, content_x, content_y, content_w, depth + 1);
+                // La seconde passe remet en attente les mêmes boîtes hors flux.
+                self.out_of_flow.truncate(out_of_flow_start);
+                (children, content_h) = self.layout_children(
+                    node,
+                    style,
+                    content_x,
+                    content_y,
+                    content_w,
+                    definite_h,
+                    depth + 1,
+                );
                 self.shrink_depth -= 1;
             }
         }
 
-        let to_content_h = |outer: f32| {
-            if style.border_box {
-                (outer - extras_h).max(0.0)
-            } else {
-                outer
-            }
-        };
-        let specified_h = match style.height {
-            Size::Px(h) => Some(to_content_h(h)),
-            _ => intrinsic.map(|(iw, ih)| if iw > 0.0 { ih * content_w / iw } else { ih }),
-        };
+        let specified_h = definite_h
+            .or_else(|| intrinsic.map(|(iw, ih)| if iw > 0.0 { ih * content_w / iw } else { ih }));
         let mut height = specified_h.unwrap_or(content_h);
-        if let Size::Px(max) = style.max_height {
-            height = height.min(to_content_h(max));
+        if fixed_h.is_none() {
+            if let Some(max) = resolve_height(style.max_height, cb_h) {
+                height = height.min(to_content_h(max));
+            }
+            if let Some(min) = resolve_height(style.min_height, cb_h) {
+                height = height.max(to_content_h(min));
+            }
         }
-        if let Size::Px(min) = style.min_height {
-            height = height.max(to_content_h(min));
+        let border_box = Rect {
+            x: border_x,
+            y,
+            w: content_w + extras_w,
+            h: height.max(0.0) + extras_h,
+        };
+
+        // Une boîte positionnée est le bloc conteneur de ses descendants
+        // absolus : sa boîte de marge intérieure (la bordure exclue).
+        if style.is_positioned() {
+            let padding_box = Rect {
+                x: border_box.x + bw.left,
+                y: border_box.y + bw.top,
+                w: border_box.w - bw.left - bw.right,
+                h: border_box.h - bw.top - bw.bottom,
+            };
+            let mut waiting = self.out_of_flow.split_off(out_of_flow_start);
+            // Les boîtes fixes remontent jusqu'à la fenêtre.
+            let fixed: Vec<OutOfFlow> = {
+                let (fixed, absolute) = waiting
+                    .drain(..)
+                    .partition(|item| item.style.position == Position::Fixed);
+                waiting = absolute;
+                fixed
+            };
+            for item in waiting {
+                let placed = self.layout_out_of_flow(item, padding_box);
+                children.push(placed);
+            }
+            self.out_of_flow.extend(fixed);
         }
 
         BoxFragment {
             node: Some(node),
             style: Arc::clone(style),
-            border_box: Rect {
-                x: border_x,
-                y,
-                w: content_w + extras_w,
-                h: height.max(0.0) + extras_h,
-            },
+            border_box,
             children,
         }
+    }
+
+    /// Met en page une boîte hors flux dans son bloc conteneur `cb` (CSS 2
+    /// §10.3.7 et §10.6.4).
+    fn layout_out_of_flow(&mut self, item: OutOfFlow, cb: Rect) -> Fragment {
+        let style = &item.style;
+        let inset = style.inset;
+        let (left, right) = (inset.left.resolve(cb.w), inset.right.resolve(cb.w));
+        let (top, bottom) = (inset.top.resolve(cb.h), inset.bottom.resolve(cb.h));
+        let margin_left = style.margin.left.resolve(cb.w);
+        let margin_right = style.margin.right.resolve(cb.w);
+        let margin_top = style.margin.top.resolve(cb.w);
+        let margin_bottom = style.margin.bottom.resolve(cb.w);
+        let (ml, mr) = (margin_left.unwrap_or(0.0), margin_right.unwrap_or(0.0));
+        let (mt, mb) = (margin_top.unwrap_or(0.0), margin_bottom.unwrap_or(0.0));
+        let pad = edges_px(style.padding, cb.w);
+        let bw = style.border_widths();
+        let extras_w = pad.left + pad.right + bw.left + bw.right;
+        let extras_h = pad.top + pad.bottom + bw.top + bw.bottom;
+        let content = |outer: f32, extras: f32| {
+            if style.border_box {
+                (outer - extras).max(0.0)
+            } else {
+                outer
+            }
+        };
+        let clamp_w = |w: f32| {
+            let max = style
+                .max_width
+                .resolve(cb.w)
+                .map_or(f32::INFINITY, |v| content(v, extras_w));
+            let min = style
+                .min_width
+                .resolve(cb.w)
+                .map_or(0.0, |v| content(v, extras_w));
+            w.min(max).max(min).max(0.0)
+        };
+        let has_intrinsic = (self.intrinsic)(item.node).is_some();
+        // Largeur : imposée, étirée entre `left` et `right`, ou ajustée au contenu.
+        let (mode, available) = match (style.width.resolve(cb.w), left, right) {
+            (Some(w), _, _) => (Width::Fixed(clamp_w(content(w, extras_w))), cb.w),
+            (None, Some(l), Some(r)) if !has_intrinsic => (
+                Width::Fixed(clamp_w((cb.w - l - r - ml - mr - extras_w).max(0.0))),
+                cb.w,
+            ),
+            (None, l, r) => (
+                Width::ShrinkToFit,
+                (cb.w - l.unwrap_or(0.0) - r.unwrap_or(0.0)).max(0.0),
+            ),
+        };
+        // Hauteur : imposée, ou étirée entre `top` et `bottom`.
+        let clamp_h = |h: f32| {
+            let max = resolve_height(style.max_height, Some(cb.h))
+                .map_or(f32::INFINITY, |v| content(v, extras_h));
+            let min =
+                resolve_height(style.min_height, Some(cb.h)).map_or(0.0, |v| content(v, extras_h));
+            h.min(max).max(min).max(0.0)
+        };
+        let fixed_h = match (resolve_height(style.height, Some(cb.h)), top, bottom) {
+            (Some(h), _, _) => Some(clamp_h(content(h, extras_h))),
+            (None, Some(t), Some(b)) if !has_intrinsic => {
+                Some(clamp_h((cb.h - t - b - mt - mb - extras_h).max(0.0)))
+            }
+            _ => None,
+        };
+        let space = Space {
+            cb_w: available,
+            cb_x: 0.0,
+            y: 0.0,
+            mode,
+            cb_h: Some(cb.h),
+            fixed_h,
+        };
+        let fragment = self.layout_box(item.node, style, space, item.depth);
+        let (w, h) = (fragment.border_box.w, fragment.border_box.h);
+        // Position : les décalages l'emportent ; à défaut, la position statique.
+        // Des marges automatiques centrent une boîte dont tout le reste est fixé.
+        let x = match (left, right) {
+            (Some(l), Some(r)) => {
+                let free = cb.w - l - r - w;
+                match (margin_left, margin_right) {
+                    (None, None) => cb.x + l + (free / 2.0).max(0.0),
+                    (None, Some(m)) => cb.x + l + (free - m).max(0.0),
+                    _ => cb.x + l + ml,
+                }
+            }
+            (Some(l), None) => cb.x + l + ml,
+            (None, Some(r)) => cb.x + cb.w - r - mr - w,
+            (None, None) => item.static_x + ml,
+        };
+        let y = match (top, bottom) {
+            (Some(t), Some(b)) => {
+                let free = cb.h - t - b - h;
+                match (margin_top, margin_bottom) {
+                    (None, None) => cb.y + t + (free / 2.0).max(0.0),
+                    (None, Some(m)) => cb.y + t + (free - m).max(0.0),
+                    _ => cb.y + t + mt,
+                }
+            }
+            (Some(t), None) => cb.y + t + mt,
+            (None, Some(b)) => cb.y + cb.h - b - mb - h,
+            (None, None) => item.static_y + mt,
+        };
+        let mut fragment = Fragment::Box(fragment);
+        if let Fragment::Box(b) = &fragment {
+            let (dx, dy) = (x - b.border_box.x, y - b.border_box.y);
+            fragment.translate(dx, dy);
+        }
+        fragment
     }
 
     /// Largeur extérieure qu'occuperait `fragment` sans contrainte de largeur.
@@ -552,7 +793,9 @@ impl Engine<'_> {
     }
 
     /// Met en page les enfants de `node` dans la boîte de contenu donnée ;
-    /// renvoie les fragments et la hauteur de contenu.
+    /// renvoie les fragments et la hauteur de contenu. `height` : hauteur de
+    /// cette boîte de contenu si elle est imposée.
+    #[expect(clippy::too_many_arguments, reason = "boîte de contenu explicite")]
     fn layout_children(
         &mut self,
         node: NodeId,
@@ -560,6 +803,7 @@ impl Engine<'_> {
         x: f32,
         y: f32,
         width: f32,
+        height: Option<f32>,
         depth: usize,
     ) -> (Vec<Fragment>, f32) {
         let mut fragments = Vec::new();
@@ -583,6 +827,25 @@ impl Engine<'_> {
         let mut pending_margin = 0.0_f32;
         let mut run: Vec<NodeId> = Vec::new();
         for child in children {
+            // Une boîte hors flux ne prend pas de place : elle attend son bloc
+            // conteneur, avec pour position statique le point où elle serait.
+            if let Some(child_style) = self.style(child).filter(|s| s.is_out_of_flow()) {
+                // Boîte en ligne à l'origine : sa position statique est dans
+                // la ligne en cours, elle suit donc le texte qui l'entoure.
+                if matches!(child_style.display, Display::Inline | Display::InlineBlock) {
+                    run.push(child);
+                    continue;
+                }
+                let item = OutOfFlow {
+                    node: child,
+                    style: Arc::clone(child_style),
+                    static_x: x,
+                    static_y: cursor + pending_margin.max(0.0),
+                    depth,
+                };
+                self.out_of_flow.push(item);
+                continue;
+            }
             if !self.is_block_level(child, depth) {
                 run.push(child);
                 continue;
@@ -604,23 +867,40 @@ impl Engine<'_> {
             let margin_top = px(child_style.margin.top, width);
             let margin_bottom = px(child_style.margin.bottom, width);
             // Fusion des marges entre frères adjacents.
-            let gap = if pending_margin >= 0.0 && margin_top >= 0.0 {
-                pending_margin.max(margin_top)
-            } else {
-                pending_margin + margin_top
+            let gap = collapse(pending_margin, margin_top);
+            let space = Space {
+                cb_w: width,
+                cb_x: x,
+                y: cursor + gap,
+                mode: Width::Stretch,
+                cb_h: height,
+                fixed_h: None,
             };
-            let fragment = self.layout_box(
-                child,
-                &child_style,
-                width,
-                x,
-                cursor + gap,
-                Width::Stretch,
-                depth,
-            );
-            cursor = fragment.border_box.y + fragment.border_box.h;
-            pending_margin = margin_bottom;
-            fragments.push(Fragment::Box(fragment));
+            let fragment = self.layout_box(child, &child_style, space, depth);
+            if fragment.border_box.h == 0.0 && fragment.children.is_empty() {
+                // Bloc vide de hauteur nulle : ses marges haute et basse se
+                // rejoignent et fusionnent avec celles de ses voisins.
+                pending_margin = collapse(gap, margin_bottom);
+            } else {
+                cursor = fragment.border_box.y + fragment.border_box.h;
+                pending_margin = margin_bottom;
+            }
+            let mut fragment = Fragment::Box(fragment);
+            // Positionnement relatif : la boîte est décalée après coup, sans
+            // effet sur le flux.
+            if child_style.position == Position::Relative {
+                let inset = child_style.inset;
+                let dx = inset
+                    .left
+                    .resolve(width)
+                    .or_else(|| inset.right.resolve(width).map(|r| -r))
+                    .unwrap_or(0.0);
+                let dy = resolve_height(inset.top, height)
+                    .or_else(|| resolve_height(inset.bottom, height).map(|b| -b))
+                    .unwrap_or(0.0);
+                fragment.translate(dx, dy);
+            }
+            fragments.push(fragment);
         }
         self.flush_inline(
             &mut run,
@@ -655,14 +935,31 @@ impl Engine<'_> {
             return;
         }
         let nodes = std::mem::take(run);
-        // Une suite faite uniquement de blancs fusionnables ne crée aucune ligne.
+        // Une suite faite uniquement de blancs fusionnables (et de boîtes
+        // hors flux) ne crée aucune ligne.
+        let out_of_flow =
+            |engine: &Self, n: NodeId| engine.style(n).is_some_and(|s| s.is_out_of_flow());
         let only_ws = style.white_space.collapses()
             && nodes.iter().all(|n| {
-                self.doc
-                    .text(*n)
-                    .is_some_and(|t| t.chars().all(collapsible_ws))
+                out_of_flow(self, *n)
+                    || self
+                        .doc
+                        .text(*n)
+                        .is_some_and(|t| t.chars().all(collapsible_ws))
             });
         if only_ws {
+            // Les boîtes hors flux de la suite se placent comme des blocs.
+            for n in nodes {
+                if let Some(child_style) = self.style(n).filter(|s| s.is_out_of_flow()).cloned() {
+                    self.out_of_flow.push(OutOfFlow {
+                        node: n,
+                        style: child_style,
+                        static_x: x,
+                        static_y: *cursor + pending_margin.max(0.0),
+                        depth,
+                    });
+                }
+            }
             return;
         }
         *cursor += *pending_margin;
@@ -704,8 +1001,15 @@ impl Engine<'_> {
             let pad = edges_px(style.padding, cell_w);
             let bw = style.border_widths();
             let inner = (cell_w - pad.left - pad.right - bw.left - bw.right).max(0.0);
-            let mut fragment =
-                self.layout_box(cell, &style, cell_w, cell_x, y, Width::Fixed(inner), depth);
+            let space = Space {
+                cb_w: cell_w,
+                cb_x: cell_x,
+                y,
+                mode: Width::Fixed(inner),
+                cb_h: None,
+                fixed_h: None,
+            };
+            let mut fragment = self.layout_box(cell, &style, space, depth);
             fragment.border_box.x = cell_x;
             row_h = row_h.max(fragment.border_box.h);
             fragments.push(fragment);
@@ -787,6 +1091,21 @@ impl Engine<'_> {
         let Some(style) = self.style(node).cloned() else {
             return;
         };
+        if style.is_out_of_flow() {
+            // Hors flux au milieu d'un texte : sa position statique sera celle
+            // de son emplacement dans la ligne ; en attendant, l'origine du
+            // contexte en ligne.
+            let (static_x, static_y) = self.inline_origin;
+            items.push(InlineItem::Anchor(self.out_of_flow.len()));
+            self.out_of_flow.push(OutOfFlow {
+                node,
+                style,
+                static_x,
+                static_y,
+                depth,
+            });
+            return;
+        }
         if el.is_html("br") {
             // U+2028 : saut de ligne obligatoire, non fusionné avec les blancs.
             items.push(InlineItem::Text("\u{2028}".to_owned()));
@@ -804,8 +1123,15 @@ impl Engine<'_> {
         }
         if style.display == Display::InlineBlock {
             let margin = edges_px(style.margin, available);
-            let mut fragment =
-                self.layout_box(node, &style, available, 0.0, 0.0, Width::ShrinkToFit, depth);
+            let space = Space {
+                cb_w: available,
+                cb_x: 0.0,
+                y: 0.0,
+                mode: Width::ShrinkToFit,
+                cb_h: None,
+                fixed_h: None,
+            };
+            let mut fragment = self.layout_box(node, &style, space, depth);
             // Champs de formulaire sans contenu : taille par défaut.
             if fragment.children.is_empty()
                 && style.width == Size::Auto
@@ -849,6 +1175,7 @@ impl Engine<'_> {
     ) -> TextFragment {
         let mut items = Vec::new();
         let mut boxes = Vec::new();
+        self.inline_origin = (x, y);
         for node in nodes {
             self.collect_inline(*node, width, &mut items, &mut boxes, depth);
         }
@@ -875,6 +1202,15 @@ impl Engine<'_> {
                 }
                 InlineItem::End => builder.pop_style_span(),
                 InlineItem::Text(text) => builder.push_text(text),
+                InlineItem::Anchor(index) => builder.push_inline_box(InlineBox {
+                    id: ANCHOR_BASE + *index as u64,
+                    kind: InlineBoxKind::InFlow,
+                    index: 0,
+                    width: 0.0,
+                    height: 0.0,
+                    baseline: None,
+                    vertical_align: VerticalAlign::BASELINE,
+                }),
                 InlineItem::Box(index) => {
                     let Some(Fragment::Box(b)) = boxes.get(*index) else {
                         continue;
@@ -909,11 +1245,23 @@ impl Engine<'_> {
         layout.align(alignment, AlignmentOptions::default());
 
         for line in layout.lines() {
+            let line_top = line.metrics().block_min_coord;
             for item in line.items() {
-                if let PositionedLayoutItem::InlineBox(placed) = item
-                    && let Some(fragment) = usize::try_from(placed.id)
+                let PositionedLayoutItem::InlineBox(placed) = item else {
+                    continue;
+                };
+                if placed.id >= ANCHOR_BASE {
+                    // Position statique : ce point de la ligne, en haut de sa boîte.
+                    if let Some(waiting) = usize::try_from(placed.id - ANCHOR_BASE)
                         .ok()
-                        .and_then(|i| boxes.get_mut(i))
+                        .and_then(|i| self.out_of_flow.get_mut(i))
+                    {
+                        waiting.static_x = x + placed.x;
+                        waiting.static_y = y + line_top;
+                    }
+                } else if let Some(fragment) = usize::try_from(placed.id)
+                    .ok()
+                    .and_then(|i| boxes.get_mut(i))
                 {
                     fragment.translate(x + placed.x, y + placed.y);
                 }
@@ -1022,6 +1370,50 @@ mod tests {
                 h: 20.0
             }
         );
+    }
+
+    #[test]
+    fn absolute_relative_and_fixed_positioning() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}
+               #cb{position:relative; width:200px; height:100px; margin:10px; border:5px solid}
+               #abs{position:absolute; left:10px; top:20px; width:30px; height:40px}
+               #fill{position:absolute; left:10px; right:20px; top:0; bottom:50%}
+               #br{position:absolute; right:0; bottom:0; width:10px; height:10px}
+               #rel{position:relative; left:7px; top:3px; height:10px}
+               #after{height:10px}
+               #fixed{position:fixed; right:0; top:0; width:50px; height:20px}
+             </style>
+             <div id=cb><div id=abs></div><div id=fill></div><div id=br></div>\
+             <div id=rel></div><div id=after></div><div id=fixed></div></div>",
+            400.0,
+        );
+        let at = |id: &str| {
+            let r = rect(&doc, &tree, id);
+            (r.x, r.y, r.w, r.h)
+        };
+        // Bloc conteneur : la boîte de marge intérieure de #cb, en (15, 15), 200 × 100.
+        assert_eq!(at("cb"), (10.0, 10.0, 210.0, 110.0));
+        assert_eq!(at("abs"), (25.0, 35.0, 30.0, 40.0));
+        assert_eq!(at("fill"), (25.0, 15.0, 170.0, 50.0));
+        assert_eq!(at("br"), (205.0, 105.0, 10.0, 10.0));
+        // Décalage relatif : la boîte bouge, pas le flux qui la suit.
+        assert_eq!(at("rel"), (22.0, 18.0, 200.0, 10.0));
+        assert_eq!(at("after"), (15.0, 25.0, 200.0, 10.0));
+        // Fixe : par rapport à la fenêtre (400 × 600).
+        assert_eq!(at("fixed"), (350.0, 0.0, 50.0, 20.0));
+    }
+
+    #[test]
+    fn percentage_height_needs_a_definite_container() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div style='height:200px'><div id=half style='height:50%'></div></div>\
+             <div><div id=auto style='height:50%'></div></div>",
+            400.0,
+        );
+        assert_eq!(rect(&doc, &tree, "half").h, 100.0);
+        assert_eq!(rect(&doc, &tree, "auto").h, 0.0);
     }
 
     #[test]

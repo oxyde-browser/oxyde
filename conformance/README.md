@@ -10,7 +10,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 286 fichiers de test entièrement réussis sur 693 (41,3 %) ; 42926 sous-tests sur 49886, détail dans [wpt.md](wpt.md) |
-| Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 222 fichiers entièrement réussis sur 2 267 (9,8 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
+| Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 232 fichiers entièrement réussis sur 2 267 (10,2 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | test262 | `oxyde_js` | **branchée** : 40 768 tests réussis sur 48 795 (83,5 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls

@@ -193,9 +193,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 222 (9,8 %), rapport dans `conformance/wpt-css.md`.
-- **Géométrie pour les scripts** : `getBoundingClientRect`, `getClientRects`, `offsetWidth`
-  et la famille `offset*`/`client*`/`scroll*`, `getComputedStyle` ; une lecture force la
+  (9,4 %), aujourd'hui 232 (10,2 %); une lecture force la
   mise en page si le document a changé.
 - **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
   `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
