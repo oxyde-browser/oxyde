@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 203 tests de test262 sur 48 795 (84,4 %)** ; il en reste 7 592.
+- `oxyde_js` réussit **41 262 tests de test262 sur 48 795 (84,6 %)** ; il en reste 7 533.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -16,7 +16,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 |---|---:|---:|---|
 | A et B — langage, `eval` direct | 1 839 | 352 | presque terminées |
 | C — intégrés courants | 1 743 | 217 | presque terminée |
-| D — tampons partagés, tableaux typés | 1 024 | 561 | en cours |
+| D — tampons partagés, tableaux typés | 1 024 | 502 | en cours |
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
@@ -88,9 +88,11 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
 
 - **SharedArrayBuffer et Atomics** (495) : `SharedArrayBuffer` est là (101 tests sur 104), sur
   un stockage dont les octets se partagent entre agents, ainsi qu'`Atomics` pour un agent
-  (216 sur 389) : `add`, `and`, `compareExchange`, `exchange`, `load`, `or`, `store`, `sub`,
-  `xor`, `isLockFree`, `wait`, `notify`, `pause`. Restent les tests à plusieurs agents
-  (`$262.agent`, 112) et `Atomics.waitAsync` (47).
+  et plusieurs (275 sur 389) : `add`, `and`, `compareExchange`, `exchange`, `load`, `or`,
+  `store`, `sub`, `xor`, `isLockFree`, `wait`, `notify`, `pause`. Le lanceur fournit
+  `$262.agent` : chaque agent est un moteur sur son propre fil, et les tests vérifient la
+  mémoire réellement partagée et le réveil par `notify`. Reste `Atomics.waitAsync` (une
+  centaine de tests), qui demande une boucle d'événements dans le lanceur.
 - **TypedArray, ArrayBuffer, DataView** (529) : tampons redimensionnables, `transfer`,
   `Uint8Array.fromBase64` et `toHex`, constructeurs d'espèce.
 

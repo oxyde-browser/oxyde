@@ -17,12 +17,14 @@
 //! (`git clone --depth 1 https://github.com/tc39/test262 vendor/test262`).
 
 use std::collections::BTreeMap;
+use std::collections::VecDeque;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, PoisonError, mpsc};
+use std::time::{Duration, Instant};
 
-use oxyde_js::{EvalError, JsResult, Value, Vm};
+use oxyde_js::{EvalError, JsResult, SharedStorage, Value, Vm};
 
 /// Dossiers de la suite pris en compte (ECMA-262 et son annexe B).
 /// `intl402` (ECMA-402) et `staging` (propositions) sont hors périmètre.
@@ -143,6 +145,64 @@ impl Harness {
     }
 }
 
+/// Message diffusé aux agents : un tampon partagé et un nombre.
+type Broadcast = (SharedStorage, f64);
+
+/// Ce que les agents d'un test ont en commun (`$262.agent`).
+struct Hub {
+    /// Comptes rendus des agents, dans l'ordre d'arrivée.
+    reports: Mutex<VecDeque<String>>,
+    /// Boîte de réception de chaque agent lancé.
+    agents: Mutex<Vec<mpsc::Sender<Broadcast>>>,
+    /// Agents qui n'ont pas encore retiré la diffusion en cours.
+    pending: Mutex<usize>,
+    retrieved: Condvar,
+    /// Origine de l'horloge commune.
+    epoch: Instant,
+}
+
+/// Verrou repris même empoisonné : un agent qui panique ne doit pas bloquer
+/// les autres.
+fn relock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// État d'un agent lancé par `$262.agent.start`.
+struct AgentState {
+    /// Fonction donnée à `receiveBroadcast`.
+    callback: Option<Value>,
+    /// Vrai une fois `leaving()` appelé.
+    leaving: bool,
+}
+
+/// État de l'hôte attaché à un moteur.
+#[derive(Default)]
+struct Host {
+    /// Lignes écrites par `print`.
+    lines: Vec<String>,
+    hub: Option<Arc<Hub>>,
+    /// Présent dans un agent, absent dans l'agent principal.
+    agent: Option<AgentState>,
+}
+
+fn host(vm: &mut Vm) -> Option<&mut Host> {
+    vm.host.as_mut().and_then(|h| h.downcast_mut::<Host>())
+}
+
+/// Nœud commun aux agents du test, créé au premier besoin.
+fn hub(vm: &mut Vm) -> Option<Arc<Hub>> {
+    let host = host(vm)?;
+    Some(Arc::clone(host.hub.get_or_insert_with(|| {
+        Arc::new(Hub {
+            reports: Mutex::new(VecDeque::new()),
+            agents: Mutex::new(Vec::new()),
+            pending: Mutex::new(0),
+            retrieved: Condvar::new(),
+            epoch: Instant::now(),
+        })
+    })))
+}
+
 /// `print` : les tests asynchrones annoncent leur issue par cette fonction.
 fn host_print(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let text = args
@@ -150,12 +210,189 @@ fn host_print(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         .map(|a| vm.display(a))
         .collect::<Vec<_>>()
         .join(" ");
-    if let Some(lines) = vm
-        .host
-        .as_mut()
-        .and_then(|h| h.downcast_mut::<Vec<String>>())
-    {
-        lines.push(text);
+    if let Some(host) = host(vm) {
+        host.lines.push(text);
+    }
+    Ok(Value::Undefined)
+}
+
+/// Objet `$262` d'un agent.
+const AGENT_OBJECT: &str = "var $262 = { agent: { receiveBroadcast: __agentReceive, \
+     report: __agentReport, leaving: __agentLeaving, sleep: __agentSleep, \
+     monotonicNow: __agentNow } };";
+
+/// Durée maximale d'attente d'une diffusion par l'agent principal.
+const BROADCAST_LIMIT: Duration = Duration::from_secs(20);
+
+/// Corps d'un agent : exécute `source`, puis sert les diffusions jusqu'à
+/// `leaving()` ou la fin du test.
+fn run_agent(source: &str, hub: Arc<Hub>, inbox: &mpsc::Receiver<Broadcast>) {
+    let mut vm = Vm::new();
+    vm.set_budget(Some(BUDGET));
+    vm.set_can_block(true);
+    vm.host = Some(Box::new(Host {
+        lines: Vec::new(),
+        hub: Some(hub),
+        agent: Some(AgentState {
+            callback: None,
+            leaving: false,
+        }),
+    }));
+    let global = vm.global();
+    vm.define_method(global, "__agentReceive", 1, agent_receive);
+    vm.define_method(global, "__agentReport", 1, agent_report);
+    vm.define_method(global, "__agentLeaving", 0, agent_leaving);
+    vm.define_method(global, "__agentSleep", 1, agent_sleep);
+    vm.define_method(global, "__agentNow", 0, agent_now);
+    // Une erreur de l'agent se voit à l'absence de ses comptes rendus.
+    let _ = vm.eval(&format!("{AGENT_OBJECT}\n{source}"));
+    loop {
+        if host(&mut vm)
+            .and_then(|h| h.agent.as_ref())
+            .is_none_or(|a| a.leaving)
+        {
+            return;
+        }
+        let Ok((storage, number)) = inbox.recv() else {
+            // L'agent principal a terminé.
+            return;
+        };
+        // La diffusion est retirée : l'agent principal peut repartir.
+        if let Some(hub) = host(&mut vm).and_then(|h| h.hub.clone()) {
+            let mut pending = relock(&hub.pending);
+            *pending = pending.saturating_sub(1);
+            drop(pending);
+            hub.retrieved.notify_all();
+        }
+        let callback = host(&mut vm)
+            .and_then(|h| h.agent.as_ref())
+            .and_then(|a| a.callback.clone());
+        if let Some(callback) = callback {
+            let buffer = vm.shared_buffer_from_storage(&storage);
+            vm.set_budget(Some(BUDGET));
+            let _ = vm.call(
+                &callback,
+                &Value::Undefined,
+                &[buffer, Value::Number(number)],
+            );
+            vm.run_microtasks();
+        }
+    }
+}
+
+/// `$262.agent.start(source)` : lance un agent sur son propre fil.
+fn agent_start(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let Some(Value::String(source)) = args.first() else {
+        return Err(vm.error("TypeError", "$262.agent.start : une source est attendue"));
+    };
+    let source = source.to_string();
+    let Some(hub) = hub(vm) else {
+        return Ok(Value::Undefined);
+    };
+    let (sender, inbox) = mpsc::channel();
+    relock(&hub.agents).push(sender);
+    let shared = Arc::clone(&hub);
+    let spawned = std::thread::Builder::new()
+        .name("test262-agent".to_owned())
+        .stack_size(STACK_BYTES)
+        .spawn(move || run_agent(&source, shared, &inbox));
+    if spawned.is_err() {
+        relock(&hub.agents).pop();
+        return Err(vm.error("RangeError", "impossible de lancer un agent"));
+    }
+    Ok(Value::Undefined)
+}
+
+/// `$262.agent.broadcast(tampon, nombre)` : remet le tampon partagé à tous
+/// les agents et attend qu'ils l'aient retiré.
+fn agent_broadcast(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let buffer = args.first().cloned().unwrap_or(Value::Undefined);
+    let Some(storage) = vm.shared_buffer_storage(&buffer) else {
+        return Err(vm.error(
+            "TypeError",
+            "$262.agent.broadcast : un SharedArrayBuffer est attendu",
+        ));
+    };
+    let number = match args.get(1) {
+        Some(Value::Number(n)) => *n,
+        _ => 0.0,
+    };
+    let Some(hub) = hub(vm) else {
+        return Ok(Value::Undefined);
+    };
+    let delivered = {
+        let mut agents = relock(&hub.agents);
+        // Un agent parti ne reçoit plus rien.
+        agents.retain(|agent| agent.send((storage.clone(), number)).is_ok());
+        agents.len()
+    };
+    let deadline = Instant::now() + BROADCAST_LIMIT;
+    let mut pending = relock(&hub.pending);
+    *pending += delivered;
+    while *pending > 0 {
+        let now = Instant::now();
+        if now >= deadline {
+            *pending = 0;
+            break;
+        }
+        pending = hub
+            .retrieved
+            .wait_timeout(pending, deadline - now)
+            .unwrap_or_else(PoisonError::into_inner)
+            .0;
+    }
+    Ok(Value::Undefined)
+}
+
+/// `$262.agent.getReport()` : le plus ancien compte rendu, ou `null`.
+fn agent_get_report(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let report = hub(vm).and_then(|hub| relock(&hub.reports).pop_front());
+    Ok(report.map_or(Value::Null, |text| Value::string(&text)))
+}
+
+/// `$262.agent.sleep(ms)`.
+fn agent_sleep(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let ms = match args.first() {
+        Some(value) => vm.to_number(value)?,
+        None => 0.0,
+    };
+    if ms.is_finite() && ms > 0.0 {
+        std::thread::sleep(Duration::from_secs_f64((ms / 1000.0).min(60.0)));
+    }
+    Ok(Value::Undefined)
+}
+
+/// `$262.agent.monotonicNow()` : millisecondes depuis le début du test.
+fn agent_now(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let elapsed = hub(vm).map_or(0.0, |hub| hub.epoch.elapsed().as_secs_f64() * 1000.0);
+    Ok(Value::Number(elapsed))
+}
+
+/// `$262.agent.receiveBroadcast(fonction)`, côté agent.
+fn agent_receive(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let callback = args.first().cloned().unwrap_or(Value::Undefined);
+    // La fonction doit survivre au ramasse-miettes jusqu'à la diffusion.
+    vm.add_root(callback.clone());
+    if let Some(agent) = host(vm).and_then(|h| h.agent.as_mut()) {
+        agent.callback = Some(callback);
+    }
+    Ok(Value::Undefined)
+}
+
+/// `$262.agent.report(valeur)`, côté agent.
+fn agent_report(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let value = args.first().cloned().unwrap_or(Value::Undefined);
+    let text = vm.to_string(&value)?.to_string();
+    if let Some(hub) = hub(vm) {
+        relock(&hub.reports).push_back(text);
+    }
+    Ok(Value::Undefined)
+}
+
+/// `$262.agent.leaving()`, côté agent.
+fn agent_leaving(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    if let Some(agent) = host(vm).and_then(|h| h.agent.as_mut()) {
+        agent.leaving = true;
     }
     Ok(Value::Undefined)
 }
@@ -198,11 +435,18 @@ fn install_host(vm: &mut Vm) {
     vm.define_method(global, "__detach", 1, host_detach);
     vm.define_method(global, "__evalScript", 1, host_eval_script);
     vm.define_method(global, "__createRealm", 0, host_create_realm);
+    vm.define_method(global, "__agentStart", 1, agent_start);
+    vm.define_method(global, "__agentBroadcast", 2, agent_broadcast);
+    vm.define_method(global, "__agentGetReport", 0, agent_get_report);
+    vm.define_method(global, "__agentSleep", 1, agent_sleep);
+    vm.define_method(global, "__agentNow", 0, agent_now);
 }
 
 /// Objet `$262` minimal exposé aux tests.
-const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach, \
-     evalScript: __evalScript, createRealm: __createRealm };";
+const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, detachArrayBuffer: __detach, \
+     evalScript: __evalScript, createRealm: __createRealm, \
+     agent: { start: __agentStart, broadcast: __agentBroadcast, getReport: __agentGetReport, \
+     sleep: __agentSleep, monotonicNow: __agentNow } };";
 
 /// Chargeur de modules : lit le fichier désigné par `specifier`, relatif au
 /// module qui l'importe. L'identifiant d'un module est son chemin.
@@ -230,7 +474,7 @@ fn run_once(
     vm.set_budget(Some(BUDGET));
     // L'agent principal d'un lanceur de tests peut s'endormir.
     vm.set_can_block(true);
-    vm.host = Some(Box::new(Vec::<String>::new()));
+    vm.host = Some(Box::new(Host::default()));
     install_host(&mut vm);
 
     if !meta.has("raw") {
@@ -282,12 +526,7 @@ fn run_once(
         return Outcome::Fail(error.to_string());
     }
     if meta.has("async") {
-        let lines = vm
-            .host
-            .as_ref()
-            .and_then(|h| h.downcast_ref::<Vec<String>>())
-            .cloned()
-            .unwrap_or_default();
+        let lines = host(&mut vm).map(|h| h.lines.clone()).unwrap_or_default();
         if let Some(failure) = lines
             .iter()
             .find(|l| l.starts_with("Test262:AsyncTestFailure"))
