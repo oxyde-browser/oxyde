@@ -391,6 +391,11 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             .unwrap_or_default();
         page.set_stylesheet(&sheet_url, &css);
     }
+    for font_url in page.pending_fonts() {
+        // Une police indisponible laisse place aux polices du système.
+        let data = fetch(&font_url).ok().map(|(_, bytes)| bytes);
+        page.set_font(&font_url, data);
+    }
     for image_url in page.pending_images() {
         // Une image indisponible ou illisible laisse place à son texte alternatif.
         let image = fetch(&image_url)

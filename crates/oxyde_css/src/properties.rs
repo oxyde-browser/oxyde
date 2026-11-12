@@ -146,7 +146,11 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
             continue;
         }
         let name = name.to_ascii_lowercase();
-        if let Some(pairs) = parse_property(&name, value) {
+        // Les `calc()` sont évalués avant l'analyse de la propriété.
+        let Some(folded) = crate::values::fold_calc(value) else {
+            continue;
+        };
+        if let Some(pairs) = parse_property(&name, &folded) {
             out.extend(pairs.into_iter().map(|(property, value)| Declaration {
                 property,
                 value,
@@ -194,6 +198,8 @@ fn non_negative(length: Length) -> Option<Length> {
         | Length::Percent(v)
         | Length::Vw(v)
         | Length::Vh(v) => v,
+        // Le signe d'une somme d'unités mêlées dépend du contexte.
+        Length::Calc(_) => return Some(length),
     };
     (v >= 0.0).then_some(length)
 }

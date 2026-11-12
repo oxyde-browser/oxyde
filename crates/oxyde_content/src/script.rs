@@ -1098,6 +1098,14 @@ fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
     Some(wrap(vm, found))
 }
 
+/// `cssSupports(propriété, valeur)` : le moteur de style accepte-t-il cette
+/// déclaration ?
+fn css_supports(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let property = vm.to_string(&arg(args, 0))?;
+    let value = vm.to_string(&arg(args, 1))?;
+    Ok(Value::Bool(oxyde_css::supports(&property, &value)))
+}
+
 /// Nombre maximal d'écritures de cookies gardées entre deux relevés.
 const MAX_COOKIE_WRITES: usize = 1000;
 
@@ -1941,6 +1949,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(h) = host(vm) {
         h.activation = Some(activation);
     }
+    // `CSS`, `document.fonts`, `FontFace`.
+    let cssom = vm.eval_script(include_str!("script/cssom.js"))?;
+    let helpers = [Value::Object(vm.new_function(
+        "cssSupports",
+        2,
+        css_supports,
+    ))];
+    vm.call(&cssom, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
     let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
     let helpers = [

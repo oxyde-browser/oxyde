@@ -29,5 +29,13 @@ pub use style::{
     LineHeight, ListStyle, Overflow, Position, Size, StyleMap, TextAlign, Visibility, WhiteSpace,
     collect_style_elements, compute_styles,
 };
-pub use stylesheet::{Stylesheet, Viewport, parse_stylesheet};
+pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
+
+/// Vrai si le moteur de style accepte la déclaration `property: value`
+/// (`CSS.supports`).
+#[must_use]
+pub fn supports(property: &str, value: &str) -> bool {
+    let source = format!("{property}:{value}");
+    !properties::parse_declarations(&syntax::tokenize(&source)).is_empty()
+}
 pub use values::Color;

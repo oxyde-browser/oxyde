@@ -184,6 +184,92 @@ pub struct Rule {
 pub struct Stylesheet {
     /// Règles dans l'ordre du source.
     pub rules: Vec<Rule>,
+    /// Polices déclarées par `@font-face`, dans l'ordre du source.
+    pub font_faces: Vec<FontFace>,
+}
+
+/// Police déclarée par une règle `@font-face`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontFace {
+    /// Nom de famille sous lequel la page désigne la police.
+    pub family: String,
+    /// Adresses des fichiers de police (`src: url(…)`), par ordre de
+    /// préférence, telles qu'écrites dans la feuille.
+    pub sources: Vec<String>,
+}
+
+/// Relève les règles `@font-face` de `tokens`, y compris dans `@media` et
+/// `@layer`.
+fn collect_font_faces(tokens: &[Token], out: &mut Vec<FontFace>, depth: usize) {
+    let mut i = 0;
+    while i < tokens.len() {
+        let Token::AtKeyword(name) = &tokens[i] else {
+            i += 1;
+            continue;
+        };
+        let end = prelude_end(tokens, i + 1);
+        if tokens.get(end) != Some(&Token::OpenBrace) {
+            i = end + 1;
+            continue;
+        }
+        let close = matching_close(tokens, end);
+        let body = tokens.get(end + 1..close).unwrap_or(&[]);
+        match name.as_str() {
+            "font-face" => out.extend(parse_font_face(body)),
+            "media" | "layer" | "supports" if depth < MAX_NESTING => {
+                collect_font_faces(body, out, depth + 1);
+            }
+            _ => {}
+        }
+        i = close + 1;
+    }
+}
+
+/// Analyse le corps d'une règle `@font-face` ; `None` s'il manque la
+/// famille ou une adresse.
+fn parse_font_face(body: &[Token]) -> Option<FontFace> {
+    let (mut family, mut sources) = (None, Vec::new());
+    for part in crate::syntax::split_top_level(body, &Token::Semicolon) {
+        let [Token::Ident(name), rest @ ..] = trim(part) else {
+            continue;
+        };
+        let [Token::Colon, value @ ..] = trim(rest) else {
+            continue;
+        };
+        let value = trim(value);
+        match name.to_ascii_lowercase().as_str() {
+            "font-family" => {
+                family = Some(match value {
+                    [Token::Str(quoted)] => quoted.clone(),
+                    words => words
+                        .iter()
+                        .filter_map(|t| match t {
+                            Token::Ident(word) => Some(word.as_str()),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                });
+            }
+            "src" => {
+                let mut tokens = value.iter().peekable();
+                while let Some(token) = tokens.next() {
+                    match token {
+                        Token::Url(url) => sources.push(url.clone()),
+                        Token::Function(function) if function == "url" => {
+                            if let Some(Token::Str(url)) = tokens.peek() {
+                                sources.push(url.clone());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let family = family.filter(|f| !f.is_empty())?;
+    (!sources.is_empty()).then_some(FontFace { family, sources })
 }
 
 /// Profondeur maximale d'imbrication des règles `@` (borne la récursion).
@@ -196,6 +282,7 @@ pub fn parse_stylesheet(source: &str) -> Stylesheet {
     let tokens = tokenize(source);
     let mut sheet = Stylesheet::default();
     parse_rules(&tokens, &[], &mut sheet.rules, 0);
+    collect_font_faces(&tokens, &mut sheet.font_faces, 0);
     sheet
 }
 

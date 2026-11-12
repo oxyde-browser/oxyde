@@ -182,6 +182,71 @@ pub(crate) struct LayoutEnv {
     sheets: Vec<SheetSlot>,
     base: Url,
     sizes: HashMap<NodeId, (f32, f32)>,
+    fonts: Vec<FontSlot>,
+}
+
+/// Police déclarée par `@font-face`.
+#[derive(Clone, Debug)]
+struct FontSlot {
+    /// Nom de famille que la page lui donne.
+    family: String,
+    /// Adresse du fichier.
+    url: Url,
+    /// Vrai une fois la ressource reçue (ou déclarée indisponible).
+    resolved: bool,
+    data: Option<std::sync::Arc<Vec<u8>>>,
+}
+
+/// Nombre maximal de polices chargées par page.
+const MAX_FONTS: usize = 64;
+
+/// Relève les polices déclarées par les feuilles `slots` ; celles de
+/// `previous` gardent leurs données.
+fn collect_fonts(slots: &[SheetSlot], base: &Url, previous: Vec<FontSlot>) -> Vec<FontSlot> {
+    let mut fonts = previous;
+    for slot in slots {
+        let (sheet, sheet_base) = match slot {
+            SheetSlot::Inline(sheet) => (sheet, base),
+            SheetSlot::External {
+                url,
+                sheet: Some(sheet),
+            } => (sheet, url),
+            SheetSlot::External { sheet: None, .. } => continue,
+        };
+        for face in &sheet.font_faces {
+            // La première adresse lisible : les formats compressés sont écartés.
+            let source = face
+                .sources
+                .iter()
+                .filter_map(|source| sheet_base.join(source).ok())
+                .find(|url| {
+                    let path = url.path().to_ascii_lowercase();
+                    !path.ends_with(".woff") && !path.ends_with(".woff2")
+                });
+            let Some(url) = source else { continue };
+            let known = fonts
+                .iter()
+                .any(|f| f.family == face.family && f.url == url);
+            if !known && fonts.len() < MAX_FONTS {
+                fonts.push(FontSlot {
+                    family: face.family.clone(),
+                    url,
+                    resolved: false,
+                    data: None,
+                });
+            }
+        }
+    }
+    fonts
+}
+
+/// Enregistre dans `text` les polices reçues parmi `fonts`.
+fn register_fonts(fonts: &[FontSlot], text: &mut TextContext) {
+    for font in fonts {
+        if let Some(data) = &font.data {
+            text.register_web_font(&font.family, font.url.as_str(), data);
+        }
+    }
 }
 
 /// Feuilles de style utilisables parmi `slots`.
@@ -206,6 +271,7 @@ pub(crate) fn layout_snapshot(
     viewport: (f32, f32),
     text: &mut TextContext,
 ) -> (StyleMap, LayoutTree) {
+    register_fonts(&env.fonts, text);
     // Les `<style>` sont relus dans le document, qui a pu changer.
     let slots = collect_sheets(doc, &env.base, env.sheets.clone());
     let viewport = Viewport {
@@ -342,6 +408,8 @@ pub struct Page {
     base: Url,
     doc: Document,
     sheets: Vec<SheetSlot>,
+    /// Polices déclarées par les feuilles de style.
+    fonts: Vec<FontSlot>,
     images: HashMap<NodeId, ImageSlot>,
     scripts: Vec<ScriptSlot>,
     /// Modules importés par les scripts de type module, par adresse ; `None` :
@@ -523,10 +591,12 @@ impl Page {
                 }
             }
         }
+        let fonts = collect_fonts(&sheets, &base, Vec::new());
         Self {
             url,
             base,
             doc,
+            fonts,
             sheets,
             images,
             scripts,
@@ -585,6 +655,8 @@ impl Page {
         }
         self.dirty |= found;
         if found {
+            let previous = std::mem::take(&mut self.fonts);
+            self.fonts = collect_fonts(&self.sheets, &self.base, previous);
             self.sync_layout_env();
         }
         found
@@ -624,6 +696,40 @@ impl Page {
             found = true;
         }
         self.dirty |= found && image.is_some();
+        found
+    }
+
+    /// Adresses des fichiers de police (`@font-face`) qu'il reste à fournir
+    /// par [`Page::set_font`]. À demander après les feuilles de style, qui
+    /// les déclarent.
+    #[must_use]
+    pub fn pending_fonts(&self) -> Vec<Url> {
+        let mut urls: Vec<Url> = Vec::new();
+        for font in self.fonts.iter().filter(|font| !font.resolved) {
+            if !urls.contains(&font.url) {
+                urls.push(font.url.clone());
+            }
+        }
+        urls
+    }
+
+    /// Fournit le fichier de police demandé par [`Page::pending_fonts`] ;
+    /// `None` s'il est indisponible. Renvoie `false` si `url` n'était pas
+    /// attendue.
+    pub fn set_font(&mut self, url: &Url, data: Option<Vec<u8>>) -> bool {
+        let data = data.map(std::sync::Arc::new);
+        let mut found = false;
+        for font in &mut self.fonts {
+            if font.url == *url && !font.resolved {
+                font.resolved = true;
+                font.data.clone_from(&data);
+                found = true;
+            }
+        }
+        if found {
+            self.dirty = true;
+            self.sync_layout_env();
+        }
         found
     }
 
@@ -938,6 +1044,7 @@ impl Page {
             sheets: self.sheets.clone(),
             base: self.base.clone(),
             sizes,
+            fonts: self.fonts.clone(),
         }
     }
 
@@ -1127,6 +1234,7 @@ impl Page {
         if let Some(engine) = self.engine.as_mut() {
             engine.set_viewport(viewport.width, viewport.height);
         }
+        register_fonts(&self.fonts, text);
         let sheets = usable_sheets(&self.sheets);
         self.styles = oxyde_css::compute_styles(&self.doc, &sheets, viewport);
         let images = &self.images;

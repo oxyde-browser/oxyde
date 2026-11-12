@@ -70,6 +70,13 @@ pub enum Size {
     Px(f32),
     /// Pourcentage du bloc conteneur.
     Percent(f32),
+    /// Pixels plus un pourcentage du bloc conteneur (`calc(50% - 10px)`).
+    Calc {
+        /// Part fixe, en pixels.
+        px: f32,
+        /// Part relative, en pourcentage du bloc conteneur.
+        percent: f32,
+    },
 }
 
 impl Size {
@@ -80,6 +87,7 @@ impl Size {
             Self::Auto => None,
             Self::Px(v) => Some(v),
             Self::Percent(p) => Some(base * p / 100.0),
+            Self::Calc { px, percent } => Some(px + base * percent / 100.0),
         }
     }
 }
@@ -560,6 +568,21 @@ fn length_px(length: Length, font_size: f32, cx: &Context<'_>) -> Size {
         Length::Vw(v) => Size::Px(v * cx.viewport.width / 100.0),
         Length::Vh(v) => Size::Px(v * cx.viewport.height / 100.0),
         Length::Percent(v) => Size::Percent(v),
+        Length::Calc(l) => {
+            let px = l.px
+                + l.em * font_size
+                + l.rem * cx.root_font_size
+                + l.vw * cx.viewport.width / 100.0
+                + l.vh * cx.viewport.height / 100.0;
+            if !l.has_percent {
+                Size::Px(px)
+            } else {
+                Size::Calc {
+                    px,
+                    percent: l.percent,
+                }
+            }
+        }
     }
 }
 
@@ -1269,6 +1292,47 @@ mod tests {
         assert_eq!(em.color, Color::BLACK);
         assert_eq!(em.font_size, 32.0);
         assert!(em.italic);
+    }
+
+    #[test]
+    fn calc_and_new_properties() {
+        let (doc, map) = styled(
+            "<style>
+               p { width: calc(100% - 20px); margin-left: calc(2 * 5px + 1em);
+                   padding-top: calc((10px + 6px) / 4); height: calc(1px + ); }
+               div { position: absolute; inset: 1px 2px; float: right; flex: 2 1 0;
+                     z-index: 3; overflow: hidden auto; gap: 4px 8px; }
+             </style><p>a</p><div>b</div>",
+        );
+        let p = style_of(&doc, &map, "p");
+        assert_eq!(
+            p.width,
+            Size::Calc {
+                px: -20.0,
+                percent: 100.0
+            }
+        );
+        assert_eq!(p.width.resolve(300.0), Some(280.0));
+        assert_eq!(p.margin.left, Size::Px(26.0));
+        assert_eq!(p.padding.top, Size::Px(4.0));
+        // Une expression invalide écarte la déclaration.
+        assert_eq!(p.height, Size::Auto);
+        let div = style_of(&doc, &map, "div");
+        assert_eq!(div.position, Position::Absolute);
+        assert_eq!(div.inset.top, Size::Px(1.0));
+        assert_eq!(div.inset.left, Size::Px(2.0));
+        assert_eq!(div.float, Float::Right);
+        assert_eq!((div.flex_grow, div.flex_shrink), (2.0, 1.0));
+        assert_eq!(div.flex_basis, Some(Size::Px(0.0)));
+        assert_eq!(div.z_index, Some(3));
+        assert_eq!(
+            (div.overflow_x, div.overflow_y),
+            (Overflow::Hidden, Overflow::Auto)
+        );
+        assert_eq!(
+            (div.row_gap, div.column_gap),
+            (Size::Px(4.0), Size::Px(8.0))
+        );
     }
 
     #[test]

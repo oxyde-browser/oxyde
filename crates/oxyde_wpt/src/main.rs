@@ -209,6 +209,10 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         let css = read_url(suite, &url).unwrap_or_default();
         page.set_stylesheet(&url, &css);
     }
+    for url in page.pending_fonts() {
+        let data = read_url_bytes(suite, &url);
+        page.set_font(&url, data);
+    }
     for url in page.pending_images() {
         page.set_image(&url, None);
     }

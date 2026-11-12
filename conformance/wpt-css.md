@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 4683 / 20580 (22,8 %)** — fichiers entièrement réussis : 213 / 2267 (9,4 %).
+**Sous-tests réussis : 5078 / 28699 (17,7 %)** — fichiers entièrement réussis : 222 / 2267 (9,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -14,51 +14,51 @@ est le plus honnête des deux.
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
 | `css/CSS2/floats` | 4 / 19 | 6 / 52 (11,5 %) |
-| `css/CSS2/normal-flow` | 17 / 31 | 51 / 124 (41,1 %) |
-| `css/CSS2/positioning` | 5 / 9 | 6 / 12 (50,0 %) |
+| `css/CSS2/normal-flow` | 17 / 31 | 55 / 130 (42,3 %) |
+| `css/CSS2/positioning` | 5 / 9 | 11 / 18 (61,1 %) |
 | `css/css-align` | 0 / 3 | 0 / 27 (0,0 %) |
 | `css/css-align/abspos` | 0 / 69 | 114 / 1142 (10,0 %) |
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
-| `css/css-align/baseline-rules` | 1 / 4 | 9 / 17 (52,9 %) |
-| `css/css-align/blocks` | 0 / 37 | 55 / 522 (10,5 %) |
+| `css/css-align/baseline-rules` | 1 / 4 | 9 / 20 (45,0 %) |
+| `css/css-align/blocks` | 0 / 37 | 55 / 556 (9,9 %) |
 | `css/css-align/content-distribution` | 1 / 17 | 141 / 573 (24,6 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
 | `css/css-align/gaps` | 0 / 20 | 15 / 162 (9,3 %) |
 | `css/css-align/multicol` | 0 / 1 | 0 / 32 (0,0 %) |
-| `css/css-align/parsing` | 1 / 50 | 197 / 759 (26,0 %) |
+| `css/css-align/parsing` | 1 / 50 | 205 / 759 (27,0 %) |
 | `css/css-align/self-alignment` | 1 / 16 | 160 / 731 (21,9 %) |
 | `css/css-box` | 1 / 3 | 21 / 33 (63,6 %) |
 | `css/css-box/animation` | 0 / 10 | 0 / 0 (—) |
 | `css/css-box/margin-trim` | 0 / 10 | 0 / 42 (0,0 %) |
 | `css/css-box/margin-trim/computed-margin-values` | 0 / 1 | 0 / 4 (0,0 %) |
-| `css/css-box/parsing` | 9 / 29 | 79 / 255 (31,0 %) |
-| `css/css-display` | 6 / 24 | 21 / 50 (42,0 %) |
+| `css/css-box/parsing` | 9 / 29 | 96 / 255 (37,6 %) |
+| `css/css-display` | 8 / 24 | 26 / 55 (47,3 %) |
 | `css/css-display/accessibility` | 0 / 1 | 0 / 0 (—) |
 | `css/css-display/animations` | 0 / 2 | 0 / 0 (—) |
 | `css/css-display/focus` | 0 / 1 | 0 / 5 (0,0 %) |
-| `css/css-display/parsing` | 0 / 3 | 36 / 275 (13,1 %) |
+| `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 29 / 185 | 166 / 1702 (9,8 %) |
-| `css/css-flexbox/abspos` | 1 / 38 | 275 / 1269 (21,7 %) |
+| `css/css-flexbox` | 29 / 185 | 190 / 1804 (10,5 %) |
+| `css/css-flexbox/abspos` | 1 / 38 | 275 / 1389 (19,8 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 108 / 420 (25,7 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-flexbox/balance` | 1 / 10 | 13 / 68 (19,1 %) |
 | `css/css-flexbox/getcomputedstyle` | 3 / 75 | 5 / 78 (6,4 %) |
-| `css/css-flexbox/intrinsic-size` | 0 / 16 | 1 / 51 (2,0 %) |
-| `css/css-flexbox/parsing` | 4 / 27 | 25 / 215 (11,6 %) |
-| `css/css-grid` | 2 / 11 | 11 / 39 (28,2 %) |
-| `css/css-grid/abspos` | 0 / 58 | 0 / 247 (0,0 %) |
-| `css/css-grid/alignment` | 1 / 286 | 145 / 813 (17,8 %) |
+| `css/css-flexbox/intrinsic-size` | 0 / 16 | 5 / 51 (9,8 %) |
+| `css/css-flexbox/parsing` | 4 / 27 | 40 / 215 (18,6 %) |
+| `css/css-grid` | 2 / 11 | 30 / 187 (16,0 %) |
+| `css/css-grid/abspos` | 0 / 58 | 0 / 3513 (0,0 %) |
+| `css/css-grid/alignment` | 1 / 286 | 167 / 1778 (9,4 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
-| `css/css-grid/grid-definition` | 0 / 51 | 0 / 392 (0,0 %) |
-| `css/css-grid/grid-items` | 4 / 50 | 105 / 490 (21,4 %) |
+| `css/css-grid/grid-definition` | 0 / 51 | 31 / 1318 (2,4 %) |
+| `css/css-grid/grid-items` | 4 / 50 | 168 / 984 (17,1 %) |
 | `css/css-grid/grid-lanes` | 0 / 2 | 4 / 35 (11,4 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
 | `css/css-grid/grid-lanes/invalidation` | 0 / 9 | 1 / 43 (2,3 %) |
-| `css/css-grid/grid-lanes/items` | 0 / 19 | 0 / 405 (0,0 %) |
+| `css/css-grid/grid-lanes/items` | 0 / 19 | 0 / 685 (0,0 %) |
 | `css/css-grid/grid-lanes/subgrid/grid-lanes-subgridded-to-grid-lanes/track-sizing` | 0 / 2 | 0 / 3 (0,0 %) |
 | `css/css-grid/grid-lanes/subgrid/grid-subgridded-to-grid-lanes` | 1 / 3 | 1 / 3 (33,3 %) |
 | `css/css-grid/grid-lanes/subgrid/grid-subgridded-to-grid-lanes/track-sizing` | 0 / 14 | 0 / 54 (0,0 %) |
@@ -68,37 +68,37 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing` | 0 / 1 | 0 / 1 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat` | 0 / 18 | 0 / 57 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/intrinsic-auto-repeat` | 0 / 13 | 0 / 33 (0,0 %) |
-| `css/css-grid/grid-model` | 3 / 22 | 41 / 127 (32,3 %) |
-| `css/css-grid/implicit-grids` | 0 / 6 | 0 / 4 (0,0 %) |
-| `css/css-grid/layout-algorithm` | 0 / 60 | 1 / 282 (0,4 %) |
-| `css/css-grid/parsing` | 2 / 60 | 316 / 1518 (20,8 %) |
-| `css/css-grid/placement` | 0 / 24 | 0 / 52 (0,0 %) |
+| `css/css-grid/grid-model` | 3 / 22 | 44 / 188 (23,4 %) |
+| `css/css-grid/implicit-grids` | 0 / 6 | 0 / 56 (0,0 %) |
+| `css/css-grid/layout-algorithm` | 2 / 60 | 10 / 895 (1,1 %) |
+| `css/css-grid/parsing` | 2 / 60 | 316 / 1600 (19,8 %) |
+| `css/css-grid/placement` | 0 / 24 | 0 / 316 (0,0 %) |
 | `css/css-grid/subgrid` | 5 / 26 | 54 / 256 (21,1 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 17 / 47 | 44 / 256 (17,2 %) |
+| `css/css-position` | 17 / 47 | 45 / 256 (17,6 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position/parsing` | 6 / 22 | 65 / 166 (39,2 %) |
+| `css/css-position/parsing` | 7 / 22 | 70 / 166 (42,2 %) |
 | `css/css-position/sticky` | 4 / 33 | 19 / 82 (23,2 %) |
-| `css/css-sizing` | 8 / 53 | 54 / 313 (17,3 %) |
+| `css/css-sizing` | 9 / 53 | 136 / 705 (19,3 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
-| `css/css-sizing/aspect-ratio` | 1 / 24 | 47 / 283 (16,6 %) |
+| `css/css-sizing/aspect-ratio` | 2 / 24 | 55 / 291 (18,9 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 7 / 38 (18,4 %) |
 | `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1146 / 1338 (85,7 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
-| `css/css-sizing/parsing` | 1 / 28 | 89 / 261 (34,1 %) |
+| `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
 | `css/css-sizing/responsive-iframe` | 0 / 7 | 0 / 7 (0,0 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
-| `css/css-sizing/stretch` | 6 / 50 | 144 / 995 (14,5 %) |
+| `css/css-sizing/stretch` | 6 / 50 | 155 / 1015 (15,3 %) |
 | `css/css-tables` | 14 / 82 | 126 / 285 (44,2 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 0 / 5 | 2 / 10 (20,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
-| `css/css-tables/tentative` | 1 / 23 | 39 / 295 (13,2 %) |
+| `css/css-tables/tentative` | 1 / 23 | 45 / 333 (13,5 %) |
 | `css/css-tables/width-distribution` | 2 / 15 | 7 / 35 (20,0 %) |
-| `css/cssom-view` | 37 / 233 | 484 / 1513 (32,0 %) |
+| `css/cssom-view` | 38 / 233 | 512 / 1747 (29,3 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -129,12 +129,12 @@ est le plus honnête des deux.
 | `css/CSS2/normal-flow/block-in-inline-hittest-float-002.html` | 0 / 5 |  |
 | `css/CSS2/normal-flow/block-in-inline-hittest-margin.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/CSS2/normal-flow/block-in-inline-hittest-relpos-zindex.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/CSS2/normal-flow/block-in-inline-self-collapsing-margin-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/CSS2/normal-flow/block-in-inline-self-collapsing-margin-001.html` | 4 / 6 |  |
 | `css/CSS2/normal-flow/block-with-table-content-is-not-self-collapsing.html` | 2 / 3 |  |
 | `css/CSS2/normal-flow/hit-test-anonymous-block.html` | 0 / 1 |  |
 | `css/CSS2/normal-flow/margin-collapse-through-for-various-height-values.tentative.html` | 25 / 72 |  |
 | `css/CSS2/normal-flow/video-controls-hit-test-order.html` | 0 / 2 |  |
-| `css/CSS2/positioning/inline-static-position-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/CSS2/positioning/inline-static-position-001.html` | 5 / 6 |  |
 | `css/CSS2/positioning/line-break-after-leading-float.html` | 0 / 1 |  |
 | `css/CSS2/positioning/relpos-percentage-offset-anonymous-block.html` | 1 / 5 |  |
 | `css/CSS2/positioning/relpos-percentage-top-in-scrollable.html` | 0 / 1 |  |
@@ -214,11 +214,11 @@ est le plus honnête des deux.
 | `css/css-align/animation/row-gap-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-align/animation/row-gap-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-align/baseline-of-single-axis-scroll-container.html` | 0 / 2 |  |
-| `css/css-align/baseline-rules/first-baseline-block-in-inline-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-align/baseline-rules/first-baseline-block-in-inline-001.html` | 0 / 3 |  |
 | `css/css-align/baseline-rules/synthesized-baseline-flexbox-001.html` | 3 / 7 |  |
 | `css/css-align/baseline-rules/synthesized-baseline-grid-001.html` | 3 / 7 |  |
-| `css/css-align/blocks/align-content-block-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-align/blocks/align-content-block-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-align/blocks/align-content-block-002.html` | 0 / 17 |  |
+| `css/css-align/blocks/align-content-block-003.html` | 0 / 17 |  |
 | `css/css-align/blocks/align-content-block-004.html` | 0 / 17 |  |
 | `css/css-align/blocks/align-content-block-005.html` | 0 / 17 |  |
 | `css/css-align/blocks/align-content-block-006.html` | 0 / 17 |  |
@@ -325,14 +325,14 @@ est le plus honnête des deux.
 | `css/css-align/parsing/column-gap-valid.html` | 5 / 6 |  |
 | `css/css-align/parsing/gap-computed.html` | 0 / 11 |  |
 | `css/css-align/parsing/gap-invalid.html` | 0 / 4 |  |
-| `css/css-align/parsing/gap-shorthand.html` | 0 / 12 |  |
+| `css/css-align/parsing/gap-shorthand.html` | 4 / 12 |  |
 | `css/css-align/parsing/gap-valid.html` | 5 / 9 |  |
 | `css/css-align/parsing/grid-column-gap-computed.html` | 0 / 5 |  |
 | `css/css-align/parsing/grid-column-gap-invalid.html` | 0 / 5 |  |
 | `css/css-align/parsing/grid-column-gap-valid.html` | 5 / 6 |  |
 | `css/css-align/parsing/grid-gap-computed.html` | 0 / 11 |  |
 | `css/css-align/parsing/grid-gap-invalid.html` | 0 / 4 |  |
-| `css/css-align/parsing/grid-gap-shorthand.html` | 0 / 12 |  |
+| `css/css-align/parsing/grid-gap-shorthand.html` | 4 / 12 |  |
 | `css/css-align/parsing/grid-gap-valid.html` | 5 / 9 |  |
 | `css/css-align/parsing/grid-row-gap-computed.html` | 0 / 6 |  |
 | `css/css-align/parsing/grid-row-gap-invalid.html` | 0 / 4 |  |
@@ -403,17 +403,17 @@ est le plus honnête des deux.
 | `css/css-box/parsing/float-computed.html` | 0 / 5 |  |
 | `css/css-box/parsing/float-invalid.html` | 0 / 3 |  |
 | `css/css-box/parsing/height-invalid.html` | 0 / 10 |  |
-| `css/css-box/parsing/margin-computed.html` | 0 / 8 |  |
+| `css/css-box/parsing/margin-computed.html` | 4 / 8 |  |
 | `css/css-box/parsing/margin-invalid.html` | 0 / 7 |  |
-| `css/css-box/parsing/margin-shorthand.html` | 0 / 20 |  |
+| `css/css-box/parsing/margin-shorthand.html` | 4 / 20 |  |
 | `css/css-box/parsing/margin-trim-computed.html` | 0 / 6 |  |
 | `css/css-box/parsing/margin-trim.html` | 4 / 21 |  |
 | `css/css-box/parsing/max-height-invalid.html` | 0 / 12 |  |
 | `css/css-box/parsing/max-width-invalid.html` | 0 / 12 |  |
 | `css/css-box/parsing/overflow-invalid.html` | 0 / 6 |  |
-| `css/css-box/parsing/padding-computed.html` | 0 / 13 |  |
+| `css/css-box/parsing/padding-computed.html` | 5 / 13 |  |
 | `css/css-box/parsing/padding-invalid.html` | 0 / 10 |  |
-| `css/css-box/parsing/padding-shorthand.html` | 0 / 20 |  |
+| `css/css-box/parsing/padding-shorthand.html` | 4 / 20 |  |
 | `css/css-box/parsing/padding-valid.html` | 10 / 11 |  |
 | `css/css-box/parsing/visibility-computed.html` | 0 / 3 |  |
 | `css/css-box/parsing/visibility-invalid.html` | 0 / 2 |  |
@@ -437,10 +437,8 @@ est le plus honnête des deux.
 | `css/css-display/display-math-on-pseudo-elements-001.html` | 3 / 6 |  |
 | `css/css-display/display-with-float-dynamic.html` | 0 / 1 |  |
 | `css/css-display/display-with-float.html` | 0 / 1 |  |
-| `css/css-display/empty-text-baseline-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-display/empty-text-baseline-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-display/focus/display-contents-focus.html` | 0 / 5 |  |
-| `css/css-display/parsing/display-computed.html` | 0 / 112 |  |
+| `css/css-display/parsing/display-computed.html` | 13 / 112 |  |
 | `css/css-display/parsing/display-invalid.html` | 0 / 55 |  |
 | `css/css-display/parsing/display-valid.html` | 36 / 108 |  |
 | `css/css-display/parsing/tentative/display-computed.html` | 0 / 10 |  |
@@ -480,7 +478,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/abspos/flex-abspos-staticpos-justify-content-rtl-002.html` | 0 / 24 |  |
 | `css/css-flexbox/abspos/flex-abspos-staticpos-justify-content-vertWM-001.html` | 0 / 24 |  |
 | `css/css-flexbox/abspos/flex-abspos-staticpos-justify-content-vertWM-002.html` | 6 / 24 |  |
-| `css/css-flexbox/abspos/position-absolute-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/abspos/position-absolute-001.html` | 0 / 120 |  |
 | `css/css-flexbox/abspos/position-absolute-002.html` | 8 / 17 |  |
 | `css/css-flexbox/abspos/position-absolute-003.html` | 8 / 16 |  |
 | `css/css-flexbox/abspos/position-absolute-012.html` | 24 / 96 |  |
@@ -510,7 +508,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/align-items-baseline-column-vert-rl-items.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert-rl-table-item.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert.html` | 0 / 3 |  |
-| `css/css-flexbox/align-items-baseline-row-horz.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/align-items-baseline-row-horz.html` | 0 / 3 |  |
 | `css/css-flexbox/align-items-baseline-row-vert.html` | 0 / 5 |  |
 | `css/css-flexbox/align-items-baseline-vert-lr-column-horz-flexbox-item.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-vert-lr-column-horz-grid-item.html` | 0 / 2 |  |
@@ -588,11 +586,11 @@ est le plus honnête des deux.
 | `css/css-flexbox/flex-basis-content-percentage-height.html` | 2 / 4 |  |
 | `css/css-flexbox/flex-basis-intrinsics-001.html` | 5 / 12 |  |
 | `css/css-flexbox/flex-basis-min-content-dynamic-001.html` | 0 / 1 |  |
-| `css/css-flexbox/flex-container-max-content-002.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-flexbox/flex-container-min-content-002.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/flex-container-max-content-002.tentative.html` | 6 / 24 |  |
+| `css/css-flexbox/flex-container-min-content-002.tentative.html` | 4 / 24 |  |
 | `css/css-flexbox/flex-factor-less-than-one.html` | 0 / 22 |  |
 | `css/css-flexbox/flex-flow-013.html` | 0 / 12 |  |
-| `css/css-flexbox/flex-item-compressible-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/flex-item-compressible-001.html` | 0 / 15 |  |
 | `css/css-flexbox/flex-item-compressible-002.html` | 0 / 15 |  |
 | `css/css-flexbox/flex-item-contains-strict.html` | 4 / 8 |  |
 | `css/css-flexbox/flex-item-min-max-width-intrinsic-contribution-001.html` | 0 / 2 |  |
@@ -607,7 +605,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/flex-minimum-size-003.html` | 0 / 2 |  |
 | `css/css-flexbox/flex-minimum-size-single-axis-scroll-container.html` | 1 / 4 |  |
 | `css/css-flexbox/flex-minimum-width-flex-items-014.html` | 1 / 6 |  |
-| `css/css-flexbox/flex-one-sets-flex-basis-to-zero-px.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/flex-one-sets-flex-basis-to-zero-px.html` | 6 / 18 |  |
 | `css/css-flexbox/flex-outer-flexbox-column-recalculate-height-on-resize-001.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-shorthand-calc.html` | 0 / 4 |  |
 | `css/css-flexbox/flex-wrap-column-grow.html` | 0 / 3 |  |
@@ -734,7 +732,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/intrinsic-size/row-005.html` | 0 / 9 |  |
 | `css/css-flexbox/intrinsic-size/row-008.html` | 0 / 11 |  |
 | `css/css-flexbox/intrinsic-size/row-compat-001.html` | 1 / 3 |  |
-| `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 0 / 6 | harnais : TypeError: impossible de lire la propriété « ready » de undefined |
+| `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 4 / 6 |  |
 | `css/css-flexbox/intrinsic-size/row-wrap-001.html` | 0 / 5 |  |
 | `css/css-flexbox/intrinsic-width-orthogonal-writing-mode.html` | 1 / 3 |  |
 | `css/css-flexbox/justify-content-006.html` | 0 / 1 |  |
@@ -756,13 +754,13 @@ est le plus honnête des deux.
 | `css/css-flexbox/parsing/flex-direction-invalid.html` | 0 / 2 |  |
 | `css/css-flexbox/parsing/flex-flow-computed.html` | 0 / 2 |  |
 | `css/css-flexbox/parsing/flex-flow-invalid.html` | 0 / 2 |  |
-| `css/css-flexbox/parsing/flex-flow-shorthand.html` | 0 / 6 |  |
+| `css/css-flexbox/parsing/flex-flow-shorthand.html` | 2 / 6 |  |
 | `css/css-flexbox/parsing/flex-flow-valid.html` | 1 / 7 |  |
 | `css/css-flexbox/parsing/flex-grow-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-grow-invalid.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-grow-valid.html` | 1 / 4 |  |
 | `css/css-flexbox/parsing/flex-invalid.html` | 0 / 6 |  |
-| `css/css-flexbox/parsing/flex-shorthand.html` | 0 / 68 |  |
+| `css/css-flexbox/parsing/flex-shorthand.html` | 13 / 68 |  |
 | `css/css-flexbox/parsing/flex-shrink-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-shrink-invalid.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-shrink-valid.html` | 1 / 4 |  |
@@ -798,13 +796,13 @@ est le plus honnête des deux.
 | `css/css-flexbox/svg-root-as-flex-item-007.html` | 0 / 2 |  |
 | `css/css-flexbox/table-as-item-cross-size.html` | 0 / 1 |  |
 | `css/css-flexbox/table-with-percent-intrinsic-width.html` | 0 / 2 |  |
-| `css/css-flexbox/text-as-flexitem-size-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/text-as-flexitem-size-001.html` | 8 / 18 |  |
 | `css/css-flexbox/total-min-max-violation-zero.html` | 1 / 2 |  |
-| `css/css-grid/abspos/absolute-positioning-definite-sizes-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/empty-grid-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/grid-container-min-max-height-abspos-descendant-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/abspos/absolute-positioning-definite-sizes-001.html` | 0 / 1 |  |
+| `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 10 |  |
+| `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 12 |  |
+| `css/css-grid/abspos/empty-grid-001.html` | 0 / 9 |  |
+| `css/css-grid/abspos/grid-container-min-max-height-abspos-descendant-001.html` | 0 / 3 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-001.html` | 0 / 1 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-002.html` | 0 / 1 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-003.html` | 0 / 1 |  |
@@ -818,46 +816,46 @@ est le plus honnête des deux.
 | `css/css-grid/abspos/grid-positioned-items-gaps-002-rtl.html` | 0 / 2 |  |
 | `css/css-grid/abspos/grid-positioned-items-gaps-002.html` | 0 / 2 |  |
 | `css/css-grid/abspos/grid-positioned-items-gaps-rtl-001.html` | 0 / 44 |  |
-| `css/css-grid/abspos/grid-positioned-items-implicit-grid-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/grid-positioned-items-implicit-grid-line-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/abspos/grid-positioned-items-implicit-grid-001.html` | 0 / 4 |  |
+| `css/css-grid/abspos/grid-positioned-items-implicit-grid-line-001.html` | 0 / 4 |  |
 | `css/css-grid/abspos/grid-positioned-items-padding-001.html` | 0 / 12 |  |
-| `css/css-grid/abspos/grid-positioned-items-unknown-named-grid-line-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/abspos/grid-positioned-items-unknown-named-grid-line-001.html` | 0 / 2 |  |
 | `css/css-grid/abspos/grid-positioned-items-within-grid-implicit-track-001.html` | 0 / 16 |  |
-| `css/css-grid/abspos/grid-sizing-positioned-items-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-descendants-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-items-should-not-create-implicit-tracks-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/abspos/positioned-grid-items-should-not-take-up-space-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/abspos/grid-sizing-positioned-items-001.html` | 0 / 8 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-001.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-002.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-003.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-004.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-005.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-006.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-007.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-008.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-009.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-010.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-011.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-012.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-013.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-014.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-015.html` | 0 / 100 |  |
+| `css/css-grid/abspos/orthogonal-positioned-grid-descendants-016.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-001.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-002.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-003.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-004.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-005.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-006.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-007.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-008.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-009.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-010.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-011.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-012.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-013.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-014.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-015.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-016.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-items-should-not-create-implicit-tracks-001.html` | 0 / 1 |  |
+| `css/css-grid/abspos/positioned-grid-items-should-not-take-up-space-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-align-baseline-001.html` | 1 / 6 |  |
 | `css/css-grid/alignment/grid-align-baseline-002.html` | 1 / 6 |  |
 | `css/css-grid/alignment/grid-align-baseline-003.html` | 0 / 3 |  |
@@ -886,59 +884,59 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-align-baseline-table-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-align-baseline-table-002.html` | 2 / 4 |  |
 | `css/css-grid/alignment/grid-align-baseline-table-003.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-vertical-mixed.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-baseline-vertical.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-baseline.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content-distribution-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content-distribution-vertical-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content-distribution.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content-vertical-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-content.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-margin-border-padding.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-overflow.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-stretch-with-orthogonal-flows.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-justify-stretch.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-align.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-017.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-018.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-019.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-020.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-021.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-022.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-023.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-024.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-025.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-026.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-027.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-028.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-029.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-030.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-031.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-032.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-033.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-034.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-035.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-036.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-align-baseline-vertical-mixed.html` | 5 / 11 |  |
+| `css/css-grid/alignment/grid-align-baseline-vertical.html` | 5 / 11 |  |
+| `css/css-grid/alignment/grid-align-baseline.html` | 0 / 9 |  |
+| `css/css-grid/alignment/grid-align-content-distribution-vertical-lr.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-content-distribution-vertical-rl.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-content-distribution.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-content-vertical-lr.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-align-content-vertical-rl.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-align-content.html` | 0 / 13 |  |
+| `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-lr.html` | 0 / 18 |  |
+| `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-rl.html` | 0 / 18 |  |
+| `css/css-grid/alignment/grid-align-justify-margin-border-padding.html` | 0 / 18 |  |
+| `css/css-grid/alignment/grid-align-justify-overflow.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-align-justify-stretch-with-orthogonal-flows.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-align-justify-stretch.html` | 0 / 16 |  |
+| `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 1 / 6 |  |
+| `css/css-grid/alignment/grid-align.html` | 0 / 16 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-001.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-002.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-003.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-004.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-005.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-006.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-007.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-008.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-009.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-010.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-014.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-015.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-016.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-017.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-018.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-019.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-020.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-021.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-022.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-023.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-024.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-025.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-026.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-027.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-028.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-029.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-030.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-031.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-032.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-033.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-034.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-035.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-036.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-037.html` | 1 / 4 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-038.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-039.html` | 2 / 4 |  |
@@ -951,78 +949,78 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-alignment-style-changes-002.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-alignment-style-changes-003.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-alignment-style-changes-004.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-style-changes-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-style-changes-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-alignment-style-changes-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-baseline-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-017.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-alignment-style-changes-005.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-006.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-007.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-008.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-baseline-004.html` | 0 / 18 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-001.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-002.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-003.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-004.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-005.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-006.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-007.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-004.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-005.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-006.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-007.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-008.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-009.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-010.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-011.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-012.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-013.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-014.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-015.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-016.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-017.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-sticky-positioned-items-001.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-sticky-positioned-items-002.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-002.html` | 0 / 3 |  |
+| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-003.html` | 0 / 3 |  |
+| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-004.html` | 0 / 3 |  |
+| `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-005.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-container-baseline-001.html` | 0 / 11 |  |
-| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-001.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-content-alignment-and-self-alignment-002.html` | 0 / 32 |  |
-| `css/css-grid/alignment/grid-content-alignment-auto-sized-tracks-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-content-alignment-auto-sized-tracks-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-overflow-001.html` | 0 / 14 |  |
 | `css/css-grid/alignment/grid-content-alignment-overflow-002.html` | 0 / 14 |  |
-| `css/css-grid/alignment/grid-content-alignment-second-pass-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-content-alignment-second-pass-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-content-alignment-second-pass-001.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-content-alignment-second-pass-002.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-abspos-001.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-lr-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-rl-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-distribution-stretch-different-sized-tracks-001.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-fit-content-tracks-dont-stretch-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-fit-content-tracks-dont-stretch-001.html` | 0 / 36 |  |
+| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 0 / 25 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-001.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-002.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-003.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-004.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-005.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-006.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-007.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-lr.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-rl.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows.html` | 0 / 7 |  |
 | `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-001.html` | 0 / 20 |  |
 | `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-002.html` | 0 / 20 |  |
-| `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-auto-margins-alignment.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-lr.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-rl.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-item-auto-margins-alignment.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-and-specified-margins-001.html` | 2 / 7 |  |
-| `css/css-grid/alignment/grid-item-auto-margins-and-stretch-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-item-auto-margins-and-stretch-001.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-item-stretch-dynamic-size-margin-change-001.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-lr-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-rl-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-001.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-lr-001.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-rl-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-justify-baseline-002.html` | 1 / 6 |  |
 | `css/css-grid/alignment/grid-justify-baseline-003.html` | 0 / 3 |  |
 | `css/css-grid/alignment/grid-justify-baseline-004.html` | 0 / 3 |  |
@@ -1034,115 +1032,115 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-justify-content-vertical-lr-001.html` | 0 / 10 |  |
 | `css/css-grid/alignment/grid-justify-content-vertical-rl-001.html` | 0 / 10 |  |
 | `css/css-grid/alignment/grid-justify-self-cell-001.html` | 0 / 10 |  |
-| `css/css-grid/alignment/grid-place-content-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-017.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-place-content-001.html` | 10 / 20 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-004.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-005.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-006.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-007.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-008.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-009.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-010.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-011.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-012.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-013.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-014.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-015.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-016.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-017.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-sticky-positioned-items-001.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-sticky-positioned-items-002.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-fit-content-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-004.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-005.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-self-alignment-fit-content-001.html` | 1 / 9 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-004.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-005.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-006.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-007.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-008.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-009.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-010.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-011.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-012.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-positional-values-001.html` | 0 / 16 |  |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-001.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-004.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-005.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-006.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-007.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-008.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-009.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-010.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-011.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-012.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-013.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-014.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-015.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-016.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-safe-overflow.html` | 4 / 6 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-007.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-008.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-009.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-010.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-011.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-012.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-013.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-014.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-015.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-016.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-self-alignment-stretch-001.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-002.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-003.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-004.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-005.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-006.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-007.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-008.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-009.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-010.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-011.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-012.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-013.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-014.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-015.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-016.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-001.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-002.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-003.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-004.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-005.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-006.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-007.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-008.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-009.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-010.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-011.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-012.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-013.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-014.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-015.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-lr-016.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-001.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-002.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-003.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-004.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-005.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-006.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-007.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-008.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-009.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-010.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-011.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-012.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-013.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-014.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-015.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-016.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-unsafe-overflow-001.html` | 2 / 10 |  |
 | `css/css-grid/alignment/grid-self-alignment.html` | 18 / 72 |  |
-| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-001.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-002.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-003.html` | 0 / 6 |  |
 | `css/css-grid/alignment/self-baseline/grid-self-baseline-two-dimensional.html` | 0 / 12 |  |
 | `css/css-grid/animation/grid-no-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/animation/grid-template-columns-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1161,10 +1159,10 @@ est le plus honnête des deux.
 | `css/css-grid/grid-definition/explicit-grid-size-001.html` | 0 / 11 |  |
 | `css/css-grid/grid-definition/fit-content-track-sizing.html` | 0 / 13 |  |
 | `css/css-grid/grid-definition/flex-content-distribution-001.html` | 0 / 6 |  |
-| `css/css-grid/grid-definition/flex-content-resolution-columns-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/flex-content-resolution-columns-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/flex-content-resolution-rows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/flex-content-resolution-rows-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/flex-content-resolution-columns-001.html` | 0 / 15 |  |
+| `css/css-grid/grid-definition/flex-content-resolution-columns-002.html` | 0 / 11 |  |
+| `css/css-grid/grid-definition/flex-content-resolution-rows-001.html` | 0 / 26 |  |
+| `css/css-grid/grid-definition/flex-content-resolution-rows-002.html` | 0 / 21 |  |
 | `css/css-grid/grid-definition/flex-factor-sum-less-than-1-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-auto-explicit-rows-001.html` | 0 / 1 |  |
 | `css/css-grid/grid-definition/grid-auto-fill-columns-001.html` | 0 / 33 |  |
@@ -1181,35 +1179,35 @@ est le plus honnête des deux.
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-004.html` | 0 / 1 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-rows-dynamic-height-001.html` | 0 / 3 |  |
 | `css/css-grid/grid-definition/grid-change-auto-repeat-tracks.html` | 0 / 16 |  |
-| `css/css-grid/grid-definition/grid-change-fit-content-argument-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-change-fit-content-argument-001.html` | 2 / 8 |  |
 | `css/css-grid/grid-definition/grid-change-intrinsic-size-with-auto-repeat-tracks-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-definition/grid-inline-auto-repeat-001.html` | 0 / 12 |  |
-| `css/css-grid/grid-definition/grid-inline-support-flexible-lengths-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-inline-support-flexible-lengths-001.html` | 0 / 62 |  |
 | `css/css-grid/grid-definition/grid-inline-support-grid-template-areas-001.html` | 0 / 45 |  |
-| `css/css-grid/grid-definition/grid-inline-support-grid-template-columns-rows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-inline-support-named-grid-lines-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-inline-support-repeat-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-inline-support-grid-template-columns-rows-001.html` | 0 / 44 |  |
+| `css/css-grid/grid-definition/grid-inline-support-named-grid-lines-001.html` | 0 / 80 |  |
+| `css/css-grid/grid-definition/grid-inline-support-repeat-001.html` | 0 / 40 |  |
+| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.html` | 0 / 38 |  |
+| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.tentative.html` | 0 / 76 |  |
 | `css/css-grid/grid-definition/grid-limits-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-definition/grid-minimum-contribution-with-percentages.html` | 0 / 16 |  |
 | `css/css-grid/grid-definition/grid-percentage-max-size-flex-rows-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-percentage-max-size-flex-rows-002.html` | 0 / 4 |  |
-| `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-001.html` | 16 / 120 |  |
+| `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-002.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-shorthand-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-definition/grid-support-flexible-lengths-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-support-flexible-lengths-001.html` | 0 / 62 |  |
 | `css/css-grid/grid-definition/grid-support-grid-template-areas-001.html` | 0 / 45 |  |
-| `css/css-grid/grid-definition/grid-support-grid-template-columns-rows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-support-named-grid-lines-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-support-repeat-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-support-repeat-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-template-columns-rows-changes-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-definition/grid-support-grid-template-columns-rows-001.html` | 0 / 44 |  |
+| `css/css-grid/grid-definition/grid-support-named-grid-lines-001.html` | 0 / 80 |  |
+| `css/css-grid/grid-definition/grid-support-repeat-001.html` | 0 / 40 |  |
+| `css/css-grid/grid-definition/grid-support-repeat-002.html` | 13 / 20 |  |
+| `css/css-grid/grid-definition/grid-template-columns-rows-changes-001.html` | 0 / 21 |  |
+| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.html` | 0 / 38 |  |
+| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 0 / 76 |  |
 | `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-002.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-003.html` | 0 / 6 |  |
-| `css/css-grid/grid-extrinsically-sized-mutations.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-extrinsically-sized-mutations.html` | 3 / 8 |  |
 | `css/css-grid/grid-important.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-automatic-minimum-intrinsic-aspect-ratio-001.html` | 0 / 14 |  |
 | `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 0 / 14 |  |
@@ -1218,12 +1216,12 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-item-fixed-max-height-001.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-item-min-auto-size-001.html` | 2 / 4 |  |
 | `css/css-grid/grid-items/grid-item-min-contribution-behaves-as-auto-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-items/grid-item-min-height-border-box-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-item-min-height-border-box-001.html` | 6 / 14 |  |
 | `css/css-grid/grid-items/grid-item-min-max-width-contribution-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-items/grid-item-min-width-height-auto-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-item-min-width-margin-box-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-item-min-width-height-auto-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-item-min-width-margin-box-001.html` | 1 / 14 |  |
 | `css/css-grid/grid-items/grid-item-minimum-size-single-axis-scroll-container.html` | 1 / 4 |  |
-| `css/css-grid/grid-items/grid-item-percentage-height-auto-height-grid-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-item-percentage-height-auto-height-grid-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-quirks-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-items/grid-items-minimum-height-orthogonal-001.html` | 0 / 46 |  |
@@ -1235,28 +1233,28 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-lr-002.html` | 22 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-001.html` | 0 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-002.html` | 22 / 44 |  |
-| `css/css-grid/grid-items/grid-items-percentage-margins-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-margins-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-rl-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-rl-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-items-percentage-margins-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-margins-002.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-002.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-rl-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-margins-vertical-rl-002.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-paddings-015.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-items-percentage-paddings-margins-track-change-001.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-items-percentage-paddings-margins-writing-modes-001.html` | 0 / 4 |  |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-lr-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-lr-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-lr-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-lr-002.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-relative-offsets-001.html` | 0 / 6 |  |
 | `css/css-grid/grid-items/grid-items-relative-offsets-002.html` | 0 / 6 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-022.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-023.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-024.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-025.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 56 / 144 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-022.html` | 0 / 45 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-023.html` | 0 / 60 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-024.html` | 0 / 45 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-025.html` | 0 / 60 |  |
 | `css/css-grid/grid-lanes/animation/fit-tolerance-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-columns-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-rows-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1272,25 +1270,25 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/invalidation/grid-lanes-grid-template-rows-changes-001.html` | 0 / 12 |  |
 | `css/css-grid/grid-lanes/invalidation/grid-lanes-remove-child-dynamic-change.html` | 0 / 2 |  |
 | `css/css-grid/grid-lanes/invalidation/grid-lanes-row-tracks-recompute-child-positions-001.html` | 0 / 3 |  |
-| `css/css-grid/grid-lanes/items/column-automatic-minimum-for-auto.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-lanes/items/column-automatic-minimum-for-auto.html` | 0 / 4 |  |
 | `css/css-grid/grid-lanes/items/column-fit-content-percentage.html` | 0 / 20 |  |
 | `css/css-grid/grid-lanes/items/column-flex-track-intrinsic-sizes.html` | 0 / 102 |  |
-| `css/css-grid/grid-lanes/items/column-intrinsic-track-sizes.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-lanes/items/column-intrinsic-track-sizes.html` | 0 / 31 |  |
 | `css/css-grid/grid-lanes/items/column-item-percentage-sizes-001.html` | 0 / 49 |  |
 | `css/css-grid/grid-lanes/items/column-item-percentage-sizes-002.html` | 0 / 49 |  |
 | `css/css-grid/grid-lanes/items/column-item-percentage-sizes-003.html` | 0 / 49 |  |
 | `css/css-grid/grid-lanes/items/column-minimum-contribution-baseline-shim-vertical-lr.html` | 0 / 6 |  |
 | `css/css-grid/grid-lanes/items/column-minimum-contribution-baseline-shim-vertical-rl.html` | 0 / 6 |  |
 | `css/css-grid/grid-lanes/items/column-minimum-contribution-with-percentages.html` | 0 / 8 |  |
-| `css/css-grid/grid-lanes/items/column-minimum-size-grid-items-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-lanes/items/column-minimum-size-grid-items-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-lanes/items/row-automatic-minimum-for-auto.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-lanes/items/column-minimum-size-grid-items-002.html` | 0 / 45 |  |
+| `css/css-grid/grid-lanes/items/column-minimum-size-grid-items-003.html` | 0 / 45 |  |
+| `css/css-grid/grid-lanes/items/row-automatic-minimum-for-auto.html` | 0 / 4 |  |
 | `css/css-grid/grid-lanes/items/row-flex-track-intrinsic-sizes.html` | 0 / 102 |  |
-| `css/css-grid/grid-lanes/items/row-intrinsic-track-sizes.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-lanes/items/row-intrinsic-track-sizes.html` | 0 / 31 |  |
 | `css/css-grid/grid-lanes/items/row-minimum-contribution-baseline-shim.html` | 0 / 6 |  |
 | `css/css-grid/grid-lanes/items/row-minimum-contribution-with-percentages.html` | 0 / 8 |  |
-| `css/css-grid/grid-lanes/items/row-minimum-size-grid-items-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-lanes/items/row-minimum-size-grid-items-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-lanes/items/row-minimum-size-grid-items-002.html` | 0 / 60 |  |
+| `css/css-grid/grid-lanes/items/row-minimum-size-grid-items-003.html` | 0 / 60 |  |
 | `css/css-grid/grid-lanes/subgrid/grid-lanes-subgridded-to-grid-lanes/track-sizing/row-subgrid-with-scrollbar-002.html` | 0 / 2 |  |
 | `css/css-grid/grid-lanes/subgrid/grid-lanes-subgridded-to-grid-lanes/track-sizing/row-subgrid-with-scrollbar-003.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/subgrid/grid-subgridded-to-grid-lanes/column-subgrid-placement-invalidation-001.html` | 0 / 1 |  |
@@ -1356,7 +1354,7 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/row-auto-repeat-022.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/row-auto-repeat-023.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/track-sizing/dynamic-grid-track-direction.html` | 0 / 1 |  |
-| `css/css-grid/grid-layout-properties.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-layout-properties.html` | 16 / 140 |  |
 | `css/css-grid/grid-model/compute-intrinsic-widths-scrollbar-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-box-sizing-001.html` | 0 / 24 |  |
 | `css/css-grid/grid-model/grid-button-001.html` | 0 / 2 |  |
@@ -1366,85 +1364,83 @@ est le plus honnête des deux.
 | `css/css-grid/grid-model/grid-container-rows-or-columns-only-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-container-sizing-constraints-001.html` | 0 / 15 |  |
 | `css/css-grid/grid-model/grid-float-002.html` | 0 / 1 |  |
-| `css/css-grid/grid-model/grid-gutters-and-flex-content-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-model/grid-gutters-and-flex-content-001.html` | 0 / 8 |  |
+| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 0 / 17 |  |
+| `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 0 / 16 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-letter-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-line-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-hit-test.html` | 0 / 1 |  |
 | `css/css-grid/grid-model/grid-min-max-height-001.html` | 10 / 12 |  |
-| `css/css-grid/grid-model/grid-min-max-width-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/grid-model/grid-min-max-width-001.html` | 3 / 20 |  |
 | `css/css-grid/grid-model/grid-size-shrink-to-fit-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-model/grid-support-display-001.html` | 3 / 6 |  |
 | `css/css-grid/grid-template-columns-mixed-calc.html` | 9 / 11 |  |
 | `css/css-grid/grid-tracks-fractional-fr.html` | 0 / 1 |  |
 | `css/css-grid/grid-tracks-stretched-with-different-flex-factors-sum.html` | 0 / 2 |  |
-| `css/css-grid/implicit-grids/grid-auto-columns-rows-auto-flow-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/implicit-grids/grid-auto-columns-rows-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/implicit-grids/grid-implicit-columns-auto-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/implicit-grids/grid-implicit-rows-auto-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/implicit-grids/grid-implicit-tracks-before-explicit-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/implicit-grids/grid-auto-columns-rows-auto-flow-resolution-001.html` | 0 / 12 |  |
+| `css/css-grid/implicit-grids/grid-auto-columns-rows-resolution-001.html` | 0 / 3 |  |
+| `css/css-grid/implicit-grids/grid-implicit-columns-auto-resolution-001.html` | 0 / 3 |  |
+| `css/css-grid/implicit-grids/grid-implicit-rows-auto-resolution-001.html` | 0 / 3 |  |
+| `css/css-grid/implicit-grids/grid-implicit-tracks-before-explicit-001.html` | 0 / 31 |  |
 | `css/css-grid/implicit-grids/grid-item-placed-in-trailing-implicit-column-001.html` | 0 / 4 |  |
 | `css/css-grid/inheritance.html` | 0 / 20 |  |
 | `css/css-grid/layout-algorithm/automatic-minimum-size-clamped-to-fixed-max-track-sizing-function.html` | 0 / 13 |  |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-005.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-006.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-001.html` | 0 / 48 |  |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-002.html` | 0 / 48 |  |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-003.html` | 0 / 24 |  |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-004.html` | 0 / 24 |  |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-005.html` | 0 / 24 |  |
+| `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-006.html` | 0 / 24 |  |
+| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 1 / 8 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-columns-min-max-width-001.html` | 0 / 12 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-001.html` | 0 / 12 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-002.html` | 1 / 14 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-border-box-001.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-auto-columns-content-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-auto-columns-content-resolution-001.html` | 0 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-auto-row-regrows-after-container-height-shrinks-001.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-auto-rows-content-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-columns-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-rows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-auto-rows-content-resolution-001.html` | 0 / 3 |  |
+| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-columns-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-rows-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 0 / 20 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 0 / 24 |  |
+| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-002.html` | 0 / 1 |  |
+| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-003.html` | 0 / 1 |  |
+| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-004.html` | 0 / 1 |  |
+| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-001.html` | 0 / 17 |  |
+| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-002.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-fit-content-percentage.html` | 0 / 20 |  |
 | `css/css-grid/layout-algorithm/grid-flex-rows-container-height-change-001.html` | 0 / 2 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-001.html` | 0 / 30 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-002.html` | 0 / 5 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-003.html` | 0 / 102 |  |
-| `css/css-grid/layout-algorithm/grid-flex-tracks-item-with-border-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-intrinsic-size-with-orthogonal-items.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-intrinsic-track-sizes-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-intrinsic-tracks-item-with-border-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-flex-tracks-item-with-border-001.html` | 1 / 3 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-size-with-orthogonal-items.html` | 0 / 7 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-track-sizes-001.html` | 0 / 31 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 0 / 35 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-002.html` | 0 / 2 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-rl-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-rl-002.html` | 0 / 2 |  |
-| `css/css-grid/layout-algorithm/grid-item-positioning-orthogonal-flows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-item-sizing-orthogonal-flows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-item-positioning-orthogonal-flows-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-item-sizing-orthogonal-flows-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-stale-block-size-001.html` | 0 / 1 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim-vertical-lr.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim-vertical-rl.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-minmax-content-tracks-multiple-items-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-columns-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-rows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-auto-track-size-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-track-size-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-minmax-content-tracks-multiple-items-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-columns-001.html` | 0 / 26 |  |
+| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-rows-001.html` | 0 / 28 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-auto-track-size-001.html` | 0 / 6 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-track-size-001.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-tracks-container-margin-border-padding-001.html` | 0 / 8 |  |
-| `css/css-grid/layout-algorithm/grid-percentage-tracks-container-size-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-percentage-tracks-intrinsic-container-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-relayout-orthogonal-items-same-result-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-spanning-items-orthogonal-flows-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-spanning-items-percentage-grid-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-track-sizing-item-addition-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/layout-algorithm/grid-track-sizing-item-removal-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/layout-algorithm/grid-percentage-tracks-container-size-001.html` | 0 / 12 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-tracks-intrinsic-container-001.html` | 0 / 1 |  |
+| `css/css-grid/layout-algorithm/grid-relayout-orthogonal-items-same-result-001.html` | 0 / 3 |  |
+| `css/css-grid/layout-algorithm/grid-spanning-items-orthogonal-flows-001.html` | 0 / 6 |  |
+| `css/css-grid/layout-algorithm/grid-spanning-items-percentage-grid-001.html` | 0 / 19 |  |
+| `css/css-grid/layout-algorithm/grid-track-sizing-item-addition-001.html` | 0 / 63 |  |
+| `css/css-grid/layout-algorithm/grid-track-sizing-item-removal-001.html` | 2 / 66 |  |
 | `css/css-grid/layout-algorithm/minmax-tracks-with-fixed-breadths.html` | 0 / 22 |  |
 | `css/css-grid/parsing/grid-area-computed.html` | 0 / 35 |  |
 | `css/css-grid/parsing/grid-area-invalid.html` | 0 / 25 |  |
@@ -1462,8 +1458,8 @@ est le plus honnête des deux.
 | `css/css-grid/parsing/grid-column-invalid.html` | 0 / 31 |  |
 | `css/css-grid/parsing/grid-column-shortest-serialization.html` | 0 / 16 |  |
 | `css/css-grid/parsing/grid-column-shorthand.html` | 0 / 48 |  |
-| `css/css-grid/parsing/grid-columns-rows-get-set-multiple.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/parsing/grid-content-sized-columns-resolution.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/parsing/grid-columns-rows-get-set-multiple.html` | 0 / 40 |  |
+| `css/css-grid/parsing/grid-content-sized-columns-resolution.html` | 0 / 42 |  |
 | `css/css-grid/parsing/grid-row-invalid.html` | 0 / 31 |  |
 | `css/css-grid/parsing/grid-row-shortest-serialization.html` | 0 / 15 |  |
 | `css/css-grid/parsing/grid-row-shorthand.html` | 0 / 48 |  |
@@ -1504,29 +1500,29 @@ est le plus honnête des deux.
 | `css/css-grid/parsing/grid-template-shorthand-invalid.html` | 0 / 66 |  |
 | `css/css-grid/parsing/grid-template-shorthand-valid.html` | 24 / 42 |  |
 | `css/css-grid/parsing/grid-template-shorthand.html` | 0 / 28 |  |
-| `css/css-grid/placement/grid-auto-flow-dynamic-change-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-flow-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-flow-sparse-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-placement-automatic-span-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-placement-definite-span-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-placement-fixed-row-column-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/placement/grid-auto-flow-dynamic-change-001.html` | 0 / 6 |  |
+| `css/css-grid/placement/grid-auto-flow-resolution-001.html` | 0 / 13 |  |
+| `css/css-grid/placement/grid-auto-flow-sparse-001.html` | 0 / 8 |  |
+| `css/css-grid/placement/grid-auto-placement-automatic-span-001.html` | 0 / 16 |  |
+| `css/css-grid/placement/grid-auto-placement-definite-span-001.html` | 0 / 8 |  |
+| `css/css-grid/placement/grid-auto-placement-fixed-row-column-001.html` | 0 / 16 |  |
 | `css/css-grid/placement/grid-auto-placement-implicit-tracks-001.html` | 0 / 12 |  |
-| `css/css-grid/placement/grid-auto-placement-item-addition-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-placement-item-removal-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-auto-placement-order-change-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-container-change-grid-tracks-recompute-child-positions-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-container-change-named-grid-recompute-child-positions-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/placement/grid-auto-placement-item-addition-001.html` | 0 / 20 |  |
+| `css/css-grid/placement/grid-auto-placement-item-removal-001.html` | 0 / 20 |  |
+| `css/css-grid/placement/grid-auto-placement-order-change-001.html` | 0 / 4 |  |
+| `css/css-grid/placement/grid-container-change-grid-tracks-recompute-child-positions-001.html` | 0 / 6 |  |
+| `css/css-grid/placement/grid-container-change-named-grid-recompute-child-positions-001.html` | 0 / 4 |  |
 | `css/css-grid/placement/grid-implicit-columns-for-items-locked-to-row-001.html` | 0 / 8 |  |
 | `css/css-grid/placement/grid-implicit-track-placement-001.html` | 0 / 8 |  |
 | `css/css-grid/placement/grid-negative-line-placement-001.html` | 0 / 7 |  |
-| `css/css-grid/placement/grid-placement-dynamic-change-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-huge-negative-indexes-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-invalid-double-span-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-named-grid-area-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-named-lines-and-areas-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-negative-integer-explicit-grid-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-negative-position-resolution-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/placement/grid-placement-unknown-named-area-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-grid/placement/grid-placement-dynamic-change-001.html` | 0 / 88 |  |
+| `css/css-grid/placement/grid-placement-huge-negative-indexes-001.html` | 0 / 3 |  |
+| `css/css-grid/placement/grid-placement-invalid-double-span-001.html` | 0 / 4 |  |
+| `css/css-grid/placement/grid-placement-named-grid-area-resolution-001.html` | 0 / 2 |  |
+| `css/css-grid/placement/grid-placement-named-lines-and-areas-001.html` | 0 / 22 |  |
+| `css/css-grid/placement/grid-placement-negative-integer-explicit-grid-001.html` | 0 / 4 |  |
+| `css/css-grid/placement/grid-placement-negative-position-resolution-001.html` | 0 / 16 |  |
+| `css/css-grid/placement/grid-placement-unknown-named-area-001.html` | 0 / 4 |  |
 | `css/css-grid/placement/grid-placement-unknown-named-grid-line-001.html` | 0 / 17 |  |
 | `css/css-grid/subgrid/align-self-baseline-with-subgrid-mbp.html` | 0 / 2 |  |
 | `css/css-grid/subgrid/alignment-in-subgridded-axes-001.html` | 0 / 16 |  |
@@ -1564,7 +1560,7 @@ est le plus honnête des deux.
 | `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/backdrop-ua-style.html` | 0 / 1 |  |
 | `css/css-position/inheritance.html` | 2 / 12 |  |
-| `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 0 / 17 |  |
+| `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 1 / 17 |  |
 | `css/css-position/overlay/animation/overlay-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/overlay/overlay-computed.html` | 0 / 6 |  |
 | `css/css-position/overlay/overlay-invalid.html` | 0 / 6 |  |
@@ -1578,7 +1574,6 @@ est le plus honnête des deux.
 | `css/css-position/parsing/inset-valid.html` | 40 / 50 |  |
 | `css/css-position/parsing/left-computed.html` | 0 / 5 |  |
 | `css/css-position/parsing/left-invalid.html` | 0 / 3 |  |
-| `css/css-position/parsing/position-computed.html` | 0 / 5 |  |
 | `css/css-position/parsing/position-invalid.html` | 0 / 2 |  |
 | `css/css-position/parsing/right-computed.html` | 0 / 5 |  |
 | `css/css-position/parsing/right-invalid.html` | 0 / 3 |  |
@@ -1673,7 +1668,6 @@ est le plus honnête des deux.
 | `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 4 / 16 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-orthogonal-percentage-child.html` | 0 / 4 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-row-percentage-height-child.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/flex-aspect-ratio-shrink-to-fit-ancestor-relayout.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/aspect-ratio/fractional-aspect-ratio.html` | 0 / 2 |  |
 | `css/css-sizing/aspect-ratio/inheritance.html` | 0 / 2 |  |
 | `css/css-sizing/aspect-ratio/intrinsic-contribution-transferred-min-width-001.html` | 0 / 3 |  |
@@ -1728,42 +1722,40 @@ est le plus honnête des deux.
 | `css/css-sizing/form-control-in-inline-content-intrinsic-size-001.html` | 0 / 9 |  |
 | `css/css-sizing/image-min-max-content-intrinsic-size-change-009.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `css/css-sizing/inheritance-002.html` | 2 / 4 |  |
-| `css/css-sizing/intrinsic-percent-non-replaced-006.html` | 4 / 5 |  |
 | `css/css-sizing/intrinsic-percent-replaced-033.html` | 0 / 9 |  |
 | `css/css-sizing/intrinsic-size-fallback-replaced.html` | 0 / 8 |  |
 | `css/css-sizing/intrinsic-size-fallback-video.html` | 0 / 4 |  |
 | `css/css-sizing/keyword-min-max-width-with-fixed-width-contribution.html` | 0 / 3 |  |
 | `css/css-sizing/keyword-sizes-for-intrinsic-contributions-002.html` | 0 / 8 |  |
-| `css/css-sizing/keyword-sizes-for-intrinsic-contributions.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/keyword-sizes-on-abspos.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/keyword-sizes-on-flex-item-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/keyword-sizes-on-flex-item-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/keyword-sizes-on-floated-element.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/keyword-sizes-on-inline-block.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-sizing/keyword-sizes-for-intrinsic-contributions.html` | 5 / 36 |  |
+| `css/css-sizing/keyword-sizes-on-abspos.html` | 10 / 60 |  |
+| `css/css-sizing/keyword-sizes-on-flex-item-001.html` | 8 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-flex-item-002.html` | 19 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-floated-element.html` | 19 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-inline-block.html` | 20 / 74 |  |
 | `css/css-sizing/keyword-sizes-on-replaced-element.html` | 6 / 84 |  |
 | `css/css-sizing/min-max-width-contribution-box-sizing.html` | 0 / 4 |  |
 | `css/css-sizing/min-width-max-width-precedence.html` | 0 / 1 |  |
 | `css/css-sizing/min-width-min-content-contribution.html` | 3 / 6 |  |
-| `css/css-sizing/parsing/box-sizing-computed.html` | 0 / 2 |  |
 | `css/css-sizing/parsing/box-sizing-invalid.html` | 0 / 7 |  |
 | `css/css-sizing/parsing/height-invalid.html` | 0 / 4 |  |
 | `css/css-sizing/parsing/height-valid.html` | 9 / 10 |  |
-| `css/css-sizing/parsing/max-height-computed.html` | 0 / 12 |  |
+| `css/css-sizing/parsing/max-height-computed.html` | 3 / 12 |  |
 | `css/css-sizing/parsing/max-height-invalid.html` | 0 / 4 |  |
 | `css/css-sizing/parsing/max-height-valid.html` | 9 / 10 |  |
 | `css/css-sizing/parsing/max-size-invalid.html` | 0 / 10 |  |
 | `css/css-sizing/parsing/max-size-shorthand.html` | 0 / 15 |  |
 | `css/css-sizing/parsing/max-size-valid.html` | 12 / 14 |  |
-| `css/css-sizing/parsing/max-width-computed.html` | 0 / 12 |  |
+| `css/css-sizing/parsing/max-width-computed.html` | 3 / 12 |  |
 | `css/css-sizing/parsing/max-width-invalid.html` | 0 / 4 |  |
 | `css/css-sizing/parsing/max-width-valid.html` | 9 / 10 |  |
-| `css/css-sizing/parsing/min-height-computed.html` | 0 / 11 |  |
+| `css/css-sizing/parsing/min-height-computed.html` | 2 / 11 |  |
 | `css/css-sizing/parsing/min-height-invalid.html` | 0 / 11 |  |
 | `css/css-sizing/parsing/min-height-valid.html` | 9 / 10 |  |
 | `css/css-sizing/parsing/min-size-invalid.html` | 0 / 10 |  |
 | `css/css-sizing/parsing/min-size-shorthand.html` | 0 / 15 |  |
 | `css/css-sizing/parsing/min-size-valid.html` | 12 / 14 |  |
-| `css/css-sizing/parsing/min-width-computed.html` | 0 / 11 |  |
+| `css/css-sizing/parsing/min-width-computed.html` | 2 / 11 |  |
 | `css/css-sizing/parsing/min-width-invalid.html` | 0 / 11 |  |
 | `css/css-sizing/parsing/min-width-valid.html` | 9 / 10 |  |
 | `css/css-sizing/parsing/size-invalid.html` | 0 / 6 |  |
@@ -1793,7 +1785,7 @@ est le plus honnête des deux.
 | `css/css-sizing/stretch/auto-margins-1.html` | 1 / 2 |  |
 | `css/css-sizing/stretch/auto-margins-2.html` | 2 / 6 |  |
 | `css/css-sizing/stretch/block-height-001.html` | 9 / 18 |  |
-| `css/css-sizing/stretch/block-height-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-sizing/stretch/block-height-002.html` | 1 / 4 |  |
 | `css/css-sizing/stretch/block-height-004.html` | 0 / 8 |  |
 | `css/css-sizing/stretch/block-height-005.html` | 0 / 4 |  |
 | `css/css-sizing/stretch/block-height-007.html` | 5 / 20 |  |
@@ -1804,10 +1796,10 @@ est le plus honnête des deux.
 | `css/css-sizing/stretch/flex-item-height-001.html` | 0 / 2 |  |
 | `css/css-sizing/stretch/flex-item-height-002.html` | 0 / 1 |  |
 | `css/css-sizing/stretch/flex-item-height-003.html` | 0 / 1 |  |
-| `css/css-sizing/stretch/flex-line-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/stretch/flex-line-002.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/stretch/flex-line-003.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/stretch/flex-line-004.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-sizing/stretch/flex-line-001.html` | 3 / 4 |  |
+| `css/css-sizing/stretch/flex-line-002.html` | 3 / 4 |  |
+| `css/css-sizing/stretch/flex-line-003.html` | 3 / 4 |  |
+| `css/css-sizing/stretch/flex-line-004.html` | 1 / 4 |  |
 | `css/css-sizing/stretch/flex-line-005.html` | 0 / 1 |  |
 | `css/css-sizing/stretch/flex-stretch-min-max-cross-001.html` | 0 / 1 |  |
 | `css/css-sizing/stretch/grid-item-height-001.html` | 1 / 2 |  |
@@ -1902,10 +1894,10 @@ est le plus honnête des deux.
 | `css/css-tables/table-model-fixup-2.html` | 24 / 40 |  |
 | `css/css-tables/table-model-fixup.html` | 5 / 11 |  |
 | `css/css-tables/table-stretch-in-flex-and-grid.html` | 1 / 6 |  |
-| `css/css-tables/tentative/baseline-table.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/tentative/baseline-td.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/tentative/baseline-table.html` | 3 / 15 |  |
+| `css/css-tables/tentative/baseline-td.html` | 1 / 5 |  |
 | `css/css-tables/tentative/caption.html` | 6 / 13 |  |
-| `css/css-tables/tentative/colgroup-col.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/tentative/colgroup-col.html` | 0 / 6 |  |
 | `css/css-tables/tentative/colspan-redistribution.html` | 0 / 31 |  |
 | `css/css-tables/tentative/column-widths.html` | 1 / 33 |  |
 | `css/css-tables/tentative/element-sizing.html` | 0 / 2 |  |
@@ -1913,9 +1905,9 @@ est le plus honnête des deux.
 | `css/css-tables/tentative/rowspan-height-redistribution.html` | 2 / 24 |  |
 | `css/css-tables/tentative/table-fixed-minmax.html` | 3 / 8 |  |
 | `css/css-tables/tentative/table-height-redistribution.html` | 4 / 31 |  |
-| `css/css-tables/tentative/table-limited-quirks.html` | 1 / 1 | harnais : délai du harnais dépassé |
+| `css/css-tables/tentative/table-limited-quirks.html` | 2 / 7 |  |
 | `css/css-tables/tentative/table-minmax.html` | 3 / 16 |  |
-| `css/css-tables/tentative/table-quirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-tables/tentative/table-quirks.html` | 1 / 7 |  |
 | `css/css-tables/tentative/table-rows-with-zero-columns.html` | 0 / 12 |  |
 | `css/css-tables/tentative/table-width-redistribution-fixed-padding.html` | 0 / 15 |  |
 | `css/css-tables/tentative/table-width-redistribution-fixed.html` | 1 / 26 |  |
@@ -2033,11 +2025,11 @@ est le plus honnête des deux.
 | `css/cssom-view/elementsFromPoint.html` | 0 / 27 | harnais : 9 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the  |
 | `css/cssom-view/getBoundingClientRect-content-visibility-hidden.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/getBoundingClientRect-empty-inline-002.html` | 2 / 4 |  |
-| `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 1 |  |
 | `css/cssom-view/getBoundingClientRect-newline.html` | 0 / 1 |  |
 | `css/cssom-view/getBoundingClientRect-scroll.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/getBoundingClientRect-shy.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/cssom-view/getBoundingClientRect-svg.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/getBoundingClientRect-shy.html` | 0 / 12 |  |
+| `css/cssom-view/getBoundingClientRect-svg.html` | 0 / 3 |  |
 | `css/cssom-view/getBoundingClientRect-zoom.html` | 2 / 5 |  |
 | `css/cssom-view/getClientRects-br-htb-ltr.html` | 0 / 1 |  |
 | `css/cssom-view/getClientRects-br-htb-rtl.html` | 0 / 1 |  |
@@ -2062,7 +2054,6 @@ est le plus honnête des deux.
 | `css/cssom-view/offsetParent_element_test.html` | 0 / 2 |  |
 | `css/cssom-view/offsetTop-offsetLeft-nested-offsetParents.html` | 0 / 1 |  |
 | `css/cssom-view/offsetTop-offsetLeft-with-zoom.html` | 1 / 2 |  |
-| `css/cssom-view/offsetTopLeft-border-box.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/offsetTopLeft-empty-inline-offset.html` | 0 / 6 |  |
 | `css/cssom-view/offsetTopLeft-empty-inline.html` | 0 / 3 |  |
 | `css/cssom-view/offsetTopLeft-inline-offsetParent.html` | 1 / 19 |  |
@@ -2136,7 +2127,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollWidthHeight-child-border-within-padding.tentative.html` | 0 / 5 |  |
 | `css/cssom-view/scrollWidthHeight-flex-column-padding-001.html` | 0 / 2 |  |
 | `css/cssom-view/scrollWidthHeight-negative-margin-001.html` | 0 / 4 |  |
-| `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 0 / 10 |  |
+| `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 0 / 200 |  |
 | `css/cssom-view/scrolling-no-browsing-context.html` | 0 / 1 |  |
 | `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollingElement.html` | 0 / 8 |  |
