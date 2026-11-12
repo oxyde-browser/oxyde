@@ -735,6 +735,11 @@ impl Vm {
             return Err(self.type_error("la valeur appelée n'est pas une fonction"));
         };
         let proto = Arc::clone(&c.proto);
+        if !construct && matches!(proto.kind, FunctionKind::ClassConstructor { .. }) {
+            return Err(
+                self.type_error("le constructeur d'une classe doit être appelé avec « new »")
+            );
+        }
         let scope = c.scope;
         let lexical_this = c.bound_this.is_some();
         let this = c.bound_this.clone().unwrap_or(this);
@@ -853,6 +858,25 @@ impl Vm {
                 configurable: true,
             },
         );
+    }
+
+    /// Contrôle l'ajout d'un membre privé à `id` : il ne doit pas déjà y
+    /// figurer (sauf `merging`, la seconde moitié d'un accesseur), et l'objet
+    /// doit être extensible.
+    fn check_private_add(&mut self, id: ObjId, symbol: &Symbol, merging: bool) -> JsResult<()> {
+        let object = self.heap.get(id);
+        let name = symbol.description().unwrap_or("");
+        if !merging && object.symbols.contains_key(symbol) {
+            return Err(self.type_error(&format!(
+                "le membre privé {name} est déjà défini sur cet objet"
+            )));
+        }
+        if !object.extensible {
+            return Err(self.type_error(&format!(
+                "le membre privé {name} ne peut pas être ajouté à un objet non extensible"
+            )));
+        }
+        Ok(())
     }
 
     /// Refuse de redéfinir une propriété propre non configurable (membre
@@ -1786,6 +1810,40 @@ impl Vm {
                 };
                 self.set_reg(dst, value);
             }
+            Op::SetSuper { key, src } => {
+                let key = self.to_key(&self.reg(key))?;
+                let value = self.reg(src);
+                let (home, this, strict) = match self.frames.last() {
+                    Some(f) => match &self.heap.get(f.closure).kind {
+                        Kind::Closure(c) => (c.home, f.this.clone(), c.proto.strict),
+                        _ => (None, Value::Undefined, true),
+                    },
+                    None => (None, Value::Undefined, true),
+                };
+                let Some(parent) = home.and_then(|h| self.heap.get(h).proto) else {
+                    return Err(self.type_error("« super » n'a pas de prototype où écrire"));
+                };
+                if !self.set_with_receiver(parent, &key, value, &this)? && strict {
+                    return Err(self.type_error(&format!(
+                        "la propriété « {} » ne peut pas être écrite",
+                        key.describe()
+                    )));
+                }
+            }
+            Op::KeyOnce { obj, key } => {
+                let base = self.reg(obj);
+                if base.is_nullish() {
+                    let shown = self.display(&base);
+                    return Err(
+                        self.type_error(&format!("impossible de lire une propriété de {shown}"))
+                    );
+                }
+                let current = self.reg(key);
+                if current.as_object().is_some() {
+                    let converted = self.to_key(&current)?;
+                    self.set_reg(key, converted.to_value());
+                }
+            }
             Op::NewObject { dst } => {
                 let id = self.new_object();
                 self.set_reg(dst, Value::Object(id));
@@ -1861,9 +1919,87 @@ impl Vm {
                 self.name_member(&value, &key, "");
                 if let Some(id) = self.reg(obj).as_object() {
                     self.check_redefinable(id, &key)?;
-                    self.heap
-                        .get_mut(id)
-                        .insert_prop(key, Property::hidden(value));
+                    // Une méthode privée ne se remplace pas.
+                    let private =
+                        matches!(&key, crate::value::PropertyKey::Symbol(s) if s.is_private());
+                    self.heap.get_mut(id).insert_prop(
+                        key,
+                        Property {
+                            writable: !private,
+                            ..Property::hidden(value)
+                        },
+                    );
+                }
+            }
+            Op::DefineField { obj, key, src } => {
+                let key = self.to_key(&self.reg(key))?;
+                let value = self.reg(src);
+                if let Some(id) = self.reg(obj).as_object() {
+                    if let crate::value::PropertyKey::Symbol(symbol) = &key
+                        && symbol.is_private()
+                    {
+                        self.check_private_add(id, symbol, false)?;
+                        self.heap
+                            .get_mut(id)
+                            .symbols
+                            .insert(symbol.clone(), Property::data(value));
+                    } else if !self.create_data_property(id, &key, value)? {
+                        return Err(self.type_error(&format!(
+                            "le champ « {} » ne peut pas être défini",
+                            key.describe()
+                        )));
+                    }
+                }
+            }
+            Op::InitPrivate {
+                obj,
+                key,
+                func,
+                kind,
+            } => {
+                let key = self.to_key(&self.reg(key))?;
+                let function = self.reg(func);
+                if let (Some(id), crate::value::PropertyKey::Symbol(symbol)) =
+                    (self.reg(obj).as_object(), key)
+                {
+                    let accessor = function.as_object();
+                    let existing = self
+                        .heap
+                        .get(id)
+                        .symbols
+                        .get(&symbol)
+                        .map(|p| p.slot.clone());
+                    let slot = match (kind, existing) {
+                        (0, None) => Slot::Data(function),
+                        (1, None) => Slot::Accessor {
+                            get: accessor,
+                            set: None,
+                        },
+                        (2, None) => Slot::Accessor {
+                            get: None,
+                            set: accessor,
+                        },
+                        (1, Some(Slot::Accessor { get: None, set })) => {
+                            Slot::Accessor { get: accessor, set }
+                        }
+                        (2, Some(Slot::Accessor { get, set: None })) => {
+                            Slot::Accessor { get, set: accessor }
+                        }
+                        _ => {
+                            self.check_private_add(id, &symbol, false)?;
+                            return Ok(None);
+                        }
+                    };
+                    self.check_private_add(id, &symbol, true)?;
+                    self.heap.get_mut(id).symbols.insert(
+                        symbol,
+                        Property {
+                            slot,
+                            writable: false,
+                            enumerable: false,
+                            configurable: false,
+                        },
+                    );
                 }
             }
             Op::InitGetter {
@@ -2057,9 +2193,6 @@ impl Vm {
                     return Ok(None);
                 };
                 let (closure, new_target) = (frame.closure, frame.new_target.clone());
-                if frame.this != Value::Hole {
-                    return Err(self.error("ReferenceError", "« super() » a déjà été appelé"));
-                }
                 let (parent, fields) = match &self.heap.get(closure).kind {
                     Kind::Closure(c) => (c.parent, c.fields),
                     _ => (None, None),
@@ -2068,6 +2201,10 @@ impl Vm {
                     return Err(self.type_error("« super() » hors d'une classe dérivée"));
                 };
                 let instance = self.construct(&Value::Object(parent), &args, &new_target)?;
+                // `this` n'est lié qu'une fois, après le retour du constructeur parent.
+                if self.frames.last().is_some_and(|f| f.this != Value::Hole) {
+                    return Err(self.error("ReferenceError", "« super() » a déjà été appelé"));
+                }
                 if let Some(frame) = self.frames.last_mut() {
                     frame.this = instance.clone();
                 }
@@ -2266,6 +2403,12 @@ impl Vm {
             return Ok(Some(value));
         };
         let value = if frame.construct && value.as_object().is_none() {
+            let derived = frame.proto.kind == (FunctionKind::ClassConstructor { derived: true });
+            if derived && value != Value::Undefined {
+                return Err(self.type_error(
+                    "le constructeur d'une classe dérivée ne peut rendre qu'un objet ou undefined",
+                ));
+            }
             if frame.this == Value::Hole {
                 return Err(self.error(
                     "ReferenceError",

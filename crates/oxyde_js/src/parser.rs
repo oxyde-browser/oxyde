@@ -1927,7 +1927,8 @@ impl Parser {
             }
             | Expr::Index {
                 optional: false, ..
-            } => Pattern::Expr(expr),
+            }
+            | Expr::SuperMember(_) => Pattern::Expr(expr),
             Expr::Array(items) => {
                 let mut elements = Vec::new();
                 let mut rest = None;
@@ -2223,7 +2224,8 @@ impl Parser {
                 }
                 | Expr::Index {
                     optional: false, ..
-                }),
+                }
+                | Expr::SuperMember(_)),
             ) => Pattern::Expr(left),
             _ => return self.error("cible d'affectation invalide"),
         };
@@ -2375,6 +2377,7 @@ impl Parser {
                     optional: false,
                     ..
                 }
+                | Expr::SuperMember(_)
         ) {
             return self.error("cible d'incrémentation invalide");
         }

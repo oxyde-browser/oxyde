@@ -262,11 +262,31 @@ impl Vm {
         symbol: &Symbol,
         receiver: &Value,
     ) -> JsResult {
+        if symbol.is_private() {
+            // Un membre privé appartient à l'objet lui-même, jamais à son
+            // prototype, et ne passe par aucune trappe.
+            let found = self
+                .heap
+                .get(id)
+                .symbols
+                .get(symbol)
+                .map(|p| p.slot.clone());
+            let name = symbol.description().unwrap_or("").to_owned();
+            return match found {
+                Some(Slot::Data(value)) => Ok(value),
+                Some(Slot::Accessor {
+                    get: Some(getter), ..
+                }) => self.call(&Value::Object(getter), receiver, &[]),
+                Some(Slot::Accessor { get: None, .. }) => Err(self.type_error(&format!(
+                    "le membre privé {name} n'a pas d'accesseur de lecture"
+                ))),
+                None => Err(self.type_error(&format!("l'objet n'a pas de membre privé {name}"))),
+            };
+        }
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
-            // Les membres privés ne passent jamais par les trappes.
-            if !symbol.is_private() && self.is_proxy(obj) {
+            if self.is_proxy(obj) {
                 return self.proxy_get(obj, &PropertyKey::Symbol(symbol.clone()), receiver);
             }
             let object = self.heap.get(obj);
@@ -358,7 +378,7 @@ impl Vm {
         self.set_with_receiver(id, key, value, target)
     }
 
-    /// Écrit le membre privé `symbol` : il doit déjà exister.
+    /// Écrit le membre privé `symbol` : il doit déjà exister sur l'objet.
     fn set_private(
         &mut self,
         id: ObjId,
@@ -366,40 +386,37 @@ impl Vm {
         symbol: &Symbol,
         value: Value,
     ) -> JsResult<()> {
-        let mut current = Some(id);
-        for _ in 0..10_000 {
-            let Some(obj) = current else { break };
-            let own = obj == id;
-            let object = self.heap.get_mut(obj);
-            match object.symbols.get_mut(symbol) {
-                Some(Property {
-                    slot: Slot::Accessor { set, .. },
-                    ..
-                }) => {
-                    let setter = *set;
-                    return match setter {
-                        Some(setter) => self
-                            .call(&Value::Object(setter), target, &[value])
-                            .map(|_| ()),
-                        None => Ok(()),
-                    };
-                }
-                Some(Property {
-                    writable: false, ..
-                }) => return Ok(()),
-                Some(property) if own => {
+        let name = symbol.description().unwrap_or("").to_owned();
+        let found = self
+            .heap
+            .get(id)
+            .symbols
+            .get(symbol)
+            .map(|p| (p.slot.clone(), p.writable));
+        match found {
+            Some((
+                Slot::Accessor {
+                    set: Some(setter), ..
+                },
+                _,
+            )) => self
+                .call(&Value::Object(setter), target, &[value])
+                .map(|_| ()),
+            Some((Slot::Accessor { set: None, .. }, _)) => Err(self.type_error(&format!(
+                "le membre privé {name} n'a pas d'accesseur d'écriture"
+            ))),
+            Some((Slot::Data(_), false)) => Err(self.type_error(&format!(
+                "la méthode privée {name} ne peut pas être remplacée"
+            ))),
+            Some((Slot::Data(_), true)) => {
+                if let Some(property) = self.heap.get_mut(id).symbols.get_mut(symbol) {
                     property.slot = Slot::Data(value);
-                    return Ok(());
                 }
-                Some(_) => break,
-                None => current = object.proto,
+                Ok(())
             }
+            // Un membre privé n'est jamais créé par affectation.
+            None => Err(self.type_error(&format!("l'objet n'a pas de membre privé {name}"))),
         }
-        // Un membre privé n'est jamais créé par affectation.
-        Err(self.type_error(&format!(
-            "l'objet n'a pas de membre privé {}",
-            symbol.description().unwrap_or("")
-        )))
     }
 
     /// Supprime la propriété `key` (chaîne ou symbole).

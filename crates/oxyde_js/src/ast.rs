@@ -195,6 +195,14 @@ pub(crate) enum Expr {
         key: PropKey,
         value: Box<Expr>,
     },
+    /// Installation d'une méthode ou d'un accesseur privé sur `this`, à la
+    /// construction : `key` est le nom privé, `binding` la liaison cachée
+    /// qui porte la fonction, `kind` vaut 0 (méthode), 1 (`get`) ou 2 (`set`).
+    PrivateInit {
+        key: Arc<str>,
+        binding: Arc<str>,
+        kind: u8,
+    },
 }
 
 /// Cible d'affectation ou de déclaration.

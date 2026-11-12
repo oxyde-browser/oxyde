@@ -283,6 +283,33 @@ pub(crate) enum Op {
         dst: Reg,
         key: Reg,
     },
+    /// Champ de classe : définit `obj[key]` (un champ privé ne se définit
+    /// qu'une fois ; un champ public refusé lève `TypeError`).
+    DefineField {
+        obj: Reg,
+        key: Reg,
+        src: Reg,
+    },
+    /// Installe sur `obj` la méthode privée `func` (`kind` 0), ou
+    /// l'accesseur privé de lecture (1) ou d'écriture (2).
+    InitPrivate {
+        obj: Reg,
+        key: Reg,
+        func: Reg,
+        kind: u8,
+    },
+    /// `super[key] = src` : écriture à partir du prototype de l'objet
+    /// d'attache, avec `this` pour receveur.
+    SetSuper {
+        key: Reg,
+        src: Reg,
+    },
+    /// Prépare `obj[key] op= …` : `obj` ne doit être ni `null` ni
+    /// `undefined`, et une clé objet est convertie une seule fois.
+    KeyOnce {
+        obj: Reg,
+        key: Reg,
+    },
     NewObject {
         dst: Reg,
     },

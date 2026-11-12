@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 40109 réussis sur 48795 (82.2 %).**
+**Total : 40258 réussis sur 48795 (82.5 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -29,7 +29,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/DisposableStack` | 93 | 0 | 0.0 % |
 | `built-ins/Error` | 93 | 88 | 94.6 % |
 | `built-ins/FinalizationRegistry` | 47 | 45 | 95.7 % |
-| `built-ins/Function` | 509 | 491 | 96.5 % |
+| `built-ins/Function` | 509 | 493 | 96.9 % |
 | `built-ins/GeneratorFunction` | 23 | 21 | 91.3 % |
 | `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
 | `built-ins/Infinity` | 6 | 5 | 83.3 % |
@@ -83,7 +83,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 335 | 96.5 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10589 | 94.9 % |
+| `language/expressions` | 11156 | 10686 | 95.8 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 37 | 88.1 % |
@@ -93,12 +93,12 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
 | `language/literals` | 536 | 528 | 98.5 % |
-| `language/module-code` | 599 | 531 | 88.6 % |
+| `language/module-code` | 599 | 532 | 88.8 % |
 | `language/punctuators` | 11 | 11 | 100.0 % |
 | `language/reserved-words` | 27 | 27 | 100.0 % |
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 8971 | 95.4 % |
+| `language/statements` | 9399 | 9020 | 96.0 % |
 | `language/types` | 113 | 108 | 95.6 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

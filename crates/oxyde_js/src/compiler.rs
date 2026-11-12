@@ -1645,9 +1645,16 @@ impl Compiler {
         // l'initialiseur relit à chaque construction.
         let mut field_keys: Vec<Option<JsStr>> = Vec::with_capacity(class.members.len());
         for member in &class.members {
+            // De même, une méthode ou un accesseur privé d'instance : la
+            // fonction est créée une fois, puis installée sur chaque instance.
+            let private_method = !matches!(
+                member.kind,
+                ClassMemberKind::Field(_) | ClassMemberKind::StaticBlock(_)
+            ) && matches!(&member.key, PropKey::Name(name) if name.starts_with('#'));
             let kept = !member.is_static
-                && matches!(member.kind, ClassMemberKind::Field(_))
-                && matches!(member.key, PropKey::Computed(_));
+                && (private_method
+                    || (matches!(member.kind, ClassMemberKind::Field(_))
+                        && matches!(member.key, PropKey::Computed(_))));
             field_keys.push(if kept {
                 let name: JsStr = Arc::from(format!("%champ{}", self.with_count));
                 self.with_count += 1;
@@ -1660,6 +1667,7 @@ impl Compiler {
         // Champs et blocs statiques, évalués une fois les méthodes définies
         // et la classe liée à son nom : registre de la clé (champ) et corps.
         let mut statics: Vec<(Option<Reg>, Arc<Function>)> = Vec::new();
+        let mut private_inits: Vec<Stmt> = Vec::new();
         for (member, field_key) in class.members.iter().zip(&field_keys) {
             let member_mark = self.mark();
             let home = if member.is_static { ctor } else { proto };
@@ -1685,6 +1693,20 @@ impl Compiler {
                     let index = self.function(func, FunctionKind::Method, false)?;
                     self.emit(Op::Closure { dst: value, index });
                     self.emit(Op::SetHome { func: value, home });
+                    if let (Some(binding), PropKey::Name(name)) = (field_key, &member.key) {
+                        self.store(binding, value, true)?;
+                        private_inits.push(Stmt::Expr(Expr::PrivateInit {
+                            key: Arc::clone(name),
+                            binding: Arc::clone(binding),
+                            kind: match member.kind {
+                                ClassMemberKind::Getter(_) => 1,
+                                ClassMemberKind::Setter(_) => 2,
+                                _ => 0,
+                            },
+                        }));
+                        self.free_to(member_mark);
+                        continue;
+                    }
                     self.emit(match member.kind {
                         ClassMemberKind::Getter(_) => Op::InitGetter {
                             obj: home,
@@ -1764,6 +1786,9 @@ impl Compiler {
             }
             self.free_to(member_mark);
         }
+        // Méthodes et accesseurs privés d'abord, puis les champs dans l'ordre.
+        private_inits.append(&mut fields);
+        let fields = private_inits;
         if !fields.is_empty() {
             let initializer = Function {
                 name: None,
@@ -1810,7 +1835,7 @@ impl Compiler {
                 argc: 0,
             });
             if let Some(key) = key {
-                self.emit(Op::InitElem {
+                self.emit(Op::DefineField {
                     obj: ctor,
                     key,
                     src: result,
@@ -2652,6 +2677,10 @@ impl Compiler {
                 let key = self.expr(index, None)?;
                 self.emit(Op::SetElem { obj, key, src });
             }
+            Pattern::Expr(Expr::SuperMember(key)) => {
+                let key = self.key_reg(key)?;
+                self.emit(Op::SetSuper { key, src });
+            }
             Pattern::Expr(_) => return error("cible d'affectation invalide"),
             Pattern::Object { props, rest } => {
                 // Déstructurer `null` ou `undefined` est une erreur, même sans
@@ -3303,6 +3332,23 @@ impl Compiler {
                 Ok(dst)
             }
             Expr::PrivateName(name) => self.load(name, dst),
+            Expr::PrivateInit { key, binding, kind } => {
+                let dst = self.dst_or_alloc(dst)?;
+                let mark = self.mark();
+                let obj = self.alloc()?;
+                self.emit(Op::LoadThis { dst: obj });
+                let key = self.load(key, None)?;
+                let func = self.load(binding, None)?;
+                self.emit(Op::InitPrivate {
+                    obj,
+                    key,
+                    func,
+                    kind: *kind,
+                });
+                self.emit(Op::LoadUndefined { dst });
+                self.free_to(mark);
+                Ok(dst)
+            }
             Expr::FieldInit { key, value } => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
@@ -3333,7 +3379,7 @@ impl Compiler {
                     PropKey::Name(name) => self.expr_named(value, name, Some(dst))?,
                     PropKey::Computed(_) => self.expr(value, Some(dst))?,
                 };
-                self.emit(Op::InitElem {
+                self.emit(Op::DefineField {
                     obj: object,
                     key: key_reg,
                     src: dst,
@@ -3801,6 +3847,7 @@ impl Compiler {
             Expr::Index { object, index, .. } => {
                 let obj = self.expr_to_temp(object)?;
                 let key = self.expr_to_temp(index)?;
+                self.emit(Op::KeyOnce { obj, key });
                 self.emit(Op::GetElem { dst: old, obj, key });
                 self.emit(Op::ToNumber { dst: old, src: old });
                 self.emit(Op::Step {
@@ -3809,6 +3856,17 @@ impl Compiler {
                     increment,
                 });
                 self.emit(Op::SetElem { obj, key, src: new });
+            }
+            Expr::SuperMember(key) => {
+                let key = self.key_reg(key)?;
+                self.emit(Op::GetSuper { dst: old, key });
+                self.emit(Op::ToNumber { dst: old, src: old });
+                self.emit(Op::Step {
+                    dst: new,
+                    src: old,
+                    increment,
+                });
+                self.emit(Op::SetSuper { key, src: new });
             }
             _ => return error("cible d'incrémentation invalide"),
         }
@@ -3850,15 +3908,32 @@ impl Compiler {
                 self.emit(Op::SetElem { obj, key, src });
                 self.emit(Op::Move { dst, src });
             }
+            (AssignOp::Assign, Pattern::Expr(Expr::SuperMember(key))) => {
+                let key = self.key_reg(key)?;
+                let src = self.expr_to_temp(value)?;
+                self.emit(Op::SetSuper { key, src });
+                self.emit(Op::Move { dst, src });
+            }
             (AssignOp::Assign, pattern) => {
                 let src = self.expr_to_temp(value)?;
                 self.assign_pattern(pattern, src, false)?;
                 self.emit(Op::Move { dst, src });
             }
+            (_, Pattern::Expr(Expr::SuperMember(key))) => {
+                let key = self.key_reg(key)?;
+                let current = self.alloc()?;
+                self.emit(Op::GetSuper { dst: current, key });
+                let skip = self.compound(op, current, value, None)?;
+                self.emit(Op::SetSuper { key, src: current });
+                if let Some(skip) = skip {
+                    self.patch(skip);
+                }
+                self.emit(Op::Move { dst, src: current });
+            }
             (_, Pattern::Ident(name)) => {
                 let current = self.alloc()?;
                 self.load(name, Some(current))?;
-                let skip = self.compound(op, current, value)?;
+                let skip = self.compound(op, current, value, Some(name))?;
                 self.store(name, current, false)?;
                 if let Some(skip) = skip {
                     self.patch(skip);
@@ -3874,7 +3949,7 @@ impl Compiler {
                     obj,
                     name,
                 });
-                let skip = self.compound(op, current, value)?;
+                let skip = self.compound(op, current, value, None)?;
                 self.emit(Op::SetProp {
                     obj,
                     name,
@@ -3888,13 +3963,14 @@ impl Compiler {
             (_, Pattern::Expr(Expr::Index { object, index, .. })) => {
                 let obj = self.expr_to_temp(object)?;
                 let key = self.expr_to_temp(index)?;
+                self.emit(Op::KeyOnce { obj, key });
                 let current = self.alloc()?;
                 self.emit(Op::GetElem {
                     dst: current,
                     obj,
                     key,
                 });
-                let skip = self.compound(op, current, value)?;
+                let skip = self.compound(op, current, value, None)?;
                 self.emit(Op::SetElem {
                     obj,
                     key,
@@ -3913,7 +3989,14 @@ impl Compiler {
 
     /// Applique `current op= value` dans `current`. Pour un opérateur logique,
     /// renvoie le saut à patcher pour éviter l'écriture quand il court-circuite.
-    fn compound(&mut self, op: AssignOp, current: Reg, value: &Expr) -> CResult<Option<usize>> {
+    /// `name` : identifiant affecté, qui nomme une fonction anonyme.
+    fn compound(
+        &mut self,
+        op: AssignOp,
+        current: Reg,
+        value: &Expr,
+        name: Option<&JsStr>,
+    ) -> CResult<Option<usize>> {
         match op {
             AssignOp::Binary(op) => {
                 let right = self.expr(value, None)?;
@@ -3940,7 +4023,10 @@ impl Compiler {
                         target: 0,
                     },
                 });
-                self.expr(value, Some(current))?;
+                match name {
+                    Some(name) => self.expr_named(value, name, Some(current))?,
+                    None => self.expr(value, Some(current))?,
+                };
                 Ok(Some(skip))
             }
             AssignOp::Assign => Ok(None),
