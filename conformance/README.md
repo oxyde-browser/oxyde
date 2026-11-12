@@ -17,7 +17,7 @@ les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
 
 La couverture du DOM (membres des interfaces Web IDL réellement disponibles aux scripts) est
 mesurée par `cargo run -p oxyde -- --dom-coverage` et publiée dans [dom.md](dom.md) :
-125 membres sur 283 (44,2 %). Elle dit qu'un membre existe, pas qu'il est conforme.
+209 membres sur 283 (73,9 %). Elle dit qu'un membre existe, pas qu'il est conforme.
 
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus

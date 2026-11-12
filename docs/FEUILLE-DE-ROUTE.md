@@ -131,7 +131,7 @@ Le plan d'origine reste la référence. Ce qui suit le précise à la lumière d
 
 Le moteur n'est qu'une moitié du jalon ; l'autre est ce que les pages peuvent en faire.
 
-- **DOM** : 125 membres disponibles sur 283 décrits par l'IDL d'Oxyde (44,2 %), et l'IDL ne
+- **DOM** : 209 membres disponibles sur 283 décrits par l'IDL d'Oxyde (73,9 %), et l'IDL ne
   décrit pas encore `Window`, les éléments HTML particuliers, les observateurs ni les plages.
 - **Manquent pour les sites réels** : `XMLHttpRequest`, les formulaires, `fetch` autre que
   `GET`, les événements clavier et de saisie, `localStorage`, `history`, `location` complet.

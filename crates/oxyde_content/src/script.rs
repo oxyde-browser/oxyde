@@ -25,6 +25,8 @@ use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
+mod dom_ops;
+
 const CLASS_NODE: u32 = 1;
 const CLASS_STYLE: u32 = 2;
 const CLASS_LIST: u32 = 3;
@@ -625,6 +627,91 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "title" if is_document => string(&document_title(doc)),
         "URL" | "documentURI" if is_document => string(h.url.as_str()),
         "readyState" if is_document => string("complete"),
+        "baseURI" => string(h.url.as_str()),
+        "length" if matches!(links.data, NodeData::Text(_) | NodeData::Comment(_)) => Ok(number(
+            doc.text(node).map_or(0, |t| t.encode_utf16().count()),
+        )),
+        "wholeText" if matches!(links.data, NodeData::Text(_)) => {
+            string(&dom_ops::whole_text(doc, node))
+        }
+        "characterSet" | "charset" | "inputEncoding" if is_document => string("UTF-8"),
+        "compatMode" if is_document => string("CSS1Compat"),
+        "contentType" if is_document => string("text/html"),
+        "referrer" | "dir" if is_document => string(""),
+        "designMode" if is_document => string("off"),
+        "visibilityState" if is_document => string("visible"),
+        "hidden" if is_document => Ok(Value::Bool(false)),
+        "domain" if is_document => string(h.url.host_str().unwrap_or("")),
+        "currentScript" if is_document => Ok(Value::Null),
+        "defaultView" if is_document => return Some(Ok(Value::Object(vm.global()))),
+        "doctype" if is_document => {
+            let found = doc
+                .children(doc.root())
+                .find(|c| matches!(doc.node(*c).data, NodeData::Doctype { .. }));
+            return Some(Ok(wrap_opt(vm, found)));
+        }
+        "forms" | "images" | "links" | "scripts" | "embeds" | "plugins" if is_document => {
+            let wanted: &[&str] = match key {
+                "forms" => &["form"],
+                "images" => &["img"],
+                "links" => &["a", "area"],
+                "scripts" => &["script"],
+                _ => &["embed"],
+            };
+            let nodes: Vec<NodeId> = doc
+                .descendants(doc.root())
+                .filter(|n| {
+                    doc.element(*n).is_some_and(|e| {
+                        wanted.iter().any(|name| e.is_html(name))
+                            // `links` ne retient que les éléments munis de `href`.
+                            && (key != "links" || e.has_attr("href"))
+                    })
+                })
+                .collect();
+            return Some(Ok(wrap_all(vm, nodes)));
+        }
+        "name" | "publicId" | "systemId" if matches!(links.data, NodeData::Doctype { .. }) => {
+            match &links.data {
+                NodeData::Doctype {
+                    name,
+                    public_id,
+                    system_id,
+                } => string(match key {
+                    "name" => name,
+                    "publicId" => public_id,
+                    _ => system_id,
+                }),
+                _ => return None,
+            }
+        }
+        "namespaceURI" if is_element(doc, node) => string(match doc.element(node).map(|e| e.ns) {
+            Some(Namespace::Svg) => "http://www.w3.org/2000/svg",
+            Some(Namespace::MathMl) => "http://www.w3.org/1998/Math/MathML",
+            _ => "http://www.w3.org/1999/xhtml",
+        }),
+        "prefix" if is_element(doc, node) => Ok(Value::Null),
+        "slot" | "dir" | "accessKey" | "nonce" if is_element(doc, node) => {
+            string(&attr(&key.to_ascii_lowercase()))
+        }
+        "draggable" | "inert" | "autofocus" if is_element(doc, node) => {
+            Ok(Value::Bool(doc.element(node).is_some_and(|e| match key {
+                "draggable" => e.attr("draggable") == Some("true"),
+                _ => e.has_attr(key),
+            })))
+        }
+        "spellcheck" | "translate" if is_element(doc, node) => {
+            Ok(Value::Bool(!doc.element(node).is_some_and(|e| {
+                matches!(e.attr(key), Some("false" | "no"))
+            })))
+        }
+        "tabIndex" if is_element(doc, node) => Ok(Value::Number(
+            doc.element(node)
+                .and_then(|e| e.attr("tabindex"))
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(-1.0),
+        )),
+        "outerText" if is_element(doc, node) => string(&doc.text_content(node)),
+        "accessKeyLabel" if is_element(doc, node) => string(""),
         _ => return None,
     })
 }
@@ -1364,6 +1451,51 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "blur", no_op),
     ("", "scrollIntoView", no_op),
     ("", "getBoundingClientRect", get_bounding_client_rect),
+    ("", "hasChildNodes", dom_ops::has_child_nodes),
+    ("", "isSameNode", dom_ops::is_same_node),
+    ("", "getRootNode", dom_ops::get_root_node),
+    ("", "replaceChild", dom_ops::replace_child),
+    ("", "normalize", dom_ops::normalize),
+    ("", "isEqualNode", dom_ops::is_equal_node),
+    (
+        "",
+        "compareDocumentPosition",
+        dom_ops::compare_document_position,
+    ),
+    ("", "before", dom_ops::before),
+    ("", "after", dom_ops::after),
+    ("", "replaceWith", dom_ops::replace_with),
+    ("", "replaceChildren", dom_ops::replace_children),
+    ("", "hasAttributes", dom_ops::has_attributes),
+    ("", "getAttributeNames", dom_ops::get_attribute_names),
+    ("", "toggleAttribute", dom_ops::toggle_attribute),
+    ("", "getAttributeNS", dom_ops::get_attribute_ns),
+    ("", "hasAttributeNS", dom_ops::has_attribute_ns),
+    ("", "setAttributeNS", dom_ops::set_attribute_ns),
+    ("", "removeAttributeNS", dom_ops::remove_attribute_ns),
+    ("", "webkitMatchesSelector", element_matches),
+    (
+        "",
+        "insertAdjacentElement",
+        dom_ops::insert_adjacent_element,
+    ),
+    ("", "insertAdjacentText", dom_ops::insert_adjacent_text),
+    ("", "insertAdjacentHTML", dom_ops::insert_adjacent_html),
+    ("", "substringData", dom_ops::substring_data),
+    ("", "appendData", dom_ops::append_data),
+    ("", "insertData", dom_ops::insert_data),
+    ("", "deleteData", dom_ops::delete_data),
+    ("", "replaceData", dom_ops::replace_data),
+    ("", "splitText", dom_ops::split_text),
+    ("", "createComment", dom_ops::create_comment),
+    ("", "createElementNS", dom_ops::create_element_ns),
+    ("", "importNode", dom_ops::import_node),
+    ("", "adoptNode", dom_ops::adopt_node),
+    ("", "getElementsByName", dom_ops::get_elements_by_name),
+    ("", "hasFocus", dom_ops::has_focus),
+    ("DOMTokenList", "item", dom_ops::class_list_item),
+    ("DOMTokenList", "replace", dom_ops::class_list_replace),
+    ("DOMTokenList", "supports", dom_ops::class_list_supports),
     ("CSSStyleDeclaration", "setProperty", style_set_property),
     (
         "CSSStyleDeclaration",
