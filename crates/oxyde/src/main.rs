@@ -16,14 +16,16 @@
 //!         rend la page dans un processus de rendu, comme le fait la fenêtre
 //! ```
 //!
-//! `oxyde --type=renderer` est réservé au navigateur : c'est ainsi qu'il
-//! lance les processus de rendu de ses onglets.
+//! `oxyde --type=renderer` et `oxyde --type=network` sont réservés au
+//! navigateur : c'est ainsi qu'il lance les processus de rendu de ses
+//! onglets et son processus réseau.
 
 mod a11y;
 mod app;
 mod browser;
 mod frame;
 mod loader;
+mod network;
 mod renderer;
 
 use std::io::BufWriter;
@@ -151,6 +153,7 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
     // Les scripts de la page voient la taille de la fenêtre dès le chargement.
     loader::set_viewport_hint(w, h);
     let clear = if args.page_only && args.multi_process {
+        network::use_process();
         let input = args.target.as_deref().unwrap_or("about:newtab");
         let url = loader::resolve_input(input)
             .map_err(|error| anyhow::anyhow!("{} : {}", error.title, error.detail))?;
@@ -244,10 +247,12 @@ fn remote_page(url: Url, text: &mut TextContext, viewport: (f32, f32)) -> Result
 }
 
 fn main() -> Result<ExitCode> {
-    // Processus de rendu : lancé par le navigateur, il ne lit rien d'autre
-    // de sa ligne de commande.
-    if std::env::args().nth(1).as_deref() == Some("--type=renderer") {
-        return Ok(renderer::child::run());
+    // Processus de rendu ou processus réseau : lancé par le navigateur, il
+    // ne lit rien d'autre de sa ligne de commande.
+    match std::env::args().nth(1).as_deref() {
+        Some("--type=renderer") => return Ok(renderer::child::run()),
+        Some("--type=network") => return Ok(network::run()),
+        _ => {}
     }
     run().map(|()| ExitCode::SUCCESS)
 }
@@ -274,5 +279,8 @@ fn run() -> Result<()> {
         return screenshot(&args, output);
     }
     let multi_process = !args.single_process;
+    if multi_process {
+        network::use_process();
+    }
     app::run(open_browser(&args, multi_process), multi_process)
 }

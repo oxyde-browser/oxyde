@@ -217,14 +217,24 @@ Fait :
   `--no-sandbox` y renonce, pour le diagnostic. C'est le seul crate du projet qui contient
   du code `unsafe` (appels Win32), chaque bloc étant justifié.
 
+- **Processus réseau** (`oxyde --type=network`) : HTTP, TLS et cookies quittent le
+  navigateur pour un processus à part, auquel il adresse ses requêtes par un canal ; les
+  requêtes sont servies en parallèle. Si ce processus disparaît, les requêtes en cours
+  échouent et un autre est lancé à la suivante. Son bac à sable est moins serré que celui
+  du rendu (`Policy::Networked`) : privilèges retirés, intégrité basse, objet de travail,
+  mais pas de restriction par identifiants, que la résolution de noms refuse. Les fichiers
+  locaux restent lus par le navigateur.
+
 Limites à ce stade : un processus par onglet et non par site ; les cadres vivent dans le
 processus de leur page ; l'accessibilité ne voit pas le contenu d'une page distante. Le bac
 à sable n'est pas un `AppContainer` : le processus de rendu peut encore lire ce qui est
-lisible par tous sur la machine et ouvrir des connexions réseau ; `win32k` n'est pas
-verrouillé.
+lisible par tous sur la machine et ouvrir des connexions réseau ; le processus réseau peut
+lire ce que l'utilisateur peut lire ; `win32k` n'est pas verrouillé. Les cookies vivent en
+mémoire dans le processus réseau et sont perdus s'il s'arrête. Pas de processus GPU : la
+rastérisation reste dans le navigateur.
 
-Ordre prévu : processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et
-workers (étape D de test262).
+Ordre prévu : isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers (étape D de
+test262).
 
 ### Jalon 6 — Mise en page complète et compositeur
 

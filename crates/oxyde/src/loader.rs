@@ -1,11 +1,11 @@
 //! Chargement des ressources d'une page : `file:`, `about:`, `data:` et `http(s):`.
 
 use std::path::Path;
-use std::sync::OnceLock;
 
 use base64::Engine as _;
 use oxyde_content::{Page, Url, decode_image};
-use oxyde_net::NetError;
+
+use crate::network::{self, FailureClass, NetFailure};
 
 /// Taille maximale d'une ressource locale chargée en mémoire (64 Mio).
 const MAX_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
@@ -186,22 +186,12 @@ fn read_data_url(url: &Url) -> Result<Vec<u8>, LoadError> {
     }
 }
 
-/// Client HTTP partagé par tous les chargements du processus.
-fn http_client() -> Result<&'static oxyde_net::Client, LoadError> {
-    static CLIENT: OnceLock<Result<oxyde_net::Client, String>> = OnceLock::new();
-    CLIENT
-        .get_or_init(|| oxyde_net::Client::new().map_err(|e| e.to_string()))
-        .as_ref()
-        .map_err(|e| LoadError::other("Réseau indisponible", e.clone(), "ERR_FAILED"))
-}
-
 /// Traduit une erreur réseau en page d'erreur de la maquette.
-fn network_error(url: &Url, error: &NetError) -> LoadError {
+fn network_error(url: &Url, error: &NetFailure) -> LoadError {
     let host = url.host_str().unwrap_or("ce site");
-    let code = error.code();
-    let detail = format!("{url} — {error}");
-    let owned_code = code.to_owned();
-    if error.is_certificate_error() {
+    let code = error.code.as_str();
+    let detail = format!("{url} — {}", error.text);
+    if error.certificate {
         let reason = match code {
             "NET::ERR_CERT_DATE_INVALID" => "a expiré ou n'est pas encore valable",
             "NET::ERR_CERT_COMMON_NAME_INVALID" => "n'est pas délivré pour ce nom de site",
@@ -216,12 +206,12 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
                 "Le certificat de {host} {reason}. Quelqu'un pourrait intercepter ce que vous \
                  envoyez à ce site : mots de passe, messages, coordonnées bancaires."
             ),
-            code: owned_code,
+            code: code.to_owned(),
             detail,
         };
     }
-    let (kind, title, message) = match error {
-        NetError::Connect { .. } | NetError::Timeout => (
+    let (kind, title, message) = match error.class {
+        FailureClass::Unreachable => (
             ErrorKind::Network,
             if code == "ERR_INTERNET_DISCONNECTED" {
                 "Pas de connexion à Internet"
@@ -233,17 +223,17 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
                  puis le proxy et le pare-feu."
             ),
         ),
-        NetError::Tls { .. } => (
+        FailureClass::Tls => (
             ErrorKind::Network,
             "La connexion sécurisée a échoué",
             format!("{host} n'a pas pu établir une connexion chiffrée avec Oxyde."),
         ),
-        NetError::TooManyRedirects => (
+        FailureClass::Redirects => (
             ErrorKind::Other,
             "Trop de redirections",
             format!("{host} vous redirige en boucle."),
         ),
-        _ => (
+        FailureClass::Other => (
             ErrorKind::Other,
             "La page n'a pas pu être chargée",
             format!("Le chargement de {host} a échoué."),
@@ -253,18 +243,17 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
         kind,
         title: title.to_owned(),
         message,
-        code: owned_code,
+        code: code.to_owned(),
         detail,
     }
 }
 
 fn fetch_http(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
-    let client = http_client()?;
-    let response = match initiator {
-        Some(document) => client.get_from(url, document),
-        None => client.get(url),
-    }
-    .map_err(|e| network_error(url, &e))?;
+    let request = oxyde_net::HttpRequest {
+        initiator: initiator.cloned(),
+        ..oxyde_net::HttpRequest::get(url)
+    };
+    let response = network::send(&request).map_err(|e| network_error(url, &e))?;
     if response.status >= 400 && response.body.is_empty() {
         return Err(LoadError::other(
             "La page n'a pas pu être chargée",
@@ -287,15 +276,14 @@ pub(crate) fn post_http(
     if let Some(link) = crate::renderer::child::link() {
         return link.post_form(url, form);
     }
-    let response = http_client()?
-        .send(&oxyde_net::HttpRequest {
-            method: "POST".to_owned(),
-            url: url.clone(),
-            headers: vec![("Content-Type".to_owned(), form.content_type.clone())],
-            body: form.body.clone(),
-            initiator: None,
-        })
-        .map_err(|e| network_error(url, &e))?;
+    let response = network::send(&oxyde_net::HttpRequest {
+        method: "POST".to_owned(),
+        url: url.clone(),
+        headers: vec![("Content-Type".to_owned(), form.content_type.clone())],
+        body: form.body.clone(),
+        initiator: None,
+    })
+    .map_err(|e| network_error(url, &e))?;
     Ok((response.url, response.body))
 }
 
@@ -309,23 +297,21 @@ pub(crate) fn fetch_for_script(
     if !matches!(request.url.scheme(), "http" | "https") {
         return Err(format!("protocole « {} » refusé", request.url.scheme()));
     }
-    let client = http_client().map_err(|e| e.message)?;
     let send = |method: &str, headers: Vec<(String, String)>, body: Vec<u8>| {
-        client
-            .send(&oxyde_net::HttpRequest {
-                method: method.to_owned(),
-                url: request.url.clone(),
-                headers,
-                body,
-                initiator: Some(request.initiator.clone()),
-            })
-            .map(|response| oxyde_content::FetchResponse {
-                url: response.url,
-                status: response.status,
-                headers: response.headers,
-                body: response.body,
-            })
-            .map_err(|e| e.to_string())
+        network::send(&oxyde_net::HttpRequest {
+            method: method.to_owned(),
+            url: request.url.clone(),
+            headers,
+            body,
+            initiator: Some(request.initiator.clone()),
+        })
+        .map(|response| oxyde_content::FetchResponse {
+            url: response.url,
+            status: response.status,
+            headers: response.headers,
+            body: response.body,
+        })
+        .map_err(|e| e.text)
     };
     if request.needs_preflight {
         let answer = send("OPTIONS", request.preflight_headers(), Vec::new())?;
@@ -556,17 +542,15 @@ pub(crate) fn read_cookies(document: &Url) -> Option<String> {
     if let Some(link) = crate::renderer::child::link() {
         return link.cookies(document);
     }
-    http_client()
-        .ok()
-        .map(|client| client.cookies_for_script(document))
+    network::cookies(document)
 }
 
 /// Soumet au pot de cookies un cookie écrit par un script de `document`.
 pub(crate) fn write_cookie(document: &Url, text: &str) {
     if let Some(link) = crate::renderer::child::link() {
         link.set_cookie(document, text);
-    } else if let Ok(client) = http_client() {
-        client.set_cookie_from_script(document, text);
+    } else {
+        network::set_cookie(document, text);
     }
 }
 

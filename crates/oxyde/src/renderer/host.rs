@@ -90,7 +90,7 @@ fn launch() -> std::io::Result<oxyde_sandbox::Spawned> {
     let executable = std::env::current_exe()?;
     let arguments = ["--type=renderer"];
     if SANDBOX.load(Ordering::Relaxed) {
-        match oxyde_sandbox::spawn(&executable, &arguments) {
+        match oxyde_sandbox::spawn(&executable, &arguments, oxyde_sandbox::Policy::Locked) {
             Ok(spawned) => return Ok(spawned),
             Err(error) => {
                 eprintln!("bac à sable indisponible, processus de rendu lancé sans lui : {error}");

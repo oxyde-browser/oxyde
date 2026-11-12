@@ -14,6 +14,8 @@
 //! - seulement les **poignées** qu'on lui destine (ses tubes).
 //!
 //! Le processus appelle ensuite [`harden`] sur lui-même, avant tout contenu.
+//! Un processus qui doit parler au réseau reçoit un bac à sable moins
+//! serré : voir [`Policy`].
 //!
 //! LIMITES CONNUES : ce n'est pas un `AppContainer` — le processus peut
 //! encore lire ce qui est lisible par tous (fichiers du système, dossiers
@@ -27,6 +29,20 @@ use std::process::{Child, Command, Stdio};
 
 #[cfg(windows)]
 mod windows;
+
+/// Rigueur du bac à sable.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Policy {
+    /// Pour un processus qui n'a besoin que de ses tubes (rendu) : jeton
+    /// restreint par identifiants, intégrité basse, objet de travail. Il ne
+    /// lit ni n'écrit les fichiers de l'utilisateur.
+    Locked,
+    /// Pour un processus qui parle au réseau : privilèges retirés, intégrité
+    /// basse, objet de travail, mais pas de restriction par identifiants —
+    /// la résolution de noms et les connexions la refusent. Il ne peut rien
+    /// écrire, mais peut encore lire ce que l'utilisateur peut lire.
+    Networked,
+}
 
 /// Processus enfant, dans le bac à sable ou non.
 #[derive(Debug)]
@@ -128,10 +144,10 @@ pub fn spawn_unsandboxed(executable: &Path, arguments: &[&str]) -> io::Result<Sp
 ///
 /// L'erreur du système si le bac à sable ou le processus n'a pas pu être
 /// créé ; rien n'est alors lancé.
-pub fn spawn(executable: &Path, arguments: &[&str]) -> io::Result<Spawned> {
+pub fn spawn(executable: &Path, arguments: &[&str], policy: Policy) -> io::Result<Spawned> {
     #[cfg(windows)]
     {
-        let (child, stdin, stdout) = windows::spawn(executable, arguments)?;
+        let (child, stdin, stdout) = windows::spawn(executable, arguments, policy)?;
         Ok(Spawned {
             process: Process {
                 inner: Inner::Restricted(child),
@@ -142,6 +158,7 @@ pub fn spawn(executable: &Path, arguments: &[&str]) -> io::Result<Spawned> {
     }
     #[cfg(not(windows))]
     {
+        let _ = policy;
         spawn_unsandboxed(executable, arguments)
     }
 }
@@ -213,14 +230,14 @@ mod tests {
     }
 
     /// Lance la sonde `probe` et rend ses constats : (nom, valeur).
-    fn run_probe(sandboxed: bool) -> Vec<(String, String)> {
+    fn run_probe(policy: Option<Policy>) -> Vec<(String, String)> {
+        let sandboxed = policy.is_some();
         let exe = std::env::current_exe().expect("binaire de test");
         let arguments = probe_arguments("probe");
         let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
-        let mut spawned = if sandboxed {
-            spawn(&exe, &arguments)
-        } else {
-            spawn_unsandboxed(&exe, &arguments)
+        let mut spawned = match policy {
+            Some(policy) => spawn(&exe, &arguments, policy),
+            None => spawn_unsandboxed(&exe, &arguments),
         }
         .expect("lancement de la sonde");
         assert_eq!(spawned.process.is_sandboxed(), sandboxed);
@@ -251,7 +268,7 @@ mod tests {
         std::fs::write(secret(), "confidentiel").expect("fichier témoin");
         let _ = std::fs::remove_file(intruder());
 
-        let inside = run_probe(true);
+        let inside = run_probe(Some(Policy::Locked));
         let wrote = intruder().exists();
         let _ = std::fs::remove_file(intruder());
         // La sonde a bien tourné, par ses tubes, dans le bac à sable.
@@ -281,11 +298,21 @@ mod tests {
 
         // Témoin : hors bac à sable, tout cela aboutit — les refus viennent
         // donc bien du bac à sable.
-        let outside = run_probe(false);
+        let outside = run_probe(None);
         let _ = std::fs::remove_file(intruder());
-        let _ = std::fs::remove_file(secret());
         assert_eq!(finding(&outside, "lecture"), "true");
         assert_eq!(finding(&outside, "ecriture"), "true");
+
+        // Bac à sable d'un processus réseau : il ne peut toujours rien
+        // écrire ni lancer, mais la lecture ne lui est pas retirée.
+        let networked = run_probe(Some(Policy::Networked));
+        let wrote = intruder().exists();
+        let _ = std::fs::remove_file(intruder());
+        let _ = std::fs::remove_file(secret());
+        assert_eq!(finding(&networked, "ecriture"), "false");
+        assert!(!wrote);
+        assert_eq!(finding(&networked, "lancement"), "false");
+        assert_eq!(finding(&networked, "durcissement"), "[]");
     }
 
     #[test]
@@ -293,7 +320,7 @@ mod tests {
         let exe = std::env::current_exe().expect("binaire de test");
         let arguments = probe_arguments("wait_for_input");
         let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
-        let mut spawned = spawn(&exe, &arguments).expect("lancement");
+        let mut spawned = spawn(&exe, &arguments, Policy::Locked).expect("lancement");
         // L'entrée reste ouverte : la sonde attend. On la tue.
         spawned.process.kill();
         spawned.process.wait();
@@ -307,7 +334,8 @@ mod tests {
         // Le binaire de test reçoit ses arguments intacts : un filtre qui
         // contient des espaces et des guillemets ne correspond à aucun test.
         let exe = std::env::current_exe().expect("binaire de test");
-        let mut spawned = spawn(&exe, &["--list", r#"a b\\ "c" \"#]).expect("lancement");
+        let mut spawned =
+            spawn(&exe, &["--list", r#"a b\\ "c" \"#], Policy::Locked).expect("lancement");
         drop(spawned.stdin);
         let mut output = String::new();
         spawned

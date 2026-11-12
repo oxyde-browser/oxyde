@@ -15,6 +15,8 @@ use std::os::windows::io::{AsHandle, AsRawHandle, FromRawHandle, OwnedHandle};
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
+use crate::Policy;
+
 use windows_sys::Win32::Foundation::{
     ERROR_INSUFFICIENT_BUFFER, GetLastError, HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation,
 };
@@ -189,15 +191,22 @@ fn logon_sid(token: &OwnedHandle) -> io::Result<Option<Sid>> {
 ///   son registre ;
 /// - niveau d'intégrité bas : aucune écriture vers ce que l'utilisateur
 ///   peut modifier.
-fn restricted_token() -> io::Result<OwnedHandle> {
+///
+/// Avec [`Policy::Networked`], l'accès n'est pas restreint par identifiants :
+/// la résolution de noms et les connexions passent par des services du
+/// système qui refusent un jeton ainsi restreint.
+fn restricted_token(policy: Policy) -> io::Result<OwnedHandle> {
     let token = process_token()?;
-    let mut sids = vec![
-        Sid::well_known(WinBuiltinUsersSid)?,
-        Sid::well_known(WinWorldSid)?,
-        Sid::well_known(WinRestrictedCodeSid)?,
-    ];
-    if let Some(logon) = logon_sid(&token)? {
-        sids.push(logon);
+    let mut sids = Vec::new();
+    if policy == Policy::Locked {
+        sids.extend([
+            Sid::well_known(WinBuiltinUsersSid)?,
+            Sid::well_known(WinWorldSid)?,
+            Sid::well_known(WinRestrictedCodeSid)?,
+        ]);
+        if let Some(logon) = logon_sid(&token)? {
+            sids.push(logon);
+        }
     }
     let restricting: Vec<SID_AND_ATTRIBUTES> = sids
         .iter()
@@ -220,7 +229,11 @@ fn restricted_token() -> io::Result<OwnedHandle> {
             0,
             null(),
             count,
-            restricting.as_ptr(),
+            if restricting.is_empty() {
+                null()
+            } else {
+                restricting.as_ptr()
+            },
             &raw mut restricted,
         )
     };
@@ -461,8 +474,9 @@ fn command_line(executable: &Path, arguments: &[&str]) -> io::Result<Vec<u16>> {
 pub(crate) fn spawn(
     executable: &Path,
     arguments: &[&str],
+    policy: Policy,
 ) -> io::Result<(Restricted, PipeWriter, PipeReader)> {
-    let token = restricted_token()?;
+    let token = restricted_token(policy)?;
     let job = job()?;
     let (child_stdin, to_child) = io::pipe()?;
     let (from_child, child_stdout) = io::pipe()?;
