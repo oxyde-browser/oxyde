@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Transformations</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .rangee { display: flex; gap: 60px; padding: 30px 40px; background: #dfe3e8; border-radius: 8px; }
+  .carre { width: 80px; height: 80px; background: #4cc9a8; border-radius: 8px; padding: 6px; box-sizing: border-box; }
+  .temoin { outline: none; background: #c5ccd6; }
+  .tourne { transform: rotate(20deg); }
+  .agrandi { transform: scale(1.4, 0.8); background: #8fb4f2; }
+  .incline { transform: skewX(-20deg); background: #e0a458; }
+  .deplace { transform: translate(30px, -20px); background: #c9a4e8; }
+  .coin { transform: rotate(45deg); transform-origin: top left; background: #171c23; color: #e6e9ed; }
+  .compose { transform: translate(50%, 0) rotate(-10deg) scale(0.8); background: #4cc9a8; }
+  .scene { position: relative; height: 110px; background: #dfe3e8; border-radius: 8px; overflow: hidden; }
+  .scene .cadre { position: absolute; left: 60px; top: 20px; width: 200px; height: 70px; background: #171c23; transform: rotate(-6deg); }
+  .scene .pastille { position: absolute; right: 8px; bottom: 8px; width: 30px; height: 30px; background: #e0a458; border-radius: 15px; }
+</style>
+<h2>Rotation, échelle, inclinaison, translation</h2>
+<div class="rangee">
+  <div class="carre tourne">rotate</div>
+  <div class="carre agrandi">scale</div>
+  <div class="carre incline">skewX</div>
+  <div class="carre deplace">translate</div>
+</div>
+<h2>Origine et composition</h2>
+<div class="rangee">
+  <div class="carre coin">origine en haut à gauche</div>
+  <div class="carre compose">trois fonctions</div>
+  <div class="carre temoin">sans transformation</div>
+</div>
+<h2>Une boîte transformée contient ses descendants positionnés</h2>
+<div class="scene"><div class="cadre"><div class="pastille"></div></div></div>

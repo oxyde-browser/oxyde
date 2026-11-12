@@ -102,6 +102,15 @@ pub enum DisplayItem {
     },
     /// Fin de la zone de découpe ou du calque le plus récent.
     PopClip,
+    /// Début d'un groupe transformé : tout ce qui suit, jusqu'au
+    /// [`DisplayItem::PopTransform`] correspondant, subit la transformation
+    /// affine `matrix`, notée comme `matrix(a, b, c, d, e, f)` en CSS.
+    PushTransform {
+        /// Coefficients de la transformation, en coordonnées de page.
+        matrix: [f32; 6],
+    },
+    /// Fin du groupe transformé le plus récent.
+    PopTransform,
     /// Image matricielle étirée dans `rect`.
     Image {
         /// Zone de destination.
@@ -308,11 +317,17 @@ fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSour
 
 /// Peint une boîte : son fond et ses bordures si elle est visible, puis ses
 /// enfants dans l'ordre d'empilement, découpés si elle ne laisse pas
-/// déborder son contenu ; le tout dans un calque si elle est translucide.
+/// déborder son contenu ; le tout dans un calque si elle est translucide,
+/// et dans un groupe transformé si elle porte un `transform`.
 fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
     let style = &b.style;
     if style.opacity <= 0.0 {
         return;
+    }
+    let transform = oxyde_layout::box_transform(b);
+    if let Some(matrix) = transform {
+        list.items
+            .push(DisplayItem::PushTransform { matrix: matrix.0 });
     }
     let translucent = style.opacity < 1.0;
     if translucent {
@@ -353,6 +368,9 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
     }
     if translucent {
         list.items.push(DisplayItem::PopClip);
+    }
+    if transform.is_some() {
+        list.items.push(DisplayItem::PopTransform);
     }
 }
 

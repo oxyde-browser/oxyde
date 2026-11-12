@@ -244,8 +244,11 @@ pub fn layout_document(
 /// l'échelle de tout un contexte d'empilement.
 #[must_use]
 pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
+    // Une boîte transformée s'empile comme une boîte positionnée.
     let layer = |fragment: &Fragment| match fragment {
-        Fragment::Box(b) if b.style.is_positioned() => Some(b.style.z_index.unwrap_or(0)),
+        Fragment::Box(b) if b.style.is_positioned() || b.style.transform.is_some() => {
+            Some(b.style.z_index.unwrap_or(0))
+        }
         _ => None,
     };
     let mut below: Vec<(i32, &Fragment)> = Vec::new();
@@ -267,11 +270,30 @@ pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
     out
 }
 
+/// Transformation (`transform`) de la boîte `b`, en coordonnées de page ;
+/// `None` si elle n'est pas transformée.
+#[must_use]
+pub fn box_transform(b: &BoxFragment) -> Option<oxyde_css::Affine> {
+    use oxyde_css::Affine;
+    let rect = b.border_box;
+    let local = b.style.transform_matrix(rect.w, rect.h)?;
+    Some(
+        Affine::translate(rect.x, rect.y)
+            .then_inner(local)
+            .then_inner(Affine::translate(-rect.x, -rect.y)),
+    )
+}
+
 /// Nœud du document situé au point (`x`, `y`) de la page, le plus profond.
 #[must_use]
 pub fn hit_test(doc: &Document, fragment: &Fragment, x: f32, y: f32) -> Option<NodeId> {
     match fragment {
         Fragment::Box(b) => {
+            // Boîte transformée : le point est ramené dans son repère d'origine.
+            let (x, y) = match box_transform(b) {
+                Some(matrix) => matrix.inverse()?.apply(x, y),
+                None => (x, y),
+            };
             // Les enfants peuvent déborder de leur parent : on les teste toujours.
             paint_order(&b.children)
                 .into_iter()
@@ -823,8 +845,10 @@ impl Engine<'_> {
         };
 
         // Une boîte positionnée est le bloc conteneur de ses descendants
-        // absolus : sa boîte de marge intérieure (la bordure exclue).
-        if style.is_positioned() {
+        // absolus : sa boîte de marge intérieure (la bordure exclue). Une
+        // boîte transformée l'est aussi, y compris pour les boîtes fixes.
+        let transformed = style.transform.is_some();
+        if style.is_positioned() || transformed {
             let padding_box = Rect {
                 x: border_box.x + bw.left,
                 y: border_box.y + bw.top,
@@ -836,7 +860,7 @@ impl Engine<'_> {
             let fixed: Vec<OutOfFlow> = {
                 let (fixed, absolute) = waiting
                     .drain(..)
-                    .partition(|item| item.style.position == Position::Fixed);
+                    .partition(|item| item.style.position == Position::Fixed && !transformed);
                 waiting = absolute;
                 fixed
             };
@@ -2123,6 +2147,41 @@ mod tests {
             100.0,
             "le rapport vaut pour la boîte de bordure"
         );
+    }
+
+    #[test]
+    fn transforms_move_hit_testing_not_layout() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=a style='width:100px;height:50px;transform:translate(200px,100px)'></div>\
+             <div id=b style='height:10px'></div>",
+            800.0,
+        );
+        assert_eq!(
+            rect(&doc, &tree, "a").x,
+            0.0,
+            "la mise en page ignore la transformation"
+        );
+        assert_eq!(rect(&doc, &tree, "b").y, 50.0);
+        let root = tree.root.as_ref().expect("racine");
+        let id_at = |x: f32, y: f32| {
+            hit_test(&doc, root, x, y)
+                .and_then(|n| doc.element(n))
+                .and_then(|e| e.id().map(str::to_owned))
+        };
+        assert_eq!(
+            id_at(250.0, 120.0).as_deref(),
+            Some("a"),
+            "la boîte est là où elle se peint"
+        );
+        assert_ne!(
+            id_at(50.0, 20.0).as_deref(),
+            Some("a"),
+            "et plus à sa place d'origine"
+        );
+        let a = find(&doc, root, "a").expect("fragment");
+        let matrix = box_transform(a).expect("transformation");
+        assert_eq!(matrix.apply(0.0, 0.0), (200.0, 100.0));
     }
 
     #[test]

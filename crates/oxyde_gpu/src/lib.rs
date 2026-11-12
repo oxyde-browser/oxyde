@@ -357,8 +357,21 @@ pub fn pop_clip(scene: &mut Scene) {
 /// de l'écran, position dans la fenêtre).
 pub fn append_display_list(scene: &mut Scene, list: &DisplayList, transform: Affine) {
     let mut clip_depth = 0usize;
+    // Transformations en cours : celle de la liste, puis les groupes ouverts.
+    let mut transform = transform;
+    let mut outer_transforms: Vec<Affine> = Vec::new();
     for item in &list.items {
         match item {
+            DisplayItem::PushTransform { matrix } => {
+                outer_transforms.push(transform);
+                transform *= Affine::new(matrix.map(f64::from));
+            }
+            DisplayItem::PopTransform => {
+                // Une liste mal formée ne ferme pas un groupe qu'elle n'a pas ouvert.
+                if let Some(outer) = outer_transforms.pop() {
+                    transform = outer;
+                }
+            }
             DisplayItem::Rect {
                 rect,
                 color,

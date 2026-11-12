@@ -31,6 +31,9 @@ pub(super) struct Geometry {
     viewport: (f32, f32),
     /// Boîte de bordure de chaque nœud mis en page, en coordonnées de page.
     boxes: HashMap<u32, Rect>,
+    /// Rectangle englobant, une fois transformé, de chaque boîte soumise à
+    /// un `transform` (le sien ou celui d'un ancêtre).
+    transformed: HashMap<u32, Rect>,
     /// Styles calculés.
     styles: StyleMap,
     /// Pistes de chaque conteneur en grille.
@@ -51,25 +54,50 @@ fn union(a: Rect, b: Rect) -> Rect {
     }
 }
 
-/// Relève les boîtes de `fragment` : `boxes` pour les boîtes de bloc,
-/// `inline` pour les rectangles du texte d'un élément en ligne.
-fn collect(fragment: &Fragment, boxes: &mut HashMap<u32, Rect>, inline: &mut HashMap<u32, Rect>) {
+/// Rectangles relevés dans l'arbre de fragments.
+#[derive(Default)]
+struct Collected {
+    /// Boîtes de bloc, telles que mises en page.
+    boxes: HashMap<u32, Rect>,
+    /// Rectangles du texte des éléments en ligne.
+    inline: HashMap<u32, Rect>,
+    /// Rectangles englobants des boîtes transformées.
+    transformed: HashMap<u32, Rect>,
+}
+
+/// Relève les boîtes de `fragment` ; `matrix` est la transformation héritée
+/// des ancêtres, s'il y en a une.
+fn collect(fragment: &Fragment, matrix: Option<oxyde_css::Affine>, out: &mut Collected) {
     match fragment {
         Fragment::Box(b) => {
+            let matrix = match (matrix, oxyde_layout::box_transform(b)) {
+                (Some(outer), Some(own)) => Some(outer.then_inner(own)),
+                (outer, own) => outer.or(own),
+            };
             if let Some(node) = b.node {
-                boxes
+                out.boxes
                     .entry(index(node))
                     .and_modify(|rect| *rect = union(*rect, b.border_box))
                     .or_insert(b.border_box);
+                if let Some(matrix) = matrix {
+                    let r = b.border_box;
+                    let (x, y, w, h) = matrix.bounds(r.x, r.y, r.w, r.h);
+                    let bounds = Rect { x, y, w, h };
+                    out.transformed
+                        .entry(index(node))
+                        .and_modify(|rect| *rect = union(*rect, bounds))
+                        .or_insert(bounds);
+                }
             }
             for child in &b.children {
-                collect(child, boxes, inline);
+                collect(child, matrix, out);
             }
         }
         Fragment::Text(t) => {
             for child in &t.boxes {
-                collect(child, boxes, inline);
+                collect(child, matrix, out);
             }
+            let inline = &mut out.inline;
             for line in t.layout.lines() {
                 let metrics = line.metrics();
                 for item in line.items() {
@@ -104,10 +132,15 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
         let env = h.layout_env.as_ref()?;
         let text = h.text.get_or_insert_with(TextContext::new);
         let (styles, tree) = crate::layout_snapshot(&h.doc, env, viewport, text);
-        let (mut boxes, mut inline) = (HashMap::new(), HashMap::new());
+        let mut collected = Collected::default();
         if let Some(root) = &tree.root {
-            collect(root, &mut boxes, &mut inline);
+            collect(root, None, &mut collected);
         }
+        let Collected {
+            mut boxes,
+            inline,
+            transformed,
+        } = collected;
         // Un élément en ligne n'a pas de boîte : son rectangle est celui de
         // son texte, et celui d'un ancêtre en ligne englobe ses descendants.
         let doc = &h.doc;
@@ -129,6 +162,7 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
             version,
             viewport,
             boxes,
+            transformed,
             styles,
             grids: tree.grids,
         });
@@ -174,15 +208,27 @@ fn dom_rect(vm: &mut Vm, rect: Rect) -> JsResult {
     Ok(object)
 }
 
+/// Rectangle de `node` tel qu'il apparaît à l'écran, transformations
+/// comprises.
+fn visual_box(vm: &mut Vm, node: NodeId) -> Option<Rect> {
+    let geometry = ensure(vm)?;
+    let key = index(node);
+    geometry
+        .transformed
+        .get(&key)
+        .or_else(|| geometry.boxes.get(&key))
+        .copied()
+}
+
 pub(super) fn get_bounding_client_rect(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
-    let rect = border_box(vm, node).unwrap_or_default();
+    let rect = visual_box(vm, node).unwrap_or_default();
     dom_rect(vm, rect)
 }
 
 pub(super) fn get_client_rects(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
-    let rects = match border_box(vm, node) {
+    let rects = match visual_box(vm, node) {
         Some(rect) => vec![dom_rect(vm, rect)?],
         None => Vec::new(),
     };
@@ -446,6 +492,28 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
         "overflow-y" => format!("{:?}", style.overflow_y).to_ascii_lowercase(),
         "visibility" => format!("{:?}", style.visibility).to_ascii_lowercase(),
         "opacity" => format!("{}", style.opacity),
+        "transform" => {
+            let (w, h) = rect.map_or((0.0, 0.0), |r| (r.w, r.h));
+            match style.transform_functions_matrix(w, h) {
+                Some(matrix) => {
+                    let [a, b, c, d, e, f] = matrix.0;
+                    format!("matrix({a}, {b}, {c}, {d}, {e}, {f})")
+                }
+                None => "none".to_owned(),
+            }
+        }
+        "transform-origin" => {
+            let (w, h) = rect.map_or((0.0, 0.0), |r| (r.w, r.h));
+            format!(
+                "{} {}",
+                px(style.transform_origin.0.resolve(w).unwrap_or(0.0)),
+                px(style.transform_origin.1.resolve(h).unwrap_or(0.0))
+            )
+        }
+        "aspect-ratio" => match style.aspect_ratio {
+            Some(ratio) => format!("{ratio} / 1"),
+            None => "auto".to_owned(),
+        },
         "flex-direction" => match style.flex_direction {
             oxyde_css::FlexDirection::Row => "row",
             oxyde_css::FlexDirection::RowReverse => "row-reverse",

@@ -605,11 +605,11 @@ impl ComputedStyle {
         self.position != Position::Static
     }
 
-    /// Transformation de la boîte, dans le repère dont l'origine est le coin
-    /// supérieur gauche de sa boîte de bordure de taille `width` × `height` ;
-    /// `None` sans `transform`.
+    /// Produit des fonctions de `transform`, sans égard pour
+    /// `transform-origin` : la valeur calculée de la propriété. Les
+    /// pourcentages se rapportent à une boîte de bordure `width` × `height`.
     #[must_use]
-    pub fn transform_matrix(&self, width: f32, height: f32) -> Option<Affine> {
+    pub fn transform_functions_matrix(&self, width: f32, height: f32) -> Option<Affine> {
         let list = self.transform.as_ref()?;
         let mut matrix = Affine::IDENTITY;
         for function in list.iter() {
@@ -625,6 +625,15 @@ impl ComputedStyle {
             };
             matrix = matrix.then_inner(step);
         }
+        Some(matrix)
+    }
+
+    /// Transformation de la boîte, dans le repère dont l'origine est le coin
+    /// supérieur gauche de sa boîte de bordure de taille `width` × `height` ;
+    /// `None` sans `transform`.
+    #[must_use]
+    pub fn transform_matrix(&self, width: f32, height: f32) -> Option<Affine> {
+        let matrix = self.transform_functions_matrix(width, height)?;
         let origin_x = self.transform_origin.0.resolve(width).unwrap_or(0.0);
         let origin_y = self.transform_origin.1.resolve(height).unwrap_or(0.0);
         Some(

@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9690 / 28699 (33,8 %)** — fichiers entièrement réussis : 512 / 2267 (22,6 %).
+**Sous-tests réussis : 9704 / 28699 (33,8 %)** — fichiers entièrement réussis : 515 / 2267 (22,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -48,7 +48,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/intrinsic-size` | 3 / 16 | 7 / 51 (13,7 %) |
 | `css/css-flexbox/parsing` | 8 / 27 | 68 / 215 (31,6 %) |
 | `css/css-grid` | 5 / 11 | 59 / 187 (31,6 %) |
-| `css/css-grid/abspos` | 4 / 58 | 411 / 3513 (11,7 %) |
+| `css/css-grid/abspos` | 5 / 58 | 417 / 3513 (11,9 %) |
 | `css/css-grid/alignment` | 62 / 286 | 553 / 1778 (31,1 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
@@ -75,7 +75,7 @@ est le plus honnête des deux.
 | `css/css-grid/placement` | 10 / 24 | 234 / 316 (74,1 %) |
 | `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 26 / 47 | 147 / 256 (57,4 %) |
+| `css/css-position` | 26 / 47 | 148 / 256 (57,8 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
@@ -83,8 +83,8 @@ est le plus honnête des deux.
 | `css/css-position/sticky` | 4 / 33 | 18 / 82 (22,0 %) |
 | `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
-| `css/css-sizing/aspect-ratio` | 8 / 24 | 102 / 291 (35,1 %) |
-| `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 7 / 38 (18,4 %) |
+| `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
+| `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 11 / 38 (28,9 %) |
 | `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1141 / 1338 (85,3 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 38 / 233 | 634 / 1747 (36,3 %) |
+| `css/cssom-view` | 39 / 233 | 635 / 1747 (36,3 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -738,7 +738,6 @@ est le plus honnête des deux.
 | `css/css-grid/abspos/positioned-grid-descendants-014.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-015.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-016.html` | 1 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-items-should-not-take-up-space-001.html` | 6 / 12 |  |
 | `css/css-grid/alignment/grid-align-baseline-001.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-align-baseline-002.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-align-baseline-003.html` | 0 / 3 |  |
@@ -1351,7 +1350,7 @@ est le plus honnête des deux.
 | `css/css-position/position-absolute-percentage-height.html` | 0 / 2 |  |
 | `css/css-position/position-absolute-replaced-minmax.html` | 11 / 43 |  |
 | `css/css-position/position-absolute-with-negative-sized-imcb.html` | 4 / 30 |  |
-| `css/css-position/position-fixed-dynamic-containing-block.html` | 0 / 4 |  |
+| `css/css-position/position-fixed-dynamic-containing-block.html` | 1 / 4 |  |
 | `css/css-position/position-relative-015.html` | 19 / 20 |  |
 | `css/css-position/position-relative-016.html` | 16 / 18 |  |
 | `css/css-position/position-relative-aspect-ratio-002.html` | 2 / 3 |  |
@@ -1415,9 +1414,8 @@ est le plus honnête des deux.
 | `css/css-sizing/aspect-ratio/box-sizing-dimensions.html` | 5 / 8 |  |
 | `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 5 / 16 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-orthogonal-percentage-child.html` | 0 / 4 |  |
-| `css/css-sizing/aspect-ratio/inheritance.html` | 0 / 2 |  |
 | `css/css-sizing/aspect-ratio/intrinsic-contribution-transferred-min-width-001.html` | 1 / 3 |  |
-| `css/css-sizing/aspect-ratio/parsing/aspect-ratio-computed.html` | 0 / 13 |  |
+| `css/css-sizing/aspect-ratio/parsing/aspect-ratio-computed.html` | 4 / 13 |  |
 | `css/css-sizing/aspect-ratio/parsing/aspect-ratio-invalid.html` | 0 / 11 |  |
 | `css/css-sizing/aspect-ratio/parsing/aspect-ratio-valid.html` | 7 / 14 |  |
 | `css/css-sizing/aspect-ratio/quirks-mode-003.html` | 0 / 1 |  |
@@ -1666,7 +1664,6 @@ est le plus honnête des deux.
 | `css/cssom-view/CaretPosition-001.html` | 0 / 2 |  |
 | `css/cssom-view/DOMRectList.html` | 0 / 2 |  |
 | `css/cssom-view/Element-currentCSSZoom.html` | 0 / 2 |  |
-| `css/cssom-view/GetBoundingRect.html` | 0 / 1 |  |
 | `css/cssom-view/HTMLBody-ScrollArea_quirksmode.html` | 3 / 10 |  |
 | `css/cssom-view/MediaQueryList-addListener-handleEvent.html` | 0 / 6 |  |
 | `css/cssom-view/MediaQueryList-addListener-removeListener.html` | 1 / 8 |  |

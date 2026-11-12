@@ -193,7 +193,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 512 (22,6 %); une lecture force la
+  (9,4 %), aujourd'hui 515 (22,7 %); une lecture force la
   mise en page si le document a changé.
 - **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
   `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
@@ -215,6 +215,12 @@ Fait :
 - **Tailles définies par le contenu** : `width: min-content`, `max-content`, `fit-content` ;
   `aspect-ratio` pour les boîtes en bloc, flottantes et positionnées. Restent : ces mots-clés
   sur `height`, `min-*` et `max-*`, `aspect-ratio` sur les éléments flex et de grille.
+
+- **Transformations** : `transform` (fonctions du plan ; les fonctions 3D sont ramenées à leur
+  effet dans le plan) et `transform-origin` ; peinture par groupes transformés, test
+  d'atteinte par transformation inverse, `getBoundingClientRect` transformé ; une boîte
+  transformée est un bloc conteneur et s'empile comme une boîte positionnée. Mesure à part
+  ([wpt-animations.md](../conformance/wpt-animations.md)) : 27 fichiers sur 363 au départ.
 
 Ordre prévu, chaque étape mesurée par la suite : positionnement et flottants ; `calc()` et
 police de test Ahem (`@font-face`), dont beaucoup de tests dépendent ; flex ; tailles
