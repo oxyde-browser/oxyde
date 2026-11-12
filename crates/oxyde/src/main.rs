@@ -10,6 +10,8 @@
 //!         affiche l'arbre DOM (format html5lib)
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
+//! oxyde --no-sandbox …
+//!         lance les processus de rendu hors du bac à sable (diagnostic)
 //! oxyde --screenshot SORTIE.png --page-only --multi-process ADRESSE
 //!         rend la page dans un processus de rendu, comme le fait la fenêtre
 //! ```
@@ -86,6 +88,7 @@ fn parse_args() -> Result<Args> {
             "--dom-coverage" => args.dom_coverage = true,
             "--single-process" => args.single_process = true,
             "--multi-process" => args.multi_process = true,
+            "--no-sandbox" => renderer::host::disable_sandbox(),
             "--size" => {
                 let value = it.next().context("--size attend LARGEURxHAUTEUR")?;
                 let (w, h) = value
@@ -201,6 +204,9 @@ fn remote_page(url: Url, text: &mut TextContext, viewport: (f32, f32)) -> Result
         let _ = wake.send(());
     })
     .context("lancement du processus de rendu impossible")?;
+    if !remote.is_sandboxed() {
+        eprintln!("processus de rendu hors bac à sable");
+    }
     let mut page = PageHost::Remote(Box::new(remote));
     let size = Viewport {
         width: viewport.0,

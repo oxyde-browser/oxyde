@@ -8,7 +8,7 @@
 //! n'emporte que son onglet.
 
 use std::cell::Cell;
-use std::process::{Child, Command};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use oxyde_compositor::{ROOT_SCROLLER, ScrollTree};
@@ -31,7 +31,7 @@ pub(crate) struct Commit {
 
 /// Page hébergée par un processus de rendu.
 pub(crate) struct RemotePage {
-    process: Child,
+    process: oxyde_sandbox::Process,
     sender: Sender<ToRenderer>,
     receiver: Receiver<FromRenderer>,
     store: ResourceStore,
@@ -70,9 +70,34 @@ impl Drop for RemotePage {
     fn drop(&mut self) {
         // L'onglet disparaît : son processus aussi. S'il est déjà mort, il
         // n'y a rien à tuer.
-        let _ = self.process.kill();
-        let _ = self.process.wait();
+        self.process.kill();
+        self.process.wait();
     }
+}
+
+/// Vrai tant que les processus de rendu sont lancés dans le bac à sable.
+static SANDBOX: AtomicBool = AtomicBool::new(true);
+
+/// Renonce au bac à sable pour les processus de rendu lancés ensuite
+/// (`--no-sandbox`) : pour le diagnostic seulement.
+pub(crate) fn disable_sandbox() {
+    SANDBOX.store(false, Ordering::Relaxed);
+}
+
+/// Lance le processus de rendu : dans le bac à sable, sauf s'il a été
+/// désactivé ou si le système le refuse — ce qui est alors signalé.
+fn launch() -> std::io::Result<oxyde_sandbox::Spawned> {
+    let executable = std::env::current_exe()?;
+    let arguments = ["--type=renderer"];
+    if SANDBOX.load(Ordering::Relaxed) {
+        match oxyde_sandbox::spawn(&executable, &arguments) {
+            Ok(spawned) => return Ok(spawned),
+            Err(error) => {
+                eprintln!("bac à sable indisponible, processus de rendu lancé sans lui : {error}");
+            }
+        }
+    }
+    oxyde_sandbox::spawn_unsandboxed(&executable, &arguments)
 }
 
 impl RemotePage {
@@ -84,15 +109,11 @@ impl RemotePage {
         viewport: (f32, f32),
         wake: impl Fn() + Send + 'static,
     ) -> std::io::Result<Self> {
-        let executable = std::env::current_exe()?;
-        let child = oxyde_ipc::spawn::<ToRenderer, FromRenderer>(
-            Command::new(executable).arg("--type=renderer"),
-            wake,
-        )?;
+        let child = launch()?;
         let mut page = Self {
             process: child.process,
-            sender: child.sender,
-            receiver: child.receiver,
+            sender: Sender::new(child.stdin),
+            receiver: Receiver::new(child.stdout, wake),
             store: ResourceStore::new(),
             list: DisplayList::default(),
             scroll: ScrollTree::new(),
@@ -130,6 +151,11 @@ impl RemotePage {
             height: self.viewport.1,
         };
         self.send(&message);
+    }
+
+    /// Vrai si le processus de rendu tourne dans le bac à sable.
+    pub(crate) fn is_sandboxed(&self) -> bool {
+        self.process.is_sandboxed()
     }
 
     /// Vrai si le processus de rendu a disparu.
@@ -181,7 +207,7 @@ impl RemotePage {
                         // est perdu, ou ne mérite plus d'être écouté.
                         if !matches!(error, ChannelError::Closed) {
                             eprintln!("processus de rendu écarté : {error}");
-                            let _ = self.process.kill();
+                            self.process.kill();
                         }
                         self.crashed = true;
                         redraw = true;
@@ -224,7 +250,7 @@ impl RemotePage {
                         }
                         Err(error) => {
                             eprintln!("processus de rendu écarté : image illisible ({error})");
-                            let _ = self.process.kill();
+                            self.process.kill();
                             self.crashed = true;
                             return true;
                         }

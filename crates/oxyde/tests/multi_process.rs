@@ -73,6 +73,15 @@ fn capture(name: &str, multi_process: bool) -> Option<(u32, u32, Vec<u8>)> {
         );
         return None;
     }
+    // Le processus de rendu doit avoir tourné dans le bac à sable, pas à
+    // côté faute de mieux.
+    if multi_process && cfg!(windows) {
+        let log = String::from_utf8_lossy(&run.stderr);
+        assert!(
+            !log.contains("bac à sable"),
+            "le processus de rendu n'était pas dans le bac à sable : {log}"
+        );
+    }
     let image = pixels(&output);
     let _ = std::fs::remove_file(&output);
     Some(image)

@@ -74,7 +74,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_test262` | lanceur de la suite de conformité ECMAScript | `test262` de V8 | fonctionne |
 | `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
 | `oxyde_ipc` | messages typés entre processus : codec binaire, trames, canal vers un processus enfant | Mojo | fonctionne — pas encore de mémoire partagée |
-| `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
+| `oxyde_sandbox` | bac à sable Windows des processus de rendu : jeton restreint, intégrité basse, objet de travail | `//sandbox/win` | fonctionne — pas encore d'`AppContainer` |
 | `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
 | `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |

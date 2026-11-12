@@ -204,14 +204,27 @@ Fait :
   Une capture `--screenshot --page-only --multi-process` passe par un processus de rendu :
   les tests d'intégration la comparent, pixel pour pixel, au rendu dans le navigateur.
 
-Limites à ce stade : un processus par onglet et non par site ; les cadres vivent dans le
-processus de leur page ; l'accessibilité ne voit pas le contenu d'une page distante ; pas
-encore de bac à sable — le processus de rendu n'a pas besoin de droits, mais le système ne
-les lui retire pas encore.
+- **Écran « Cet onglet a planté »** : « Recharger la page » relance un processus de rendu,
+  « Fermer l'onglet » ferme l'onglet.
+- **Bac à sable Windows** (`oxyde_sandbox`) : le processus de rendu est lancé avec un jeton
+  restreint (privilèges retirés ; accès limité à ce qui est ouvert à tous, aux utilisateurs
+  ou à la session, donc ni les fichiers du profil ni le registre de l'utilisateur), un
+  niveau d'intégrité bas (aucune écriture), un objet de travail (il meurt avec le
+  navigateur, ne lance aucun processus, n'a ni presse-papiers ni réglages du système) et
+  les seules poignées de ses tubes. Il se durcit ensuite lui-même : pas de code produit à
+  l'exécution, pas de points d'extension, pas de bibliothèque distante. Un test lance une
+  sonde dans le bac à sable et constate ces refus, témoin hors bac à sable à l'appui.
+  `--no-sandbox` y renonce, pour le diagnostic. C'est le seul crate du projet qui contient
+  du code `unsafe` (appels Win32), chaque bloc étant justifié.
 
-Ordre prévu : écran « Onglet planté » de la maquette ; bac à sable Windows du processus de
-rendu ; processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers
-(étape D de test262).
+Limites à ce stade : un processus par onglet et non par site ; les cadres vivent dans le
+processus de leur page ; l'accessibilité ne voit pas le contenu d'une page distante. Le bac
+à sable n'est pas un `AppContainer` : le processus de rendu peut encore lire ce qui est
+lisible par tous sur la machine et ouvrir des connexions réseau ; `win32k` n'est pas
+verrouillé.
+
+Ordre prévu : processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et
+workers (étape D de test262).
 
 ### Jalon 6 — Mise en page complète et compositeur
 

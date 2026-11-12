@@ -348,6 +348,14 @@ impl Renderer {
 /// Point d'entrée du processus de rendu (`oxyde --type=renderer`). Il se
 /// termine quand le navigateur ferme le canal.
 pub(crate) fn run() -> ExitCode {
+    // Avant tout contenu : le processus renonce à ce dont il n'a pas besoin.
+    let refused = oxyde_sandbox::harden();
+    if !refused.is_empty() {
+        eprintln!(
+            "processus de rendu : protections refusées par le système : {}",
+            refused.join(", ")
+        );
+    }
     let (sender, receiver) = connect_to_parent::<FromRenderer, ToRenderer>();
     let link = LINK.get_or_init(|| Link {
         sender,
