@@ -823,6 +823,50 @@ impl Vm {
         Ok((value, done, done && returning))
     }
 
+    /// Donne son nom à une méthode anonyme (clé calculée) : la clé, entre
+    /// crochets pour un symbole, précédée de `prefix` pour un accesseur.
+    fn name_member(&mut self, func: &Value, key: &crate::value::PropertyKey, prefix: &str) {
+        let Some(id) = func.as_object() else { return };
+        let object = self.heap.get(id);
+        let anonymous = matches!(&object.kind, Kind::Closure(c) if c.proto.name.is_empty())
+            && !object.props.contains_key("name");
+        if !anonymous {
+            return;
+        }
+        let base = match key {
+            crate::value::PropertyKey::String(name) => name.to_string(),
+            crate::value::PropertyKey::Symbol(symbol) => symbol
+                .description()
+                .map_or_else(String::new, |text| format!("[{text}]")),
+        };
+        let name = if prefix.is_empty() {
+            base
+        } else {
+            format!("{prefix} {base}")
+        };
+        self.heap.get_mut(id).props.insert(
+            Arc::from("name"),
+            Property {
+                slot: Slot::Data(Value::string(&name)),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
+
+    /// Refuse de redéfinir une propriété propre non configurable (membre
+    /// statique `prototype` d'une classe).
+    fn check_redefinable(&mut self, id: ObjId, key: &crate::value::PropertyKey) -> JsResult<()> {
+        if self.heap.get(id).prop(key).is_some_and(|p| !p.configurable) {
+            return Err(self.type_error(&format!(
+                "la propriété « {} » ne peut pas être redéfinie",
+                key.describe()
+            )));
+        }
+        Ok(())
+    }
+
     /// Crée, dans le cadre courant, la fermeture de la fonction `proto` : elle
     /// capture les registres et les captures du cadre que `proto` désigne.
     fn new_closure(&mut self, proto: Arc<FunctionProto>) -> Option<ObjId> {
@@ -892,6 +936,7 @@ impl Vm {
             site.strict,
             !site.top_level,
             site.in_method,
+            site.in_field_init,
             &private_names,
         )
         .and_then(|script| {
@@ -1813,7 +1858,9 @@ impl Vm {
             Op::InitMethod { obj, key, func } => {
                 let key = self.to_key(&self.reg(key))?;
                 let value = self.reg(func);
+                self.name_member(&value, &key, "");
                 if let Some(id) = self.reg(obj).as_object() {
+                    self.check_redefinable(id, &key)?;
                     self.heap
                         .get_mut(id)
                         .insert_prop(key, Property::hidden(value));
@@ -1834,7 +1881,10 @@ impl Vm {
                 let key = self.to_key(&self.reg(key))?;
                 let accessor = self.reg(func).as_object();
                 let is_getter = matches!(op, Op::InitGetter { .. });
+                let function = self.reg(func);
+                self.name_member(&function, &key, if is_getter { "get" } else { "set" });
                 if let Some(id) = self.reg(obj).as_object() {
+                    self.check_redefinable(id, &key)?;
                     let props = self.heap.get_mut(id);
                     let (mut get, mut set) = match props.prop(&key).map(|p| &p.slot) {
                         Some(Slot::Accessor { get, set }) => (*get, *set),
@@ -2132,7 +2182,15 @@ impl Vm {
                         if !self.is_constructor(value) {
                             return Err(self.type_error("la classe mère n'est pas un constructeur"));
                         }
-                        proto_parent = self.get(value, "prototype")?.as_object();
+                        proto_parent = match self.get(value, "prototype")? {
+                            Value::Object(id) => Some(id),
+                            Value::Null => None,
+                            _ => {
+                                return Err(self.type_error(
+                                    "le prototype de la classe mère n'est ni un objet ni null",
+                                ));
+                            }
+                        };
                         parent_ctor = value.as_object();
                     }
                 }

@@ -172,12 +172,12 @@ pub(crate) struct Script {
 
 /// Analyse un script complet.
 pub(crate) fn parse_program(source: &str) -> PResult<Script> {
-    parse_script(source, false, false, &[], false)
+    parse_script(source, false, false, &[], false, false)
 }
 
 /// Analyse le source passé à un `eval` indirect : du code global.
 pub(crate) fn parse_eval(source: &str, strict: bool) -> PResult<Script> {
-    parse_script(source, false, false, &[], strict)
+    parse_script(source, false, false, &[], strict, false)
 }
 
 /// Analyse le source passé à un `eval` direct. `in_function` : l'appelant
@@ -188,9 +188,17 @@ pub(crate) fn parse_direct_eval(
     strict: bool,
     in_function: bool,
     in_method: bool,
+    in_field_init: bool,
     private_names: &[Arc<str>],
 ) -> PResult<Script> {
-    parse_script(source, in_function, in_method, private_names, strict)
+    parse_script(
+        source,
+        in_function,
+        in_method,
+        private_names,
+        strict,
+        in_field_init,
+    )
 }
 
 fn parse_script(
@@ -199,9 +207,11 @@ fn parse_script(
     in_method: bool,
     private_names: &[Arc<str>],
     strict: bool,
+    in_field_init: bool,
 ) -> PResult<Script> {
     let mut parser = Parser::new(source, false)?;
     parser.in_function = in_function;
+    parser.in_field_init = in_field_init;
     parser.super_property = in_method;
     parser.strict = strict;
     if !private_names.is_empty() {
@@ -1669,6 +1679,16 @@ impl Parser {
         ))
     }
 
+    /// Nom d'une méthode ou d'un accesseur (`get x`, `set x`).
+    fn accessor_name(key: &PropKey, accessor: Option<bool>) -> Option<Arc<str>> {
+        let name = Self::method_name(key)?;
+        Some(match accessor {
+            Some(true) => Arc::from(format!("get {name}")),
+            Some(false) => Arc::from(format!("set {name}")),
+            None => name,
+        })
+    }
+
     fn method_name(key: &PropKey) -> Option<Arc<str>> {
         match key {
             PropKey::Name(name) => Some(Arc::clone(name)),
@@ -1778,7 +1798,7 @@ impl Parser {
                 self.derived_ctor = is_constructor && derived;
                 self.fn_start = Some(member_start);
                 let func = Arc::new(self.function_with(
-                    Self::method_name(&key),
+                    Self::accessor_name(&key, accessor),
                     true,
                     is_async,
                     is_generator,
@@ -2779,7 +2799,8 @@ impl Parser {
             self.advance()?;
             let key = self.property_key()?;
             self.fn_start = Some(start);
-            let func = Arc::new(self.function_rest(Self::method_name(&key), true)?);
+            let name = Self::accessor_name(&key, accessor);
+            let func = Arc::new(self.function_rest(name, true)?);
             self.check_accessor(&func, is_getter)?;
             let kind = if is_getter {
                 PropKind::Getter(func)

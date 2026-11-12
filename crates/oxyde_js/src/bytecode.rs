@@ -526,6 +526,12 @@ pub(crate) struct EvalSite {
     pub(crate) top_level: bool,
     /// L'appelant est dans une méthode : `super.x` est permis.
     pub(crate) in_method: bool,
+    /// L'appel est écrit dans l'initialiseur d'un champ de classe ou un bloc
+    /// `static` : `arguments` y est interdit.
+    pub(crate) in_field_init: bool,
+    /// L'appel est écrit dans l'initialisation des paramètres d'une
+    /// fonction : le code évalué ne peut pas y déclarer `arguments`.
+    pub(crate) in_params: bool,
 }
 
 /// Morceaux d'un gabarit étiqueté : interprétés, puis bruts.

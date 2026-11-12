@@ -151,6 +151,10 @@ struct FuncState {
     /// Paramètres pas encore liés pendant l'évaluation d'une valeur par
     /// défaut : les lire lève `ReferenceError`.
     dead_params: Vec<JsStr>,
+    /// Vrai pendant la compilation des valeurs par défaut des paramètres.
+    in_params: bool,
+    /// Initialiseur d'un champ de classe ou bloc `static`.
+    field_init: bool,
     /// Une déclaration lexicale de premier niveau d'un script est en cours
     /// de compilation ; le booléen dit si c'est un `const`.
     global_lexical: Option<bool>,
@@ -194,6 +198,9 @@ pub(crate) struct Compiler {
     /// `eval` direct : liaison de l'objet où l'appelant garde les variables
     /// créées par le code évalué.
     eval_vars: Option<JsStr>,
+    /// La prochaine fonction compilée est l'initialiseur d'un champ de classe
+    /// ou un bloc `static`.
+    field_init_next: bool,
 }
 
 /// Compile un script en une fonction sans paramètre dont la valeur de retour
@@ -215,6 +222,7 @@ pub(crate) fn compile_script(
         eval_functions_global: eval && !strict,
         direct_eval: false,
         eval_vars: None,
+        field_init_next: false,
     };
     compiler.push_function(FunctionKind::Normal, Arc::from("<script>"), true);
     compiler.f().strict = strict;
@@ -340,9 +348,11 @@ pub(crate) fn compile_direct_eval(
         eval_functions_global: site.top_level && !strict,
         direct_eval: true,
         eval_vars: eval_vars.filter(|_| !strict),
+        field_init_next: false,
     };
     // Appelant synthétique : seules ses liaisons comptent.
     compiler.push_function(FunctionKind::Normal, Arc::from("<appelant>"), false);
+    compiler.f().field_init = site.in_field_init;
     compiler.f().known_upvalues = site
         .upvalues
         .iter()
@@ -367,6 +377,20 @@ pub(crate) fn compile_direct_eval(
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
     check_declarations(body, true, &[], strict)?;
+    if site.in_params && !strict {
+        // Dans l'initialisation des paramètres, `var arguments` entrerait en
+        // conflit avec l'objet `arguments` de la fonction.
+        let mut vars = Vec::new();
+        var_names(body, &mut vars);
+        for stmt in body {
+            if let Stmt::Function(func) = stmt {
+                vars.extend(func.name.clone());
+            }
+        }
+        if vars.iter().any(|name| &**name == "arguments") {
+            return error("« arguments » ne peut pas être déclaré par eval dans des paramètres");
+        }
+    }
     // Au premier niveau d'un script, hors mode strict, les `var` du code
     // évalué sont globaux ; ailleurs ils lui restent locaux.
     let global_vars = site.top_level && !strict;
@@ -693,6 +717,8 @@ impl Compiler {
             param_count: 0,
             length: 0,
             dead_params: Vec::new(),
+            in_params: false,
+            field_init: false,
             global_lexical: None,
             is_async: false,
             is_generator: false,
@@ -1321,8 +1347,10 @@ impl Compiler {
 
     fn function(&mut self, func: &Function, kind: FunctionKind, bind_self: bool) -> CResult<u32> {
         let hint = self.name_hint.take();
+        let field_init = std::mem::take(&mut self.field_init_next);
         let name = func.name.clone().or(hint).unwrap_or_else(|| Arc::from(""));
         self.push_function(kind, name, false);
+        self.f().field_init = field_init;
         self.f().is_async = func.is_async;
         self.f().is_generator = func.is_generator;
         self.f().strict = func.strict;
@@ -1421,6 +1449,18 @@ impl Compiler {
                 );
             }
         }
+        // Un `eval` écrit dans les paramètres ne peut pas déclarer `arguments`
+        // si la fonction en a déjà un : l'objet `arguments`, ou un paramètre
+        // de ce nom pour une fonction fléchée.
+        let mut declared = Vec::new();
+        for param in &func.params {
+            pattern_names(&param.pattern, &mut declared);
+        }
+        if let Some(rest) = &func.rest {
+            pattern_names(rest, &mut declared);
+        }
+        self.f().in_params =
+            kind != FunctionKind::Arrow || declared.iter().any(|name| &**name == "arguments");
         for (position, reg, param) in complex {
             if let Some(default) = &param.default {
                 let skip = self.emit(Op::JumpIfNotUndefined {
@@ -1452,6 +1492,7 @@ impl Compiler {
                 }
             }
         }
+        self.f().in_params = false;
 
         let mut param_names = Vec::new();
         for param in &func.params {
@@ -1599,10 +1640,27 @@ impl Compiler {
         });
 
         let mut fields: Vec<Stmt> = Vec::new();
+        // Clé calculée d'un champ d'instance : évaluée une seule fois, à la
+        // définition de la classe, et gardée dans une liaison cachée que
+        // l'initialiseur relit à chaque construction.
+        let mut field_keys: Vec<Option<JsStr>> = Vec::with_capacity(class.members.len());
+        for member in &class.members {
+            let kept = !member.is_static
+                && matches!(member.kind, ClassMemberKind::Field(_))
+                && matches!(member.key, PropKey::Computed(_));
+            field_keys.push(if kept {
+                let name: JsStr = Arc::from(format!("%champ{}", self.with_count));
+                self.with_count += 1;
+                self.declare(&name, BindKind::Const, true)?;
+                Some(name)
+            } else {
+                None
+            });
+        }
         // Champs et blocs statiques, évalués une fois les méthodes définies
         // et la classe liée à son nom : registre de la clé (champ) et corps.
         let mut statics: Vec<(Option<Reg>, Arc<Function>)> = Vec::new();
-        for member in &class.members {
+        for (member, field_key) in class.members.iter().zip(&field_keys) {
             let member_mark = self.mark();
             let home = if member.is_static { ctor } else { proto };
             let key = self.alloc()?;
@@ -1691,8 +1749,15 @@ impl Compiler {
                         op: UnaryOp::Void,
                         arg: Box::new(Expr::Number(0.0)),
                     });
+                    let field_key = match field_key {
+                        Some(name) => {
+                            self.store(name, key, true)?;
+                            PropKey::Computed(Box::new(Expr::Ident(Arc::clone(name))))
+                        }
+                        None => member.key.clone(),
+                    };
                     fields.push(Stmt::Expr(Expr::FieldInit {
-                        key: member.key.clone(),
+                        key: field_key,
                         value: Box::new(value),
                     }));
                 }
@@ -1714,6 +1779,7 @@ impl Compiler {
                 source: None,
             };
             let reg = self.alloc()?;
+            self.field_init_next = true;
             let index = self.function(&initializer, FunctionKind::Method, false)?;
             self.emit(Op::Closure { dst: reg, index });
             self.emit(Op::SetHome {
@@ -1728,6 +1794,7 @@ impl Compiler {
         for (key, func) in statics {
             let static_mark = self.mark();
             let callee = self.alloc()?;
+            self.field_init_next = true;
             let index = self.function(&func, FunctionKind::Method, false)?;
             self.emit(Op::Closure { dst: callee, index });
             self.emit(Op::SetHome {
@@ -2862,6 +2929,13 @@ impl Compiler {
             strict: self.f().strict,
             top_level: self.funcs.len() == 1 && self.f().is_script,
             in_method,
+            in_field_init: self
+                .funcs
+                .iter()
+                .rev()
+                .find(|f| f.kind != FunctionKind::Arrow)
+                .is_some_and(|f| f.field_init),
+            in_params: self.f().in_params,
         };
         let index = u16::try_from(self.f().eval_sites.len()).unwrap_or(u16::MAX);
         self.f().eval_sites.push(Arc::new(site));
