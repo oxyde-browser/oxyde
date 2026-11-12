@@ -364,7 +364,10 @@ pub(crate) enum Kind {
     Proxy(ProxyData),
     /// Objet `arguments` : ses éléments et sa longueur sont des propriétés
     /// ordinaires.
-    Arguments,
+    /// Objet `arguments`. Hors mode strict, ses premiers éléments sont liés
+    /// aux paramètres de la fonction : capture du paramètre, ou `None` une
+    /// fois le lien rompu.
+    Arguments(Vec<Option<UpId>>),
     /// `WeakMap` et `WeakSet` (références fortes, voir `builtins::weak`).
     WeakMap(IndexMap<MapKey, (Value, Value)>),
     WeakSet(IndexMap<MapKey, Value>),
@@ -638,8 +641,8 @@ impl Heap {
                 }
             }
             match &object.kind {
+                Kind::Arguments(map) => pending_upvalues.extend(map.iter().flatten().copied()),
                 Kind::Ordinary
-                | Kind::Arguments
                 | Kind::Native { .. }
                 | Kind::Error
                 | Kind::RawJson

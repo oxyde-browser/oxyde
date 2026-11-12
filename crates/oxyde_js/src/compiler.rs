@@ -138,6 +138,8 @@ struct FuncState {
     /// Sauts « valeur nulle » des chaînes optionnelles en cours.
     optional_chains: Vec<Vec<usize>>,
     arguments_reg: Option<Reg>,
+    /// Les éléments de `arguments` sont liés aux paramètres.
+    mapped_arguments: bool,
     /// Code en mode strict.
     strict: bool,
     /// Annexe B.3.3 : fonctions de blocs qui sont aussi des variables de
@@ -152,7 +154,7 @@ struct FuncState {
     /// défaut : les lire lève `ReferenceError`.
     dead_params: Vec<JsStr>,
     /// Vrai pendant la compilation des valeurs par défaut des paramètres.
-    in_params: bool,
+    in_params: Vec<JsStr>,
     /// Initialiseur d'un champ de classe ou bloc `static`.
     field_init: bool,
     /// Une déclaration lexicale de premier niveau d'un script est en cours
@@ -377,9 +379,9 @@ pub(crate) fn compile_direct_eval(
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
     check_declarations(body, true, &[], strict)?;
-    if site.in_params && !strict {
-        // Dans l'initialisation des paramètres, `var arguments` entrerait en
-        // conflit avec l'objet `arguments` de la fonction.
+    if !site.params.is_empty() && !strict {
+        // Dans l'initialisation des paramètres, un `var` du code évalué ne
+        // peut pas redéclarer un paramètre ni l'objet `arguments`.
         let mut vars = Vec::new();
         var_names(body, &mut vars);
         for stmt in body {
@@ -387,8 +389,10 @@ pub(crate) fn compile_direct_eval(
                 vars.extend(func.name.clone());
             }
         }
-        if vars.iter().any(|name| &**name == "arguments") {
-            return error("« arguments » ne peut pas être déclaré par eval dans des paramètres");
+        if let Some(name) = vars.iter().find(|name| site.params.contains(name)) {
+            return error(&format!(
+                "« {name} » ne peut pas être déclaré par eval dans des paramètres"
+            ));
         }
     }
     // Au premier niveau d'un script, hors mode strict, les `var` du code
@@ -505,6 +509,15 @@ pub(crate) fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
             _ => {}
         }
     }
+}
+
+/// Référence déjà évaluée d'une cible d'affectation : objet et nom, objet
+/// et clé, ou clé d'une propriété de `super`.
+#[derive(Clone, Copy)]
+enum TargetRef {
+    Prop(Reg, u32),
+    Elem(Reg, Reg),
+    Super(Reg),
 }
 
 /// Annexe B.3.3 : noms des fonctions déclarées dans un bloc qui, hors mode
@@ -717,7 +730,8 @@ impl Compiler {
             param_count: 0,
             length: 0,
             dead_params: Vec::new(),
-            in_params: false,
+            in_params: Vec::new(),
+            mapped_arguments: false,
             field_init: false,
             global_lexical: None,
             is_async: false,
@@ -746,6 +760,7 @@ impl Compiler {
             is_async: state.is_async,
             is_generator: state.is_generator,
             strict: state.strict,
+            mapped_arguments: state.mapped_arguments,
         })
     }
 
@@ -1490,6 +1505,21 @@ impl Compiler {
             }
         }
         self.f().param_count = u16::try_from(func.params.len()).unwrap_or(u16::MAX);
+        // `arguments` lié aux paramètres : hors mode strict, paramètres
+        // simples (ni valeur par défaut, ni motif, ni reste) et distincts.
+        let mut simple_names: Vec<&JsStr> = Vec::new();
+        let distinct = func.params.iter().all(|param| match &param.pattern {
+            Pattern::Ident(name) if !simple_names.contains(&name) => {
+                simple_names.push(name);
+                true
+            }
+            _ => false,
+        });
+        self.f().mapped_arguments = !func.strict
+            && kind != FunctionKind::Arrow
+            && complex.is_empty()
+            && func.rest.is_none()
+            && distinct;
         let length = func
             .params
             .iter()
@@ -1565,8 +1595,10 @@ impl Compiler {
         if let Some(rest) = &func.rest {
             pattern_names(rest, &mut declared);
         }
-        self.f().in_params =
-            kind != FunctionKind::Arrow || declared.iter().any(|name| &**name == "arguments");
+        if kind != FunctionKind::Arrow {
+            declared.push(Arc::from("arguments"));
+        }
+        self.f().in_params = declared;
         for (position, reg, param) in complex {
             if let Some(default) = &param.default {
                 let skip = self.emit(Op::JumpIfNotUndefined {
@@ -1598,7 +1630,7 @@ impl Compiler {
                 }
             }
         }
-        self.f().in_params = false;
+        self.f().in_params.clear();
 
         let mut param_names = Vec::new();
         for param in &func.params {
@@ -2962,17 +2994,44 @@ impl Compiler {
                 self.f().exits.push(Exit::Handler);
                 for element in elements {
                     let inner = self.mark();
+                    // Une cible `obj.x` ou `obj[k]` est évaluée avant de
+                    // demander la valeur suivante à l'itérateur.
+                    let reference = match element {
+                        Some((Pattern::Expr(target), _)) => self.target_ref(target)?,
+                        _ => None,
+                    };
                     let value = self.alloc()?;
                     self.emit(Op::IterNextOrUndefined { dst: value, iter });
-                    if let Some((target, default)) = element {
-                        self.default_and_assign(target, default.as_ref(), value, init)?;
+                    match (element, reference) {
+                        (Some((_, default)), Some(reference)) => {
+                            if let Some(default) = default {
+                                let skip = self.emit(Op::JumpIfNotUndefined {
+                                    src: value,
+                                    target: 0,
+                                });
+                                self.expr(default, Some(value))?;
+                                self.patch(skip);
+                            }
+                            self.store_target(reference, value);
+                        }
+                        (Some((target, default)), None) => {
+                            self.default_and_assign(target, default.as_ref(), value, init)?;
+                        }
+                        (None, _) => {}
                     }
                     self.free_to(inner);
                 }
                 if let Some(rest) = rest {
+                    let reference = match &**rest {
+                        Pattern::Expr(target) => self.target_ref(target)?,
+                        _ => None,
+                    };
                     let value = self.alloc()?;
                     self.emit(Op::IterRest { dst: value, iter });
-                    self.assign_pattern(rest, value, init)?;
+                    match reference {
+                        Some(reference) => self.store_target(reference, value),
+                        None => self.assign_pattern(rest, value, init)?,
+                    }
                 }
                 self.f().exits.pop();
                 self.emit(Op::PopHandler);
@@ -2986,6 +3045,33 @@ impl Compiler {
         }
         self.free_to(mark);
         Ok(())
+    }
+
+    /// Évalue la référence d'une cible d'affectation `obj.x`, `obj[k]` ou
+    /// `super.x` ; `None` pour toute autre cible.
+    fn target_ref(&mut self, target: &Expr) -> CResult<Option<TargetRef>> {
+        Ok(match target {
+            Expr::Member { object, name, .. } => {
+                let obj = self.expr_to_temp(object)?;
+                Some(TargetRef::Prop(obj, self.string(name)))
+            }
+            Expr::Index { object, index, .. } => {
+                let obj = self.expr_to_temp(object)?;
+                let key = self.expr_to_temp(index)?;
+                Some(TargetRef::Elem(obj, key))
+            }
+            Expr::SuperMember(key) => Some(TargetRef::Super(self.key_reg(key)?)),
+            _ => None,
+        })
+    }
+
+    /// Écrit `src` dans la cible que [`Self::target_ref`] a évaluée.
+    fn store_target(&mut self, reference: TargetRef, src: Reg) {
+        self.emit(match reference {
+            TargetRef::Prop(obj, name) => Op::SetProp { obj, name, src },
+            TargetRef::Elem(obj, key) => Op::SetElem { obj, key, src },
+            TargetRef::Super(key) => Op::SetSuper { key, src },
+        });
     }
 
     fn default_and_assign(
@@ -3189,7 +3275,7 @@ impl Compiler {
                 .rev()
                 .find(|f| f.kind != FunctionKind::Arrow)
                 .is_some_and(|f| f.field_init),
-            in_params: self.f().in_params,
+            params: self.f().in_params.clone(),
         };
         let index = u16::try_from(self.f().eval_sites.len()).unwrap_or(u16::MAX);
         self.f().eval_sites.push(Arc::new(site));

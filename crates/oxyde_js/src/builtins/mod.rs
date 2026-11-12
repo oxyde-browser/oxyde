@@ -587,7 +587,7 @@ pub(super) fn object_proto_to_string(vm: &mut Vm, this: &Value, _args: &[Value])
             | Kind::NativeData { .. }
             | Kind::Bound { .. } => "Function",
             Kind::Error => "Error",
-            Kind::Arguments => "Arguments",
+            Kind::Arguments(_) => "Arguments",
             Kind::Date(_) => "Date",
             Kind::RegExp { .. } => "RegExp",
             Kind::Primitive(Value::Bool(_)) => "Boolean",

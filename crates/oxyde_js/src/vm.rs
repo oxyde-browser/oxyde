@@ -670,6 +670,50 @@ impl Vm {
         id
     }
 
+    /// Capture liée à l'élément `key` de l'objet `arguments` `id`, si le lien
+    /// avec le paramètre tient toujours.
+    pub(crate) fn mapped_argument(&self, id: ObjId, key: &str) -> Option<UpId> {
+        let Kind::Arguments(map) = &self.heap.get(id).kind else {
+            return None;
+        };
+        if map.is_empty() {
+            return None;
+        }
+        map.get(crate::value::array_index(key)?).copied().flatten()
+    }
+
+    /// Rompt (`None`) ou rétablit le lien de l'élément `key` de `arguments`.
+    pub(crate) fn map_argument(&mut self, id: ObjId, key: &str, cell: Option<UpId>) {
+        if let Kind::Arguments(map) = &mut self.heap.get_mut(id).kind
+            && let Some(slot) = crate::value::array_index(key).and_then(|i| map.get_mut(i))
+        {
+            *slot = cell;
+        }
+    }
+
+    /// Valeur de la variable capturée `id`.
+    pub(crate) fn cell_value(&self, id: UpId) -> Value {
+        match self.heap.upvalue(id) {
+            Some(Upvalue::Open(i)) => self.stack.get(*i).cloned().unwrap_or(Value::Undefined),
+            Some(Upvalue::Closed(v)) => v.clone(),
+            None => Value::Undefined,
+        }
+    }
+
+    /// Écrit la variable capturée `id`.
+    pub(crate) fn set_cell_value(&mut self, id: UpId, value: Value) {
+        match self.heap.upvalue_mut(id) {
+            Some(Upvalue::Open(i)) => {
+                let i = *i;
+                if let Some(slot) = self.stack.get_mut(i) {
+                    *slot = value;
+                }
+            }
+            Some(cell) => *cell = Upvalue::Closed(value),
+            None => {}
+        }
+    }
+
     /// Déplace dans le tas les variables capturées situées à partir de `from`.
     fn close_upvalues(&mut self, from: usize) {
         let mut i = 0;
@@ -2334,14 +2378,25 @@ impl Vm {
                 self.set_reg(dst, array);
             }
             Op::Arguments { dst } => {
-                let (args, callee) = match self.frames.last() {
-                    Some(f) => (f.args.clone(), (!f.proto.strict).then_some(f.closure)),
-                    None => (Vec::new(), None),
+                let (args, callee, base, mapped) = match self.frames.last() {
+                    Some(f) => (
+                        f.args.clone(),
+                        (!f.proto.strict).then_some(f.closure),
+                        f.base,
+                        if f.proto.mapped_arguments {
+                            usize::from(f.proto.param_count).min(f.args.len())
+                        } else {
+                            0
+                        },
+                    ),
+                    None => (Vec::new(), None, 0, 0),
                 };
-                // LIMITE : les éléments ne sont pas liés aux paramètres.
+                // Chaque élément lié partage la cellule de son paramètre.
+                let map: Vec<Option<UpId>> =
+                    (0..mapped).map(|i| Some(self.capture(base + i))).collect();
                 let object = self.heap.alloc(Object::new(
                     Some(self.intrinsics.object_proto),
-                    Kind::Arguments,
+                    Kind::Arguments(map),
                 ));
                 #[expect(clippy::cast_precision_loss, reason = "nombre d'arguments petit")]
                 let length = Value::Number(args.len() as f64);

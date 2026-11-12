@@ -324,6 +324,23 @@ impl Vm {
 
     /// `[[GetOwnProperty]]` d'un objet qui n'est pas un `Proxy`.
     pub(crate) fn ordinary_get_own(&mut self, id: ObjId, key: &PropertyKey) -> Option<Descriptor> {
+        if let PropertyKey::String(name) = key
+            && let Some(cell) = self.mapped_argument(id, name)
+            && let Some(property) = self.heap.get(id).props.get(name)
+        {
+            // Élément de `arguments` lié : la valeur est celle du paramètre.
+            let (writable, enumerable, configurable) = (
+                property.writable,
+                property.enumerable,
+                property.configurable,
+            );
+            return Some(Descriptor::data(
+                self.cell_value(cell),
+                writable,
+                enumerable,
+                configurable,
+            ));
+        }
         if let PropertyKey::String(name) = key {
             match &self.heap.get(id).kind {
                 Kind::Array(items) => {
@@ -393,6 +410,36 @@ impl Vm {
     ) -> JsResult<bool> {
         if self.is_proxy(id) {
             return self.proxy_define_own_property(id, key, desc);
+        }
+        if let PropertyKey::String(name) = key
+            && let Some(cell) = self.mapped_argument(id, name)
+        {
+            // `arguments` lié (ECMA-262 §10.4.4.2) : la définition ordinaire
+            // se fait sur la valeur courante du paramètre ; le lien est rompu
+            // si l'élément devient un accesseur ou cesse d'être inscriptible.
+            let current = self.cell_value(cell);
+            if let Some(property) = self.heap.get_mut(id).props.get_mut(name)
+                && let Slot::Data(slot) = &mut property.slot
+            {
+                *slot = current;
+            }
+            let accessor = desc.get.is_some() || desc.set.is_some();
+            let read_only = desc.writable == Some(false);
+            let new_value = desc.value.clone();
+            self.map_argument(id, name, None);
+            if !self.define_own_property(id, key, desc)? {
+                self.map_argument(id, name, Some(cell));
+                return Ok(false);
+            }
+            if !accessor {
+                if let Some(value) = new_value {
+                    self.set_cell_value(cell, value);
+                }
+                if !read_only {
+                    self.map_argument(id, name, Some(cell));
+                }
+            }
+            return Ok(true);
         }
         if let PropertyKey::String(name) = key {
             match &self.heap.get(id).kind {
@@ -720,6 +767,17 @@ impl Vm {
                 });
             }
         };
+        // Supprimer un élément lié de `arguments` rompt le lien.
+        if self.mapped_argument(id, name).is_some()
+            && self
+                .heap
+                .get(id)
+                .props
+                .get(name)
+                .is_none_or(|property| property.configurable)
+        {
+            self.map_argument(id, name, None);
+        }
         if self.closure_virtual(id, name) {
             self.heap.get_mut(id).deleted_virtual |= if &**name == "name" {
                 DELETED_NAME

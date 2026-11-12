@@ -123,6 +123,12 @@ impl Vm {
                 }
                 char_at(s, array_index(key)?).map(|c| Ok(Value::string(&c)))
             }
+            // Élément de `arguments` lié à un paramètre : la valeur courante
+            // du paramètre.
+            Kind::Arguments(_) => {
+                let cell = self.mapped_argument(id, key)?;
+                Some(Ok(self.cell_value(cell)))
+            }
             Kind::Closure(c) => match key {
                 "name" if self.closure_virtual(id, key) => {
                     Some(Ok(Value::String(Arc::clone(&c.proto.name))))
@@ -540,6 +546,10 @@ impl Vm {
             Value::BigInt(_) => self.intrinsics.bigint_proto,
         };
         if target.as_object().is_some() {
+            // Élément de `arguments` lié : le paramètre reçoit aussi la valeur.
+            if let Some(cell) = self.mapped_argument(id, key) {
+                self.set_cell_value(cell, value.clone());
+            }
             // Chemins rapides : élément dense d'un tableau, propriété de
             // données propre.
             let object = self.heap.get_mut(id);

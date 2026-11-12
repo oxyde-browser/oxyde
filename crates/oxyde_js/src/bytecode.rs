@@ -578,8 +578,9 @@ pub(crate) struct EvalSite {
     /// `static` : `arguments` y est interdit.
     pub(crate) in_field_init: bool,
     /// L'appel est écrit dans l'initialisation des paramètres d'une
-    /// fonction : le code évalué ne peut pas y déclarer `arguments`.
-    pub(crate) in_params: bool,
+    /// fonction : noms qui y sont liés (paramètres, `arguments`), que le
+    /// code évalué ne peut pas déclarer.
+    pub(crate) params: Vec<JsStr>,
 }
 
 /// Morceaux d'un gabarit étiqueté : interprétés, puis bruts.
@@ -616,6 +617,9 @@ pub(crate) struct FunctionProto {
     /// Code en mode strict : une écriture refusée lève `TypeError` et `this`
     /// n'est pas converti en objet.
     pub(crate) strict: bool,
+    /// Les éléments de `arguments` sont liés aux paramètres : fonction non
+    /// stricte dont les paramètres sont de simples identifiants distincts.
+    pub(crate) mapped_arguments: bool,
 }
 
 impl FunctionProto {
