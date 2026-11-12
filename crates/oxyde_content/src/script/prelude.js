@@ -2,14 +2,15 @@
 // HTML Standard, DOM Standard). Le script rend une fabrique, appelée avec
 // les opérations que seul le moteur sait faire :
 //   parseUrl(texte, base)        -> composants de l'adresse, ou null ;
-//   changeUrl(href, rang, valeur) -> composants après modification, ou null.
+//   changeUrl(href, rang, valeur) -> composants après modification, ou null ;
+//   observe, disconnect, takeRecords -> observateurs de mutation.
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
 //
 // LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
-(function (parseUrl, changeUrl) {
+(function (parseUrl, changeUrl, observe, disconnect, takeRecords) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -309,6 +310,28 @@
   }
   tag(Headers, "Headers");
   expose("Headers", Headers);
+
+  // ---- MutationObserver (DOM Standard §4.3) -------------------------------------------------------
+  class MutationObserver {
+    #callback;
+    constructor(callback) {
+      if (typeof callback !== "function") {
+        throw new TypeError("MutationObserver : une fonction de rappel est attendue");
+      }
+      this.#callback = callback;
+    }
+    observe(target, options = {}) {
+      observe(this, this.#callback, target, options);
+    }
+    disconnect() {
+      disconnect(this);
+    }
+    takeRecords() {
+      return takeRecords(this);
+    }
+  }
+  tag(MutationObserver, "MutationObserver");
+  expose("MutationObserver", MutationObserver);
 
   // ---- Microtâches, erreurs, temps libre ------------------------------------------------------------
   const resolved = Promise.resolve();

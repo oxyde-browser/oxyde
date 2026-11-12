@@ -1505,6 +1505,62 @@ mod tests {
     }
 
     #[test]
+    fn mutation_observers_receive_records_at_the_end_of_the_task() {
+        let mut p = page(
+            "<div id=root><p id=a class=x>un</p></div><pre id=out></pre>
+             <script>
+               const log = [];
+               const root = document.getElementById('root');
+               const a = document.getElementById('a');
+               const describe = r => [
+                 r.type, r.target.id || r.target.nodeName, r.attributeName, r.oldValue,
+                 r.addedNodes.length, r.removedNodes.length,
+               ].join(' ');
+               const observer = new MutationObserver((records, self) => {
+                 log.push('lot ' + records.length + ' ' + (self === observer));
+                 for (const r of records) log.push(describe(r));
+                 document.getElementById('out').textContent = log.join('|');
+               });
+               observer.observe(root, {
+                 subtree: true, childList: true, attributeOldValue: true,
+                 characterDataOldValue: true, attributeFilter: ['class'],
+               });
+               a.className = 'y';
+               a.setAttribute('title', 'ignoré');
+               a.firstChild.data = 'deux';
+               root.appendChild(document.createElement('b'));
+               a.remove();
+               log.push('avant ' + observer.takeRecords().length);
+               a.className = 'hors du sous-arbre';
+               root.setAttribute('class', 'z');
+               const silent = new MutationObserver(() => log.push('jamais'));
+               silent.observe(root, { attributes: true });
+               silent.disconnect();
+               root.removeAttribute('class');
+               try { observer.observe(root, {}); } catch (e) { log.push(e.name); }
+             </script>",
+        );
+        p.run_scripts();
+        let out = p
+            .document()
+            .descendants(p.document().root())
+            .find(|n| {
+                p.document()
+                    .element(*n)
+                    .is_some_and(|e| e.attr("id") == Some("out"))
+            })
+            .map(|n| p.document().text_content(n))
+            .unwrap_or_default();
+        assert_eq!(
+            out,
+            concat!(
+                "avant 4|TypeError|lot 2 true|",
+                "attributes root class  0 0|attributes root class z 0 0"
+            )
+        );
+    }
+
+    #[test]
     fn storage_fragments_collections_and_dataset() {
         let mut p = page(
             "<p id=a data-user-id=7 name=n>x</p><p>y</p>

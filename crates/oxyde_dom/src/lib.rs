@@ -155,7 +155,58 @@ pub struct Document {
     nodes: Vec<Node>,
     /// Mode de compatibilité.
     pub quirks_mode: QuirksMode,
+    /// Journal des modifications, tenu seulement quand des observateurs de
+    /// mutation l'ont demandé (voir [`Document::record_mutations`]). Chaque
+    /// modification est accompagnée du nœud touché et de ses ancêtres à cet
+    /// instant : un nœud détaché ensuite reste attribué à son ancien arbre.
+    mutations: Option<Vec<(Mutation, Vec<NodeId>)>>,
 }
+
+/// Modification du document, consignée pour les observateurs de mutation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Mutation {
+    /// L'attribut `name` de `target` a changé ; `old` est son ancienne valeur.
+    Attribute {
+        /// Élément modifié.
+        target: NodeId,
+        /// Nom de l'attribut.
+        name: String,
+        /// Valeur précédente, `None` si l'attribut n'existait pas.
+        old: Option<String>,
+    },
+    /// Le texte de `target` (nœud texte ou commentaire) a changé.
+    Text {
+        /// Nœud modifié.
+        target: NodeId,
+        /// Texte précédent.
+        old: String,
+    },
+    /// `node` a été inséré dans `parent`, entre `previous` et `next`.
+    Inserted {
+        /// Parent qui reçoit le nœud.
+        parent: NodeId,
+        /// Nœud inséré.
+        node: NodeId,
+        /// Frère précédent après l'insertion.
+        previous: Option<NodeId>,
+        /// Frère suivant après l'insertion.
+        next: Option<NodeId>,
+    },
+    /// `node` a été retiré de `parent`, d'entre `previous` et `next`.
+    Removed {
+        /// Ancien parent.
+        parent: NodeId,
+        /// Nœud retiré.
+        node: NodeId,
+        /// Frère précédent avant le retrait.
+        previous: Option<NodeId>,
+        /// Frère suivant avant le retrait.
+        next: Option<NodeId>,
+    },
+}
+
+/// Nombre maximal de modifications gardées dans le journal entre deux relevés.
+const MAX_MUTATIONS: usize = 100_000;
 
 impl Default for Document {
     fn default() -> Self {
@@ -177,6 +228,7 @@ impl Document {
                 data: NodeData::Document,
             }],
             quirks_mode: QuirksMode::NoQuirks,
+            mutations: None,
         }
     }
 
@@ -258,30 +310,85 @@ impl Document {
         id
     }
 
+    /// Tient (ou cesse de tenir) le journal des modifications.
+    pub fn record_mutations(&mut self, enabled: bool) {
+        if enabled {
+            self.mutations.get_or_insert_with(Vec::new);
+        } else {
+            self.mutations = None;
+        }
+    }
+
+    /// Rend les modifications consignées depuis le dernier relevé, chacune
+    /// avec le nœud touché suivi de ses ancêtres au moment où elle a eu lieu.
+    pub fn take_mutations(&mut self) -> Vec<(Mutation, Vec<NodeId>)> {
+        self.mutations
+            .as_mut()
+            .map(std::mem::take)
+            .unwrap_or_default()
+    }
+
+    fn log(&mut self, mutation: impl FnOnce() -> Mutation) {
+        if !self
+            .mutations
+            .as_ref()
+            .is_some_and(|log| log.len() < MAX_MUTATIONS)
+        {
+            return;
+        }
+        let mutation = mutation();
+        let target = match &mutation {
+            Mutation::Attribute { target, .. } | Mutation::Text { target, .. } => *target,
+            Mutation::Inserted { parent, .. } | Mutation::Removed { parent, .. } => *parent,
+        };
+        let path: Vec<NodeId> = std::iter::once(target)
+            .chain(self.ancestors(target))
+            .collect();
+        if let Some(log) = &mut self.mutations {
+            log.push((mutation, path));
+        }
+    }
+
     /// Remplace le texte d'un nœud texte ou commentaire ; sans effet sur les autres nœuds.
     pub fn set_text(&mut self, id: NodeId, text: &str) {
         if let NodeData::Text(t) | NodeData::Comment(t) = &mut self.node_mut(id).data {
-            text.clone_into(t);
+            let old = std::mem::replace(t, text.to_owned());
+            self.log(|| Mutation::Text { target: id, old });
         }
     }
 
     /// Fixe l'attribut `name` de l'élément `id` (créé s'il n'existe pas).
     pub fn set_attr(&mut self, id: NodeId, name: &str, value: &str) {
         if let Some(element) = self.element_mut(id) {
-            match element.attrs.iter_mut().find(|a| a.name == name) {
-                Some(attr) => value.clone_into(&mut attr.value),
-                None => element.attrs.push(Attribute {
-                    name: name.to_owned(),
-                    value: value.to_owned(),
-                }),
-            }
+            let old = match element.attrs.iter_mut().find(|a| a.name == name) {
+                Some(attr) => Some(std::mem::replace(&mut attr.value, value.to_owned())),
+                None => {
+                    element.attrs.push(Attribute {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    });
+                    None
+                }
+            };
+            self.log(|| Mutation::Attribute {
+                target: id,
+                name: name.to_owned(),
+                old,
+            });
         }
     }
 
     /// Retire l'attribut `name` de l'élément `id`.
     pub fn remove_attr(&mut self, id: NodeId, name: &str) {
-        if let Some(element) = self.element_mut(id) {
-            element.attrs.retain(|a| a.name != name);
+        if let Some(element) = self.element_mut(id)
+            && let Some(position) = element.attrs.iter().position(|a| a.name == name)
+        {
+            let old = element.attrs.remove(position).value;
+            self.log(|| Mutation::Attribute {
+                target: id,
+                name: name.to_owned(),
+                old: Some(old),
+            });
         }
     }
 
@@ -355,6 +462,12 @@ impl Document {
             (n.parent, n.prev_sibling, n.next_sibling)
         };
         let Some(parent) = parent else { return };
+        self.log(|| Mutation::Removed {
+            parent,
+            node: child,
+            previous: prev,
+            next,
+        });
         match prev {
             Some(p) => self.node_mut(p).next_sibling = next,
             None => self.node_mut(parent).first_child = next,
@@ -417,6 +530,16 @@ impl Document {
             }
         }
         self.node_mut(child).parent = Some(parent);
+        let (previous, next) = {
+            let inserted = self.node(child);
+            (inserted.prev_sibling, inserted.next_sibling)
+        };
+        self.log(|| Mutation::Inserted {
+            parent,
+            node: child,
+            previous,
+            next,
+        });
     }
 
     /// Ajoute du texte dans `parent` avant `reference`, en fusionnant avec le
@@ -432,7 +555,9 @@ impl Document {
         if let Some(adj) = adjacent
             && let NodeData::Text(existing) = &mut self.node_mut(adj).data
         {
+            let old = existing.clone();
             existing.push_str(text);
+            self.log(|| Mutation::Text { target: adj, old });
             return;
         }
         let node = self.create_text(text);

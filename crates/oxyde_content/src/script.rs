@@ -27,6 +27,7 @@ use url::Url;
 
 mod dom_ops;
 mod events;
+mod mutation;
 mod storage;
 
 use events::{Listener, add_event_listener, dispatch, remove_event_listener};
@@ -70,6 +71,8 @@ struct DomHost {
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
+    /// Observateurs de mutation en activité.
+    observers: Vec<mutation::Observer>,
     /// Identifiant du prochain écouteur enregistré.
     next_listener: u64,
     timers: Vec<Timer>,
@@ -1613,6 +1616,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         storage: [Vec::new(), Vec::new()],
         protos,
         listeners: Vec::new(),
+        observers: Vec::new(),
         next_listener: 0,
         timers: Vec::new(),
         fetch_queue: Vec::new(),
@@ -1710,6 +1714,9 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let helpers = [
         Value::Object(vm.new_function("parseUrl", 2, parse_url)),
         Value::Object(vm.new_function("changeUrl", 3, change_url)),
+        Value::Object(vm.new_function("observe", 4, mutation::observe)),
+        Value::Object(vm.new_function("disconnect", 1, mutation::disconnect)),
+        Value::Object(vm.new_function("takeRecords", 1, mutation::take_records)),
     ];
     vm.call(&prelude, &Value::Undefined, &helpers)?;
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
@@ -1760,8 +1767,10 @@ impl ScriptEngine {
         vm.set_budget(Some(TASK_BUDGET));
         let result = oxyde_js::with_large_stack(|| {
             let result = task(vm);
-            // Fin de la tâche : les réactions de promesses en attente s'exécutent.
+            // Fin de la tâche : les réactions de promesses en attente
+            // s'exécutent, puis les observateurs de mutation sont prévenus.
             vm.run_microtasks();
+            mutation::deliver(vm);
             result
         });
         if let Some(h) = host(vm) {
