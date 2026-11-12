@@ -54,6 +54,27 @@ pub enum Longhand {
     MaxHeight,
     BoxSizing,
     ListStyleType,
+    Position,
+    Inset(Side),
+    Float,
+    Clear,
+    ZIndex,
+    OverflowX,
+    OverflowY,
+    Visibility,
+    Opacity,
+    FlexDirection,
+    FlexWrap,
+    FlexGrow,
+    FlexShrink,
+    FlexBasis,
+    JustifyContent,
+    AlignItems,
+    AlignSelf,
+    AlignContent,
+    Order,
+    RowGap,
+    ColumnGap,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -287,6 +308,65 @@ fn side_of(name: &str) -> Option<Side> {
         "left" | "inline-start" => Side::Left,
         _ => return None,
     })
+}
+
+const OVERFLOWS: &[&str] = &["visible", "hidden", "clip", "scroll", "auto"];
+const FLEX_DIRECTIONS: &[&str] = &["row", "row-reverse", "column", "column-reverse"];
+const FLEX_WRAPS: &[&str] = &["nowrap", "wrap", "wrap-reverse"];
+const CONTENT_ALIGNMENTS: &[&str] = &[
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "flex-end",
+    "end",
+    "center",
+    "space-between",
+    "space-around",
+    "space-evenly",
+    "left",
+    "right",
+];
+const ITEM_ALIGNMENTS: &[&str] = &[
+    "auto",
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "self-start",
+    "flex-end",
+    "end",
+    "self-end",
+    "center",
+    "baseline",
+];
+
+/// Entier (`z-index`, `order`).
+fn integer(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) if v.fract() == 0.0 => Some(Value::Number(*v)),
+        _ => None,
+    }
+}
+
+fn integer_or_auto(token: &Token) -> Option<Value> {
+    match ident_of(token).as_deref() {
+        Some("auto") => Some(Value::Ident("auto".to_owned())),
+        Some(_) => None,
+        None => integer(token),
+    }
+}
+
+fn non_negative_number(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) if *v >= 0.0 => Some(Value::Number(*v)),
+        _ => None,
+    }
+}
+
+/// Valeur de `row-gap` ou `column-gap` : `normal` ou une longueur positive.
+fn gap_value(token: &Token) -> Option<Value> {
+    length_or_keywords(token, &["normal"], false)
 }
 
 fn font_weight(token: &Token) -> Option<Value> {
@@ -612,6 +692,198 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             Longhand::BoxSizing,
             keyword(tokens, &["content-box", "border-box"]),
         ),
+        "position" => single(
+            Longhand::Position,
+            keyword(
+                tokens,
+                &["static", "relative", "absolute", "fixed", "sticky"],
+            ),
+        ),
+        "top" | "right" | "bottom" | "left" => single(
+            Longhand::Inset(side_of(name)?),
+            one().and_then(|t| length_or_keywords(t, &["auto"], true)),
+        ),
+        "inset" => {
+            if let Some(w) = wide {
+                return Some(all_sides(Longhand::Inset, &w));
+            }
+            let values: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| length_or_keywords(t, &["auto"], true))
+                .collect();
+            Some(sides(Longhand::Inset, four_sides(&values?)?))
+        }
+        "float" => single(
+            Longhand::Float,
+            keyword(
+                tokens,
+                &["none", "left", "right", "inline-start", "inline-end"],
+            ),
+        ),
+        "clear" => single(
+            Longhand::Clear,
+            keyword(
+                tokens,
+                &[
+                    "none",
+                    "left",
+                    "right",
+                    "both",
+                    "inline-start",
+                    "inline-end",
+                ],
+            ),
+        ),
+        "z-index" => single(Longhand::ZIndex, one().and_then(integer_or_auto)),
+        "order" => single(Longhand::Order, one().and_then(integer)),
+        "overflow" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::OverflowX, w.clone()),
+                    (Longhand::OverflowY, w),
+                ]);
+            }
+            let words: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| keyword(std::slice::from_ref(t), OVERFLOWS))
+                .collect();
+            match words?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::OverflowX, both.clone()),
+                    (Longhand::OverflowY, both.clone()),
+                ]),
+                [x, y] => Some(vec![
+                    (Longhand::OverflowX, x.clone()),
+                    (Longhand::OverflowY, y.clone()),
+                ]),
+                _ => None,
+            }
+        }
+        "overflow-x" => single(Longhand::OverflowX, keyword(tokens, OVERFLOWS)),
+        "overflow-y" => single(Longhand::OverflowY, keyword(tokens, OVERFLOWS)),
+        "visibility" => single(
+            Longhand::Visibility,
+            keyword(tokens, &["visible", "hidden", "collapse"]),
+        ),
+        "opacity" => single(
+            Longhand::Opacity,
+            one().and_then(|t| match t {
+                Token::Number(v) => Some(Value::Number(v.clamp(0.0, 1.0))),
+                Token::Percentage(v) => Some(Value::Number((v / 100.0).clamp(0.0, 1.0))),
+                _ => None,
+            }),
+        ),
+        "flex-direction" => single(Longhand::FlexDirection, keyword(tokens, FLEX_DIRECTIONS)),
+        "flex-wrap" => single(Longhand::FlexWrap, keyword(tokens, FLEX_WRAPS)),
+        "flex-flow" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::FlexDirection, w.clone()),
+                    (Longhand::FlexWrap, w),
+                ]);
+            }
+            let mut pairs = Vec::new();
+            for token in components(tokens) {
+                let one = std::slice::from_ref(token);
+                if let Some(direction) = keyword(one, FLEX_DIRECTIONS) {
+                    pairs.push((Longhand::FlexDirection, direction));
+                } else {
+                    pairs.push((Longhand::FlexWrap, keyword(one, FLEX_WRAPS)?));
+                }
+            }
+            (!pairs.is_empty() && pairs.len() <= 2).then_some(pairs)
+        }
+        "flex-grow" => single(Longhand::FlexGrow, one().and_then(non_negative_number)),
+        "flex-shrink" => single(Longhand::FlexShrink, one().and_then(non_negative_number)),
+        "flex-basis" => single(
+            Longhand::FlexBasis,
+            one().and_then(|t| length_or_keywords(t, &["auto", "content"], false)),
+        ),
+        "flex" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::FlexGrow, w.clone()),
+                    (Longhand::FlexShrink, w.clone()),
+                    (Longhand::FlexBasis, w),
+                ]);
+            }
+            let parts = components(tokens);
+            let auto = || Value::Ident("auto".to_owned());
+            let zero = || Value::Length(Length::Px(0.0));
+            let (grow, shrink, basis) = match parts.as_slice() {
+                [Token::Ident(word)] if word.eq_ignore_ascii_case("none") => {
+                    (Value::Number(0.0), Value::Number(0.0), auto())
+                }
+                [Token::Ident(word)] if word.eq_ignore_ascii_case("auto") => {
+                    (Value::Number(1.0), Value::Number(1.0), auto())
+                }
+                [one] => match non_negative_number(one) {
+                    // `flex: 2` vaut `2 1 0`.
+                    Some(grow) => (grow, Value::Number(1.0), zero()),
+                    None => (
+                        Value::Number(1.0),
+                        Value::Number(1.0),
+                        length_or_keywords(one, &["auto", "content"], false)?,
+                    ),
+                },
+                [first, second] => {
+                    let grow = non_negative_number(first)?;
+                    match non_negative_number(second) {
+                        Some(shrink) => (grow, shrink, zero()),
+                        None => (
+                            grow,
+                            Value::Number(1.0),
+                            length_or_keywords(second, &["auto", "content"], false)?,
+                        ),
+                    }
+                }
+                [first, second, third] => (
+                    non_negative_number(first)?,
+                    non_negative_number(second)?,
+                    // Une base nulle peut s'écrire `0`, sans unité.
+                    match third {
+                        Token::Number(v) if *v == 0.0 => zero(),
+                        other => length_or_keywords(other, &["auto", "content"], false)?,
+                    },
+                ),
+                _ => return None,
+            };
+            Some(vec![
+                (Longhand::FlexGrow, grow),
+                (Longhand::FlexShrink, shrink),
+                (Longhand::FlexBasis, basis),
+            ])
+        }
+        "justify-content" => single(
+            Longhand::JustifyContent,
+            keyword(tokens, CONTENT_ALIGNMENTS),
+        ),
+        "align-content" => single(Longhand::AlignContent, keyword(tokens, CONTENT_ALIGNMENTS)),
+        "align-items" => single(Longhand::AlignItems, keyword(tokens, ITEM_ALIGNMENTS)),
+        "align-self" => single(Longhand::AlignSelf, keyword(tokens, ITEM_ALIGNMENTS)),
+        "row-gap" | "grid-row-gap" => single(Longhand::RowGap, one().and_then(gap_value)),
+        "column-gap" | "grid-column-gap" => single(Longhand::ColumnGap, one().and_then(gap_value)),
+        "gap" | "grid-gap" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::RowGap, w.clone()),
+                    (Longhand::ColumnGap, w),
+                ]);
+            }
+            let values: Option<Vec<Value>> =
+                components(tokens).into_iter().map(gap_value).collect();
+            match values?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::RowGap, both.clone()),
+                    (Longhand::ColumnGap, both.clone()),
+                ]),
+                [row, column] => Some(vec![
+                    (Longhand::RowGap, row.clone()),
+                    (Longhand::ColumnGap, column.clone()),
+                ]),
+                _ => None,
+            }
+        }
         "list-style-type" | "list-style" => {
             if let Some(w) = wide {
                 return Some(vec![(Longhand::ListStyleType, w)]);

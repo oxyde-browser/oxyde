@@ -21,7 +21,8 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::time::Instant;
 
-use oxyde_css::{Color, StyleMap, Stylesheet, Viewport, parse_stylesheet};
+pub use oxyde_css::Viewport;
+use oxyde_css::{Color, StyleMap, Stylesheet, parse_stylesheet};
 use oxyde_dom::{Document, NodeId};
 pub use oxyde_js::ConsoleMessage;
 use oxyde_layout::{Fragment, LayoutTree};
@@ -165,12 +166,56 @@ pub fn decode_image(bytes: &[u8]) -> Option<Image> {
 }
 
 /// Feuille de style du document, dans l'ordre du source.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum SheetSlot {
     /// `<style>`
     Inline(Stylesheet),
     /// `<link rel=stylesheet>` ; `None` tant que la ressource n'est pas chargée.
     External { url: Url, sheet: Option<Stylesheet> },
+}
+
+/// Ce qu'il faut, outre le document, pour le mettre en page : ses feuilles
+/// de style externes déjà reçues et la taille de ses images. Le moteur de
+/// script en garde une copie pour répondre aux lectures de géométrie.
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutEnv {
+    sheets: Vec<SheetSlot>,
+    base: Url,
+    sizes: HashMap<NodeId, (f32, f32)>,
+}
+
+/// Feuilles de style utilisables parmi `slots`.
+fn usable_sheets(slots: &[SheetSlot]) -> Vec<Stylesheet> {
+    slots
+        .iter()
+        .filter_map(|s| match s {
+            SheetSlot::Inline(sheet)
+            | SheetSlot::External {
+                sheet: Some(sheet), ..
+            } => Some(sheet.clone()),
+            SheetSlot::External { sheet: None, .. } => None,
+        })
+        .collect()
+}
+
+/// Calcule le style puis la mise en page de `doc` dans son état du moment,
+/// pour une fenêtre de taille `viewport`.
+pub(crate) fn layout_snapshot(
+    doc: &Document,
+    env: &LayoutEnv,
+    viewport: (f32, f32),
+    text: &mut TextContext,
+) -> (StyleMap, LayoutTree) {
+    // Les `<style>` sont relus dans le document, qui a pu changer.
+    let slots = collect_sheets(doc, &env.base, env.sheets.clone());
+    let viewport = Viewport {
+        width: viewport.0,
+        height: viewport.1,
+    };
+    let styles = oxyde_css::compute_styles(doc, &usable_sheets(&slots), viewport);
+    let intrinsic = |node: NodeId| env.sizes.get(&node).copied();
+    let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
+    (styles, tree)
 }
 
 /// État de chargement de l'image d'un élément `<img>`.
@@ -539,6 +584,9 @@ impl Page {
             }
         }
         self.dirty |= found;
+        if found {
+            self.sync_layout_env();
+        }
         found
     }
 
@@ -803,6 +851,8 @@ impl Page {
             engine.set_task_budget(budget);
         }
         engine.set_cookies(&self.cookies);
+        engine.set_viewport(self.viewport.width, self.viewport.height);
+        engine.set_layout_env(self.layout_env());
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
@@ -857,6 +907,45 @@ impl Page {
         self.task_budget = Some(budget);
         if let Some(engine) = self.engine.as_mut() {
             engine.set_task_budget(budget);
+        }
+    }
+
+    /// Fixe la taille de la fenêtre que voient les scripts avant la première
+    /// mise en page ([`Page::update`] la fixe ensuite à chaque appel).
+    pub fn set_viewport(&mut self, viewport: Viewport) {
+        if viewport != self.viewport {
+            self.viewport = viewport;
+            self.dirty = true;
+        }
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_viewport(viewport.width, viewport.height);
+        }
+    }
+
+    /// Feuilles de style reçues et tailles d'images, pour la mise en page à
+    /// la demande des scripts.
+    fn layout_env(&self) -> LayoutEnv {
+        #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
+        let sizes = self
+            .images
+            .iter()
+            .filter_map(|(node, slot)| {
+                let image = slot.image.as_ref()?;
+                Some((*node, (image.width() as f32, image.height() as f32)))
+            })
+            .collect();
+        LayoutEnv {
+            sheets: self.sheets.clone(),
+            base: self.base.clone(),
+            sizes,
+        }
+    }
+
+    /// Remet au moteur de script de quoi mettre la page en page.
+    fn sync_layout_env(&mut self) {
+        let env = self.layout_env();
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_layout_env(env);
         }
     }
 
@@ -1038,17 +1127,7 @@ impl Page {
         if let Some(engine) = self.engine.as_mut() {
             engine.set_viewport(viewport.width, viewport.height);
         }
-        let sheets: Vec<Stylesheet> = self
-            .sheets
-            .iter()
-            .filter_map(|s| match s {
-                SheetSlot::Inline(sheet)
-                | SheetSlot::External {
-                    sheet: Some(sheet), ..
-                } => Some(sheet.clone()),
-                SheetSlot::External { sheet: None, .. } => None,
-            })
-            .collect();
+        let sheets = usable_sheets(&self.sheets);
         self.styles = oxyde_css::compute_styles(&self.doc, &sheets, viewport);
         let images = &self.images;
         let image_of = |node: NodeId| images.get(&node).and_then(|slot| slot.image.clone());

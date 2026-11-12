@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 42909 / 49886 (86,0 %)** — fichiers entièrement réussis : 282 / 693 (40,7 %).
+**Sous-tests réussis : 42930 / 49886 (86,1 %)** — fichiers entièrement réussis : 286 / 693 (41,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -18,12 +18,12 @@ est le plus honnête des deux.
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
 | `dom/events` | 52 / 100 | 336 / 496 (67,7 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
-| `dom/events/scrolling` | 0 / 39 | 3 / 103 (2,9 %) |
+| `dom/events/scrolling` | 0 / 39 | 12 / 103 (11,7 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
 | `dom/nodes` | 155 / 265 | 10324 / 13058 (79,1 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 3 / 22 | 6 / 37 (16,2 %) |
-| `dom/nodes/moveBefore` | 10 / 64 | 49 / 168 (29,2 %) |
+| `dom/nodes/moveBefore` | 14 / 64 | 61 / 168 (36,3 %) |
 | `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
 | `dom/ranges` | 29 / 49 | 30212 / 33528 (90,1 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -131,7 +131,7 @@ est le plus honnête des deux.
 | `dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-cross-origin-iframes.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scroll-event-fired-to-element.html` | 1 / 4 |  |
+| `dom/events/scrolling/scroll-event-fired-to-element.html` | 2 / 4 |  |
 | `dom/events/scrolling/scroll-event-fired-to-iframe.html` | 2 / 4 |  |
 | `dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html` | 0 / 2 |  |
@@ -149,12 +149,12 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-fired-to-window.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 0 / 18 | harnais : 6 duplicate test names: "Tests that the target_div within iframe gets scrollend event when touch dragging.", "Tests that |
-| `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 0 / 5 |  |
+| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 6 / 18 | harnais : 6 duplicate test names: "Tests that the target_div within iframe gets scrollend event when touch dragging.", "Tests that |
+| `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
 | `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 |  |
 | `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 0 / 3 |  |
 | `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 | harnais : Test named 'No scroll via wheel on div shouldn't fire scrollend.' specified 1 'cleanup' function, and 1 failed. |
-| `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : Timeout while running cleanup for test named "scrolled input field should receive scrollend when setting scrollLeft.". |
+| `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
 | `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 |  |
 | `dom/events/scrolling/wheel-event-composed.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -302,7 +302,6 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-script.window.js` | 0 / 1 |  |
 | `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
 | `dom/nodes/moveBefore/Node-moveBefore.html` | 29 / 32 |  |
-| `dom/nodes/moveBefore/child-style-preserve.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-transition-left-pseudo.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -324,18 +323,16 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/iframe-document-preserve.window.js` | 2 / 7 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/listed-form-element-reset.html` | 0 / 6 |  |
 | `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-child-list-selector-invalidation.html` | 0 / 9 |  |
+| `dom/nodes/moveBefore/moveBefore-child-list-selector-invalidation.html` | 8 / 9 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-dir.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 1 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-from-light-to-shadow.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-id-map.html` | 1 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-into-display-none.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-lang.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 0 / 8 |  |
-| `dom/nodes/moveBefore/moveBefore-selector-matching.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/moveBefore-shadow-host-id-map.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-inside.html` | 0 / 1 |  |
@@ -352,7 +349,6 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/select-option-optgroup.html` | 1 / 2 |  |
 | `dom/nodes/moveBefore/selection-preserve.html` | 0 / 6 |  |
 | `dom/nodes/moveBefore/slotchange-events.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/style-applies.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/stylesheet-cascade-order.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/stylesheet-no-refetch.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/namespaced-attribute-mutations.html` | 14 / 24 |  |

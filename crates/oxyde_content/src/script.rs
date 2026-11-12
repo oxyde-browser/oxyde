@@ -30,6 +30,7 @@ mod documents;
 mod dom_ops;
 mod events;
 mod frames;
+mod geometry;
 mod lists;
 mod mutation;
 mod range;
@@ -48,6 +49,7 @@ const CLASS_DATASET: u32 = 5;
 const CLASS_RANGE: u32 = 6;
 const CLASS_ATTRS: u32 = 7;
 const CLASS_LIVE: u32 = 8;
+const CLASS_COMPUTED: u32 = 9;
 
 /// Instructions accordées par défaut à une tâche (script, événement,
 /// minuteur) avant interruption : un script emballé ne fige pas l'onglet.
@@ -117,6 +119,14 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// De quoi mettre le document en page à la demande d'un script.
+    layout_env: Option<crate::LayoutEnv>,
+    /// Géométrie de la dernière mise en page demandée par un script.
+    geometry: Option<geometry::Geometry>,
+    /// Polices et tampons de texte de ces mises en page.
+    text: Option<oxyde_text::TextContext>,
+    /// Prototype des objets rendus par `getComputedStyle`.
+    computed_proto: Option<ObjId>,
     /// Texte de `document.cookie`, fourni par l'embarqueur.
     cookies: String,
     /// Écritures dans `document.cookie` à remettre à l'embarqueur.
@@ -642,6 +652,13 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "attributes" if is_element(doc, node) => {
             return Some(Ok(attrs::named_node_map(vm, node)));
         }
+        "offsetWidth" | "offsetHeight" | "offsetTop" | "offsetLeft" | "offsetParent"
+        | "clientWidth" | "clientHeight" | "clientTop" | "clientLeft" | "scrollWidth"
+        | "scrollHeight" | "scrollTop" | "scrollLeft"
+            if is_element(doc, node) =>
+        {
+            return geometry::property(vm, node, key);
+        }
         "nodeType" => Ok(Value::Number(match &links.data {
             NodeData::Attr(_) => 2.0,
             NodeData::Element(_) => 1.0,
@@ -1042,6 +1059,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
         CLASS_RANGE => range::property(vm, data, key),
         CLASS_ATTRS => attrs::map_property(vm, data, key),
         CLASS_LIVE => lists::property(vm, data, key),
+        CLASS_COMPUTED => geometry::computed_property(vm, data, key),
         CLASS_STORAGE => {
             let area = usize::from(data != 0);
             match key {
@@ -1274,17 +1292,6 @@ fn no_op(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
-/// LIMITE : la géométrie de la mise en page n'est pas encore exposée aux scripts.
-fn get_bounding_client_rect(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    let rect = Value::Object(vm.new_object());
-    for key in [
-        "x", "y", "width", "height", "top", "left", "right", "bottom",
-    ] {
-        vm.set(&rect, key, Value::Number(0.0))?;
-    }
-    Ok(rect)
-}
-
 // ---- Événements ----------------------------------------------------------------------
 
 /// Signale une exception non rattrapée dans la console de la page.
@@ -1472,7 +1479,12 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "focus", no_op),
     ("", "blur", no_op),
     ("", "scrollIntoView", no_op),
-    ("", "getBoundingClientRect", get_bounding_client_rect),
+    (
+        "",
+        "getBoundingClientRect",
+        geometry::get_bounding_client_rect,
+    ),
+    ("", "getClientRects", geometry::get_client_rects),
     ("", "dispatchEvent", events::dispatch_event),
     ("Event", "preventDefault", events::prevent_default),
     ("Event", "stopPropagation", events::stop_propagation),
@@ -1811,6 +1823,10 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            layout_env: None,
+            geometry: None,
+            text: None,
+            computed_proto: None,
             cookies: String::new(),
             cookie_writes: Vec::new(),
             next_listener: 0,
@@ -1831,6 +1847,20 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         global: named_global,
     });
     events::install_attributes(vm)?;
+    // Prototype des styles calculés : celui de `CSSStyleDeclaration`, avec
+    // une lecture de propriété qui lui est propre.
+    let computed_proto = vm.new_object();
+    vm.set_prototype(computed_proto, Some(style_proto))?;
+    vm.define_method(
+        computed_proto,
+        "getPropertyValue",
+        1,
+        geometry::computed_get_property_value,
+    );
+    vm.add_root(Value::Object(computed_proto));
+    if let Some(h) = host(vm) {
+        h.computed_proto = Some(computed_proto);
+    }
     if let Some(proto) = storage_proto {
         for (name, area) in [("localStorage", 0), ("sessionStorage", 1)] {
             let object = vm.new_host_object(proto, CLASS_STORAGE, area);
@@ -1854,6 +1884,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         ("addEventListener", 2, add_event_listener),
         ("removeEventListener", 2, remove_event_listener),
         ("dispatchEvent", 1, events::dispatch_event),
+        ("getComputedStyle", 1, geometry::get_computed_style),
         ("alert", 1, window_alert),
         ("confirm", 1, window_confirm),
         ("prompt", 1, window_prompt),
@@ -1996,6 +2027,14 @@ impl ScriptEngine {
         host(&mut self.vm)
             .map(|h| std::mem::take(&mut h.frame_requests))
             .unwrap_or_default()
+    }
+
+    /// Remet au moteur de quoi mettre le document en page à la demande.
+    pub(crate) fn set_layout_env(&mut self, env: crate::LayoutEnv) {
+        if let Some(h) = host(&mut self.vm) {
+            h.layout_env = Some(env);
+            h.geometry = None;
+        }
     }
 
     /// Fixe le texte que `document.cookie` rend aux scripts.

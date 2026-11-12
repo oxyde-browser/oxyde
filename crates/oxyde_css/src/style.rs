@@ -103,6 +103,137 @@ pub enum Display {
     Contents,
 }
 
+/// Valeur calculée de `position`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Position {
+    #[default]
+    Static,
+    Relative,
+    Absolute,
+    Fixed,
+    Sticky,
+}
+
+/// Valeur calculée de `float`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+/// Valeur calculée de `clear`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Clear {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+/// Valeur calculée de `overflow-x` ou `overflow-y`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Overflow {
+    #[default]
+    Visible,
+    Hidden,
+    Clip,
+    Scroll,
+    Auto,
+}
+
+/// Valeur calculée de `visibility`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Visibility {
+    #[default]
+    Visible,
+    Hidden,
+    Collapse,
+}
+
+/// Valeur calculée de `flex-direction`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum FlexDirection {
+    #[default]
+    Row,
+    RowReverse,
+    Column,
+    ColumnReverse,
+}
+
+impl FlexDirection {
+    /// Vrai si l'axe principal est horizontal.
+    #[must_use]
+    pub fn is_row(self) -> bool {
+        matches!(self, Self::Row | Self::RowReverse)
+    }
+
+    /// Vrai si l'axe principal est parcouru à rebours.
+    #[must_use]
+    pub fn is_reverse(self) -> bool {
+        matches!(self, Self::RowReverse | Self::ColumnReverse)
+    }
+}
+
+/// Valeur calculée de `flex-wrap`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum FlexWrap {
+    #[default]
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+/// Alignement (`justify-content`, `align-content`, `align-items`,
+/// `align-self`), une fois les synonymes réunis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Alignment {
+    /// `normal` ou `auto` : le comportement par défaut du conteneur.
+    #[default]
+    Normal,
+    /// `stretch`
+    Stretch,
+    /// `flex-start`, `start`, `self-start`, `left`
+    Start,
+    /// `flex-end`, `end`, `self-end`, `right`
+    End,
+    /// `center`
+    Center,
+    /// `baseline`
+    Baseline,
+    /// `space-between`
+    SpaceBetween,
+    /// `space-around`
+    SpaceAround,
+    /// `space-evenly`
+    SpaceEvenly,
+}
+
+impl Alignment {
+    fn parse(word: &str) -> Self {
+        match word {
+            "stretch" => Self::Stretch,
+            "flex-start" | "start" | "self-start" | "left" => Self::Start,
+            "flex-end" | "end" | "self-end" | "right" => Self::End,
+            "center" => Self::Center,
+            "baseline" => Self::Baseline,
+            "space-between" => Self::SpaceBetween,
+            "space-around" => Self::SpaceAround,
+            "space-evenly" => Self::SpaceEvenly,
+            _ => Self::Normal,
+        }
+    }
+}
+
 /// Valeur calculée de `line-height`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LineHeight {
@@ -233,6 +364,48 @@ pub struct ComputedStyle {
     pub border_box: bool,
     /// `list-style-type`
     pub list_style: ListStyle,
+    /// `position`
+    pub position: Position,
+    /// `top`, `right`, `bottom`, `left`
+    pub inset: Edges<Size>,
+    /// `float`
+    pub float: Float,
+    /// `clear`
+    pub clear: Clear,
+    /// `z-index` ; `None` : `auto`.
+    pub z_index: Option<i32>,
+    /// `overflow-x`
+    pub overflow_x: Overflow,
+    /// `overflow-y`
+    pub overflow_y: Overflow,
+    /// `visibility`
+    pub visibility: Visibility,
+    /// `opacity`
+    pub opacity: f32,
+    /// `flex-direction`
+    pub flex_direction: FlexDirection,
+    /// `flex-wrap`
+    pub flex_wrap: FlexWrap,
+    /// `flex-grow`
+    pub flex_grow: f32,
+    /// `flex-shrink`
+    pub flex_shrink: f32,
+    /// `flex-basis` ; `None` : `content`, et [`Size::Auto`] : `auto`.
+    pub flex_basis: Option<Size>,
+    /// `justify-content`
+    pub justify_content: Alignment,
+    /// `align-items`
+    pub align_items: Alignment,
+    /// `align-self` ; [`Alignment::Normal`] : celui du conteneur.
+    pub align_self: Alignment,
+    /// `align-content`
+    pub align_content: Alignment,
+    /// `order`
+    pub order: i32,
+    /// `row-gap` (`Auto` : `normal`)
+    pub row_gap: Size,
+    /// `column-gap` (`Auto` : `normal`)
+    pub column_gap: Size,
 }
 
 impl ComputedStyle {
@@ -267,6 +440,51 @@ impl ComputedStyle {
             max_height: Size::Auto,
             border_box: false,
             list_style: ListStyle::Disc,
+            position: Position::Static,
+            inset: Edges::all(Size::Auto),
+            float: Float::None,
+            clear: Clear::None,
+            z_index: None,
+            overflow_x: Overflow::Visible,
+            overflow_y: Overflow::Visible,
+            visibility: Visibility::Visible,
+            opacity: 1.0,
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::NoWrap,
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            flex_basis: Some(Size::Auto),
+            justify_content: Alignment::Normal,
+            align_items: Alignment::Normal,
+            align_self: Alignment::Normal,
+            align_content: Alignment::Normal,
+            order: 0,
+            row_gap: Size::Auto,
+            column_gap: Size::Auto,
+        }
+    }
+
+    /// Vrai si la boîte est positionnée (`position` autre que `static`).
+    #[must_use]
+    pub fn is_positioned(&self) -> bool {
+        self.position != Position::Static
+    }
+
+    /// Vrai si la boîte sort du flux (`position: absolute` ou `fixed`).
+    #[must_use]
+    pub fn is_out_of_flow(&self) -> bool {
+        matches!(self.position, Position::Absolute | Position::Fixed)
+    }
+
+    /// Nom CSS de la valeur de `position`.
+    #[must_use]
+    pub fn position_name(&self) -> &'static str {
+        match self.position {
+            Position::Static => "static",
+            Position::Relative => "relative",
+            Position::Absolute => "absolute",
+            Position::Fixed => "fixed",
+            Position::Sticky => "sticky",
         }
     }
 
@@ -288,6 +506,7 @@ impl ComputedStyle {
             underline: parent.underline,
             line_through: parent.line_through,
             list_style: parent.list_style,
+            visibility: parent.visibility,
             ..Self::initial()
         }
     }
@@ -356,6 +575,7 @@ fn is_inherited(property: Longhand) -> bool {
             | Longhand::TextAlign
             | Longhand::WhiteSpace
             | Longhand::ListStyleType
+            | Longhand::Visibility
     )
 }
 
@@ -390,6 +610,27 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::MaxHeight => style.max_height = from.max_height,
         Longhand::BoxSizing => style.border_box = from.border_box,
         Longhand::ListStyleType => style.list_style = from.list_style,
+        Longhand::Position => style.position = from.position,
+        Longhand::Inset(s) => style.inset.set(s, from.inset.get(s)),
+        Longhand::Float => style.float = from.float,
+        Longhand::Clear => style.clear = from.clear,
+        Longhand::ZIndex => style.z_index = from.z_index,
+        Longhand::OverflowX => style.overflow_x = from.overflow_x,
+        Longhand::OverflowY => style.overflow_y = from.overflow_y,
+        Longhand::Visibility => style.visibility = from.visibility,
+        Longhand::Opacity => style.opacity = from.opacity,
+        Longhand::FlexDirection => style.flex_direction = from.flex_direction,
+        Longhand::FlexWrap => style.flex_wrap = from.flex_wrap,
+        Longhand::FlexGrow => style.flex_grow = from.flex_grow,
+        Longhand::FlexShrink => style.flex_shrink = from.flex_shrink,
+        Longhand::FlexBasis => style.flex_basis = from.flex_basis,
+        Longhand::JustifyContent => style.justify_content = from.justify_content,
+        Longhand::AlignItems => style.align_items = from.align_items,
+        Longhand::AlignSelf => style.align_self = from.align_self,
+        Longhand::AlignContent => style.align_content = from.align_content,
+        Longhand::Order => style.order = from.order,
+        Longhand::RowGap => style.row_gap = from.row_gap,
+        Longhand::ColumnGap => style.column_gap = from.column_gap,
     }
 }
 
@@ -593,6 +834,109 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
         Longhand::MinHeight => style.min_height = size_of(&decl.value, fs, cx),
         Longhand::MaxHeight => style.max_height = size_of(&decl.value, fs, cx),
         Longhand::BoxSizing => style.border_box = ident == "border-box",
+        Longhand::Position => {
+            style.position = match ident {
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                "fixed" => Position::Fixed,
+                "sticky" => Position::Sticky,
+                _ => Position::Static,
+            };
+        }
+        Longhand::Inset(side) => style.inset.set(side, size_of(&decl.value, fs, cx)),
+        Longhand::Float => {
+            style.float = match ident {
+                "left" | "inline-start" => Float::Left,
+                "right" | "inline-end" => Float::Right,
+                _ => Float::None,
+            };
+        }
+        Longhand::Clear => {
+            style.clear = match ident {
+                "left" | "inline-start" => Clear::Left,
+                "right" | "inline-end" => Clear::Right,
+                "both" => Clear::Both,
+                _ => Clear::None,
+            };
+        }
+        Longhand::ZIndex => {
+            style.z_index = match &decl.value {
+                #[expect(clippy::cast_possible_truncation, reason = "entier validé à l'analyse")]
+                Value::Number(n) => Some(*n as i32),
+                _ => None,
+            };
+        }
+        Longhand::Order => {
+            if let Value::Number(n) = &decl.value {
+                #[expect(clippy::cast_possible_truncation, reason = "entier validé à l'analyse")]
+                {
+                    style.order = *n as i32;
+                }
+            }
+        }
+        Longhand::OverflowX | Longhand::OverflowY => {
+            let overflow = match ident {
+                "hidden" => Overflow::Hidden,
+                "clip" => Overflow::Clip,
+                "scroll" => Overflow::Scroll,
+                "auto" => Overflow::Auto,
+                _ => Overflow::Visible,
+            };
+            if property == Longhand::OverflowX {
+                style.overflow_x = overflow;
+            } else {
+                style.overflow_y = overflow;
+            }
+        }
+        Longhand::Visibility => {
+            style.visibility = match ident {
+                "hidden" => Visibility::Hidden,
+                "collapse" => Visibility::Collapse,
+                _ => Visibility::Visible,
+            };
+        }
+        Longhand::Opacity => {
+            if let Value::Number(n) = &decl.value {
+                style.opacity = *n;
+            }
+        }
+        Longhand::FlexDirection => {
+            style.flex_direction = match ident {
+                "row-reverse" => FlexDirection::RowReverse,
+                "column" => FlexDirection::Column,
+                "column-reverse" => FlexDirection::ColumnReverse,
+                _ => FlexDirection::Row,
+            };
+        }
+        Longhand::FlexWrap => {
+            style.flex_wrap = match ident {
+                "wrap" => FlexWrap::Wrap,
+                "wrap-reverse" => FlexWrap::WrapReverse,
+                _ => FlexWrap::NoWrap,
+            };
+        }
+        Longhand::FlexGrow => {
+            if let Value::Number(n) = &decl.value {
+                style.flex_grow = *n;
+            }
+        }
+        Longhand::FlexShrink => {
+            if let Value::Number(n) = &decl.value {
+                style.flex_shrink = *n;
+            }
+        }
+        Longhand::FlexBasis => {
+            style.flex_basis = match ident {
+                "content" => None,
+                _ => Some(size_of(&decl.value, fs, cx)),
+            };
+        }
+        Longhand::JustifyContent => style.justify_content = Alignment::parse(ident),
+        Longhand::AlignItems => style.align_items = Alignment::parse(ident),
+        Longhand::AlignSelf => style.align_self = Alignment::parse(ident),
+        Longhand::AlignContent => style.align_content = Alignment::parse(ident),
+        Longhand::RowGap => style.row_gap = size_of(&decl.value, fs, cx),
+        Longhand::ColumnGap => style.column_gap = size_of(&decl.value, fs, cx),
         Longhand::ListStyleType => {
             style.list_style = match ident {
                 "none" => ListStyle::None,

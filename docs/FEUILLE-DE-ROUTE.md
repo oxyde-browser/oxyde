@@ -147,7 +147,7 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 282 fichiers de test entièrement réussis sur 693 (40,7 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 286 fichiers de test entièrement réussis sur 693 (41,3 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
   documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
   `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
@@ -185,6 +185,27 @@ le moment de `SharedArrayBuffer` et des workers, qui supposent plusieurs fils.
 Flex, grille, tableaux, flottants, positionnement, transformations, animations et transitions,
 calques composités, défilement hors du fil principal. C'est le jalon qui fait passer la plupart
 des sites de « lisible » à « fidèle ». Tableau de bord WPT pour le CSS et la mise en page.
+
+Branche `jalon-6-mise-en-page`, empilée sur `jalon-4-web`.
+
+Fait :
+
+- **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
+  `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
+  `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
+  (9,4 %), rapport dans `conformance/wpt-css.md`.
+- **Géométrie pour les scripts** : `getBoundingClientRect`, `getClientRects`, `offsetWidth`
+  et la famille `offset*`/`client*`/`scroll*`, `getComputedStyle` ; une lecture force la
+  mise en page si le document a changé.
+- **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
+  `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
+  `visibility`, `opacity`, la famille flex (`flex`, `flex-flow`, `justify-content`,
+  `align-*`, `order`) et `gap`.
+
+Ordre prévu, chaque étape mesurée par la suite : positionnement et flottants ; `calc()` et
+police de test Ahem (`@font-face`), dont beaucoup de tests dépendent ; flex ; tailles
+intrinsèques (`min-content`, `max-content`, `fit-content`) ; tableaux ; grille ;
+transformations, animations et transitions ; calques composités et défilement.
 
 ### Jalon 7 — Fonctions du navigateur
 

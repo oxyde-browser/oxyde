@@ -25,8 +25,9 @@ pub mod values;
 
 pub use properties::Side;
 pub use style::{
-    BorderStyle, ComputedStyle, Display, Edges, LineHeight, ListStyle, Size, StyleMap, TextAlign,
-    WhiteSpace, collect_style_elements, compute_styles,
+    Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
+    LineHeight, ListStyle, Overflow, Position, Size, StyleMap, TextAlign, Visibility, WhiteSpace,
+    collect_style_elements, compute_styles,
 };
 pub use stylesheet::{Stylesheet, Viewport, parse_stylesheet};
 pub use values::Color;
