@@ -241,10 +241,11 @@ impl Vm {
     ) -> JsResult<Option<(Arc<RegexInput>, Captures)>> {
         let input = self.regex_input(text);
         let tracks = regex.flags.global || regex.flags.sticky;
+        // `lastIndex` est toujours lu et converti, même quand il ne sert pas.
+        let last = self.get(&Value::Object(regexp), "lastIndex")?;
+        let last = self.to_number(&last)?;
         let mut from = 0;
         if tracks {
-            let last = self.get(&Value::Object(regexp), "lastIndex")?;
-            let last = self.to_number(&last)?;
             let last = if last.is_nan() {
                 0.0
             } else {
@@ -649,7 +650,14 @@ fn source_text(vm: &Vm, id: ObjId) -> String {
             out.push('\\');
         }
         escaped = c == '\\' && !escaped;
-        out.push(c);
+        // Une fin de ligne couperait le littéral : elle s'écrit échappée.
+        match c {
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c => out.push(c),
+        }
     }
     out
 }
@@ -713,6 +721,7 @@ flag_getter!(regexp_ignore_case, ignore_case);
 flag_getter!(regexp_multiline, multiline);
 flag_getter!(regexp_dot_all, dot_all);
 flag_getter!(regexp_unicode, unicode);
+flag_getter!(regexp_unicode_sets, unicode_sets);
 flag_getter!(regexp_sticky, sticky);
 flag_getter!(regexp_has_indices, indices);
 
@@ -1049,6 +1058,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("multiline", regexp_multiline),
         ("dotAll", regexp_dot_all),
         ("unicode", regexp_unicode),
+        ("unicodeSets", regexp_unicode_sets),
         ("sticky", regexp_sticky),
         ("hasIndices", regexp_has_indices),
     ];

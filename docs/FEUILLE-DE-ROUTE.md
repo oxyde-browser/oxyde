@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **42 362 tests de test262 sur 48 795 (86,8 %)** ; il en reste 6 433.
+- `oxyde_js` réussit **42 546 tests de test262 sur 48 795 (87,2 %)** ; il en reste 6 249.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -107,7 +107,7 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   Tableaux typés, `ArrayBuffer`, `DataView` et `SharedArrayBuffer` passent désormais tous
   leurs tests.
 
-### E — Expressions rationnelles (855 tests)
+### E — Expressions rationnelles (855 tests) — faite
 
 - **Propriétés Unicode** `\p{…}` (464) : faites, sur les tables d'ICU4X (catégories
   générales, écritures et leurs extensions, propriétés binaires). 357 tests de plus. Les
@@ -119,7 +119,13 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   sont portés par chaque instruction ; avec `u`, la casse suit le repli simple d'Unicode.
   Les 4 tests restants demandent qu'un `.` sans `u` ne prenne qu'une moitié de paire de
   substituts, ce que des chaînes en UTF-8 ne permettent pas.
-- **Drapeau `v`** (environ 180) : à faire.
+- **Drapeau `v`** : fait (184 tests). Classes imbriquées, différence `--`, intersection
+  `&&`, chaînes `\q{…}`, propriétés de chaînes (`Basic_Emoji`, `Emoji_Keycap_Sequence`,
+  `RGI_Emoji_Modifier_Sequence`, `RGI_Emoji_Tag_Sequence`). `RGI_Emoji` et ses séquences
+  de drapeaux et à liant manquent, faute de tables (14 tests).
+
+Il reste 115 échecs dans `RegExp` : 91 tiennent à la version d'Unicode de la suite, 14
+aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isolés).
 - **Reste** (170) : faits, `RegExp.escape`, `RegExp.prototype.compile`, les propriétés
   statiques héritées (`RegExp.$1`, `lastMatch`…), le drapeau `d` (indices) et le
   constructeur pour les objets qui se disent expressions rationnelles (93 tests), puis

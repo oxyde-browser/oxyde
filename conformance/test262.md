@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 42362 réussis sur 48795 (86.8 %).**
+**Total : 42546 réussis sur 48795 (87.2 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -45,13 +45,13 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Promise` | 732 | 732 | 100.0 % |
 | `built-ins/Proxy` | 311 | 310 | 99.7 % |
 | `built-ins/Reflect` | 153 | 153 | 100.0 % |
-| `built-ins/RegExp` | 1879 | 1584 | 84.3 % |
+| `built-ins/RegExp` | 1879 | 1764 | 93.9 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 378 | 98.7 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
-| `built-ins/String` | 1223 | 1182 | 96.6 % |
+| `built-ins/String` | 1223 | 1186 | 97.0 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 93 | 94.9 % |
