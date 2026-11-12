@@ -30,6 +30,7 @@ mod documents;
 mod dom_ops;
 mod events;
 mod frames;
+mod geometry;
 mod lists;
 mod mutation;
 mod range;
@@ -48,6 +49,7 @@ const CLASS_DATASET: u32 = 5;
 const CLASS_RANGE: u32 = 6;
 const CLASS_ATTRS: u32 = 7;
 const CLASS_LIVE: u32 = 8;
+const CLASS_COMPUTED: u32 = 9;
 
 /// Instructions accordées par défaut à une tâche (script, événement,
 /// minuteur) avant interruption : un script emballé ne fige pas l'onglet.
@@ -117,6 +119,14 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// De quoi mettre le document en page à la demande d'un script.
+    layout_env: Option<crate::LayoutEnv>,
+    /// Géométrie de la dernière mise en page demandée par un script.
+    geometry: Option<geometry::Geometry>,
+    /// Polices et tampons de texte de ces mises en page.
+    text: Option<oxyde_text::TextContext>,
+    /// Prototype des objets rendus par `getComputedStyle`.
+    computed_proto: Option<ObjId>,
     /// Texte de `document.cookie`, fourni par l'embarqueur.
     cookies: String,
     /// Écritures dans `document.cookie` à remettre à l'embarqueur.
@@ -129,6 +139,9 @@ struct DomHost {
     dirty: bool,
     viewport: (f32, f32),
     started: Instant,
+    /// Instant le plus avancé communiqué par la page : un lanceur de tests
+    /// fait avancer le temps plus vite que l'horloge réelle.
+    clock: Instant,
     /// Requêtes `fetch` que l'embarqueur n'a pas encore prises en charge.
     fetch_queue: Vec<crate::FetchRequest>,
     /// Requêtes `fetch` en attente de réponse, par identifiant.
@@ -153,6 +166,20 @@ struct RealmHost {
 }
 
 impl DomHost {
+    /// Instant courant : l'horloge réelle, ou l'instant le plus avancé que
+    /// la page a communiqué s'il la devance (temps virtuel).
+    fn now(&self) -> Instant {
+        self.clock.max(Instant::now())
+    }
+
+    /// Millisecondes écoulées depuis la création du moteur.
+    fn elapsed_ms(&self) -> f64 {
+        self.now()
+            .saturating_duration_since(self.started)
+            .as_secs_f64()
+            * 1000.0
+    }
+
     /// Échange l'état du royaume courant avec `other`.
     fn swap_realm(&mut self, other: &mut RealmHost) {
         std::mem::swap(&mut self.url, &mut other.url);
@@ -642,6 +669,13 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "attributes" if is_element(doc, node) => {
             return Some(Ok(attrs::named_node_map(vm, node)));
         }
+        "offsetWidth" | "offsetHeight" | "offsetTop" | "offsetLeft" | "offsetParent"
+        | "clientWidth" | "clientHeight" | "clientTop" | "clientLeft" | "scrollWidth"
+        | "scrollHeight" | "scrollTop" | "scrollLeft"
+            if is_element(doc, node) =>
+        {
+            return geometry::property(vm, node, key);
+        }
         "nodeType" => Ok(Value::Number(match &links.data {
             NodeData::Attr(_) => 2.0,
             NodeData::Element(_) => 1.0,
@@ -911,6 +945,9 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         h.dirty = true;
         return Some(Ok(()));
     }
+    if matches!(key, "scrollTop" | "scrollLeft") && host(vm)?.doc.element(node).is_some() {
+        return Some(geometry::set_scroll_property(vm, node, key, value));
+    }
     // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
     if key == "value"
         && host(vm)?
@@ -1042,6 +1079,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
         CLASS_RANGE => range::property(vm, data, key),
         CLASS_ATTRS => attrs::map_property(vm, data, key),
         CLASS_LIVE => lists::property(vm, data, key),
+        CLASS_COMPUTED => geometry::computed_property(vm, data, key),
         CLASS_STORAGE => {
             let area = usize::from(data != 0);
             match key {
@@ -1078,6 +1116,14 @@ fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
         })
     })?;
     Some(wrap(vm, found))
+}
+
+/// `cssSupports(propriété, valeur)` : le moteur de style accepte-t-il cette
+/// déclaration ?
+fn css_supports(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let property = vm.to_string(&arg(args, 0))?;
+    let value = vm.to_string(&arg(args, 1))?;
+    Ok(Value::Bool(oxyde_css::supports(&property, &value)))
 }
 
 /// Nombre maximal d'écritures de cookies gardées entre deux relevés.
@@ -1274,17 +1320,6 @@ fn no_op(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
-/// LIMITE : la géométrie de la mise en page n'est pas encore exposée aux scripts.
-fn get_bounding_client_rect(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    let rect = Value::Object(vm.new_object());
-    for key in [
-        "x", "y", "width", "height", "top", "left", "right", "bottom",
-    ] {
-        vm.set(&rect, key, Value::Number(0.0))?;
-    }
-    Ok(rect)
-}
-
 // ---- Événements ----------------------------------------------------------------------
 
 /// Signale une exception non rattrapée dans la console de la page.
@@ -1341,7 +1376,7 @@ fn add_timer(vm: &mut Vm, args: &[Value], repeat: bool, default_delay: f64) -> J
     let id = h.next_timer;
     h.timers.push(Timer {
         id,
-        due: Instant::now() + delay,
+        due: h.now() + delay,
         callback: callback.clone(),
         args: extra.clone(),
         repeat: repeat.then(|| delay.max(MIN_INTERVAL)),
@@ -1385,7 +1420,7 @@ fn clear_timer(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn performance_now(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    let elapsed = host(vm).map_or(0.0, |h| h.started.elapsed().as_secs_f64() * 1000.0);
+    let elapsed = host(vm).map_or(0.0, |h| h.elapsed_ms());
     Ok(Value::Number(elapsed))
 }
 
@@ -1471,8 +1506,16 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "click", element_click),
     ("", "focus", no_op),
     ("", "blur", no_op),
-    ("", "scrollIntoView", no_op),
-    ("", "getBoundingClientRect", get_bounding_client_rect),
+    ("", "scrollIntoView", geometry::scroll_into_view),
+    ("", "scrollTo", geometry::element_scroll_to),
+    ("", "scroll", geometry::element_scroll_to),
+    ("", "scrollBy", geometry::element_scroll_by),
+    (
+        "",
+        "getBoundingClientRect",
+        geometry::get_bounding_client_rect,
+    ),
+    ("", "getClientRects", geometry::get_client_rects),
     ("", "dispatchEvent", events::dispatch_event),
     ("Event", "preventDefault", events::prevent_default),
     ("Event", "stopPropagation", events::stop_propagation),
@@ -1811,6 +1854,10 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            layout_env: None,
+            geometry: None,
+            text: None,
+            computed_proto: None,
             cookies: String::new(),
             cookie_writes: Vec::new(),
             next_listener: 0,
@@ -1822,6 +1869,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             dirty: false,
             viewport: (0.0, 0.0),
             started: Instant::now(),
+            clock: Instant::now(),
         }));
     }
     vm.set_host_hooks(HostHooks {
@@ -1831,6 +1879,20 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         global: named_global,
     });
     events::install_attributes(vm)?;
+    // Prototype des styles calculés : celui de `CSSStyleDeclaration`, avec
+    // une lecture de propriété qui lui est propre.
+    let computed_proto = vm.new_object();
+    vm.set_prototype(computed_proto, Some(style_proto))?;
+    vm.define_method(
+        computed_proto,
+        "getPropertyValue",
+        1,
+        geometry::computed_get_property_value,
+    );
+    vm.add_root(Value::Object(computed_proto));
+    if let Some(h) = host(vm) {
+        h.computed_proto = Some(computed_proto);
+    }
     if let Some(proto) = storage_proto {
         for (name, area) in [("localStorage", 0), ("sessionStorage", 1)] {
             let object = vm.new_host_object(proto, CLASS_STORAGE, area);
@@ -1854,6 +1916,10 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         ("addEventListener", 2, add_event_listener),
         ("removeEventListener", 2, remove_event_listener),
         ("dispatchEvent", 1, events::dispatch_event),
+        ("getComputedStyle", 1, geometry::get_computed_style),
+        ("scrollTo", 2, geometry::window_scroll_to),
+        ("scroll", 2, geometry::window_scroll_to),
+        ("scrollBy", 2, geometry::window_scroll_by),
         ("alert", 1, window_alert),
         ("confirm", 1, window_confirm),
         ("prompt", 1, window_prompt),
@@ -1863,6 +1929,12 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     }
     define_getter(vm, global, "innerWidth", window_inner_width)?;
     define_getter(vm, global, "innerHeight", window_inner_height)?;
+    for name in ["scrollX", "pageXOffset"] {
+        define_getter(vm, global, name, geometry::window_scroll_x)?;
+    }
+    for name in ["scrollY", "pageYOffset"] {
+        define_getter(vm, global, name, geometry::window_scroll_y)?;
+    }
 
     let performance = vm.new_object();
     vm.define_method(performance, "now", 0, performance_now);
@@ -1910,6 +1982,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(h) = host(vm) {
         h.activation = Some(activation);
     }
+    // `CSS`, `document.fonts`, `FontFace`.
+    let cssom = vm.eval_script(include_str!("script/cssom.js"))?;
+    let helpers = [Value::Object(vm.new_function(
+        "cssSupports",
+        2,
+        css_supports,
+    ))];
+    vm.call(&cssom, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
     let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
     let helpers = [
@@ -1996,6 +2076,14 @@ impl ScriptEngine {
         host(&mut self.vm)
             .map(|h| std::mem::take(&mut h.frame_requests))
             .unwrap_or_default()
+    }
+
+    /// Remet au moteur de quoi mettre le document en page à la demande.
+    pub(crate) fn set_layout_env(&mut self, env: crate::LayoutEnv) {
+        if let Some(h) = host(&mut self.vm) {
+            h.layout_env = Some(env);
+            h.geometry = None;
+        }
     }
 
     /// Fixe le texte que `document.cookie` rend aux scripts.
@@ -2104,6 +2192,9 @@ impl ScriptEngine {
 
     /// Exécute les minuteurs arrivés à échéance à l'instant `now`.
     pub(crate) fn run_timers(&mut self, doc: &mut Document, now: Instant) {
+        if let Some(h) = host(&mut self.vm) {
+            h.clock = h.clock.max(now);
+        }
         if !host(&mut self.vm).is_some_and(|h| h.timers.iter().any(|t| t.due <= now)) {
             return;
         }
@@ -2249,6 +2340,61 @@ impl ScriptEngine {
         result: Result<crate::FetchResponse, String>,
     ) {
         self.run(doc, |vm| settle_fetch(vm, id, result));
+    }
+
+    /// Distribue l'événement `scroll` aux zones `ids` qui ont défilé : sur
+    /// le document pour la fenêtre, sur l'élément sinon.
+    pub(crate) fn scroll_events(&mut self, doc: &mut Document, ids: &[u32]) {
+        self.run(doc, |vm| {
+            for id in ids {
+                let Some(h) = host(vm) else { return };
+                if *id == oxyde_compositor::ROOT_SCROLLER {
+                    let document = h.doc.root();
+                    events::dispatch_simple(vm, document, "scroll", true);
+                } else if let Some(node) = h.doc.id_from_index(*id as usize) {
+                    events::dispatch_simple(vm, node, "scroll", false);
+                }
+                vm.run_microtasks();
+            }
+        });
+    }
+
+    /// Distribue aux scripts les événements d'animation et de transition.
+    pub(crate) fn animation_events(
+        &mut self,
+        doc: &mut Document,
+        events: &[oxyde_css::AnimationEvent],
+    ) {
+        self.run(doc, |vm| {
+            for event in events {
+                let transition = event.kind.starts_with("transition");
+                let (interface, key) = if transition {
+                    ("TransitionEvent", "propertyName")
+                } else {
+                    ("AnimationEvent", "animationName")
+                };
+                let global = Value::Object(vm.global());
+                let outcome = (|| -> JsResult {
+                    let constructor = vm.get(&global, interface)?;
+                    let init = Value::Object(vm.new_object());
+                    vm.set(&init, key, Value::string(&event.name))?;
+                    vm.set(&init, "elapsedTime", Value::Number(event.elapsed))?;
+                    vm.set(&init, "bubbles", Value::Bool(true))?;
+                    let object = vm.construct(
+                        &constructor,
+                        &[Value::string(event.kind), init],
+                        &constructor,
+                    )?;
+                    let target = wrap(vm, event.node);
+                    let dispatch = vm.get(&target, "dispatchEvent")?;
+                    vm.call(&dispatch, &target, &[object])
+                })();
+                if let Err(thrown) = outcome {
+                    report(vm, &thrown);
+                }
+                vm.run_microtasks();
+            }
+        });
     }
 
     /// Échéance du prochain minuteur.

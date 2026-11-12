@@ -102,8 +102,8 @@ impl App {
     fn page_point(&self, tab: usize) -> Option<(f32, f32)> {
         let (x, y) = self.cursor_logical()?;
         let pane = self.chrome.panes.iter().find(|p| p.tab == tab)?;
-        let scroll = self.browser.tab(tab)?.scroll;
-        Some((x - pane.rect.x, y - pane.rect.y + scroll))
+        let (scroll_x, scroll_y) = self.browser.tab(tab)?.page.scroll_offset();
+        Some((x - pane.rect.x + scroll_x, y - pane.rect.y + scroll_y))
     }
 
     /// Bord de redimensionnement sous le pointeur (fenêtre non agrandie).
@@ -557,7 +557,9 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 if let Some(Hit::Pane(tab)) = self.chrome.hit(x, y)
                     && let Some(pane) = self.chrome.panes.iter().find(|p| p.tab == tab)
-                    && self.browser.scroll_by(tab, -dy, pane.rect.h)
+                    && self
+                        .browser
+                        .scroll_by(tab, x - pane.rect.x, y - pane.rect.y, -dy)
                 {
                     self.request_redraw();
                 }

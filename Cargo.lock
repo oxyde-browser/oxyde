@@ -2568,6 +2568,9 @@ version = "0.1.0"
 [[package]]
 name = "oxyde_compositor"
 version = "0.1.0"
+dependencies = [
+ "oxyde_paint",
+]
 
 [[package]]
 name = "oxyde_content"
@@ -2575,6 +2578,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "oxyde_bindings",
+ "oxyde_compositor",
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",

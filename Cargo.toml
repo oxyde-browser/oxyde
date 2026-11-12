@@ -15,6 +15,7 @@ oxyde_dom = { path = "crates/oxyde_dom" }
 oxyde_html = { path = "crates/oxyde_html" }
 oxyde_css = { path = "crates/oxyde_css" }
 oxyde_layout = { path = "crates/oxyde_layout" }
+oxyde_compositor = { path = "crates/oxyde_compositor" }
 oxyde_paint = { path = "crates/oxyde_paint" }
 oxyde_text = { path = "crates/oxyde_text" }
 oxyde_net = { path = "crates/oxyde_net" }

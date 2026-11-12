@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Animations et transitions</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .piste { position: relative; height: 44px; margin-bottom: 8px; background: #dfe3e8; border-radius: 8px; }
+  .mobile { position: absolute; top: 6px; left: 6px; width: 32px; height: 32px; border-radius: 8px; background: #4cc9a8; }
+  @keyframes traverse { from { left: 6px; } to { left: 420px; } }
+  @keyframes tourne { to { transform: rotate(360deg); } }
+  @keyframes couleurs { 0% { background-color: #4cc9a8; } 50% { background-color: #e0a458; } 100% { background-color: #8fb4f2; } }
+  @keyframes pulse { 50% { transform: scale(1.5); opacity: 0.4; } }
+  /* Animations figées à un instant donné : la capture d'écran montre un état intermédiaire. */
+  .fige { animation-play-state: paused; }
+  .a { animation: traverse 4s linear -1s; }
+  .b { animation: traverse 4s linear -2s; }
+  .c { animation: traverse 4s ease-in-out -3s; }
+  .d { animation: tourne 4s linear -0.5s, couleurs 4s linear -2s; left: 200px; }
+  .e { animation: pulse 2s linear -1s; left: 300px; }
+  .f { animation: traverse 4s steps(4) -2.2s; }
+  /* Animations vivantes, visibles dans le navigateur. */
+  .vivant { animation: traverse 3s ease-in-out infinite alternate, couleurs 3s linear infinite alternate; }
+  .bouton { display: inline-block; padding: 8px 16px; border-radius: 8px; background: #171c23; color: #e6e9ed;
+            transition: background-color 300ms, transform 300ms; }
+  .bouton:hover { background: #4cc9a8; color: #0e1116; transform: scale(1.1); }
+</style>
+<h2>Animations figées à 25 %, 50 % et 75 % de leur course</h2>
+<div class="piste"><div class="mobile fige a"></div></div>
+<div class="piste"><div class="mobile fige b"></div></div>
+<div class="piste"><div class="mobile fige c"></div></div>
+<h2>Rotation et couleurs, pulsation, paliers</h2>
+<div class="piste"><div class="mobile fige d"></div><div class="mobile fige e"></div></div>
+<div class="piste"><div class="mobile fige f"></div></div>
+<h2>En mouvement</h2>
+<div class="piste"><div class="mobile vivant"></div></div>
+<p><span class="bouton">Transition au survol</span></p>

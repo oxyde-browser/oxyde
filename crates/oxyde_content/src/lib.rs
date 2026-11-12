@@ -19,9 +19,10 @@ pub use cors::preflight_allows;
 
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use oxyde_css::{Color, StyleMap, Stylesheet, Viewport, parse_stylesheet};
+pub use oxyde_css::Viewport;
+use oxyde_css::{Color, StyleMap, Stylesheet, parse_stylesheet};
 use oxyde_dom::{Document, NodeId};
 pub use oxyde_js::ConsoleMessage;
 use oxyde_layout::{Fragment, LayoutTree};
@@ -165,12 +166,230 @@ pub fn decode_image(bytes: &[u8]) -> Option<Image> {
 }
 
 /// Feuille de style du document, dans l'ordre du source.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum SheetSlot {
     /// `<style>`
     Inline(Stylesheet),
     /// `<link rel=stylesheet>` ; `None` tant que la ressource n'est pas chargée.
     External { url: Url, sheet: Option<Stylesheet> },
+}
+
+/// Ce qu'il faut, outre le document, pour le mettre en page : ses feuilles
+/// de style externes déjà reçues et la taille de ses images. Le moteur de
+/// script en garde une copie pour répondre aux lectures de géométrie.
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutEnv {
+    sheets: Vec<SheetSlot>,
+    base: Url,
+    sizes: HashMap<NodeId, (f32, f32)>,
+    fonts: Vec<FontSlot>,
+    pub(crate) animations: std::sync::Arc<Animations>,
+    pub(crate) scrolling: std::sync::Arc<Scrolling>,
+}
+
+/// Défilement de la fenêtre et des éléments, partagé entre la page — qui le
+/// borne à chaque peinture et y route la molette — et son moteur de script.
+#[derive(Debug, Default)]
+pub(crate) struct Scrolling {
+    tree: std::sync::Mutex<oxyde_compositor::ScrollTree>,
+}
+
+impl Scrolling {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, oxyde_compositor::ScrollTree> {
+        // Un verrou empoisonné garde des décalages valides : ils sont
+        // bornés de nouveau à la prochaine peinture.
+        self.tree
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// Identifiant de défilement d'un nœud.
+pub(crate) fn scroll_id(node: NodeId) -> u32 {
+    u32::try_from(node.index()).unwrap_or(oxyde_compositor::ROOT_SCROLLER - 1)
+}
+
+/// Durée d'une image d'animation.
+const FRAME: Duration = Duration::from_millis(16);
+
+/// Animations et transitions d'une page, et l'horloge qui les fait avancer.
+/// La page et son moteur de script calculent le style chacun de leur côté :
+/// ils partagent cet état pour voir les mêmes effets au même instant.
+#[derive(Debug)]
+pub(crate) struct Animations {
+    /// Origine des temps de la page.
+    epoch: Instant,
+    state: std::sync::Mutex<AnimationClock>,
+}
+
+#[derive(Debug)]
+struct AnimationClock {
+    animator: oxyde_css::Animator,
+    /// Instant le plus avancé communiqué à la page, en millisecondes depuis
+    /// l'origine : un lanceur de tests fait avancer le temps plus vite que
+    /// l'horloge réelle.
+    latest: f64,
+}
+
+impl Animations {
+    fn new() -> Self {
+        Self {
+            epoch: Instant::now(),
+            state: std::sync::Mutex::new(AnimationClock {
+                animator: oxyde_css::Animator::new(),
+                latest: 0.0,
+            }),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, AnimationClock> {
+        // Un verrou empoisonné garde un état cohérent : chaque calcul de
+        // style repart d'un `begin`.
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Instant courant, en millisecondes depuis l'origine de la page.
+    pub(crate) fn now(&self) -> f64 {
+        let real = self.epoch.elapsed().as_secs_f64() * 1000.0;
+        real.max(self.lock().latest)
+    }
+
+    /// Fait avancer l'horloge jusqu'à `instant`.
+    fn advance(&self, instant: Instant) {
+        let ms = instant.saturating_duration_since(self.epoch).as_secs_f64() * 1000.0;
+        let mut state = self.lock();
+        state.latest = state.latest.max(ms);
+    }
+
+    /// Instant `ms` millisecondes après l'origine.
+    fn instant_at(&self, ms: f64) -> Instant {
+        self.epoch + Duration::from_secs_f64((ms / 1000.0).max(0.0))
+    }
+
+    /// Calcule les styles à l'instant courant. Renvoie aussi cet instant si
+    /// le résultat en dépend (une animation ou une transition y contribue).
+    fn styles(
+        &self,
+        doc: &Document,
+        sheets: &[Stylesheet],
+        viewport: Viewport,
+    ) -> (StyleMap, Option<f64>) {
+        let now = self.now();
+        let mut state = self.lock();
+        let styles = oxyde_css::compute_styles_at(doc, sheets, viewport, &mut state.animator, now);
+        let time = state.animator.is_effective().then_some(now);
+        (styles, time)
+    }
+
+    /// Vrai si une animation ou une transition demande une nouvelle image.
+    fn needs_frames(&self) -> bool {
+        self.lock().animator.needs_frames()
+    }
+
+    fn take_events(&self) -> Vec<oxyde_css::AnimationEvent> {
+        self.lock().animator.take_events()
+    }
+}
+
+/// Police déclarée par `@font-face`.
+#[derive(Clone, Debug)]
+struct FontSlot {
+    /// Nom de famille que la page lui donne.
+    family: String,
+    /// Adresse du fichier.
+    url: Url,
+    /// Vrai une fois la ressource reçue (ou déclarée indisponible).
+    resolved: bool,
+    data: Option<std::sync::Arc<Vec<u8>>>,
+}
+
+/// Nombre maximal de polices chargées par page.
+const MAX_FONTS: usize = 64;
+
+/// Relève les polices déclarées par les feuilles `slots` ; celles de
+/// `previous` gardent leurs données.
+fn collect_fonts(slots: &[SheetSlot], base: &Url, previous: Vec<FontSlot>) -> Vec<FontSlot> {
+    let mut fonts = previous;
+    for slot in slots {
+        let (sheet, sheet_base) = match slot {
+            SheetSlot::Inline(sheet) => (sheet, base),
+            SheetSlot::External {
+                url,
+                sheet: Some(sheet),
+            } => (sheet, url),
+            SheetSlot::External { sheet: None, .. } => continue,
+        };
+        for face in &sheet.font_faces {
+            // La première adresse lisible : les formats compressés sont écartés.
+            let source = face
+                .sources
+                .iter()
+                .filter_map(|source| sheet_base.join(source).ok())
+                .find(|url| {
+                    let path = url.path().to_ascii_lowercase();
+                    !path.ends_with(".woff") && !path.ends_with(".woff2")
+                });
+            let Some(url) = source else { continue };
+            let known = fonts
+                .iter()
+                .any(|f| f.family == face.family && f.url == url);
+            if !known && fonts.len() < MAX_FONTS {
+                fonts.push(FontSlot {
+                    family: face.family.clone(),
+                    url,
+                    resolved: false,
+                    data: None,
+                });
+            }
+        }
+    }
+    fonts
+}
+
+/// Enregistre dans `text` les polices reçues parmi `fonts`.
+fn register_fonts(fonts: &[FontSlot], text: &mut TextContext) {
+    for font in fonts {
+        if let Some(data) = &font.data {
+            text.register_web_font(&font.family, font.url.as_str(), data);
+        }
+    }
+}
+
+/// Feuilles de style utilisables parmi `slots`.
+fn usable_sheets(slots: &[SheetSlot]) -> Vec<Stylesheet> {
+    slots
+        .iter()
+        .filter_map(|s| match s {
+            SheetSlot::Inline(sheet)
+            | SheetSlot::External {
+                sheet: Some(sheet), ..
+            } => Some(sheet.clone()),
+            SheetSlot::External { sheet: None, .. } => None,
+        })
+        .collect()
+}
+
+/// Calcule le style puis la mise en page de `doc` dans son état du moment,
+/// pour une fenêtre de taille `viewport`.
+pub(crate) fn layout_snapshot(
+    doc: &Document,
+    env: &LayoutEnv,
+    viewport: (f32, f32),
+    text: &mut TextContext,
+) -> (StyleMap, LayoutTree, Option<f64>) {
+    register_fonts(&env.fonts, text);
+    // Les `<style>` sont relus dans le document, qui a pu changer.
+    let slots = collect_sheets(doc, &env.base, env.sheets.clone());
+    let viewport = Viewport {
+        width: viewport.0,
+        height: viewport.1,
+    };
+    let (styles, time) = env.animations.styles(doc, &usable_sheets(&slots), viewport);
+    let intrinsic = |node: NodeId| env.sizes.get(&node).copied();
+    let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
+    (styles, tree, time)
 }
 
 /// État de chargement de l'image d'un élément `<img>`.
@@ -297,6 +516,8 @@ pub struct Page {
     base: Url,
     doc: Document,
     sheets: Vec<SheetSlot>,
+    /// Polices déclarées par les feuilles de style.
+    fonts: Vec<FontSlot>,
     images: HashMap<NodeId, ImageSlot>,
     scripts: Vec<ScriptSlot>,
     /// Modules importés par les scripts de type module, par adresse ; `None` :
@@ -314,6 +535,10 @@ pub struct Page {
     tree: Option<LayoutTree>,
     list: DisplayList,
     viewport: Viewport,
+    /// Animations et transitions en cours, partagées avec le moteur de script.
+    animations: std::sync::Arc<Animations>,
+    /// Défilement de la fenêtre et des éléments, partagé de même.
+    scrolling: std::sync::Arc<Scrolling>,
     /// Vrai si le style, les images, le DOM ou la taille ont changé depuis la dernière mise en page.
     dirty: bool,
 }
@@ -478,10 +703,12 @@ impl Page {
                 }
             }
         }
+        let fonts = collect_fonts(&sheets, &base, Vec::new());
         Self {
             url,
             base,
             doc,
+            fonts,
             sheets,
             images,
             scripts,
@@ -497,6 +724,8 @@ impl Page {
                 width: 0.0,
                 height: 0.0,
             },
+            animations: std::sync::Arc::new(Animations::new()),
+            scrolling: std::sync::Arc::default(),
             dirty: true,
         }
     }
@@ -539,6 +768,11 @@ impl Page {
             }
         }
         self.dirty |= found;
+        if found {
+            let previous = std::mem::take(&mut self.fonts);
+            self.fonts = collect_fonts(&self.sheets, &self.base, previous);
+            self.sync_layout_env();
+        }
         found
     }
 
@@ -576,6 +810,40 @@ impl Page {
             found = true;
         }
         self.dirty |= found && image.is_some();
+        found
+    }
+
+    /// Adresses des fichiers de police (`@font-face`) qu'il reste à fournir
+    /// par [`Page::set_font`]. À demander après les feuilles de style, qui
+    /// les déclarent.
+    #[must_use]
+    pub fn pending_fonts(&self) -> Vec<Url> {
+        let mut urls: Vec<Url> = Vec::new();
+        for font in self.fonts.iter().filter(|font| !font.resolved) {
+            if !urls.contains(&font.url) {
+                urls.push(font.url.clone());
+            }
+        }
+        urls
+    }
+
+    /// Fournit le fichier de police demandé par [`Page::pending_fonts`] ;
+    /// `None` s'il est indisponible. Renvoie `false` si `url` n'était pas
+    /// attendue.
+    pub fn set_font(&mut self, url: &Url, data: Option<Vec<u8>>) -> bool {
+        let data = data.map(std::sync::Arc::new);
+        let mut found = false;
+        for font in &mut self.fonts {
+            if font.url == *url && !font.resolved {
+                font.resolved = true;
+                font.data.clone_from(&data);
+                found = true;
+            }
+        }
+        if found {
+            self.dirty = true;
+            self.sync_layout_env();
+        }
         found
     }
 
@@ -803,6 +1071,8 @@ impl Page {
             engine.set_task_budget(budget);
         }
         engine.set_cookies(&self.cookies);
+        engine.set_viewport(self.viewport.width, self.viewport.height);
+        engine.set_layout_env(self.layout_env());
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
@@ -857,6 +1127,48 @@ impl Page {
         self.task_budget = Some(budget);
         if let Some(engine) = self.engine.as_mut() {
             engine.set_task_budget(budget);
+        }
+    }
+
+    /// Fixe la taille de la fenêtre que voient les scripts avant la première
+    /// mise en page ([`Page::update`] la fixe ensuite à chaque appel).
+    pub fn set_viewport(&mut self, viewport: Viewport) {
+        if viewport != self.viewport {
+            self.viewport = viewport;
+            self.dirty = true;
+        }
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_viewport(viewport.width, viewport.height);
+        }
+    }
+
+    /// Feuilles de style reçues et tailles d'images, pour la mise en page à
+    /// la demande des scripts.
+    fn layout_env(&self) -> LayoutEnv {
+        #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
+        let sizes = self
+            .images
+            .iter()
+            .filter_map(|(node, slot)| {
+                let image = slot.image.as_ref()?;
+                Some((*node, (image.width() as f32, image.height() as f32)))
+            })
+            .collect();
+        LayoutEnv {
+            sheets: self.sheets.clone(),
+            base: self.base.clone(),
+            sizes,
+            fonts: self.fonts.clone(),
+            animations: std::sync::Arc::clone(&self.animations),
+            scrolling: std::sync::Arc::clone(&self.scrolling),
+        }
+    }
+
+    /// Remet au moteur de script de quoi mettre la page en page.
+    fn sync_layout_env(&mut self) {
+        let env = self.layout_env();
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_layout_env(env);
         }
     }
 
@@ -966,21 +1278,94 @@ impl Page {
     /// Exécute les minuteurs arrivés à échéance. Renvoie `true` si la page
     /// doit être redessinée.
     pub fn tick(&mut self, now: Instant) -> bool {
-        let Some(engine) = self.engine.as_mut() else {
-            return false;
-        };
-        engine.run_timers(&mut self.doc, now);
-        if engine.take_dirty() {
-            self.dom_changed();
-            return true;
+        self.animations.advance(now);
+        let mut redraw = false;
+        if let Some(engine) = self.engine.as_mut() {
+            engine.run_timers(&mut self.doc, now);
+            if engine.take_dirty() {
+                self.dom_changed();
+                redraw = true;
+            }
         }
-        false
+        redraw | self.pump_animations() | self.pump_scroll()
     }
 
-    /// Instant du prochain minuteur à exécuter, s'il y en a un.
+    /// Distribue les événements `scroll` des zones qui ont défilé. Renvoie
+    /// `true` si la page doit être redessinée.
+    fn pump_scroll(&mut self) -> bool {
+        let changed = self.scrolling.lock().take_changed();
+        if changed.is_empty() {
+            return false;
+        }
+        if let Some(engine) = self.engine.as_mut() {
+            engine.scroll_events(&mut self.doc, &changed);
+            if engine.take_dirty() {
+                self.dom_changed();
+            }
+        }
+        true
+    }
+
+    /// Défilement de la fenêtre, en pixels CSS.
+    #[must_use]
+    pub fn scroll_offset(&self) -> (f32, f32) {
+        self.scrolling
+            .lock()
+            .offset(oxyde_compositor::ROOT_SCROLLER)
+    }
+
+    /// Défilement de la zone `id` de la liste d'affichage
+    /// ([`oxyde_paint::ROOT_SCROLLER`] pour la fenêtre) : à passer au
+    /// compositeur avec [`Page::display_list`].
+    #[must_use]
+    pub fn scroll_of(&self, id: u32) -> (f32, f32) {
+        self.scrolling.lock().offset(id)
+    }
+
+    /// Molette de (`dx`, `dy`) au point (`x`, `y`) de la fenêtre : fait
+    /// défiler la zone située sous le pointeur, ou la fenêtre. Renvoie
+    /// `true` si quelque chose a défilé ; seule la composition est à
+    /// refaire.
+    pub fn wheel(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
+        self.scrolling.lock().wheel(x, y, dx, dy).is_some()
+    }
+
+    /// Fait avancer les animations et les transitions jusqu'à l'instant
+    /// courant et distribue leurs événements. Renvoie `true` si la page doit
+    /// être redessinée.
+    fn pump_animations(&mut self) -> bool {
+        let animating = self.animations.needs_frames();
+        if animating {
+            // Le calcul de style fait avancer les effets et relève leurs
+            // événements ; la page est redessinée à la prochaine mise à jour.
+            let sheets = usable_sheets(&self.sheets);
+            let _ = self.animations.styles(&self.doc, &sheets, self.viewport);
+            self.dirty = true;
+        }
+        let events = self.animations.take_events();
+        if !events.is_empty()
+            && let Some(engine) = self.engine.as_mut()
+        {
+            engine.animation_events(&mut self.doc, &events);
+            if engine.take_dirty() {
+                self.dom_changed();
+            }
+        }
+        animating
+    }
+
+    /// Instant du prochain minuteur à exécuter, ou de la prochaine image
+    /// d'une animation en cours, s'il y en a.
     #[must_use]
     pub fn next_wake(&mut self) -> Option<Instant> {
-        self.engine.as_mut()?.next_due()
+        let timer = self.engine.as_mut().and_then(|engine| engine.next_due());
+        // Une animation en cours, ou un événement `scroll` à distribuer.
+        let frame = (self.animations.needs_frames() || self.scrolling.lock().has_changed())
+            .then(|| self.animations.instant_at(self.animations.now()) + FRAME);
+        match (timer, frame) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
     /// Clic au point (`x`, `y`) de la page : distribue l'événement `click` aux
@@ -1038,18 +1423,9 @@ impl Page {
         if let Some(engine) = self.engine.as_mut() {
             engine.set_viewport(viewport.width, viewport.height);
         }
-        let sheets: Vec<Stylesheet> = self
-            .sheets
-            .iter()
-            .filter_map(|s| match s {
-                SheetSlot::Inline(sheet)
-                | SheetSlot::External {
-                    sheet: Some(sheet), ..
-                } => Some(sheet.clone()),
-                SheetSlot::External { sheet: None, .. } => None,
-            })
-            .collect();
-        self.styles = oxyde_css::compute_styles(&self.doc, &sheets, viewport);
+        register_fonts(&self.fonts, text);
+        let sheets = usable_sheets(&self.sheets);
+        (self.styles, _) = self.animations.styles(&self.doc, &sheets, viewport);
         let images = &self.images;
         let image_of = |node: NodeId| images.get(&node).and_then(|slot| slot.image.clone());
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
@@ -1062,6 +1438,13 @@ impl Page {
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         self.list = oxyde_paint::paint(&tree, viewport, &image_of);
+        // Les décalages de défilement sont ramenés dans les bornes du
+        // nouveau contenu.
+        self.scrolling.lock().update(
+            &self.list.scrollers,
+            (viewport.width, viewport.height),
+            (tree.width, tree.height),
+        );
         self.tree = Some(tree);
         true
     }
@@ -1093,7 +1476,11 @@ impl Page {
     /// Nœud situé au point (`x`, `y`) de la page.
     #[must_use]
     pub fn node_at(&self, x: f32, y: f32) -> Option<NodeId> {
-        oxyde_layout::hit_test(&self.doc, self.root_fragment()?, x, y)
+        let tree = self.scrolling.lock();
+        let offset = |node: Option<NodeId>| {
+            tree.offset(node.map_or(oxyde_compositor::ROOT_SCROLLER, scroll_id))
+        };
+        oxyde_layout::hit_test_scrolled(&self.doc, self.root_fragment()?, x, y, &offset)
     }
 
     /// Cible du lien qui contient `node`, s'il y en a un.
@@ -1187,6 +1574,74 @@ mod tests {
         assert!(!p.set_stylesheet(&pending[0], ""), "déjà fournie");
         assert!(p.update(&mut text, VIEWPORT));
         assert_eq!(p.content_height(), 50.0);
+    }
+
+    #[test]
+    fn animations_ask_for_frames_and_move_the_paint() {
+        let mut p = page(
+            "<style>body{margin:0} @keyframes glisse { from { width: 100px } to { width: 300px } }             div{height:10px;background:red;animation:glisse 1s linear}</style><div></div>",
+        );
+        let mut text = TextContext::new();
+        assert!(p.update(&mut text, VIEWPORT));
+        let red_width = |p: &Page| {
+            p.display_list().items.iter().find_map(|item| match item {
+                DisplayItem::Rect { rect, color, .. } if *color == Color::rgb(255, 0, 0) => {
+                    Some(rect.w)
+                }
+                _ => None,
+            })
+        };
+        let start = red_width(&p).expect("boîte rouge");
+        assert!(start < 110.0, "au départ : {start}");
+        // L'animation demande une image, et l'instant suivant la fait avancer.
+        let wake = p
+            .next_wake()
+            .expect("une animation en cours demande une image");
+        assert!(
+            p.tick(wake + Duration::from_millis(500)),
+            "la page doit être redessinée"
+        );
+        assert!(p.update(&mut text, VIEWPORT));
+        let middle = red_width(&p).expect("boîte rouge");
+        assert!(middle > 190.0 && middle < 230.0, "à mi-course : {middle}");
+        // Terminée : retour au style de base, plus d'image demandée.
+        p.tick(wake + Duration::from_secs(2));
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(p.next_wake(), None);
+    }
+
+    #[test]
+    fn wheel_scrolls_the_zone_under_the_pointer() {
+        let mut p = page(
+            "<style>body{margin:0}</style>\
+             <div id=zone style='height:100px;overflow:auto'>\
+             <a id=haut href='haut.html' style='display:block;height:150px'>haut</a>\
+             <a id=bas href='bas.html' style='display:block;height:150px'>bas</a></div>\
+             <div style='height:1000px'></div>",
+        );
+        let mut text = TextContext::new();
+        assert!(p.update(&mut text, VIEWPORT));
+        let link_at = |p: &Page, x: f32, y: f32| {
+            let node = p.node_at(x, y)?;
+            p.link_from(node).map(|url| url.path().to_owned())
+        };
+        assert_eq!(
+            link_at(&p, 10.0, 50.0).as_deref(),
+            Some("/dossier/haut.html")
+        );
+        // Au-dessus de la zone : c'est elle qui défile, pas la fenêtre.
+        assert!(p.wheel(10.0, 50.0, 0.0, 120.0));
+        assert_eq!(p.scroll_offset(), (0.0, 0.0));
+        assert_eq!(
+            link_at(&p, 10.0, 50.0).as_deref(),
+            Some("/dossier/bas.html")
+        );
+        // Ailleurs : la fenêtre, jusqu'au bout du contenu.
+        assert!(p.wheel(10.0, 200.0, 0.0, 5000.0));
+        assert_eq!(p.scroll_offset(), (0.0, 800.0));
+        assert!(!p.wheel(10.0, 200.0, 0.0, 10.0), "en butée");
+        // Le défilement ne redemande pas de mise en page.
+        assert!(!p.needs_update());
     }
 
     #[test]

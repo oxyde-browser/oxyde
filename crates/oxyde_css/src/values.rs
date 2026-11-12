@@ -50,6 +50,226 @@ pub enum Length {
     Vw(f32),
     /// Centième de la hauteur de la fenêtre.
     Vh(f32),
+    /// Somme de longueurs d'unités différentes (`calc(100% - 20px)`).
+    Calc(Linear),
+}
+
+/// Somme pondérée de longueurs : le résultat d'un `calc()` qui mêle des
+/// unités. Chaque champ est le coefficient de son unité.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[allow(missing_docs, reason = "les champs portent le nom de l'unité CSS")]
+pub struct Linear {
+    pub px: f32,
+    pub em: f32,
+    pub rem: f32,
+    pub percent: f32,
+    pub vw: f32,
+    pub vh: f32,
+    /// Vrai si l'expression contient un pourcentage, même nul : elle dépend
+    /// alors du bloc conteneur (`calc(0px + 0%)` n'est pas `0px`).
+    pub has_percent: bool,
+}
+
+impl Linear {
+    fn of(length: Length) -> Self {
+        let mut linear = Self::default();
+        match length {
+            Length::Px(v) => linear.px = v,
+            Length::Em(v) => linear.em = v,
+            Length::Rem(v) => linear.rem = v,
+            Length::Percent(v) => {
+                linear.percent = v;
+                linear.has_percent = true;
+            }
+            Length::Vw(v) => linear.vw = v,
+            Length::Vh(v) => linear.vh = v,
+            Length::Calc(inner) => linear = inner,
+        }
+        linear
+    }
+
+    fn combine(self, other: Self, sign: f32) -> Self {
+        Self {
+            px: self.px + sign * other.px,
+            em: self.em + sign * other.em,
+            rem: self.rem + sign * other.rem,
+            percent: self.percent + sign * other.percent,
+            vw: self.vw + sign * other.vw,
+            vh: self.vh + sign * other.vh,
+            has_percent: self.has_percent || other.has_percent,
+        }
+    }
+
+    fn scale(self, factor: f32) -> Self {
+        Self {
+            px: self.px * factor,
+            em: self.em * factor,
+            rem: self.rem * factor,
+            percent: self.percent * factor,
+            vw: self.vw * factor,
+            vh: self.vh * factor,
+            has_percent: self.has_percent,
+        }
+    }
+
+    /// La longueur la plus simple qui vaut cette somme.
+    fn simplify(self) -> Length {
+        let others = |keep: f32| {
+            let total =
+                self.px.abs() + self.em.abs() + self.rem.abs() + self.vw.abs() + self.vh.abs();
+            (total - keep.abs()).abs() < f32::EPSILON
+        };
+        if self.has_percent {
+            // Un pourcentage seul reste un pourcentage, même nul.
+            if others(0.0) {
+                Length::Percent(self.percent)
+            } else {
+                Length::Calc(self)
+            }
+        } else if others(self.px) {
+            Length::Px(self.px)
+        } else if others(self.em) {
+            Length::Em(self.em)
+        } else {
+            Length::Calc(self)
+        }
+    }
+}
+
+/// Opérande d'un `calc()` : un nombre sans unité ou une longueur.
+#[derive(Clone, Copy)]
+enum Operand {
+    Number(f32),
+    Length(Linear),
+}
+
+/// Profondeur maximale d'imbrication d'un `calc()`.
+const MAX_CALC_DEPTH: usize = 32;
+
+/// Évalue la somme `tokens` (le contenu d'un `calc()` ou d'une parenthèse).
+fn calc_sum(tokens: &[Token], depth: usize) -> Option<Operand> {
+    if depth > MAX_CALC_DEPTH {
+        return None;
+    }
+    // Découpe au niveau zéro sur « + » et « - » entourés de blancs.
+    let mut terms: Vec<(f32, &[Token])> = Vec::new();
+    let (mut level, mut start, mut sign) = (0usize, 0usize, 1.0_f32);
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::OpenParen | Token::Function(_) => level += 1,
+            Token::CloseParen => level = level.saturating_sub(1),
+            Token::Delim(op @ ('+' | '-'))
+                if level == 0
+                    && i > 0
+                    && tokens.get(i - 1) == Some(&Token::Whitespace)
+                    && tokens.get(i + 1) == Some(&Token::Whitespace) =>
+            {
+                terms.push((sign, tokens.get(start..i)?));
+                sign = if *op == '+' { 1.0 } else { -1.0 };
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    terms.push((sign, tokens.get(start..)?));
+    let mut total: Option<Operand> = None;
+    for (sign, term) in terms {
+        let value = calc_product(term, depth)?;
+        total = Some(match (total, value) {
+            (None, Operand::Number(n)) => Operand::Number(sign * n),
+            (None, Operand::Length(l)) => Operand::Length(l.scale(sign)),
+            (Some(Operand::Number(a)), Operand::Number(b)) => Operand::Number(a + sign * b),
+            (Some(Operand::Length(a)), Operand::Length(b)) => Operand::Length(a.combine(b, sign)),
+            // Un nombre ne s'ajoute pas à une longueur.
+            _ => return None,
+        });
+    }
+    total
+}
+
+/// Évalue le produit `tokens` : des opérandes séparés par « * » ou « / ».
+fn calc_product(tokens: &[Token], depth: usize) -> Option<Operand> {
+    let mut factors: Vec<(char, &[Token])> = Vec::new();
+    let (mut level, mut start, mut op) = (0usize, 0usize, '*');
+    for (i, token) in tokens.iter().enumerate() {
+        match token {
+            Token::OpenParen | Token::Function(_) => level += 1,
+            Token::CloseParen => level = level.saturating_sub(1),
+            Token::Delim(next @ ('*' | '/')) if level == 0 => {
+                factors.push((op, tokens.get(start..i)?));
+                op = *next;
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    factors.push((op, tokens.get(start..)?));
+    let mut total: Option<Operand> = None;
+    for (op, factor) in factors {
+        let value = calc_unit(factor, depth)?;
+        total = Some(match (total, op, value) {
+            (None, _, value) => value,
+            (Some(Operand::Number(a)), '*', Operand::Number(b)) => Operand::Number(a * b),
+            (Some(Operand::Number(a)), '*', Operand::Length(l))
+            | (Some(Operand::Length(l)), '*', Operand::Number(a)) => Operand::Length(l.scale(a)),
+            (Some(Operand::Number(a)), '/', Operand::Number(b)) if b != 0.0 => {
+                Operand::Number(a / b)
+            }
+            (Some(Operand::Length(l)), '/', Operand::Number(b)) if b != 0.0 => {
+                Operand::Length(l.scale(1.0 / b))
+            }
+            _ => return None,
+        });
+    }
+    total
+}
+
+/// Évalue un opérande : nombre, longueur, parenthèse ou `calc()` imbriqué.
+fn calc_unit(tokens: &[Token], depth: usize) -> Option<Operand> {
+    let tokens = crate::syntax::trim(tokens);
+    match tokens {
+        [Token::Number(n)] => Some(Operand::Number(*n)),
+        [Token::Calc(linear)] => Some(Operand::Length(*linear)),
+        [single] => parse_length(single).map(|l| Operand::Length(Linear::of(l))),
+        [Token::OpenParen, inner @ .., Token::CloseParen] => calc_sum(inner, depth + 1),
+        [Token::Function(name), inner @ .., Token::CloseParen] if name == "calc" => {
+            calc_sum(inner, depth + 1)
+        }
+        _ => None,
+    }
+}
+
+/// Remplace chaque expression `calc(…)` de `tokens` par un jeton unique :
+/// sa valeur si elle est une longueur, un nombre si elle n'a pas d'unité.
+/// `None` si une expression est invalide (la déclaration est alors écartée).
+#[must_use]
+pub fn fold_calc(tokens: &[Token]) -> Option<Vec<Token>> {
+    if !tokens
+        .iter()
+        .any(|t| matches!(t, Token::Function(name) if name == "calc"))
+    {
+        return Some(tokens.to_vec());
+    }
+    let mut out = Vec::with_capacity(tokens.len());
+    let mut i = 0;
+    while i < tokens.len() {
+        match &tokens[i] {
+            Token::Function(name) if name == "calc" => {
+                let close = crate::syntax::matching_close(tokens, i);
+                let inner = tokens.get(i + 1..close)?;
+                out.push(match calc_sum(inner, 0)? {
+                    Operand::Number(n) => Token::Number(n),
+                    Operand::Length(linear) => Token::Calc(linear),
+                });
+                i = close + 1;
+            }
+            other => {
+                out.push(other.clone());
+                i += 1;
+            }
+        }
+    }
+    Some(out)
 }
 
 /// Analyse un jeton en longueur. `allow_unitless_zero` : `0` vaut `0px`.
@@ -58,6 +278,7 @@ pub fn parse_length(token: &Token) -> Option<Length> {
     match token {
         Token::Number(v) if *v == 0.0 => Some(Length::Px(0.0)),
         Token::Percentage(v) => Some(Length::Percent(*v)),
+        Token::Calc(linear) => Some(linear.simplify()),
         Token::Dimension(v, unit) => Some(match unit.as_str() {
             "px" => Length::Px(*v),
             "em" => Length::Em(*v),

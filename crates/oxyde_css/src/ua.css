@@ -63,13 +63,19 @@ hr {
   color: gray;
 }
 
-table { display: table; border-color: gray; }
+table { display: table; border-color: gray; border-spacing: 2px; border-collapse: separate; box-sizing: border-box; }
+thead, tbody, tfoot { vertical-align: middle; }
+tr, td, th { vertical-align: inherit; }
 caption { display: table-caption; text-align: center; }
 thead { display: table-header-group; }
 tbody { display: table-row-group; }
 tfoot { display: table-footer-group; }
 tr { display: table-row; }
 td, th { display: table-cell; padding: 1px; }
+table[border]:not([border="0"]) > tr > td, table[border]:not([border="0"]) > tr > th,
+table[border]:not([border="0"]) > * > tr > td, table[border]:not([border="0"]) > * > tr > th {
+  border: 1px inset gray;
+}
 th { text-align: center; }
 col { display: table-column; }
 colgroup { display: table-column-group; }
@@ -85,4 +91,6 @@ button, input, select, textarea {
   padding: 1px 6px;
 }
 input, textarea, select { background-color: white; }
+input[type=checkbox], input[type=radio] { padding: 0; border: none; margin: 3px 3px 3px 4px; }
+input[type=hidden] { display: none; }
 fieldset { margin-left: 2px; margin-right: 2px; padding: 0.35em 0.75em 0.625em; border: 2px groove silver; }

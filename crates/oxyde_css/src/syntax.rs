@@ -46,6 +46,10 @@ pub enum Token {
     CloseBracket,
     /// Tout autre caractère.
     Delim(char),
+    /// Expression `calc(…)` déjà évaluée : elle remplace, dans la valeur
+    /// d'une déclaration, les jetons de l'expression (voir
+    /// [`crate::values::fold_calc`]).
+    Calc(crate::values::Linear),
 }
 
 fn is_name_start(c: char) -> bool {

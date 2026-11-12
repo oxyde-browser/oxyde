@@ -4,7 +4,7 @@ Membres des interfaces décrites par les fichiers Web IDL d'Oxyde (`crates/oxyde
 
 La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : c'est le rôle des Web Platform Tests (voir `wpt.md`). Les interfaces que l'IDL d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) ne sont pas comptées.
 
-**Total : 316 membres disponibles sur 342 (92.4 %).**
+**Total : 329 membres disponibles sur 342 (96.2 %).**
 
 | Interface | Hérite de | Constantes | Attributs | Opérations |
 |---|---|---:|---:|---:|
@@ -14,12 +14,12 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 | `NodeList` | — | — | 1 / 1 | 1 / 1 |
 | `HTMLCollection` | — | — | 1 / 1 | 2 / 2 |
 | `Node` | `EventTarget` | 18 / 18 | 14 / 14 | 15 / 15 |
-| `Document` | `Node` | — | 33 / 35 | 27 / 32 |
+| `Document` | `Node` | — | 34 / 35 | 27 / 32 |
 | `XMLDocument` | `Document` | — | — | — |
 | `DOMImplementation` | — | — | — | 4 / 4 |
 | `DocumentType` | `Node` | — | 3 / 3 | 4 / 4 |
 | `DocumentFragment` | `Node` | — | 4 / 4 | 7 / 7 |
-| `Element` | `Node` | — | 17 / 26 | 37 / 42 |
+| `Element` | `Node` | — | 25 / 26 | 41 / 42 |
 | `NamedNodeMap` | — | — | 1 / 1 | 7 / 7 |
 | `Attr` | `Node` | — | 7 / 7 | — |
 | `CharacterData` | `Node` | — | 4 / 4 | 9 / 9 |
@@ -36,6 +36,6 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 
 ## Membres absents
 
-- `Document` : cookie, lastModified, open, close, write, writeln, execCommand
-- `Element` : shadowRoot, scrollTop, scrollLeft, scrollWidth, scrollHeight, clientTop, clientLeft, clientWidth, clientHeight, attachShadow, getClientRects, scroll, scrollTo, scrollBy
+- `Document` : lastModified, open, close, write, writeln, execCommand
+- `Element` : shadowRoot, attachShadow
 - `CSSStyleDeclaration` : length, parentRule, cssFloat, item, getPropertyPriority

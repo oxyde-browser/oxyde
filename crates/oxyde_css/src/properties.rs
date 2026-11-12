@@ -54,6 +54,61 @@ pub enum Longhand {
     MaxHeight,
     BoxSizing,
     ListStyleType,
+    Position,
+    Inset(Side),
+    Float,
+    Clear,
+    ZIndex,
+    OverflowX,
+    OverflowY,
+    Visibility,
+    Opacity,
+    FlexDirection,
+    FlexWrap,
+    FlexGrow,
+    FlexShrink,
+    FlexBasis,
+    JustifyContent,
+    AlignItems,
+    AlignSelf,
+    AlignContent,
+    Order,
+    RowGap,
+    ColumnGap,
+    GridTemplateColumns,
+    GridTemplateRows,
+    GridAutoColumns,
+    GridAutoRows,
+    GridAutoFlow,
+    GridRowStart,
+    GridRowEnd,
+    GridColumnStart,
+    GridColumnEnd,
+    GridTemplateAreas,
+    JustifyItems,
+    JustifySelf,
+    BorderSpacingH,
+    BorderSpacingV,
+    BorderCollapse,
+    TableLayout,
+    CaptionSide,
+    VerticalAlign,
+    AspectRatio,
+    Transform,
+    TransformOriginX,
+    TransformOriginY,
+    AnimationName,
+    AnimationDuration,
+    AnimationDelay,
+    AnimationTimingFunction,
+    AnimationIterationCount,
+    AnimationDirection,
+    AnimationFillMode,
+    AnimationPlayState,
+    TransitionProperty,
+    TransitionDuration,
+    TransitionDelay,
+    TransitionTimingFunction,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -71,6 +126,24 @@ pub enum Value {
     CurrentColor,
     /// Liste de familles de polices.
     FontFamily(Vec<String>),
+    /// Liste de pistes de grille.
+    Tracks(crate::grid::TrackList<Length>),
+    /// Tailles de pistes implicites.
+    TrackSizes(Vec<crate::grid::TrackSize<Length>>),
+    /// Ligne de placement dans une grille.
+    Line(crate::grid::GridLine),
+    /// Zones nommées d'une grille.
+    Areas(crate::grid::GridAreas),
+    /// Fonctions de transformation ; liste vide pour `none`.
+    Transform(Vec<crate::transform::TransformFunction<Length>>),
+    /// Liste de noms ou de mots-clés (`animation-name`, `transition-property`…).
+    Names(Vec<String>),
+    /// Liste de durées, en millisecondes.
+    Times(Vec<f32>),
+    /// Liste de fonctions de temporisation.
+    Easings(Vec<crate::animation::Easing>),
+    /// Liste de nombres (`animation-iteration-count`).
+    Numbers(Vec<f32>),
     /// `inherit`
     Inherit,
     /// `initial`
@@ -125,7 +198,11 @@ pub fn parse_declarations(tokens: &[Token]) -> Vec<Declaration> {
             continue;
         }
         let name = name.to_ascii_lowercase();
-        if let Some(pairs) = parse_property(&name, value) {
+        // Les `calc()` sont évalués avant l'analyse de la propriété.
+        let Some(folded) = crate::values::fold_calc(value) else {
+            continue;
+        };
+        if let Some(pairs) = parse_property(&name, &folded) {
             out.extend(pairs.into_iter().map(|(property, value)| Declaration {
                 property,
                 value,
@@ -173,6 +250,8 @@ fn non_negative(length: Length) -> Option<Length> {
         | Length::Percent(v)
         | Length::Vw(v)
         | Length::Vh(v) => v,
+        // Le signe d'une somme d'unités mêlées dépend du contexte.
+        Length::Calc(_) => return Some(length),
     };
     (v >= 0.0).then_some(length)
 }
@@ -185,6 +264,74 @@ fn length_value(token: &Token, allow_negative: bool) -> Option<Value> {
         non_negative(length)?
     };
     Some(Value::Length(length))
+}
+
+/// `transform-origin` : une ou deux positions (mots-clés, longueurs ou
+/// pourcentages) ; une troisième valeur, la profondeur, est lue et ignorée.
+fn transform_origin(tokens: &[Token]) -> Option<(Length, Length)> {
+    // (valeur, axe imposé par le mot-clé : `Some(true)` pour l'horizontale)
+    let position = |token: &Token| -> Option<(Length, Option<bool>)> {
+        match ident_of(token).as_deref() {
+            Some("left") => Some((Length::Percent(0.0), Some(true))),
+            Some("right") => Some((Length::Percent(100.0), Some(true))),
+            Some("top") => Some((Length::Percent(0.0), Some(false))),
+            Some("bottom") => Some((Length::Percent(100.0), Some(false))),
+            Some("center") => Some((Length::Percent(50.0), None)),
+            Some(_) => None,
+            None => parse_length(token).map(|length| (length, None)),
+        }
+    };
+    let center = Length::Percent(50.0);
+    let parts = components(tokens);
+    match parts.as_slice() {
+        [one] => match position(one)? {
+            (value, Some(false)) => Some((center, value)),
+            (value, _) => Some((value, center)),
+        },
+        [first, second, depth @ ..] if depth.len() <= 1 => {
+            if let [depth] = depth {
+                parse_length(depth)?;
+            }
+            let (a, a_axis) = position(first)?;
+            let (b, b_axis) = position(second)?;
+            match (a_axis, b_axis) {
+                (Some(false), Some(false)) | (Some(true), Some(true)) => None,
+                (Some(false), _) | (_, Some(true)) => Some((b, a)),
+                _ => Some((a, b)),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Mots-clés de `width`, `height`, `min-width` et `min-height`.
+const AUTO_SIZES: &[&str] = &["auto", "min-content", "max-content", "fit-content"];
+
+/// Mots-clés de `max-width` et `max-height`.
+const NONE_SIZES: &[&str] = &["none", "min-content", "max-content", "fit-content"];
+
+/// `aspect-ratio` : `auto`, un rapport `<largeur> / <hauteur>`, ou les deux.
+/// Le rapport est rendu sous forme d'un nombre ; un rapport dégénéré vaut
+/// `auto`.
+fn aspect_ratio(tokens: &[Token]) -> Option<Value> {
+    let mut numbers = Vec::new();
+    let mut auto = false;
+    for token in components(tokens) {
+        match token {
+            Token::Number(v) if *v >= 0.0 => numbers.push(*v),
+            Token::Delim('/') if numbers.len() == 1 => {}
+            other if ident_of(other).as_deref() == Some("auto") && !auto => auto = true,
+            _ => return None,
+        }
+    }
+    let auto_value = || Value::Ident("auto".to_owned());
+    match numbers.as_slice() {
+        [] if auto => Some(auto_value()),
+        [width] if *width > 0.0 => Some(Value::Number(*width)),
+        [width, height] if *width > 0.0 && *height > 0.0 => Some(Value::Number(width / height)),
+        [_] | [_, _] => Some(auto_value()),
+        _ => None,
+    }
 }
 
 fn length_or_keywords(token: &Token, keywords: &[&str], allow_negative: bool) -> Option<Value> {
@@ -287,6 +434,98 @@ fn side_of(name: &str) -> Option<Side> {
         "left" | "inline-start" => Side::Left,
         _ => return None,
     })
+}
+
+const OVERFLOWS: &[&str] = &["visible", "hidden", "clip", "scroll", "auto"];
+const FLEX_DIRECTIONS: &[&str] = &["row", "row-reverse", "column", "column-reverse"];
+const FLEX_WRAPS: &[&str] = &["nowrap", "wrap", "wrap-reverse"];
+const CONTENT_ALIGNMENTS: &[&str] = &[
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "flex-end",
+    "end",
+    "center",
+    "space-between",
+    "space-around",
+    "space-evenly",
+    "left",
+    "right",
+];
+const ITEM_ALIGNMENTS: &[&str] = &[
+    "auto",
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "self-start",
+    "flex-end",
+    "end",
+    "self-end",
+    "center",
+    "baseline",
+];
+
+/// Alignements d'un élément dans sa zone (`justify-self`, `justify-items`).
+const SELF_ALIGNMENTS: &[&str] = &[
+    "auto",
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "self-start",
+    "flex-end",
+    "end",
+    "self-end",
+    "center",
+    "baseline",
+    "left",
+    "right",
+    "legacy",
+];
+
+fn grid_line(tokens: &[Token]) -> Option<Value> {
+    crate::grid::parse_grid_line(tokens).map(Value::Line)
+}
+
+/// Ligne de fin sous-entendue par une ligne de début : le même nom si le
+/// début est un nom, `auto` sinon.
+fn implied_line(start: &Value) -> Value {
+    match start {
+        Value::Line(crate::grid::GridLine::Named(name)) => {
+            Value::Line(crate::grid::GridLine::Named(name.clone()))
+        }
+        _ => Value::Line(crate::grid::GridLine::Auto),
+    }
+}
+
+/// Entier (`z-index`, `order`).
+fn integer(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) if v.fract() == 0.0 => Some(Value::Number(*v)),
+        _ => None,
+    }
+}
+
+fn integer_or_auto(token: &Token) -> Option<Value> {
+    match ident_of(token).as_deref() {
+        Some("auto") => Some(Value::Ident("auto".to_owned())),
+        Some(_) => None,
+        None => integer(token),
+    }
+}
+
+fn non_negative_number(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) if *v >= 0.0 => Some(Value::Number(*v)),
+        _ => None,
+    }
+}
+
+/// Valeur de `row-gap` ou `column-gap` : `normal` ou une longueur positive.
+fn gap_value(token: &Token) -> Option<Value> {
+    length_or_keywords(token, &["normal"], false)
 }
 
 fn font_weight(token: &Token) -> Option<Value> {
@@ -428,6 +667,7 @@ fn font_shorthand(tokens: &[Token]) -> Option<Pairs> {
 }
 
 fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
+    use crate::animation;
     let wide = css_wide(tokens);
     let single = |property: Longhand, parsed: Option<Value>| -> Option<Pairs> {
         Some(vec![(property, wide.clone().or(parsed)?)])
@@ -602,16 +842,563 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             let first = components(tokens).into_iter().next()?;
             single(Longhand::BorderRadius, length_value(first, false))
         }
-        "width" => single(Longhand::Width, size(&["auto"])),
-        "height" => single(Longhand::Height, size(&["auto"])),
-        "min-width" => single(Longhand::MinWidth, size(&["auto"])),
-        "min-height" => single(Longhand::MinHeight, size(&["auto"])),
-        "max-width" => single(Longhand::MaxWidth, size(&["none"])),
-        "max-height" => single(Longhand::MaxHeight, size(&["none"])),
+        "width" => single(Longhand::Width, size(AUTO_SIZES)),
+        "height" => single(Longhand::Height, size(AUTO_SIZES)),
+        "min-width" => single(Longhand::MinWidth, size(AUTO_SIZES)),
+        "min-height" => single(Longhand::MinHeight, size(AUTO_SIZES)),
+        "max-width" => single(Longhand::MaxWidth, size(NONE_SIZES)),
+        "max-height" => single(Longhand::MaxHeight, size(NONE_SIZES)),
+        "aspect-ratio" => single(Longhand::AspectRatio, aspect_ratio(tokens)),
+        "animation-name" | "-webkit-animation-name" => single(
+            Longhand::AnimationName,
+            animation::parse_names(tokens, &[]).map(Value::Names),
+        ),
+        "animation-duration" | "-webkit-animation-duration" => single(
+            Longhand::AnimationDuration,
+            animation::parse_times(tokens, false).map(Value::Times),
+        ),
+        "animation-delay" | "-webkit-animation-delay" => single(
+            Longhand::AnimationDelay,
+            animation::parse_times(tokens, true).map(Value::Times),
+        ),
+        "animation-timing-function" | "-webkit-animation-timing-function" => single(
+            Longhand::AnimationTimingFunction,
+            animation::parse_easings(tokens).map(Value::Easings),
+        ),
+        "animation-iteration-count" | "-webkit-animation-iteration-count" => single(
+            Longhand::AnimationIterationCount,
+            animation::parse_iterations(tokens).map(Value::Numbers),
+        ),
+        "animation-direction" | "-webkit-animation-direction" => single(
+            Longhand::AnimationDirection,
+            animation::parse_names(tokens, animation::DIRECTIONS).map(Value::Names),
+        ),
+        "animation-fill-mode" | "-webkit-animation-fill-mode" => single(
+            Longhand::AnimationFillMode,
+            animation::parse_names(tokens, animation::FILL_MODES).map(Value::Names),
+        ),
+        "animation-play-state" | "-webkit-animation-play-state" => single(
+            Longhand::AnimationPlayState,
+            animation::parse_names(tokens, animation::PLAY_STATES).map(Value::Names),
+        ),
+        "animation" | "-webkit-animation" => {
+            const ALL: [Longhand; 8] = [
+                Longhand::AnimationName,
+                Longhand::AnimationDuration,
+                Longhand::AnimationDelay,
+                Longhand::AnimationTimingFunction,
+                Longhand::AnimationIterationCount,
+                Longhand::AnimationDirection,
+                Longhand::AnimationFillMode,
+                Longhand::AnimationPlayState,
+            ];
+            if let Some(w) = wide {
+                return Some(ALL.iter().map(|l| (*l, w.clone())).collect());
+            }
+            let entries = animation::parse_animation_shorthand(tokens)?;
+            let names = |pick: fn(&animation::AnimationEntry) -> String| {
+                Value::Names(entries.iter().map(pick).collect())
+            };
+            Some(vec![
+                (Longhand::AnimationName, names(|e| e.name.clone())),
+                (
+                    Longhand::AnimationDuration,
+                    Value::Times(entries.iter().map(|e| e.duration).collect()),
+                ),
+                (
+                    Longhand::AnimationDelay,
+                    Value::Times(entries.iter().map(|e| e.delay).collect()),
+                ),
+                (
+                    Longhand::AnimationTimingFunction,
+                    Value::Easings(entries.iter().map(|e| e.easing).collect()),
+                ),
+                (
+                    Longhand::AnimationIterationCount,
+                    Value::Numbers(entries.iter().map(|e| e.iterations).collect()),
+                ),
+                (Longhand::AnimationDirection, names(|e| e.direction.clone())),
+                (Longhand::AnimationFillMode, names(|e| e.fill_mode.clone())),
+                (
+                    Longhand::AnimationPlayState,
+                    names(|e| e.play_state.clone()),
+                ),
+            ])
+        }
+        "transition-property" | "-webkit-transition-property" => single(
+            Longhand::TransitionProperty,
+            animation::parse_names(tokens, &[])
+                .filter(|names| names.len() == 1 || names.iter().all(|n| n != "none"))
+                .map(|names| Value::Names(names.iter().map(|n| n.to_ascii_lowercase()).collect())),
+        ),
+        "transition-duration" | "-webkit-transition-duration" => single(
+            Longhand::TransitionDuration,
+            animation::parse_times(tokens, false).map(Value::Times),
+        ),
+        "transition-delay" | "-webkit-transition-delay" => single(
+            Longhand::TransitionDelay,
+            animation::parse_times(tokens, true).map(Value::Times),
+        ),
+        "transition-timing-function" | "-webkit-transition-timing-function" => single(
+            Longhand::TransitionTimingFunction,
+            animation::parse_easings(tokens).map(Value::Easings),
+        ),
+        "transition" | "-webkit-transition" => {
+            const ALL: [Longhand; 4] = [
+                Longhand::TransitionProperty,
+                Longhand::TransitionDuration,
+                Longhand::TransitionDelay,
+                Longhand::TransitionTimingFunction,
+            ];
+            if let Some(w) = wide {
+                return Some(ALL.iter().map(|l| (*l, w.clone())).collect());
+            }
+            let entries = animation::parse_transition_shorthand(tokens)?;
+            Some(vec![
+                (
+                    Longhand::TransitionProperty,
+                    Value::Names(entries.iter().map(|e| e.property.clone()).collect()),
+                ),
+                (
+                    Longhand::TransitionDuration,
+                    Value::Times(entries.iter().map(|e| e.duration).collect()),
+                ),
+                (
+                    Longhand::TransitionDelay,
+                    Value::Times(entries.iter().map(|e| e.delay).collect()),
+                ),
+                (
+                    Longhand::TransitionTimingFunction,
+                    Value::Easings(entries.iter().map(|e| e.easing).collect()),
+                ),
+            ])
+        }
+        "transform" | "-webkit-transform" => single(
+            Longhand::Transform,
+            crate::transform::parse_transform(tokens).map(Value::Transform),
+        ),
+        "transform-origin" | "-webkit-transform-origin" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::TransformOriginX, w.clone()),
+                    (Longhand::TransformOriginY, w),
+                ]);
+            }
+            let (x, y) = transform_origin(tokens)?;
+            Some(vec![
+                (Longhand::TransformOriginX, Value::Length(x)),
+                (Longhand::TransformOriginY, Value::Length(y)),
+            ])
+        }
         "box-sizing" => single(
             Longhand::BoxSizing,
             keyword(tokens, &["content-box", "border-box"]),
         ),
+        "position" => single(
+            Longhand::Position,
+            keyword(
+                tokens,
+                &["static", "relative", "absolute", "fixed", "sticky"],
+            ),
+        ),
+        "top" | "right" | "bottom" | "left" => single(
+            Longhand::Inset(side_of(name)?),
+            one().and_then(|t| length_or_keywords(t, &["auto"], true)),
+        ),
+        "inset" => {
+            if let Some(w) = wide {
+                return Some(all_sides(Longhand::Inset, &w));
+            }
+            let values: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| length_or_keywords(t, &["auto"], true))
+                .collect();
+            Some(sides(Longhand::Inset, four_sides(&values?)?))
+        }
+        "float" => single(
+            Longhand::Float,
+            keyword(
+                tokens,
+                &["none", "left", "right", "inline-start", "inline-end"],
+            ),
+        ),
+        "clear" => single(
+            Longhand::Clear,
+            keyword(
+                tokens,
+                &[
+                    "none",
+                    "left",
+                    "right",
+                    "both",
+                    "inline-start",
+                    "inline-end",
+                ],
+            ),
+        ),
+        "z-index" => single(Longhand::ZIndex, one().and_then(integer_or_auto)),
+        "order" => single(Longhand::Order, one().and_then(integer)),
+        "overflow" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::OverflowX, w.clone()),
+                    (Longhand::OverflowY, w),
+                ]);
+            }
+            let words: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| keyword(std::slice::from_ref(t), OVERFLOWS))
+                .collect();
+            match words?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::OverflowX, both.clone()),
+                    (Longhand::OverflowY, both.clone()),
+                ]),
+                [x, y] => Some(vec![
+                    (Longhand::OverflowX, x.clone()),
+                    (Longhand::OverflowY, y.clone()),
+                ]),
+                _ => None,
+            }
+        }
+        "overflow-x" => single(Longhand::OverflowX, keyword(tokens, OVERFLOWS)),
+        "overflow-y" => single(Longhand::OverflowY, keyword(tokens, OVERFLOWS)),
+        "visibility" => single(
+            Longhand::Visibility,
+            keyword(tokens, &["visible", "hidden", "collapse"]),
+        ),
+        "opacity" => single(
+            Longhand::Opacity,
+            one().and_then(|t| match t {
+                Token::Number(v) => Some(Value::Number(v.clamp(0.0, 1.0))),
+                Token::Percentage(v) => Some(Value::Number((v / 100.0).clamp(0.0, 1.0))),
+                _ => None,
+            }),
+        ),
+        "flex-direction" => single(Longhand::FlexDirection, keyword(tokens, FLEX_DIRECTIONS)),
+        "flex-wrap" => single(Longhand::FlexWrap, keyword(tokens, FLEX_WRAPS)),
+        "flex-flow" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::FlexDirection, w.clone()),
+                    (Longhand::FlexWrap, w),
+                ]);
+            }
+            let mut pairs = Vec::new();
+            for token in components(tokens) {
+                let one = std::slice::from_ref(token);
+                if let Some(direction) = keyword(one, FLEX_DIRECTIONS) {
+                    pairs.push((Longhand::FlexDirection, direction));
+                } else {
+                    pairs.push((Longhand::FlexWrap, keyword(one, FLEX_WRAPS)?));
+                }
+            }
+            (!pairs.is_empty() && pairs.len() <= 2).then_some(pairs)
+        }
+        "flex-grow" => single(Longhand::FlexGrow, one().and_then(non_negative_number)),
+        "flex-shrink" => single(Longhand::FlexShrink, one().and_then(non_negative_number)),
+        "flex-basis" => single(
+            Longhand::FlexBasis,
+            one().and_then(|t| length_or_keywords(t, &["auto", "content"], false)),
+        ),
+        "flex" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::FlexGrow, w.clone()),
+                    (Longhand::FlexShrink, w.clone()),
+                    (Longhand::FlexBasis, w),
+                ]);
+            }
+            let parts = components(tokens);
+            let auto = || Value::Ident("auto".to_owned());
+            // Base omise : 0 %, qui vaut `content` quand la taille principale
+            // du conteneur n'est pas imposée.
+            let zero = || Value::Length(Length::Percent(0.0));
+            let (grow, shrink, basis) = match parts.as_slice() {
+                [Token::Ident(word)] if word.eq_ignore_ascii_case("none") => {
+                    (Value::Number(0.0), Value::Number(0.0), auto())
+                }
+                [Token::Ident(word)] if word.eq_ignore_ascii_case("auto") => {
+                    (Value::Number(1.0), Value::Number(1.0), auto())
+                }
+                [one] => match non_negative_number(one) {
+                    // `flex: 2` vaut `2 1 0`.
+                    Some(grow) => (grow, Value::Number(1.0), zero()),
+                    None => (
+                        Value::Number(1.0),
+                        Value::Number(1.0),
+                        length_or_keywords(one, &["auto", "content"], false)?,
+                    ),
+                },
+                [first, second] => {
+                    let grow = non_negative_number(first)?;
+                    match non_negative_number(second) {
+                        Some(shrink) => (grow, shrink, zero()),
+                        None => (
+                            grow,
+                            Value::Number(1.0),
+                            length_or_keywords(second, &["auto", "content"], false)?,
+                        ),
+                    }
+                }
+                [first, second, third] => (
+                    non_negative_number(first)?,
+                    non_negative_number(second)?,
+                    // Une base nulle peut s'écrire `0`, sans unité.
+                    match third {
+                        Token::Number(v) if *v == 0.0 => Value::Length(Length::Px(0.0)),
+                        other => length_or_keywords(other, &["auto", "content"], false)?,
+                    },
+                ),
+                _ => return None,
+            };
+            Some(vec![
+                (Longhand::FlexGrow, grow),
+                (Longhand::FlexShrink, shrink),
+                (Longhand::FlexBasis, basis),
+            ])
+        }
+        "justify-content" => single(
+            Longhand::JustifyContent,
+            keyword(tokens, CONTENT_ALIGNMENTS),
+        ),
+        "align-content" => single(Longhand::AlignContent, keyword(tokens, CONTENT_ALIGNMENTS)),
+        "align-items" => single(Longhand::AlignItems, keyword(tokens, ITEM_ALIGNMENTS)),
+        "align-self" => single(Longhand::AlignSelf, keyword(tokens, ITEM_ALIGNMENTS)),
+        "grid-template-columns" => single(
+            Longhand::GridTemplateColumns,
+            crate::grid::parse_track_list(tokens).map(Value::Tracks),
+        ),
+        "grid-template-rows" => single(
+            Longhand::GridTemplateRows,
+            crate::grid::parse_track_list(tokens).map(Value::Tracks),
+        ),
+        "grid-auto-columns" => single(
+            Longhand::GridAutoColumns,
+            crate::grid::parse_track_sizes(tokens).map(Value::TrackSizes),
+        ),
+        "grid-auto-rows" => single(
+            Longhand::GridAutoRows,
+            crate::grid::parse_track_sizes(tokens).map(Value::TrackSizes),
+        ),
+        "grid-auto-flow" => {
+            let words: Vec<String> = components(tokens)
+                .into_iter()
+                .filter_map(ident_of)
+                .collect();
+            let valid = !words.is_empty()
+                && words.len() == components(tokens).len()
+                && words.len() <= 2
+                && words
+                    .iter()
+                    .all(|w| matches!(w.as_str(), "row" | "column" | "dense"))
+                && words.iter().filter(|w| *w != "dense").count() <= 1;
+            let parsed = valid.then(|| {
+                let column = words.iter().any(|w| w == "column");
+                let dense = words.iter().any(|w| w == "dense");
+                Value::Ident(
+                    match (column, dense) {
+                        (false, false) => "row",
+                        (false, true) => "row dense",
+                        (true, false) => "column",
+                        (true, true) => "column dense",
+                    }
+                    .to_owned(),
+                )
+            });
+            single(Longhand::GridAutoFlow, parsed)
+        }
+        "grid-row-start" => single(Longhand::GridRowStart, grid_line(tokens)),
+        "grid-row-end" => single(Longhand::GridRowEnd, grid_line(tokens)),
+        "grid-column-start" => single(Longhand::GridColumnStart, grid_line(tokens)),
+        "grid-column-end" => single(Longhand::GridColumnEnd, grid_line(tokens)),
+        "grid-row" | "grid-column" => {
+            let (start, end) = if name == "grid-row" {
+                (Longhand::GridRowStart, Longhand::GridRowEnd)
+            } else {
+                (Longhand::GridColumnStart, Longhand::GridColumnEnd)
+            };
+            if let Some(w) = wide {
+                return Some(vec![(start, w.clone()), (end, w)]);
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            let first = grid_line(parts.first()?)?;
+            let second = match parts.as_slice() {
+                [_] => implied_line(&first),
+                [_, second] => grid_line(second)?,
+                _ => return None,
+            };
+            Some(vec![(start, first), (end, second)])
+        }
+        "grid-area" => {
+            let properties = [
+                Longhand::GridRowStart,
+                Longhand::GridColumnStart,
+                Longhand::GridRowEnd,
+                Longhand::GridColumnEnd,
+            ];
+            if let Some(w) = wide {
+                return Some(properties.iter().map(|p| (*p, w.clone())).collect());
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            if parts.is_empty() || parts.len() > 4 {
+                return None;
+            }
+            let given: Option<Vec<Value>> = parts.iter().map(|part| grid_line(part)).collect();
+            let given = given?;
+            // Valeurs omises : le nom de la valeur dont elles dépendent, sinon `auto`.
+            let row_start = given.first()?.clone();
+            let column_start = given
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&row_start));
+            let row_end = given
+                .get(2)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&row_start));
+            let column_end = given
+                .get(3)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&column_start));
+            Some(
+                properties
+                    .into_iter()
+                    .zip([row_start, column_start, row_end, column_end])
+                    .collect(),
+            )
+        }
+        "grid-template-areas" => single(
+            Longhand::GridTemplateAreas,
+            crate::grid::parse_areas(tokens).map(Value::Areas),
+        ),
+        "grid-template" | "grid" => {
+            // Forme simple : `none`, ou `rangées / colonnes`.
+            let none = || Value::Tracks(crate::grid::TrackList::default());
+            let no_areas = || Value::Areas(crate::grid::GridAreas::default());
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::GridTemplateRows, w.clone()),
+                    (Longhand::GridTemplateColumns, w.clone()),
+                    (Longhand::GridTemplateAreas, w),
+                ]);
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            let (rows, columns) = match parts.as_slice() {
+                [only] if keyword(crate::syntax::trim(only), &["none"]).is_some() => {
+                    (none(), none())
+                }
+                [rows, columns] => (
+                    Value::Tracks(crate::grid::parse_track_list(rows)?),
+                    Value::Tracks(crate::grid::parse_track_list(columns)?),
+                ),
+                _ => return None,
+            };
+            Some(vec![
+                (Longhand::GridTemplateRows, rows),
+                (Longhand::GridTemplateColumns, columns),
+                (Longhand::GridTemplateAreas, no_areas()),
+            ])
+        }
+        "border-spacing" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::BorderSpacingH, w.clone()),
+                    (Longhand::BorderSpacingV, w),
+                ]);
+            }
+            let values: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| length_value(t, false))
+                .collect();
+            match values?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::BorderSpacingH, both.clone()),
+                    (Longhand::BorderSpacingV, both.clone()),
+                ]),
+                [horizontal, vertical] => Some(vec![
+                    (Longhand::BorderSpacingH, horizontal.clone()),
+                    (Longhand::BorderSpacingV, vertical.clone()),
+                ]),
+                _ => None,
+            }
+        }
+        "border-collapse" => single(
+            Longhand::BorderCollapse,
+            keyword(tokens, &["separate", "collapse"]),
+        ),
+        "table-layout" => single(Longhand::TableLayout, keyword(tokens, &["auto", "fixed"])),
+        "caption-side" => single(Longhand::CaptionSide, keyword(tokens, &["top", "bottom"])),
+        "vertical-align" => single(
+            Longhand::VerticalAlign,
+            one().and_then(|t| {
+                length_or_keywords(
+                    t,
+                    &[
+                        "baseline",
+                        "top",
+                        "middle",
+                        "bottom",
+                        "text-top",
+                        "text-bottom",
+                        "sub",
+                        "super",
+                    ],
+                    true,
+                )
+            }),
+        ),
+        "justify-items" => single(Longhand::JustifyItems, keyword(tokens, SELF_ALIGNMENTS)),
+        "justify-self" => single(Longhand::JustifySelf, keyword(tokens, SELF_ALIGNMENTS)),
+        "place-items" | "place-self" | "place-content" => {
+            let (block, inline, allowed) = match name {
+                "place-items" => (
+                    Longhand::AlignItems,
+                    Longhand::JustifyItems,
+                    SELF_ALIGNMENTS,
+                ),
+                "place-self" => (Longhand::AlignSelf, Longhand::JustifySelf, SELF_ALIGNMENTS),
+                _ => (
+                    Longhand::AlignContent,
+                    Longhand::JustifyContent,
+                    CONTENT_ALIGNMENTS,
+                ),
+            };
+            if let Some(w) = wide {
+                return Some(vec![(block, w.clone()), (inline, w)]);
+            }
+            let words: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| keyword(std::slice::from_ref(t), allowed))
+                .collect();
+            match words?.as_slice() {
+                [both] => Some(vec![(block, both.clone()), (inline, both.clone())]),
+                [first, second] => Some(vec![(block, first.clone()), (inline, second.clone())]),
+                _ => None,
+            }
+        }
+        "row-gap" | "grid-row-gap" => single(Longhand::RowGap, one().and_then(gap_value)),
+        "column-gap" | "grid-column-gap" => single(Longhand::ColumnGap, one().and_then(gap_value)),
+        "gap" | "grid-gap" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::RowGap, w.clone()),
+                    (Longhand::ColumnGap, w),
+                ]);
+            }
+            let values: Option<Vec<Value>> =
+                components(tokens).into_iter().map(gap_value).collect();
+            match values?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::RowGap, both.clone()),
+                    (Longhand::ColumnGap, both.clone()),
+                ]),
+                [row, column] => Some(vec![
+                    (Longhand::RowGap, row.clone()),
+                    (Longhand::ColumnGap, column.clone()),
+                ]),
+                _ => None,
+            }
+        }
         "list-style-type" | "list-style" => {
             if let Some(w) = wide {
                 return Some(vec![(Longhand::ListStyleType, w)]);
