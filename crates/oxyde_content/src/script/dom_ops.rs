@@ -6,10 +6,7 @@
 use oxyde_dom::{Document, NodeData, NodeId};
 use oxyde_js::{JsResult, Value, Vm};
 
-use super::{
-    CLASS_LIST, arg, class_tokens, host, node_arg, node_of, number, owner_node, string, this_node,
-    wrap, wrap_all, wrap_opt,
-};
+use super::{arg, host, node_arg, node_of, number, string, this_node, wrap, wrap_all, wrap_opt};
 
 /// Profondeur maximale explorée par les comparaisons d'arbres.
 const MAX_DEPTH: usize = 2_000;
@@ -201,7 +198,8 @@ fn insert_adjacent(
             None => return Ok(false),
         },
         _ => {
-            return Err(vm.error(
+            return Err(dom_error(
+                vm,
                 "SyntaxError",
                 "position attendue : beforebegin, afterbegin, beforeend ou afterend",
             ));
@@ -412,58 +410,3 @@ pub(super) fn has_focus(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResul
 }
 
 // ---- DOMTokenList ----------------------------------------------------------------------------
-
-pub(super) fn class_list_item(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let index = offset_arg(vm, &arg(args, 0))?;
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Ok(Value::Null);
-    };
-    let token = host(vm).and_then(|h| class_tokens(&h.doc, node).get(index).cloned());
-    Ok(token.map_or(Value::Null, |t| Value::string(&t)))
-}
-
-pub(super) fn class_list_replace(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let old = vm.to_string(&arg(args, 0))?;
-    let new = vm.to_string(&arg(args, 1))?;
-    for token in [&old, &new] {
-        if token.is_empty() {
-            return Err(vm.error("SyntaxError", "un jeton de classe ne peut pas être vide"));
-        }
-        if token.chars().any(char::is_whitespace) {
-            return Err(dom_error(
-                vm,
-                "InvalidCharacterError",
-                "un jeton de classe ne contient pas d'espace",
-            ));
-        }
-    }
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Ok(Value::Bool(false));
-    };
-    let Some(h) = host(vm) else {
-        return Ok(Value::Bool(false));
-    };
-    let mut tokens = class_tokens(&h.doc, node);
-    let Some(position) = tokens.iter().position(|t| **t == *old) else {
-        return Ok(Value::Bool(false));
-    };
-    if tokens.iter().any(|t| **t == *new) {
-        // Le nouveau jeton existe déjà : l'ancien disparaît simplement.
-        if *old != *new {
-            tokens.remove(position);
-        }
-    } else if let Some(slot) = tokens.get_mut(position) {
-        *slot = new.to_string();
-    }
-    h.doc.set_attr(node, "class", &tokens.join(" "));
-    h.dirty = true;
-    Ok(Value::Bool(true))
-}
-
-/// `supports(token)` : `classList` n'a pas de liste de jetons pris en charge.
-pub(super) fn class_list_supports(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    Err(vm.error(
-        "TypeError",
-        "classList n'a pas de jetons pris en charge à vérifier",
-    ))
-}

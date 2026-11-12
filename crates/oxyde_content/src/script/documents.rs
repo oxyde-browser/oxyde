@@ -317,10 +317,9 @@ pub(super) fn create_document_type(vm: &mut Vm, this: &Value, args: &[Value]) ->
     let public_id = vm.to_string(&arg(args, 1))?;
     let system_id = vm.to_string(&arg(args, 2))?;
     // Le standard n'exige plus qu'un nom sans espace, « > » ni caractère nul.
-    if name.is_empty()
-        || name
-            .chars()
-            .any(|c| c.is_ascii_whitespace() || c == '>' || c == '\0')
+    if name
+        .chars()
+        .any(|c| c.is_ascii_whitespace() || c == '>' || c == '\0')
     {
         return Err(dom_exception(
             vm,

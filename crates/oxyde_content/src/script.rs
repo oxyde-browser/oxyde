@@ -33,6 +33,7 @@ mod lists;
 mod mutation;
 mod range;
 mod storage;
+mod tokens;
 mod traversal;
 mod tree;
 
@@ -437,77 +438,6 @@ fn owner_node(vm: &mut Vm, value: &Value, class: u32) -> Option<NodeId> {
     host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)
 }
 
-fn class_tokens(doc: &Document, node: NodeId) -> Vec<String> {
-    doc.element(node)
-        .map(|e| e.classes().map(str::to_owned).collect())
-        .unwrap_or_default()
-}
-
-fn class_list_op(
-    vm: &mut Vm,
-    this: &Value,
-    args: &[Value],
-    op: fn(&mut Vec<String>, &str) -> bool,
-) -> JsResult {
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Err(vm.error("TypeError", "receveur incompatible avec classList"));
-    };
-    let mut names = Vec::with_capacity(args.len());
-    for value in args {
-        names.push(vm.to_string(value)?);
-    }
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let mut tokens = class_tokens(&h.doc, node);
-    let mut result = false;
-    for name in &names {
-        result = op(&mut tokens, name);
-    }
-    h.doc.set_attr(node, "class", &tokens.join(" "));
-    h.dirty = true;
-    Ok(Value::Bool(result))
-}
-
-fn class_list_add(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args, |tokens, name| {
-        if !tokens.iter().any(|t| t == name) {
-            tokens.push(name.to_owned());
-        }
-        true
-    })?;
-    Ok(Value::Undefined)
-}
-
-fn class_list_remove(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args, |tokens, name| {
-        tokens.retain(|t| t != name);
-        false
-    })?;
-    Ok(Value::Undefined)
-}
-
-fn class_list_toggle(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args.get(..1).unwrap_or(&[]), |tokens, name| {
-        if tokens.iter().any(|t| t == name) {
-            tokens.retain(|t| t != name);
-            false
-        } else {
-            tokens.push(name.to_owned());
-            true
-        }
-    })
-}
-
-fn class_list_contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let name = vm.to_string(&arg(args, 0))?;
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Ok(Value::Bool(false));
-    };
-    let found = host(vm).is_some_and(|h| class_tokens(&h.doc, node).iter().any(|t| **t == *name));
-    Ok(Value::Bool(found))
-}
-
 fn style_set_property(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let (name, value) = (vm.to_string(&arg(args, 0))?, vm.to_string(&arg(args, 1))?);
     if let Some(node) = owner_node(vm, this, CLASS_STYLE) {
@@ -739,10 +669,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             ))));
         }
         "classList" if is_element(doc, node) => {
-            let proto = h.class_list_proto;
-            return Some(Ok(Value::Object(
-                vm.new_host_object(proto, CLASS_LIST, data),
-            )));
+            return Some(Ok(tokens::class_list(vm, node)));
         }
         "body" | "head" if is_document => {
             let found = doc.find_html_element(node, key);
@@ -988,15 +915,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
                 .find(|(n, _)| *n == name);
             Some(string(&value.map(|(_, v)| v).unwrap_or_default()))
         }
-        CLASS_LIST => {
-            let h = host(vm)?;
-            let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
-            match key {
-                "length" => Some(Ok(number(class_tokens(&h.doc, node).len()))),
-                "value" => Some(string(&class_tokens(&h.doc, node).join(" "))),
-                _ => None,
-            }
-        }
+        CLASS_LIST => tokens::property(vm, data, key),
         CLASS_RANGE => range::property(vm, data, key),
         CLASS_ATTRS => attrs::map_property(vm, data, key),
         CLASS_LIVE => lists::property(vm, data, key),
@@ -1021,6 +940,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
 fn host_keys(vm: &mut Vm, class: u32, data: u64) -> Vec<String> {
     match class {
         CLASS_LIVE => lists::keys(vm, data),
+        CLASS_LIST => tokens::keys(vm, data),
         _ => Vec::new(),
     }
 }
@@ -1043,6 +963,7 @@ fn host_set(vm: &mut Vm, class: u32, data: u64, key: &str, value: &Value) -> Opt
             }
             Some(Ok(()))
         }
+        CLASS_LIST => tokens::set_property(vm, data, key, value),
         CLASS_STORAGE => {
             let text = match vm.to_string(value) {
                 Ok(text) => text,
@@ -1126,6 +1047,9 @@ fn closest(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn get_element_by_id(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let scope = this_node(vm, this)?;
     let id = vm.to_string(&arg(args, 0))?;
+    if id.is_empty() {
+        return Ok(Value::Null);
+    }
     let found = host(vm).and_then(|h| {
         let doc = &h.doc;
         doc.descendants(scope)
@@ -1496,9 +1420,9 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "adoptNode", documents::adopt_node),
     ("", "getElementsByName", dom_ops::get_elements_by_name),
     ("", "hasFocus", dom_ops::has_focus),
-    ("DOMTokenList", "item", dom_ops::class_list_item),
-    ("DOMTokenList", "replace", dom_ops::class_list_replace),
-    ("DOMTokenList", "supports", dom_ops::class_list_supports),
+    ("DOMTokenList", "item", tokens::item),
+    ("DOMTokenList", "replace", tokens::replace),
+    ("DOMTokenList", "supports", tokens::supports),
     ("CSSStyleDeclaration", "setProperty", style_set_property),
     (
         "CSSStyleDeclaration",
@@ -1510,10 +1434,11 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
         "removeProperty",
         style_remove_property,
     ),
-    ("DOMTokenList", "add", class_list_add),
-    ("DOMTokenList", "remove", class_list_remove),
-    ("DOMTokenList", "toggle", class_list_toggle),
-    ("DOMTokenList", "contains", class_list_contains),
+    ("DOMTokenList", "add", tokens::add),
+    ("DOMTokenList", "remove", tokens::remove),
+    ("DOMTokenList", "toggle", tokens::toggle),
+    ("DOMTokenList", "contains", tokens::contains),
+    ("DOMTokenList", "toString", tokens::to_string),
 ];
 
 fn interface(name: &str) -> Option<&'static InterfaceDescriptor> {
@@ -1643,7 +1568,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     // `Array.prototype`, ce qui leur garde `forEach`, `map`, l'itération…
     let array = vm.get(&Value::Object(vm.global()), "Array")?;
     if let Some(array_proto) = vm.get(&array, "prototype")?.as_object() {
-        for name in ["NodeList", "HTMLCollection"] {
+        for name in ["NodeList", "HTMLCollection", "DOMTokenList"] {
             if let Some(proto) = proto_of(name) {
                 vm.set_prototype(proto, Some(array_proto))?;
             }

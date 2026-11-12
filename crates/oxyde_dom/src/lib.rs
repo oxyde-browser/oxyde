@@ -420,10 +420,15 @@ impl Document {
         if self.is_document(id) || self.node(id).owner == owner {
             return;
         }
-        self.node_mut(id).owner = owner;
-        let descendants: Vec<NodeId> = self.descendants(id).collect();
-        for d in descendants {
-            self.node_mut(d).owner = owner;
+        let mut moved: Vec<NodeId> = std::iter::once(id).chain(self.descendants(id)).collect();
+        let handles: Vec<NodeId> = moved
+            .iter()
+            .filter_map(|n| self.element(*n))
+            .flat_map(|e| e.attrs.iter().filter_map(|a| a.node))
+            .collect();
+        moved.extend(handles);
+        for node in moved {
+            self.node_mut(node).owner = owner;
         }
     }
 

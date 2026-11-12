@@ -64,7 +64,9 @@ pub(super) fn validity(
     }
     let to_document = doc.is_document(parent);
     match &doc.node(node).data {
-        NodeData::Document => return Err((HIERARCHY, "un document ne s'insère pas")),
+        NodeData::Document | NodeData::Attr(_) => {
+            return Err((HIERARCHY, "ce nœud ne s'insère pas dans un arbre"));
+        }
         NodeData::Text(_) | NodeData::CData(_) if to_document => {
             return Err((HIERARCHY, "un document n'a pas de texte pour enfant"));
         }
