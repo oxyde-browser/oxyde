@@ -69,7 +69,7 @@ impl LoadError {
         Self {
             kind: ErrorKind::Crashed,
             title: "Cet onglet a planté".to_owned(),
-            message: "Le processus qui affichait cette page s'est arrêté. Les autres onglets                       ne sont pas touchés : rechargez la page pour la retrouver."
+            message: "Le processus qui affichait cette page s'est arrêté. Les autres onglets ne sont pas touchés : rechargez la page pour la retrouver."
                 .to_owned(),
             code: "ERR_RENDERER_CRASHED".to_owned(),
             detail: url.to_string(),
@@ -450,6 +450,15 @@ fn viewport_hint() -> Option<oxyde_css::Viewport> {
 /// Comme [`load`] ; `post` : la page est demandée par `POST` avec ce corps
 /// (soumission d'un formulaire).
 pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Loaded {
+    // Adresse de diagnostic. Dans un processus de rendu, elle le fait
+    // planter pour de bon ; chargée dans le navigateur lui-même, elle montre
+    // seulement l'écran correspondant.
+    if url.as_str() == "about:crash" {
+        return Loaded {
+            error: Some(LoadError::crashed(&url)),
+            page: Page::from_html(url, ""),
+        };
+    }
     let first = match &post {
         Some(form) if matches!(url.scheme(), "http" | "https") => post_http(&url, form),
         _ => fetch(&url),

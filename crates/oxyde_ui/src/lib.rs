@@ -74,6 +74,9 @@ pub enum ErrorStyle {
     Certificate,
     /// Autre échec : « Réessayer » seul.
     Other,
+    /// Le processus de rendu de l'onglet s'est arrêté : « Recharger la
+    /// page » et « Fermer l'onglet ».
+    Crashed,
 }
 
 /// Page d'erreur telle que l'interface l'affiche.
@@ -1114,6 +1117,7 @@ mod tests {
             panes::ICON_SEARCH,
             panes::ICON_OFFLINE,
             panes::ICON_WARNING,
+            panes::ICON_CRASHED,
         ] {
             let path = BezPath::from_svg(icon).unwrap_or_else(|e| panic!("{icon}: {e}"));
             assert!(!path.elements().is_empty());
@@ -1314,6 +1318,17 @@ mod tests {
         let chrome = build_chrome(&state(&tabs, None), &mut text);
         assert!(hit_rect(&chrome, Hit::ErrorPrimary(0)).is_some());
         assert!(hit_rect(&chrome, Hit::ErrorSecondary(0)).is_none());
+
+        // Onglet planté : recharger, ou fermer l'onglet.
+        tabs[0].content = PaneContent::Error(view(ErrorStyle::Crashed));
+        let chrome = build_chrome(&state(&tabs, None), &mut text);
+        let labels: Vec<&str> = chrome
+            .widgets
+            .iter()
+            .filter(|w| matches!(w.hit, Some(Hit::ErrorPrimary(_) | Hit::ErrorSecondary(_))))
+            .map(|w| w.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Recharger la page", "Fermer l'onglet"]);
     }
 
     #[test]

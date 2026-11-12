@@ -141,7 +141,8 @@ impl Tab {
                 style: match error.kind {
                     ErrorKind::Network => ErrorStyle::Network,
                     ErrorKind::Certificate => ErrorStyle::Certificate,
-                    ErrorKind::Other | ErrorKind::Crashed => ErrorStyle::Other,
+                    ErrorKind::Other => ErrorStyle::Other,
+                    ErrorKind::Crashed => ErrorStyle::Crashed,
                 },
                 title: &error.title,
                 message: &error.message,
@@ -604,6 +605,8 @@ impl Browser {
                 tab.show_details = !tab.show_details;
                 Vec::new()
             }
+            // « Fermer l'onglet ».
+            Some(ErrorKind::Crashed) => self.close_tab(index),
             _ => Vec::new(),
         }
     }
