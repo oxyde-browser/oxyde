@@ -2,7 +2,7 @@
 //!
 //! - [`syntax`] : tokenizer CSS ;
 //! - [`selector`] : sélecteurs, spécificité, correspondance ;
-//! - [`values`] / [`properties`] : valeurs et déclarations ;
+//! - [`values`] / [`properties`] / [`grid`] : valeurs et déclarations ;
 //! - [`stylesheet`] : règles et requêtes média ;
 //! - [`style`] : cascade et [`style::ComputedStyle`].
 //!
@@ -16,6 +16,7 @@
 //! assert_eq!(styles.get(p).expect("style").color.g, 0xC9);
 //! ```
 
+pub mod grid;
 pub mod properties;
 pub mod selector;
 pub mod style;
@@ -23,6 +24,7 @@ pub mod stylesheet;
 pub mod syntax;
 pub mod values;
 
+pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, TrackSize};
 pub use properties::Side;
 pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,

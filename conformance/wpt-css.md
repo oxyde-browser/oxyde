@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 6443 / 28699 (22,5 %)** — fichiers entièrement réussis : 343 / 2267 (15,1 %).
+**Sous-tests réussis : 8806 / 28699 (30,7 %)** — fichiers entièrement réussis : 454 / 2267 (20,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -21,11 +21,11 @@ est le plus honnête des deux.
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-align/baseline-rules` | 1 / 4 | 9 / 20 (45,0 %) |
 | `css/css-align/blocks` | 0 / 37 | 55 / 556 (9,9 %) |
-| `css/css-align/content-distribution` | 1 / 17 | 143 / 573 (25,0 %) |
+| `css/css-align/content-distribution` | 2 / 17 | 145 / 573 (25,3 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
 | `css/css-align/gaps` | 1 / 20 | 121 / 162 (74,7 %) |
 | `css/css-align/multicol` | 0 / 1 | 0 / 32 (0,0 %) |
-| `css/css-align/parsing` | 1 / 50 | 210 / 759 (27,7 %) |
+| `css/css-align/parsing` | 1 / 50 | 214 / 759 (28,2 %) |
 | `css/css-align/self-alignment` | 1 / 16 | 160 / 731 (21,9 %) |
 | `css/css-box` | 1 / 3 | 27 / 33 (81,8 %) |
 | `css/css-box/animation` | 0 / 10 | 0 / 0 (—) |
@@ -39,21 +39,21 @@ est le plus honnête des deux.
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 61 / 185 | 763 / 1804 (42,3 %) |
+| `css/css-flexbox` | 62 / 185 | 765 / 1804 (42,4 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-flexbox/balance` | 1 / 10 | 15 / 68 (22,1 %) |
 | `css/css-flexbox/getcomputedstyle` | 51 / 75 | 53 / 78 (67,9 %) |
-| `css/css-flexbox/intrinsic-size` | 1 / 16 | 5 / 51 (9,8 %) |
+| `css/css-flexbox/intrinsic-size` | 1 / 16 | 6 / 51 (11,8 %) |
 | `css/css-flexbox/parsing` | 8 / 27 | 68 / 215 (31,6 %) |
-| `css/css-grid` | 2 / 11 | 30 / 187 (16,0 %) |
-| `css/css-grid/abspos` | 1 / 58 | 115 / 3513 (3,3 %) |
-| `css/css-grid/alignment` | 5 / 286 | 191 / 1778 (10,7 %) |
+| `css/css-grid` | 6 / 11 | 60 / 187 (32,1 %) |
+| `css/css-grid/abspos` | 4 / 58 | 403 / 3513 (11,5 %) |
+| `css/css-grid/alignment` | 59 / 286 | 469 / 1778 (26,4 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
-| `css/css-grid/grid-definition` | 0 / 51 | 31 / 1318 (2,4 %) |
-| `css/css-grid/grid-items` | 9 / 50 | 283 / 984 (28,8 %) |
+| `css/css-grid/grid-definition` | 14 / 51 | 743 / 1318 (56,4 %) |
+| `css/css-grid/grid-items` | 15 / 50 | 473 / 984 (48,1 %) |
 | `css/css-grid/grid-lanes` | 0 / 2 | 2 / 35 (5,7 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
@@ -68,14 +68,14 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing` | 0 / 1 | 0 / 1 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat` | 0 / 18 | 0 / 57 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/intrinsic-auto-repeat` | 0 / 13 | 0 / 33 (0,0 %) |
-| `css/css-grid/grid-model` | 3 / 22 | 44 / 188 (23,4 %) |
-| `css/css-grid/implicit-grids` | 0 / 6 | 0 / 56 (0,0 %) |
-| `css/css-grid/layout-algorithm` | 2 / 60 | 12 / 895 (1,3 %) |
-| `css/css-grid/parsing` | 2 / 60 | 316 / 1600 (19,8 %) |
-| `css/css-grid/placement` | 0 / 24 | 0 / 316 (0,0 %) |
-| `css/css-grid/subgrid` | 5 / 26 | 54 / 256 (21,1 %) |
+| `css/css-grid/grid-model` | 7 / 22 | 108 / 188 (57,4 %) |
+| `css/css-grid/implicit-grids` | 2 / 6 | 42 / 56 (75,0 %) |
+| `css/css-grid/layout-algorithm` | 11 / 60 | 297 / 895 (33,2 %) |
+| `css/css-grid/parsing` | 4 / 60 | 506 / 1600 (31,6 %) |
+| `css/css-grid/placement` | 9 / 24 | 232 / 316 (73,4 %) |
+| `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 23 / 47 | 124 / 256 (48,4 %) |
+| `css/css-position` | 23 / 47 | 128 / 256 (50,0 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
@@ -91,8 +91,8 @@ est le plus honnête des deux.
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
-| `css/css-sizing/stretch` | 11 / 50 | 161 / 1015 (15,9 %) |
-| `css/css-tables` | 13 / 82 | 128 / 285 (44,9 %) |
+| `css/css-sizing/stretch` | 12 / 50 | 186 / 1015 (18,3 %) |
+| `css/css-tables` | 13 / 82 | 129 / 285 (45,3 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 0 / 5 | 2 / 10 (20,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
@@ -251,7 +251,6 @@ est le plus honnête des deux.
 | `css/css-align/blocks/safe-justify-self-htb.html` | 12 / 24 |  |
 | `css/css-align/blocks/safe-justify-self-vlr.html` | 12 / 24 |  |
 | `css/css-align/blocks/safe-justify-self-vrl.html` | 12 / 24 |  |
-| `css/css-align/content-distribution/default-overflow-alignment-single-axis-scroll-container.html` | 2 / 4 |  |
 | `css/css-align/content-distribution/parse-align-content-001.html` | 0 / 18 |  |
 | `css/css-align/content-distribution/parse-align-content-002.html` | 0 / 7 |  |
 | `css/css-align/content-distribution/parse-align-content-003.html` | 0 / 18 |  |
@@ -343,15 +342,15 @@ est le plus honnête des deux.
 | `css/css-align/parsing/justify-self-valid.html` | 22 / 23 |  |
 | `css/css-align/parsing/place-content-computed.html` | 0 / 25 |  |
 | `css/css-align/parsing/place-content-invalid.html` | 0 / 10 |  |
-| `css/css-align/parsing/place-content-shorthand.html` | 0 / 15 |  |
+| `css/css-align/parsing/place-content-shorthand.html` | 2 / 15 |  |
 | `css/css-align/parsing/place-content-valid.html` | 18 / 26 |  |
 | `css/css-align/parsing/place-items-computed.html` | 0 / 25 |  |
 | `css/css-align/parsing/place-items-invalid.html` | 0 / 17 |  |
-| `css/css-align/parsing/place-items-shorthand.html` | 0 / 18 |  |
+| `css/css-align/parsing/place-items-shorthand.html` | 1 / 18 |  |
 | `css/css-align/parsing/place-items-valid.html` | 16 / 24 |  |
 | `css/css-align/parsing/place-self-computed.html` | 0 / 23 |  |
 | `css/css-align/parsing/place-self-invalid.html` | 0 / 11 |  |
-| `css/css-align/parsing/place-self-shorthand.html` | 0 / 18 |  |
+| `css/css-align/parsing/place-self-shorthand.html` | 1 / 18 |  |
 | `css/css-align/parsing/place-self-valid.html` | 16 / 23 |  |
 | `css/css-align/parsing/row-gap-computed.html` | 3 / 6 |  |
 | `css/css-align/parsing/row-gap-invalid.html` | 0 / 4 |  |
@@ -557,7 +556,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/change-column-flex-width.html` | 0 / 1 |  |
 | `css/css-flexbox/checkbox-percentage-width-in-flex.html` | 0 / 4 |  |
 | `css/css-flexbox/column-reverse-wrap-auto-margins-001.html` | 0 / 3 |  |
-| `css/css-flexbox/dynamic-grid-flex-abspos.html` | 6 / 8 |  |
 | `css/css-flexbox/flex-aspect-ratio-img-column-011.html` | 4 / 10 |  |
 | `css/css-flexbox/flex-aspect-ratio-img-column-017.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-aspect-ratio-img-row-005.html` | 1 / 4 |  |
@@ -653,7 +651,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/intrinsic-size/percentage-gap-001.html` | 0 / 2 |  |
 | `css/css-flexbox/intrinsic-size/row-005.html` | 0 / 9 |  |
 | `css/css-flexbox/intrinsic-size/row-008.html` | 0 / 11 |  |
-| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 1 / 3 |  |
+| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 2 / 3 |  |
 | `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 3 / 6 |  |
 | `css/css-flexbox/intrinsic-size/row-wrap-001.html` | 0 / 5 |  |
 | `css/css-flexbox/intrinsic-width-orthogonal-writing-mode.html` | 1 / 3 |  |
@@ -702,7 +700,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/svg-root-as-flex-item-007.html` | 0 / 2 |  |
 | `css/css-flexbox/table-as-item-cross-size.html` | 0 / 1 |  |
 | `css/css-flexbox/text-as-flexitem-size-001.html` | 13 / 18 |  |
-| `css/css-grid/abspos/absolute-positioning-definite-sizes-001.html` | 0 / 1 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 10 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 12 |  |
 | `css/css-grid/abspos/empty-grid-001.html` | 0 / 9 |  |
@@ -741,61 +738,59 @@ est le plus honnête des deux.
 | `css/css-grid/abspos/orthogonal-positioned-grid-descendants-014.html` | 0 / 100 |  |
 | `css/css-grid/abspos/orthogonal-positioned-grid-descendants-015.html` | 0 / 100 |  |
 | `css/css-grid/abspos/orthogonal-positioned-grid-descendants-016.html` | 1 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-001.html` | 0 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-002.html` | 0 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-003.html` | 0 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-004.html` | 0 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-005.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-002.html` | 40 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-003.html` | 40 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-004.html` | 40 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-005.html` | 40 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-006.html` | 16 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-007.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-007.html` | 10 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-008.html` | 16 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-009.html` | 16 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-descendants-010.html` | 0 / 100 |  |
+| `css/css-grid/abspos/positioned-grid-descendants-010.html` | 10 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-011.html` | 16 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-012.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-013.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-014.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-015.html` | 4 / 100 |  |
 | `css/css-grid/abspos/positioned-grid-descendants-016.html` | 1 / 100 |  |
-| `css/css-grid/abspos/positioned-grid-items-should-not-create-implicit-tracks-001.html` | 0 / 1 |  |
-| `css/css-grid/abspos/positioned-grid-items-should-not-take-up-space-001.html` | 0 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-001.html` | 1 / 6 |  |
-| `css/css-grid/alignment/grid-align-baseline-002.html` | 1 / 6 |  |
+| `css/css-grid/abspos/positioned-grid-items-should-not-take-up-space-001.html` | 6 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-001.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-align-baseline-002.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-align-baseline-003.html` | 0 / 3 |  |
-| `css/css-grid/alignment/grid-align-baseline-004.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-align-baseline-fieldset-001.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-fieldset-002.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-fieldset-003.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-flex-001.html` | 0 / 48 |  |
-| `css/css-grid/alignment/grid-align-baseline-flex-002.html` | 24 / 48 |  |
-| `css/css-grid/alignment/grid-align-baseline-flex-003.html` | 0 / 16 |  |
-| `css/css-grid/alignment/grid-align-baseline-flex-004.html` | 8 / 16 |  |
-| `css/css-grid/alignment/grid-align-baseline-grid-001.html` | 0 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-grid-002.html` | 6 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-grid-003.html` | 6 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-line-clamp-001.tentative.html` | 0 / 26 |  |
-| `css/css-grid/alignment/grid-align-baseline-line-clamp-002.tentative.html` | 12 / 24 |  |
-| `css/css-grid/alignment/grid-align-baseline-line-clamp-003.tentative.html` | 12 / 24 |  |
-| `css/css-grid/alignment/grid-align-baseline-multicol-001.html` | 0 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-multicol-002.html` | 6 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-multicol-003.html` | 6 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-004.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-align-baseline-fieldset-001.html` | 2 / 4 |  |
+| `css/css-grid/alignment/grid-align-baseline-fieldset-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-align-baseline-fieldset-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-align-baseline-flex-001.html` | 24 / 48 |  |
+| `css/css-grid/alignment/grid-align-baseline-flex-002.html` | 0 / 48 |  |
+| `css/css-grid/alignment/grid-align-baseline-flex-003.html` | 8 / 16 |  |
+| `css/css-grid/alignment/grid-align-baseline-flex-004.html` | 0 / 16 |  |
+| `css/css-grid/alignment/grid-align-baseline-grid-001.html` | 6 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-grid-002.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-grid-003.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-line-clamp-001.tentative.html` | 13 / 26 |  |
+| `css/css-grid/alignment/grid-align-baseline-line-clamp-002.tentative.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-baseline-line-clamp-003.tentative.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-baseline-multicol-001.html` | 6 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-multicol-002.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-multicol-003.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-align-baseline-nested-intrinsic-sizing-001.html` | 0 / 3 |  |
-| `css/css-grid/alignment/grid-align-baseline-overflow-001.html` | 2 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-overflow-002.html` | 7 / 12 |  |
-| `css/css-grid/alignment/grid-align-baseline-overflow-003.html` | 7 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-overflow-001.html` | 6 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-overflow-002.html` | 2 / 12 |  |
+| `css/css-grid/alignment/grid-align-baseline-overflow-003.html` | 2 / 12 |  |
 | `css/css-grid/alignment/grid-align-baseline-single-item-001.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-table-001.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-align-baseline-table-002.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-table-003.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-align-baseline-vertical-mixed.html` | 5 / 11 |  |
-| `css/css-grid/alignment/grid-align-baseline-vertical.html` | 5 / 11 |  |
-| `css/css-grid/alignment/grid-align-baseline.html` | 0 / 9 |  |
+| `css/css-grid/alignment/grid-align-baseline-table-001.html` | 4 / 8 |  |
+| `css/css-grid/alignment/grid-align-baseline-table-002.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-align-baseline-table-003.html` | 0 / 4 |  |
+| `css/css-grid/alignment/grid-align-baseline-vertical-mixed.html` | 1 / 11 |  |
+| `css/css-grid/alignment/grid-align-baseline-vertical.html` | 1 / 11 |  |
+| `css/css-grid/alignment/grid-align-baseline.html` | 2 / 9 |  |
 | `css/css-grid/alignment/grid-align-content-distribution-vertical-lr.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-align-content-distribution-vertical-rl.html` | 0 / 24 |  |
-| `css/css-grid/alignment/grid-align-content-distribution.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-align-content-distribution.html` | 12 / 24 |  |
 | `css/css-grid/alignment/grid-align-content-vertical-lr.html` | 0 / 6 |  |
 | `css/css-grid/alignment/grid-align-content-vertical-rl.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-align-content.html` | 0 / 13 |  |
+| `css/css-grid/alignment/grid-align-content.html` | 7 / 13 |  |
 | `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-lr.html` | 0 / 18 |  |
 | `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-rl.html` | 0 / 18 |  |
 | `css/css-grid/alignment/grid-align-justify-margin-border-padding.html` | 0 / 18 |  |
@@ -804,62 +799,31 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-align-justify-stretch.html` | 0 / 16 |  |
 | `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 5 / 6 |  |
 | `css/css-grid/alignment/grid-align.html` | 0 / 16 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-001.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-002.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-003.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-004.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-005.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-006.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-007.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-008.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-009.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-010.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-014.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-017.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-018.html` | 1 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-019.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-020.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-021.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-022.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-023.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-024.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-025.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-026.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-027.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-028.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-025.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-026.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-027.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-028.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-029.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-030.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-031.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-032.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-035.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-036.html` | 1 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-037.html` | 1 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-038.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-039.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-040.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-041.html` | 1 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-042.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-043.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-044.html` | 2 / 4 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-001.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-002.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-003.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-004.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-005.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-006.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-007.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-alignment-style-changes-008.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-001.html` | 3 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-002.html` | 3 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-003.html` | 1 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-004.html` | 1 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-005.html` | 3 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-006.html` | 3 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-007.html` | 3 / 6 |  |
+| `css/css-grid/alignment/grid-alignment-style-changes-008.html` | 3 / 6 |  |
 | `css/css-grid/alignment/grid-baseline-004.html` | 0 / 18 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-001.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-002.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-003.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-004.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-005.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-006.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-block-axis-alignment-auto-margins-007.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-002.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-003.html` | 0 / 4 |  |
@@ -877,7 +841,6 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-015.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-016.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-positioned-items-017.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-column-axis-alignment-sticky-positioned-items-001.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-column-axis-alignment-sticky-positioned-items-002.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-002.html` | 0 / 3 |  |
@@ -885,53 +848,43 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-004.html` | 0 / 3 |  |
 | `css/css-grid/alignment/grid-column-axis-self-baseline-synthesized-005.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-container-baseline-001.html` | 0 / 11 |  |
-| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-001.html` | 0 / 24 |  |
-| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-002.html` | 0 / 32 |  |
-| `css/css-grid/alignment/grid-content-alignment-auto-sized-tracks-001.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-content-alignment-overflow-001.html` | 0 / 14 |  |
-| `css/css-grid/alignment/grid-content-alignment-overflow-002.html` | 0 / 14 |  |
-| `css/css-grid/alignment/grid-content-alignment-second-pass-001.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-container-baseline-first-item-in-grid-order.html` | 0 / 1 |  |
+| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-001.html` | 12 / 24 |  |
+| `css/css-grid/alignment/grid-content-alignment-and-self-alignment-002.html` | 16 / 32 |  |
+| `css/css-grid/alignment/grid-content-alignment-overflow-001.html` | 2 / 14 |  |
+| `css/css-grid/alignment/grid-content-alignment-overflow-002.html` | 1 / 14 |  |
+| `css/css-grid/alignment/grid-content-alignment-second-pass-001.html` | 2 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-second-pass-002.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-abspos-001.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-content-alignment-with-span-001.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-content-alignment-with-span-001.html` | 4 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-lr-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-rl-001.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-content-distribution-stretch-different-sized-tracks-001.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-fit-content-tracks-dont-stretch-001.html` | 0 / 36 |  |
-| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 0 / 25 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-001.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-002.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-003.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-004.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-005.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-006.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-inline-axis-alignment-auto-margins-007.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 9 / 25 |  |
 | `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-lr.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-rl.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows.html` | 0 / 7 |  |
+| `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows.html` | 1 / 7 |  |
 | `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-001.html` | 0 / 20 |  |
 | `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-002.html` | 0 / 20 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-lr.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-rl.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-item-auto-margins-alignment.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-item-auto-margins-and-specified-margins-001.html` | 2 / 7 |  |
+| `css/css-grid/alignment/grid-item-auto-margins-alignment.html` | 4 / 8 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-and-stretch-001.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-item-stretch-dynamic-size-margin-change-001.html` | 0 / 6 |  |
+| `css/css-grid/alignment/grid-item-stretch-dynamic-size-margin-change-001.html` | 3 / 6 |  |
 | `css/css-grid/alignment/grid-item-stretch-margin-border-padding-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-lr-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-rl-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-justify-baseline-002.html` | 1 / 6 |  |
 | `css/css-grid/alignment/grid-justify-baseline-003.html` | 0 / 3 |  |
 | `css/css-grid/alignment/grid-justify-baseline-004.html` | 0 / 3 |  |
-| `css/css-grid/alignment/grid-justify-baseline-005.html` | 1 / 4 |  |
-| `css/css-grid/alignment/grid-justify-content-001.html` | 0 / 13 |  |
-| `css/css-grid/alignment/grid-justify-content-distribution-001.html` | 0 / 24 |  |
+| `css/css-grid/alignment/grid-justify-baseline-005.html` | 2 / 4 |  |
+| `css/css-grid/alignment/grid-justify-content-001.html` | 8 / 13 |  |
+| `css/css-grid/alignment/grid-justify-content-distribution-001.html` | 12 / 24 |  |
 | `css/css-grid/alignment/grid-justify-content-distribution-vertical-lr-001.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-justify-content-distribution-vertical-rl-001.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-justify-content-vertical-lr-001.html` | 0 / 10 |  |
 | `css/css-grid/alignment/grid-justify-content-vertical-rl-001.html` | 0 / 10 |  |
 | `css/css-grid/alignment/grid-justify-self-cell-001.html` | 0 / 10 |  |
-| `css/css-grid/alignment/grid-place-content-001.html` | 10 / 20 |  |
+| `css/css-grid/alignment/grid-place-content-001.html` | 18 / 20 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-002.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-003.html` | 0 / 4 |  |
@@ -949,14 +902,12 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-015.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-016.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-017.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-row-axis-alignment-sticky-positioned-items-001.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-sticky-positioned-items-002.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-002.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-003.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-004.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-self-baseline-synthesized-005.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-self-alignment-fit-content-001.html` | 1 / 9 |  |
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-002.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-003.html` | 0 / 4 |  |
@@ -969,7 +920,6 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-010.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-011.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-non-static-positioned-items-012.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-self-alignment-positional-values-001.html` | 0 / 16 |  |
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-002.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-003.html` | 0 / 4 |  |
@@ -986,19 +936,10 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-014.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-015.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-self-alignment-positioned-items-with-margin-border-padding-016.html` | 0 / 4 |  |
-| `css/css-grid/alignment/grid-self-alignment-safe-overflow.html` | 4 / 6 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-001.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-002.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-003.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-004.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-005.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-006.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-007.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-008.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-009.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-010.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-011.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-stretch-012.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-013.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-014.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-015.html` | 0 / 1 |  |
@@ -1035,9 +976,9 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-014.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-015.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-self-alignment-stretch-vertical-rl-016.html` | 0 / 1 |  |
-| `css/css-grid/alignment/grid-self-alignment-unsafe-overflow-001.html` | 2 / 10 |  |
-| `css/css-grid/alignment/grid-self-alignment.html` | 18 / 72 |  |
-| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-001.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-self-alignment-unsafe-overflow-001.html` | 8 / 10 |  |
+| `css/css-grid/alignment/grid-self-alignment.html` | 24 / 72 |  |
+| `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-001.html` | 8 / 12 |  |
 | `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-002.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-self-baseline-not-applied-if-sizing-cyclic-dependency-003.html` | 0 / 6 |  |
 | `css/css-grid/alignment/self-baseline/grid-self-baseline-two-dimensional.html` | 0 / 12 |  |
@@ -1055,78 +996,57 @@ est le plus honnête des deux.
 | `css/css-grid/animation/grid-template-rows-neutral-keyframe-003.html` | 0 / 1 |  |
 | `css/css-grid/animation/grid-template-rows-neutral-keyframe-004.html` | 0 / 1 |  |
 | `css/css-grid/computed-grid-column.html` | 0 / 1 |  |
-| `css/css-grid/grid-definition/explicit-grid-size-001.html` | 0 / 11 |  |
-| `css/css-grid/grid-definition/fit-content-track-sizing.html` | 0 / 13 |  |
-| `css/css-grid/grid-definition/flex-content-distribution-001.html` | 0 / 6 |  |
-| `css/css-grid/grid-definition/flex-content-resolution-columns-001.html` | 0 / 15 |  |
-| `css/css-grid/grid-definition/flex-content-resolution-columns-002.html` | 0 / 11 |  |
-| `css/css-grid/grid-definition/flex-content-resolution-rows-001.html` | 0 / 26 |  |
-| `css/css-grid/grid-definition/flex-content-resolution-rows-002.html` | 0 / 21 |  |
-| `css/css-grid/grid-definition/flex-factor-sum-less-than-1-001.html` | 0 / 4 |  |
-| `css/css-grid/grid-definition/grid-auto-explicit-rows-001.html` | 0 / 1 |  |
-| `css/css-grid/grid-definition/grid-auto-fill-columns-001.html` | 0 / 33 |  |
-| `css/css-grid/grid-definition/grid-auto-fill-rows-001.html` | 0 / 35 |  |
-| `css/css-grid/grid-definition/grid-auto-fit-columns-001.html` | 0 / 35 |  |
-| `css/css-grid/grid-definition/grid-auto-fit-rows-001.html` | 0 / 33 |  |
+| `css/css-grid/grid-definition/fit-content-track-sizing.html` | 6 / 13 |  |
+| `css/css-grid/grid-definition/flex-content-resolution-columns-002.html` | 5 / 11 |  |
+| `css/css-grid/grid-definition/flex-content-resolution-rows-002.html` | 17 / 21 |  |
+| `css/css-grid/grid-definition/grid-auto-fill-columns-001.html` | 17 / 33 |  |
+| `css/css-grid/grid-definition/grid-auto-fill-rows-001.html` | 17 / 35 |  |
+| `css/css-grid/grid-definition/grid-auto-fit-columns-001.html` | 16 / 35 |  |
+| `css/css-grid/grid-definition/grid-auto-fit-rows-001.html` | 16 / 33 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-intrinsic-001.html` | 0 / 8 |  |
-| `css/css-grid/grid-definition/grid-auto-repeat-max-size-001.tentative.html` | 0 / 20 |  |
-| `css/css-grid/grid-definition/grid-auto-repeat-max-size-002.html` | 0 / 4 |  |
-| `css/css-grid/grid-definition/grid-auto-repeat-min-max-size-001.html` | 0 / 4 |  |
+| `css/css-grid/grid-definition/grid-auto-repeat-max-size-001.tentative.html` | 3 / 20 |  |
+| `css/css-grid/grid-definition/grid-auto-repeat-max-size-002.html` | 1 / 4 |  |
+| `css/css-grid/grid-definition/grid-auto-repeat-min-max-size-001.html` | 1 / 4 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-001.html` | 0 / 12 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-002.html` | 0 / 4 |  |
-| `css/css-grid/grid-definition/grid-auto-repeat-min-size-003.html` | 0 / 1 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-004.html` | 0 / 1 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-rows-dynamic-height-001.html` | 0 / 3 |  |
-| `css/css-grid/grid-definition/grid-change-auto-repeat-tracks.html` | 0 / 16 |  |
-| `css/css-grid/grid-definition/grid-change-fit-content-argument-001.html` | 2 / 8 |  |
+| `css/css-grid/grid-definition/grid-change-fit-content-argument-001.html` | 6 / 8 |  |
 | `css/css-grid/grid-definition/grid-change-intrinsic-size-with-auto-repeat-tracks-001.html` | 0 / 8 |  |
-| `css/css-grid/grid-definition/grid-inline-auto-repeat-001.html` | 0 / 12 |  |
-| `css/css-grid/grid-definition/grid-inline-support-flexible-lengths-001.html` | 0 / 62 |  |
+| `css/css-grid/grid-definition/grid-inline-auto-repeat-001.html` | 5 / 12 |  |
+| `css/css-grid/grid-definition/grid-inline-support-flexible-lengths-001.html` | 58 / 62 |  |
 | `css/css-grid/grid-definition/grid-inline-support-grid-template-areas-001.html` | 0 / 45 |  |
-| `css/css-grid/grid-definition/grid-inline-support-grid-template-columns-rows-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-definition/grid-inline-support-named-grid-lines-001.html` | 0 / 80 |  |
-| `css/css-grid/grid-definition/grid-inline-support-repeat-001.html` | 0 / 40 |  |
-| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.html` | 0 / 38 |  |
-| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.tentative.html` | 0 / 76 |  |
+| `css/css-grid/grid-definition/grid-inline-support-named-grid-lines-001.html` | 40 / 80 |  |
+| `css/css-grid/grid-definition/grid-inline-support-repeat-001.html` | 26 / 40 |  |
+| `css/css-grid/grid-definition/grid-inline-template-columns-rows-resolved-values-001.tentative.html` | 40 / 76 |  |
 | `css/css-grid/grid-definition/grid-limits-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-definition/grid-minimum-contribution-with-percentages.html` | 0 / 16 |  |
+| `css/css-grid/grid-definition/grid-minimum-contribution-with-percentages.html` | 8 / 16 |  |
 | `css/css-grid/grid-definition/grid-percentage-max-size-flex-rows-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-percentage-max-size-flex-rows-002.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-001.html` | 16 / 120 |  |
 | `css/css-grid/grid-definition/grid-percentage-rows-indefinite-height-002.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-shorthand-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-definition/grid-support-flexible-lengths-001.html` | 0 / 62 |  |
+| `css/css-grid/grid-definition/grid-support-flexible-lengths-001.html` | 58 / 62 |  |
 | `css/css-grid/grid-definition/grid-support-grid-template-areas-001.html` | 0 / 45 |  |
-| `css/css-grid/grid-definition/grid-support-grid-template-columns-rows-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-definition/grid-support-named-grid-lines-001.html` | 0 / 80 |  |
-| `css/css-grid/grid-definition/grid-support-repeat-001.html` | 0 / 40 |  |
+| `css/css-grid/grid-definition/grid-support-named-grid-lines-001.html` | 40 / 80 |  |
+| `css/css-grid/grid-definition/grid-support-repeat-001.html` | 26 / 40 |  |
 | `css/css-grid/grid-definition/grid-support-repeat-002.html` | 13 / 20 |  |
-| `css/css-grid/grid-definition/grid-template-columns-rows-changes-001.html` | 0 / 21 |  |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.html` | 0 / 38 |  |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 0 / 76 |  |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-002.html` | 0 / 4 |  |
-| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-003.html` | 0 / 6 |  |
-| `css/css-grid/grid-extrinsically-sized-mutations.html` | 3 / 8 |  |
+| `css/css-grid/grid-definition/grid-template-columns-rows-changes-001.html` | 14 / 21 |  |
+| `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 40 / 76 |  |
 | `css/css-grid/grid-important.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-automatic-minimum-intrinsic-aspect-ratio-001.html` | 0 / 14 |  |
-| `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 2 / 14 |  |
-| `css/css-grid/grid-items/grid-item-dynamic-min-contribution-001.html` | 5 / 7 |  |
-| `css/css-grid/grid-items/grid-item-fixed-margin-001.html` | 0 / 4 |  |
-| `css/css-grid/grid-items/grid-item-fixed-max-height-001.html` | 0 / 1 |  |
+| `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 8 / 14 |  |
 | `css/css-grid/grid-items/grid-item-min-auto-size-001.html` | 2 / 4 |  |
 | `css/css-grid/grid-items/grid-item-min-contribution-behaves-as-auto-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-items/grid-item-min-height-border-box-001.html` | 6 / 14 |  |
-| `css/css-grid/grid-items/grid-item-min-width-height-auto-001.html` | 0 / 8 |  |
-| `css/css-grid/grid-items/grid-item-min-width-margin-box-001.html` | 1 / 14 |  |
-| `css/css-grid/grid-items/grid-item-minimum-size-single-axis-scroll-container.html` | 1 / 4 |  |
-| `css/css-grid/grid-items/grid-item-percentage-height-auto-height-grid-001.html` | 0 / 8 |  |
-| `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-001.html` | 0 / 4 |  |
-| `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-quirks-001.html` | 0 / 4 |  |
-| `css/css-grid/grid-items/grid-items-minimum-height-orthogonal-001.html` | 0 / 46 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-orthogonal-001.html` | 0 / 46 |  |
+| `css/css-grid/grid-items/grid-item-min-width-margin-box-001.html` | 4 / 14 |  |
+| `css/css-grid/grid-items/grid-item-minimum-size-single-axis-scroll-container.html` | 2 / 4 |  |
+| `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-001.html` | 3 / 4 |  |
+| `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-quirks-001.html` | 3 / 4 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-lr-001.html` | 0 / 44 |  |
+| `css/css-grid/grid-items/grid-items-minimum-width-vertical-lr-002.html` | 0 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-001.html` | 0 / 44 |  |
+| `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-002.html` | 0 / 44 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-001.html` | 0 / 8 |  |
@@ -1142,13 +1062,13 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-lr-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-002.html` | 0 / 8 |  |
-| `css/css-grid/grid-items/grid-items-relative-offsets-001.html` | 0 / 6 |  |
+| `css/css-grid/grid-items/grid-items-relative-offsets-001.html` | 1 / 6 |  |
 | `css/css-grid/grid-items/grid-items-relative-offsets-002.html` | 0 / 6 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 76 / 144 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-022.html` | 0 / 45 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-023.html` | 0 / 60 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-024.html` | 0 / 45 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-025.html` | 0 / 60 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 72 / 144 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-022.html` | 27 / 45 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-023.html` | 40 / 60 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-024.html` | 13 / 45 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-025.html` | 26 / 60 |  |
 | `css/css-grid/grid-lanes/animation/fit-tolerance-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-columns-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-rows-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1248,97 +1168,80 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/row-auto-repeat-022.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/row-auto-repeat-023.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/track-sizing/dynamic-grid-track-direction.html` | 0 / 1 |  |
-| `css/css-grid/grid-layout-properties.html` | 16 / 140 |  |
+| `css/css-grid/grid-layout-properties.html` | 35 / 140 |  |
 | `css/css-grid/grid-model/compute-intrinsic-widths-scrollbar-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-model/grid-box-sizing-001.html` | 0 / 24 |  |
-| `css/css-grid/grid-model/grid-button-001.html` | 0 / 2 |  |
+| `css/css-grid/grid-model/grid-box-sizing-001.html` | 22 / 24 |  |
 | `css/css-grid/grid-model/grid-computed-value-display-floated-items-001.html` | 2 / 6 |  |
 | `css/css-grid/grid-model/grid-container-margin-border-padding-scrollbar-001.html` | 0 / 16 |  |
-| `css/css-grid/grid-model/grid-container-padding-border-size-001.html` | 0 / 6 |  |
-| `css/css-grid/grid-model/grid-container-rows-or-columns-only-001.html` | 0 / 2 |  |
+| `css/css-grid/grid-model/grid-container-padding-border-size-001.html` | 3 / 6 |  |
 | `css/css-grid/grid-model/grid-container-sizing-constraints-001.html` | 0 / 15 |  |
-| `css/css-grid/grid-model/grid-float-002.html` | 0 / 1 |  |
-| `css/css-grid/grid-model/grid-gutters-and-flex-content-001.html` | 0 / 8 |  |
-| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 0 / 17 |  |
-| `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 0 / 16 |  |
+| `css/css-grid/grid-model/grid-gutters-and-flex-content-001.html` | 6 / 8 |  |
+| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 10 / 17 |  |
+| `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 6 / 16 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-letter-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-line-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-hit-test.html` | 0 / 1 |  |
-| `css/css-grid/grid-model/grid-min-max-height-001.html` | 10 / 12 |  |
-| `css/css-grid/grid-model/grid-min-max-width-001.html` | 3 / 20 |  |
-| `css/css-grid/grid-model/grid-size-shrink-to-fit-001.html` | 0 / 4 |  |
+| `css/css-grid/grid-model/grid-min-max-width-001.html` | 10 / 20 |  |
+| `css/css-grid/grid-model/grid-size-shrink-to-fit-001.html` | 3 / 4 |  |
 | `css/css-grid/grid-model/grid-support-display-001.html` | 3 / 6 |  |
 | `css/css-grid/grid-template-columns-mixed-calc.html` | 9 / 11 |  |
-| `css/css-grid/grid-tracks-fractional-fr.html` | 0 / 1 |  |
-| `css/css-grid/grid-tracks-stretched-with-different-flex-factors-sum.html` | 0 / 2 |  |
-| `css/css-grid/implicit-grids/grid-auto-columns-rows-auto-flow-resolution-001.html` | 0 / 12 |  |
-| `css/css-grid/implicit-grids/grid-auto-columns-rows-resolution-001.html` | 0 / 3 |  |
-| `css/css-grid/implicit-grids/grid-implicit-columns-auto-resolution-001.html` | 0 / 3 |  |
-| `css/css-grid/implicit-grids/grid-implicit-rows-auto-resolution-001.html` | 0 / 3 |  |
-| `css/css-grid/implicit-grids/grid-implicit-tracks-before-explicit-001.html` | 0 / 31 |  |
-| `css/css-grid/implicit-grids/grid-item-placed-in-trailing-implicit-column-001.html` | 0 / 4 |  |
-| `css/css-grid/inheritance.html` | 0 / 20 |  |
-| `css/css-grid/layout-algorithm/automatic-minimum-size-clamped-to-fixed-max-track-sizing-function.html` | 0 / 13 |  |
+| `css/css-grid/implicit-grids/grid-auto-columns-rows-auto-flow-resolution-001.html` | 10 / 12 |  |
+| `css/css-grid/implicit-grids/grid-auto-columns-rows-resolution-001.html` | 2 / 3 |  |
+| `css/css-grid/implicit-grids/grid-implicit-columns-auto-resolution-001.html` | 2 / 3 |  |
+| `css/css-grid/implicit-grids/grid-implicit-tracks-before-explicit-001.html` | 21 / 31 |  |
+| `css/css-grid/inheritance.html` | 2 / 20 |  |
+| `css/css-grid/layout-algorithm/automatic-minimum-size-clamped-to-fixed-max-track-sizing-function.html` | 3 / 13 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-001.html` | 0 / 48 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-002.html` | 0 / 48 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-003.html` | 0 / 24 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-004.html` | 0 / 24 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-005.html` | 0 / 24 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-006.html` | 0 / 24 |  |
-| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 1 / 8 |  |
-| `css/css-grid/layout-algorithm/flex-sizing-columns-min-max-width-001.html` | 0 / 12 |  |
+| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 3 / 8 |  |
+| `css/css-grid/layout-algorithm/flex-sizing-columns-min-max-width-001.html` | 5 / 12 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-001.html` | 0 / 12 |  |
-| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-002.html` | 1 / 14 |  |
+| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-002.html` | 4 / 14 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-border-box-001.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-auto-columns-content-resolution-001.html` | 0 / 3 |  |
+| `css/css-grid/layout-algorithm/grid-auto-columns-content-resolution-001.html` | 2 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-auto-row-regrows-after-container-height-shrinks-001.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-auto-rows-content-resolution-001.html` | 0 / 3 |  |
-| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-columns-001.html` | 0 / 4 |  |
-| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-rows-001.html` | 0 / 4 |  |
-| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 1 / 20 |  |
-| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 1 / 24 |  |
+| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-columns-001.html` | 1 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-rows-001.html` | 2 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 4 / 20 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 5 / 24 |  |
 | `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-002.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-003.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-004.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-001.html` | 0 / 17 |  |
-| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-002.html` | 0 / 6 |  |
+| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-001.html` | 6 / 17 |  |
 | `css/css-grid/layout-algorithm/grid-fit-content-percentage.html` | 0 / 20 |  |
-| `css/css-grid/layout-algorithm/grid-flex-rows-container-height-change-001.html` | 0 / 2 |  |
-| `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-001.html` | 0 / 30 |  |
+| `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-001.html` | 6 / 30 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-002.html` | 0 / 5 |  |
-| `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-003.html` | 0 / 102 |  |
+| `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-003.html` | 40 / 102 |  |
 | `css/css-grid/layout-algorithm/grid-flex-tracks-item-with-border-001.html` | 1 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-intrinsic-size-with-orthogonal-items.html` | 0 / 7 |  |
-| `css/css-grid/layout-algorithm/grid-intrinsic-track-sizes-001.html` | 0 / 31 |  |
-| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 0 / 35 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-track-sizes-001.html` | 27 / 31 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 6 / 35 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-002.html` | 0 / 2 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-rl-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-rl-002.html` | 0 / 2 |  |
 | `css/css-grid/layout-algorithm/grid-item-positioning-orthogonal-flows-001.html` | 0 / 4 |  |
-| `css/css-grid/layout-algorithm/grid-item-sizing-orthogonal-flows-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-item-sizing-orthogonal-flows-001.html` | 1 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-stale-block-size-001.html` | 0 / 1 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim-vertical-lr.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim-vertical-rl.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-minmax-content-tracks-multiple-items-001.html` | 0 / 4 |  |
-| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-columns-001.html` | 0 / 26 |  |
-| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-rows-001.html` | 0 / 28 |  |
+| `css/css-grid/layout-algorithm/grid-minmax-content-tracks-multiple-items-001.html` | 3 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-minmax-spanning-items-columns-001.html` | 12 / 26 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-auto-track-size-001.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-track-size-001.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-percentage-tracks-container-margin-border-padding-001.html` | 0 / 8 |  |
-| `css/css-grid/layout-algorithm/grid-percentage-tracks-container-size-001.html` | 0 / 12 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-tracks-container-size-001.html` | 4 / 12 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-tracks-intrinsic-container-001.html` | 0 / 1 |  |
 | `css/css-grid/layout-algorithm/grid-relayout-orthogonal-items-same-result-001.html` | 0 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-spanning-items-orthogonal-flows-001.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-spanning-items-percentage-grid-001.html` | 1 / 19 |  |
-| `css/css-grid/layout-algorithm/grid-track-sizing-item-addition-001.html` | 0 / 63 |  |
-| `css/css-grid/layout-algorithm/grid-track-sizing-item-removal-001.html` | 1 / 66 |  |
-| `css/css-grid/layout-algorithm/minmax-tracks-with-fixed-breadths.html` | 0 / 22 |  |
+| `css/css-grid/layout-algorithm/grid-track-sizing-item-addition-001.html` | 22 / 63 |  |
+| `css/css-grid/layout-algorithm/grid-track-sizing-item-removal-001.html` | 45 / 66 |  |
 | `css/css-grid/parsing/grid-area-computed.html` | 0 / 35 |  |
 | `css/css-grid/parsing/grid-area-invalid.html` | 0 / 25 |  |
-| `css/css-grid/parsing/grid-area-shorthand.html` | 0 / 53 |  |
+| `css/css-grid/parsing/grid-area-shorthand.html` | 13 / 53 |  |
 | `css/css-grid/parsing/grid-area-valid.html` | 29 / 60 |  |
 | `css/css-grid/parsing/grid-auto-columns-computed.html` | 0 / 25 |  |
 | `css/css-grid/parsing/grid-auto-columns-invalid.html` | 0 / 16 |  |
@@ -1351,26 +1254,25 @@ est le plus honnête des deux.
 | `css/css-grid/parsing/grid-auto-rows-valid.html` | 29 / 30 |  |
 | `css/css-grid/parsing/grid-column-invalid.html` | 0 / 31 |  |
 | `css/css-grid/parsing/grid-column-shortest-serialization.html` | 0 / 16 |  |
-| `css/css-grid/parsing/grid-column-shorthand.html` | 0 / 48 |  |
-| `css/css-grid/parsing/grid-columns-rows-get-set-multiple.html` | 0 / 40 |  |
-| `css/css-grid/parsing/grid-content-sized-columns-resolution.html` | 0 / 42 |  |
+| `css/css-grid/parsing/grid-column-shorthand.html` | 16 / 48 |  |
+| `css/css-grid/parsing/grid-columns-rows-get-set-multiple.html` | 36 / 40 |  |
+| `css/css-grid/parsing/grid-content-sized-columns-resolution.html` | 14 / 42 |  |
 | `css/css-grid/parsing/grid-row-invalid.html` | 0 / 31 |  |
 | `css/css-grid/parsing/grid-row-shortest-serialization.html` | 0 / 15 |  |
-| `css/css-grid/parsing/grid-row-shorthand.html` | 0 / 48 |  |
+| `css/css-grid/parsing/grid-row-shorthand.html` | 16 / 48 |  |
 | `css/css-grid/parsing/grid-shorthand-invalid.html` | 0 / 34 |  |
 | `css/css-grid/parsing/grid-shorthand-serialization.html` | 51 / 141 |  |
 | `css/css-grid/parsing/grid-shorthand-valid.html` | 32 / 49 |  |
-| `css/css-grid/parsing/grid-shorthand.html` | 0 / 63 |  |
+| `css/css-grid/parsing/grid-shorthand.html` | 4 / 63 |  |
 | `css/css-grid/parsing/grid-template-areas-computed.html` | 0 / 9 |  |
 | `css/css-grid/parsing/grid-template-areas-invalid.html` | 0 / 11 |  |
 | `css/css-grid/parsing/grid-template-areas-one-cell.html` | 2 / 6 |  |
 | `css/css-grid/parsing/grid-template-areas-valid.html` | 6 / 9 |  |
-| `css/css-grid/parsing/grid-template-columns-computed-implicit-track.html` | 0 / 24 |  |
-| `css/css-grid/parsing/grid-template-columns-computed-nogrid.html` | 0 / 32 |  |
-| `css/css-grid/parsing/grid-template-columns-computed-withcontent.html` | 0 / 30 |  |
-| `css/css-grid/parsing/grid-template-columns-computed.html` | 0 / 25 |  |
+| `css/css-grid/parsing/grid-template-columns-computed-implicit-track.html` | 5 / 24 |  |
+| `css/css-grid/parsing/grid-template-columns-computed-nogrid.html` | 1 / 32 |  |
+| `css/css-grid/parsing/grid-template-columns-computed-withcontent.html` | 21 / 30 |  |
+| `css/css-grid/parsing/grid-template-columns-computed.html` | 5 / 25 |  |
 | `css/css-grid/parsing/grid-template-columns-intrinsic-auto-repeat-computed-implicit-track.tentative.html` | 0 / 12 |  |
-| `css/css-grid/parsing/grid-template-columns-intrinsic-auto-repeat-computed-nogrid.tentative.html` | 0 / 12 |  |
 | `css/css-grid/parsing/grid-template-columns-intrinsic-auto-repeat-computed-withcontent.tentative.html` | 0 / 8 |  |
 | `css/css-grid/parsing/grid-template-columns-intrinsic-auto-repeat-computed.tentative.html` | 0 / 12 |  |
 | `css/css-grid/parsing/grid-template-columns-invalid.html` | 0 / 42 |  |
@@ -1379,12 +1281,11 @@ est le plus honnête des deux.
 | `css/css-grid/parsing/grid-template-node-not-connected.html` | 0 / 1 |  |
 | `css/css-grid/parsing/grid-template-repeat-auto-computed-withcontent-001.html` | 0 / 12 |  |
 | `css/css-grid/parsing/grid-template-repeat-auto-computed-withcontent-002.html` | 0 / 17 |  |
-| `css/css-grid/parsing/grid-template-rows-computed-implicit-track.html` | 0 / 24 |  |
-| `css/css-grid/parsing/grid-template-rows-computed-nogrid.html` | 0 / 24 |  |
-| `css/css-grid/parsing/grid-template-rows-computed-withcontent.html` | 0 / 27 |  |
-| `css/css-grid/parsing/grid-template-rows-computed.html` | 0 / 24 |  |
+| `css/css-grid/parsing/grid-template-rows-computed-implicit-track.html` | 5 / 24 |  |
+| `css/css-grid/parsing/grid-template-rows-computed-nogrid.html` | 1 / 24 |  |
+| `css/css-grid/parsing/grid-template-rows-computed-withcontent.html` | 21 / 27 |  |
+| `css/css-grid/parsing/grid-template-rows-computed.html` | 5 / 24 |  |
 | `css/css-grid/parsing/grid-template-rows-intrinsic-auto-repeat-computed-implicit-track.tentative.html` | 0 / 12 |  |
-| `css/css-grid/parsing/grid-template-rows-intrinsic-auto-repeat-computed-nogrid.tentative.html` | 0 / 12 |  |
 | `css/css-grid/parsing/grid-template-rows-intrinsic-auto-repeat-computed-withcontent.tentative.html` | 0 / 8 |  |
 | `css/css-grid/parsing/grid-template-rows-intrinsic-auto-repeat-computed.tentative.html` | 0 / 12 |  |
 | `css/css-grid/parsing/grid-template-rows-invalid.html` | 0 / 42 |  |
@@ -1393,32 +1294,23 @@ est le plus honnête des deux.
 | `css/css-grid/parsing/grid-template-shorthand-composition.html` | 4 / 11 |  |
 | `css/css-grid/parsing/grid-template-shorthand-invalid.html` | 0 / 66 |  |
 | `css/css-grid/parsing/grid-template-shorthand-valid.html` | 24 / 42 |  |
-| `css/css-grid/parsing/grid-template-shorthand.html` | 0 / 28 |  |
-| `css/css-grid/placement/grid-auto-flow-dynamic-change-001.html` | 0 / 6 |  |
-| `css/css-grid/placement/grid-auto-flow-resolution-001.html` | 0 / 13 |  |
-| `css/css-grid/placement/grid-auto-flow-sparse-001.html` | 0 / 8 |  |
-| `css/css-grid/placement/grid-auto-placement-automatic-span-001.html` | 0 / 16 |  |
-| `css/css-grid/placement/grid-auto-placement-definite-span-001.html` | 0 / 8 |  |
-| `css/css-grid/placement/grid-auto-placement-fixed-row-column-001.html` | 0 / 16 |  |
-| `css/css-grid/placement/grid-auto-placement-implicit-tracks-001.html` | 0 / 12 |  |
-| `css/css-grid/placement/grid-auto-placement-item-addition-001.html` | 0 / 20 |  |
-| `css/css-grid/placement/grid-auto-placement-item-removal-001.html` | 0 / 20 |  |
-| `css/css-grid/placement/grid-auto-placement-order-change-001.html` | 0 / 4 |  |
-| `css/css-grid/placement/grid-container-change-grid-tracks-recompute-child-positions-001.html` | 0 / 6 |  |
+| `css/css-grid/parsing/grid-template-shorthand.html` | 3 / 28 |  |
+| `css/css-grid/placement/grid-auto-flow-resolution-001.html` | 8 / 13 |  |
+| `css/css-grid/placement/grid-auto-placement-automatic-span-001.html` | 12 / 16 |  |
+| `css/css-grid/placement/grid-auto-placement-fixed-row-column-001.html` | 8 / 16 |  |
+| `css/css-grid/placement/grid-auto-placement-item-addition-001.html` | 18 / 20 |  |
+| `css/css-grid/placement/grid-auto-placement-item-removal-001.html` | 19 / 20 |  |
 | `css/css-grid/placement/grid-container-change-named-grid-recompute-child-positions-001.html` | 0 / 4 |  |
-| `css/css-grid/placement/grid-implicit-columns-for-items-locked-to-row-001.html` | 0 / 8 |  |
-| `css/css-grid/placement/grid-implicit-track-placement-001.html` | 0 / 8 |  |
-| `css/css-grid/placement/grid-negative-line-placement-001.html` | 0 / 7 |  |
-| `css/css-grid/placement/grid-placement-dynamic-change-001.html` | 0 / 88 |  |
+| `css/css-grid/placement/grid-implicit-columns-for-items-locked-to-row-001.html` | 6 / 8 |  |
+| `css/css-grid/placement/grid-placement-dynamic-change-001.html` | 67 / 88 |  |
 | `css/css-grid/placement/grid-placement-huge-negative-indexes-001.html` | 0 / 3 |  |
-| `css/css-grid/placement/grid-placement-invalid-double-span-001.html` | 0 / 4 |  |
-| `css/css-grid/placement/grid-placement-named-grid-area-resolution-001.html` | 0 / 2 |  |
-| `css/css-grid/placement/grid-placement-named-lines-and-areas-001.html` | 0 / 22 |  |
-| `css/css-grid/placement/grid-placement-negative-integer-explicit-grid-001.html` | 0 / 4 |  |
-| `css/css-grid/placement/grid-placement-negative-position-resolution-001.html` | 0 / 16 |  |
+| `css/css-grid/placement/grid-placement-named-grid-area-resolution-001.html` | 1 / 2 |  |
+| `css/css-grid/placement/grid-placement-named-lines-and-areas-001.html` | 13 / 22 |  |
+| `css/css-grid/placement/grid-placement-negative-integer-explicit-grid-001.html` | 3 / 4 |  |
+| `css/css-grid/placement/grid-placement-negative-position-resolution-001.html` | 14 / 16 |  |
 | `css/css-grid/placement/grid-placement-unknown-named-area-001.html` | 0 / 4 |  |
 | `css/css-grid/placement/grid-placement-unknown-named-grid-line-001.html` | 0 / 17 |  |
-| `css/css-grid/subgrid/align-self-baseline-with-subgrid-mbp.html` | 0 / 2 |  |
+| `css/css-grid/subgrid/align-self-baseline-with-subgrid-mbp.html` | 1 / 2 |  |
 | `css/css-grid/subgrid/alignment-in-subgridded-axes-001.html` | 0 / 16 |  |
 | `css/css-grid/subgrid/grid-template-computed-invalid-subgrid.html` | 0 / 14 |  |
 | `css/css-grid/subgrid/grid-template-computed-nogrid.html` | 0 / 50 |  |
@@ -1426,20 +1318,18 @@ est le plus honnête des deux.
 | `css/css-grid/subgrid/nested-grid-subgrid-resize.html` | 0 / 1 |  |
 | `css/css-grid/subgrid/placement-implicit-area-line-name-suffix.html` | 0 / 1 |  |
 | `css/css-grid/subgrid/placement-invalidation-001.html` | 0 / 1 |  |
-| `css/css-grid/subgrid/subgrid-baseline-005.html` | 1 / 12 |  |
+| `css/css-grid/subgrid/subgrid-baseline-005.html` | 2 / 12 |  |
 | `css/css-grid/subgrid/subgrid-baseline-006.html` | 0 / 12 |  |
-| `css/css-grid/subgrid/subgrid-baseline-007.html` | 1 / 12 |  |
+| `css/css-grid/subgrid/subgrid-baseline-007.html` | 2 / 12 |  |
 | `css/css-grid/subgrid/subgrid-baseline-008.html` | 0 / 12 |  |
 | `css/css-grid/subgrid/subgrid-baseline-009.html` | 0 / 12 |  |
-| `css/css-grid/subgrid/subgrid-baseline-013.html` | 1 / 4 |  |
-| `css/css-grid/subgrid/subgrid-baseline-014.html` | 2 / 5 |  |
-| `css/css-grid/subgrid/subgrid-baseline-015.html` | 2 / 5 |  |
-| `css/css-grid/subgrid/subgrid-baseline-016.html` | 1 / 6 |  |
-| `css/css-grid/subgrid/subgrid-baseline-017.html` | 1 / 8 |  |
-| `css/css-grid/subgrid/subgrid-baseline-018.html` | 1 / 6 |  |
+| `css/css-grid/subgrid/subgrid-baseline-010.html` | 0 / 2 |  |
+| `css/css-grid/subgrid/subgrid-baseline-011.html` | 1 / 2 |  |
+| `css/css-grid/subgrid/subgrid-baseline-016.html` | 2 / 6 |  |
+| `css/css-grid/subgrid/subgrid-baseline-017.html` | 3 / 8 |  |
+| `css/css-grid/subgrid/subgrid-baseline-018.html` | 2 / 6 |  |
 | `css/css-grid/subgrid/subgrid-item-aspect-ratio-001.html` | 0 / 3 |  |
 | `css/css-grid/subgrid/subgridded-axis-content-distribution-001.html` | 0 / 8 |  |
-| `css/css-grid/table-grid-item-005.html` | 0 / 1 |  |
 | `css/css-grid/test-plan/index.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/css-position/animations/bottom-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/bottom-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1487,7 +1377,7 @@ est le plus honnête des deux.
 | `css/css-position/position-absolute-table-001.html` | 2 / 6 |  |
 | `css/css-position/position-absolute-with-negative-sized-imcb.html` | 4 / 30 |  |
 | `css/css-position/position-fixed-dynamic-containing-block.html` | 0 / 4 |  |
-| `css/css-position/position-relative-015.html` | 15 / 20 |  |
+| `css/css-position/position-relative-015.html` | 19 / 20 |  |
 | `css/css-position/position-relative-016.html` | 16 / 18 |  |
 | `css/css-position/position-relative-aspect-ratio-001.html` | 1 / 4 |  |
 | `css/css-position/position-relative-aspect-ratio-002.html` | 0 / 3 |  |
@@ -1680,26 +1570,25 @@ est le plus honnête des deux.
 | `css/css-sizing/stretch/flex-line-003.html` | 1 / 4 |  |
 | `css/css-sizing/stretch/flex-line-004.html` | 3 / 4 |  |
 | `css/css-sizing/stretch/flex-stretch-min-max-cross-001.html` | 0 / 1 |  |
-| `css/css-sizing/stretch/grid-item-height-001.html` | 1 / 2 |  |
 | `css/css-sizing/stretch/indefinite-4.html` | 0 / 1 |  |
 | `css/css-sizing/stretch/parsing.html` | 13 / 17 |  |
 | `css/css-sizing/stretch/replaced-stretch-height-001.html` | 0 / 1 |  |
-| `css/css-sizing/stretch/stretch-alias-block-size-001.tentative.html` | 8 / 46 |  |
-| `css/css-sizing/stretch/stretch-alias-inline-size-001.tentative.html` | 8 / 46 |  |
-| `css/css-sizing/stretch/stretch-alias-max-block-size-001.tentative.html` | 8 / 45 |  |
-| `css/css-sizing/stretch/stretch-alias-max-inline-size-001.tentative.html` | 8 / 45 |  |
-| `css/css-sizing/stretch/stretch-alias-min-block-size-001.tentative.html` | 8 / 46 |  |
-| `css/css-sizing/stretch/stretch-alias-min-inline-size-001.tentative.html` | 8 / 46 |  |
-| `css/css-sizing/stretch/stretch-block-size-001.html` | 8 / 46 |  |
+| `css/css-sizing/stretch/stretch-alias-block-size-001.tentative.html` | 10 / 46 |  |
+| `css/css-sizing/stretch/stretch-alias-inline-size-001.tentative.html` | 10 / 46 |  |
+| `css/css-sizing/stretch/stretch-alias-max-block-size-001.tentative.html` | 10 / 45 |  |
+| `css/css-sizing/stretch/stretch-alias-max-inline-size-001.tentative.html` | 10 / 45 |  |
+| `css/css-sizing/stretch/stretch-alias-min-block-size-001.tentative.html` | 10 / 46 |  |
+| `css/css-sizing/stretch/stretch-alias-min-inline-size-001.tentative.html` | 10 / 46 |  |
+| `css/css-sizing/stretch/stretch-block-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-block-size-002.html` | 0 / 36 |  |
 | `css/css-sizing/stretch/stretch-block-size-003.html` | 0 / 36 |  |
-| `css/css-sizing/stretch/stretch-inline-size-001.html` | 8 / 46 |  |
+| `css/css-sizing/stretch/stretch-inline-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-inline-size-002.html` | 0 / 36 |  |
 | `css/css-sizing/stretch/stretch-inline-size-003.html` | 0 / 36 |  |
-| `css/css-sizing/stretch/stretch-max-block-size-001.html` | 8 / 45 |  |
-| `css/css-sizing/stretch/stretch-max-inline-size-001.html` | 8 / 45 |  |
-| `css/css-sizing/stretch/stretch-min-block-size-001.html` | 8 / 46 |  |
-| `css/css-sizing/stretch/stretch-min-inline-size-001.html` | 8 / 46 |  |
+| `css/css-sizing/stretch/stretch-max-block-size-001.html` | 10 / 45 |  |
+| `css/css-sizing/stretch/stretch-max-inline-size-001.html` | 10 / 45 |  |
+| `css/css-sizing/stretch/stretch-min-block-size-001.html` | 10 / 46 |  |
+| `css/css-sizing/stretch/stretch-min-inline-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-table-001.html` | 0 / 7 |  |
 | `css/css-sizing/svg-intrinsic-size-001.html` | 0 / 5 |  |
 | `css/css-sizing/svg-intrinsic-size-002.html` | 0 / 5 |  |
@@ -1771,7 +1660,7 @@ est le plus honnête des deux.
 | `css/css-tables/table-min-max-width-intrinsic-contribution.html` | 0 / 4 |  |
 | `css/css-tables/table-model-fixup-2.html` | 20 / 40 |  |
 | `css/css-tables/table-model-fixup.html` | 5 / 11 |  |
-| `css/css-tables/table-stretch-in-flex-and-grid.html` | 4 / 6 |  |
+| `css/css-tables/table-stretch-in-flex-and-grid.html` | 5 / 6 |  |
 | `css/css-tables/tentative/baseline-table.html` | 3 / 15 |  |
 | `css/css-tables/tentative/baseline-td.html` | 1 / 5 |  |
 | `css/css-tables/tentative/caption.html` | 6 / 13 |  |

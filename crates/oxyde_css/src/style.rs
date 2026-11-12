@@ -11,6 +11,7 @@ use std::sync::{Arc, LazyLock};
 
 use oxyde_dom::{Document, ElementData, NodeId};
 
+use crate::grid::{GridAreas, GridLine, TrackList, TrackSize};
 use crate::properties::{Declaration, Longhand, Side, Value, parse_declarations};
 use crate::stylesheet::{Stylesheet, Viewport, parse_stylesheet};
 use crate::syntax::tokenize;
@@ -417,6 +418,34 @@ pub struct ComputedStyle {
     /// Vrai si `display` vaut `flex` ou `inline-flex` : le contenu suit la
     /// mise en page flexible, que la boîte soit de niveau bloc ou en ligne.
     pub flex_container: bool,
+    /// Vrai si `display` vaut `grid` ou `inline-grid`.
+    pub grid_container: bool,
+    /// `grid-template-columns`
+    pub grid_template_columns: Arc<TrackList<Size>>,
+    /// `grid-template-rows`
+    pub grid_template_rows: Arc<TrackList<Size>>,
+    /// `grid-auto-columns` ; vide : `auto`.
+    pub grid_auto_columns: Arc<[TrackSize<Size>]>,
+    /// `grid-auto-rows` ; vide : `auto`.
+    pub grid_auto_rows: Arc<[TrackSize<Size>]>,
+    /// `grid-auto-flow: column`
+    pub grid_auto_flow_column: bool,
+    /// `grid-auto-flow: dense`
+    pub grid_auto_flow_dense: bool,
+    /// `grid-row-start`
+    pub grid_row_start: GridLine,
+    /// `grid-row-end`
+    pub grid_row_end: GridLine,
+    /// `grid-column-start`
+    pub grid_column_start: GridLine,
+    /// `grid-column-end`
+    pub grid_column_end: GridLine,
+    /// `grid-template-areas`
+    pub grid_template_areas: Arc<GridAreas>,
+    /// `justify-items`
+    pub justify_items: Alignment,
+    /// `justify-self` ; [`Alignment::Normal`] : celui du conteneur.
+    pub justify_self: Alignment,
 }
 
 impl ComputedStyle {
@@ -424,6 +453,12 @@ impl ComputedStyle {
     #[must_use]
     pub fn initial() -> Self {
         static SERIF: LazyLock<Arc<[String]>> = LazyLock::new(|| Arc::from(["serif".to_owned()]));
+        // Valeurs vides partagées : la plupart des éléments n'ont pas de grille.
+        static NO_TRACKS: LazyLock<Arc<TrackList<Size>>> =
+            LazyLock::new(|| Arc::new(TrackList::default()));
+        static NO_SIZES: LazyLock<Arc<[TrackSize<Size>]>> = LazyLock::new(|| Arc::from([]));
+        static NO_AREAS: LazyLock<Arc<GridAreas>> =
+            LazyLock::new(|| Arc::new(GridAreas::default()));
         Self {
             display: Display::Inline,
             color: Color::BLACK,
@@ -473,6 +508,20 @@ impl ComputedStyle {
             row_gap: Size::Auto,
             column_gap: Size::Auto,
             flex_container: false,
+            grid_container: false,
+            grid_template_columns: Arc::clone(&NO_TRACKS),
+            grid_template_rows: Arc::clone(&NO_TRACKS),
+            grid_auto_columns: Arc::clone(&NO_SIZES),
+            grid_auto_rows: Arc::clone(&NO_SIZES),
+            grid_auto_flow_column: false,
+            grid_auto_flow_dense: false,
+            grid_row_start: GridLine::Auto,
+            grid_row_end: GridLine::Auto,
+            grid_column_start: GridLine::Auto,
+            grid_column_end: GridLine::Auto,
+            grid_template_areas: Arc::clone(&NO_AREAS),
+            justify_items: Alignment::Normal,
+            justify_self: Alignment::Normal,
         }
     }
 
@@ -612,6 +661,7 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::Display => {
             style.display = from.display;
             style.flex_container = from.flex_container;
+            style.grid_container = from.grid_container;
         }
         Longhand::Color => style.color = from.color,
         Longhand::BackgroundColor => style.background_color = from.background_color,
@@ -661,6 +711,27 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::Order => style.order = from.order,
         Longhand::RowGap => style.row_gap = from.row_gap,
         Longhand::ColumnGap => style.column_gap = from.column_gap,
+        Longhand::GridTemplateColumns => {
+            style.grid_template_columns = Arc::clone(&from.grid_template_columns);
+        }
+        Longhand::GridTemplateRows => {
+            style.grid_template_rows = Arc::clone(&from.grid_template_rows);
+        }
+        Longhand::GridAutoColumns => style.grid_auto_columns = Arc::clone(&from.grid_auto_columns),
+        Longhand::GridAutoRows => style.grid_auto_rows = Arc::clone(&from.grid_auto_rows),
+        Longhand::GridAutoFlow => {
+            style.grid_auto_flow_column = from.grid_auto_flow_column;
+            style.grid_auto_flow_dense = from.grid_auto_flow_dense;
+        }
+        Longhand::GridRowStart => style.grid_row_start = from.grid_row_start.clone(),
+        Longhand::GridRowEnd => style.grid_row_end = from.grid_row_end.clone(),
+        Longhand::GridColumnStart => style.grid_column_start = from.grid_column_start.clone(),
+        Longhand::GridColumnEnd => style.grid_column_end = from.grid_column_end.clone(),
+        Longhand::GridTemplateAreas => {
+            style.grid_template_areas = Arc::clone(&from.grid_template_areas);
+        }
+        Longhand::JustifyItems => style.justify_items = from.justify_items,
+        Longhand::JustifySelf => style.justify_self = from.justify_self,
     }
 }
 
@@ -720,6 +791,7 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
     match property {
         Longhand::Display => {
             style.flex_container = matches!(ident, "flex" | "inline-flex");
+            style.grid_container = matches!(ident, "grid" | "inline-grid");
             style.display = match ident {
                 "none" => Display::None,
                 "block" | "flow-root" => Display::Block,
@@ -968,6 +1040,65 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
         Longhand::AlignContent => style.align_content = Alignment::parse(ident),
         Longhand::RowGap => style.row_gap = size_of(&decl.value, fs, cx),
         Longhand::ColumnGap => style.column_gap = size_of(&decl.value, fs, cx),
+        Longhand::GridTemplateColumns | Longhand::GridTemplateRows => {
+            if let Value::Tracks(list) = &decl.value {
+                let computed = Arc::new(list.map(|l| length_px(l, fs, cx)));
+                if property == Longhand::GridTemplateColumns {
+                    style.grid_template_columns = computed;
+                } else {
+                    style.grid_template_rows = computed;
+                }
+            }
+        }
+        Longhand::GridAutoColumns | Longhand::GridAutoRows => {
+            if let Value::TrackSizes(sizes) = &decl.value {
+                let list = TrackList {
+                    entries: sizes
+                        .iter()
+                        .map(|t| crate::grid::TrackEntry::Track(*t))
+                        .collect(),
+                }
+                .map(|l| length_px(l, fs, cx));
+                let computed: Arc<[TrackSize<Size>]> = list
+                    .entries
+                    .into_iter()
+                    .filter_map(|entry| match entry {
+                        crate::grid::TrackEntry::Track(track) => Some(track),
+                        _ => None,
+                    })
+                    .collect();
+                if property == Longhand::GridAutoColumns {
+                    style.grid_auto_columns = computed;
+                } else {
+                    style.grid_auto_rows = computed;
+                }
+            }
+        }
+        Longhand::GridAutoFlow => {
+            style.grid_auto_flow_column = ident.starts_with("column");
+            style.grid_auto_flow_dense = ident.ends_with("dense");
+        }
+        Longhand::GridRowStart
+        | Longhand::GridRowEnd
+        | Longhand::GridColumnStart
+        | Longhand::GridColumnEnd => {
+            if let Value::Line(line) = &decl.value {
+                let target = match property {
+                    Longhand::GridRowStart => &mut style.grid_row_start,
+                    Longhand::GridRowEnd => &mut style.grid_row_end,
+                    Longhand::GridColumnStart => &mut style.grid_column_start,
+                    _ => &mut style.grid_column_end,
+                };
+                *target = line.clone();
+            }
+        }
+        Longhand::GridTemplateAreas => {
+            if let Value::Areas(areas) = &decl.value {
+                style.grid_template_areas = Arc::new(areas.clone());
+            }
+        }
+        Longhand::JustifyItems => style.justify_items = Alignment::parse(ident),
+        Longhand::JustifySelf => style.justify_self = Alignment::parse(ident),
         Longhand::ListStyleType => {
             style.list_style = match ident {
                 "none" => ListStyle::None,

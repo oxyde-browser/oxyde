@@ -71,7 +71,7 @@ impl Item {
 
 /// Répartition de l'espace libre selon `justify-content` ou `align-content` :
 /// décalage initial et espace entre deux éléments.
-fn distribute(alignment: Alignment, free: f32, count: usize) -> (f32, f32) {
+pub(crate) fn distribute(alignment: Alignment, free: f32, count: usize) -> (f32, f32) {
     #[expect(
         clippy::cast_precision_loss,
         reason = "nombre d'éléments petit devant 2^24"
@@ -754,7 +754,7 @@ impl Engine<'_> {
 
     /// Largeur minimale de contenu de `fragment` : celle du mot le plus long
     /// pour un texte, la plus grande de ses enfants pour une boîte.
-    fn min_content(&self, fragment: &Fragment) -> f32 {
+    pub(crate) fn min_content(&self, fragment: &Fragment) -> f32 {
         match fragment {
             Fragment::Text(t) => t.layout.calculate_content_widths().min.ceil(),
             Fragment::Box(b) => {

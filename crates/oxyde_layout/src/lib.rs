@@ -6,7 +6,7 @@
 //! pixels CSS, depuis le coin supérieur gauche de la page.
 //!
 //! LIMITES CONNUES (suivies dans `conformance/`) :
-//! - `grid` est mis en page comme un bloc ; pour `flex`, voir [`flex`] ;
+//! - pour `flex` et `grid`, voir les modules [`flex`] et [`grid`] ;
 //! - tableaux : cellules de largeur égale, pas d'algorithme de tableau automatique ;
 //! - pas de flottants (`float`) ; `position: sticky` vaut `relative` sans décalage ;
 //! - une boîte positionnée est peinte après le contenu de son bloc conteneur,
@@ -18,6 +18,7 @@
 //!   conteneur est imposée (sinon elle vaut `auto`).
 
 mod flex;
+mod grid;
 
 use std::sync::Arc;
 
@@ -140,9 +141,22 @@ impl std::fmt::Debug for Fragment {
     }
 }
 
+/// Pistes d'un conteneur en grille, une fois dimensionnées.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GridTracks {
+    /// Largeur de chaque colonne.
+    pub columns: Vec<f32>,
+    /// Hauteur de chaque rangée.
+    pub rows: Vec<f32>,
+    /// Largeur de contenu de la grille : ses colonnes sans contrainte.
+    pub max_content: f32,
+}
+
 /// Page mise en page.
 #[derive(Clone, Debug)]
 pub struct LayoutTree {
+    /// Pistes de chaque conteneur en grille.
+    pub grids: std::collections::HashMap<NodeId, GridTracks>,
     /// Fragment de l'élément racine (`None` si le document est vide ou `display: none`).
     pub root: Option<Fragment>,
     /// Largeur du contenu (au moins celle de la fenêtre).
@@ -171,6 +185,7 @@ pub fn layout_document(
         shrink_depth: 0,
         out_of_flow: Vec::new(),
         inline_origin: (0.0, 0.0),
+        grids: std::collections::HashMap::new(),
     };
     let root = doc
         .children(doc.root())
@@ -207,6 +222,7 @@ pub fn layout_document(
         b.border_box.y + b.border_box.h + px(b.style.margin.bottom, viewport.width)
     });
     LayoutTree {
+        grids: engine.grids,
         root: root.map(Fragment::Box),
         width: viewport.width,
         height,
@@ -329,6 +345,8 @@ struct Engine<'a> {
     /// Origine du contexte en ligne en cours : position statique des boîtes
     /// hors flux qu'il contient.
     inline_origin: (f32, f32),
+    /// Pistes des conteneurs en grille déjà mis en page.
+    grids: std::collections::HashMap<NodeId, GridTracks>,
 }
 
 fn px(size: Size, base: f32) -> f32 {
@@ -611,7 +629,11 @@ impl Engine<'_> {
 
         let mut content_w = content_w;
         if shrink && self.shrink_depth < MAX_SHRINK_DEPTH {
-            let wanted = self.max_content_of(style, &children, content_w);
+            // Grille : la somme de ses colonnes sans contrainte.
+            let wanted = match self.grids.get(&node).filter(|_| style.grid_container) {
+                Some(tracks) => tracks.max_content,
+                None => self.max_content_of(style, &children, content_w),
+            };
             let fitted = clamp_w(wanted.ceil().min(content_w));
             if fitted < content_w - 0.5 {
                 self.shrink_depth += 1;
@@ -914,7 +936,14 @@ impl Engine<'_> {
                 let pad = edges_px(b.style.padding, available);
                 let bw = b.style.border_widths();
                 let extras = pad.left + pad.right + bw.left + bw.right;
-                let inner = self.max_content_of(&b.style, &b.children, available);
+                let grid = b
+                    .node
+                    .filter(|_| b.style.grid_container)
+                    .and_then(|n| self.grids.get(&n));
+                let inner = match grid {
+                    Some(tracks) => tracks.max_content,
+                    None => self.max_content_of(&b.style, &b.children, available),
+                };
                 // Le contenu ne descend pas sous `min-width` ni ne dépasse
                 // un `max-width` en pixels.
                 let outer = bounded_width(&b.style, inner, extras);
@@ -949,6 +978,9 @@ impl Engine<'_> {
         }
         if style.flex_container {
             return self.layout_flex(style, node, &children, x, y, width, height, depth);
+        }
+        if style.grid_container {
+            return self.layout_grid(style, node, &children, x, y, width, height, depth);
         }
 
         if style.display == Display::ListItem
@@ -1577,6 +1609,43 @@ mod tests {
         // Trop larges pour le conteneur : chacun rétrécit de moitié du dépassement.
         assert_eq!(at("s1"), (0.0, 220.0, 50.0, 10.0));
         assert_eq!(at("s2"), (50.0, 220.0, 50.0, 10.0));
+    }
+
+    #[test]
+    fn grid_tracks_placement_and_spans() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}
+               #g{display:grid; width:300px; gap:10px;
+                  grid-template-columns:100px 1fr 2fr; grid-template-rows:50px auto}
+               #a{grid-column:1 / 3} #c{grid-row:2; grid-column:3; height:30px} #d{height:20px}
+               #areas{display:grid; width:200px; grid-template-columns:repeat(2, 1fr);
+                      grid-template-areas:'tete tete' 'menu corps'; grid-auto-rows:40px}
+               #tete{grid-area:tete} #corps{grid-area:corps; justify-self:end; width:30px}
+             </style>
+             <div id=g><div id=a></div><div id=b></div><div id=c></div><div id=d></div></div>
+             <div id=areas><div id=tete></div><div id=corps></div></div>",
+            800.0,
+        );
+        let at = |id: &str| {
+            let r = rect(&doc, &tree, id);
+            (r.x, r.y, r.w, r.h)
+        };
+        // Colonnes : 100, puis 180 px libres partagés 1 : 2 ; rangées : 50 et 30.
+        assert_eq!(at("g"), (0.0, 0.0, 300.0, 90.0));
+        assert_eq!(at("a"), (0.0, 0.0, 170.0, 50.0));
+        assert_eq!(at("b"), (180.0, 0.0, 120.0, 50.0));
+        assert_eq!(at("c"), (180.0, 60.0, 120.0, 30.0));
+        assert_eq!(at("d"), (0.0, 60.0, 100.0, 20.0));
+        let tracks = tree
+            .grids
+            .values()
+            .find(|t| t.columns.len() == 3)
+            .expect("pistes de la grille");
+        assert_eq!(tracks.columns, [100.0, 60.0, 120.0]);
+        assert_eq!(tracks.rows, [50.0, 30.0]);
+        // Zones nommées : l'en-tête couvre les deux colonnes.
+        assert_eq!(at("tete"), (0.0, 90.0, 200.0, 40.0));
+        assert_eq!(at("corps"), (170.0, 130.0, 30.0, 40.0));
     }
 
     #[test]

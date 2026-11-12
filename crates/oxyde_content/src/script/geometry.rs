@@ -33,6 +33,8 @@ pub(super) struct Geometry {
     boxes: HashMap<u32, Rect>,
     /// Styles calculés.
     styles: StyleMap,
+    /// Pistes de chaque conteneur en grille.
+    grids: HashMap<NodeId, oxyde_layout::GridTracks>,
 }
 
 fn index(node: NodeId) -> u32 {
@@ -128,6 +130,7 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
             viewport,
             boxes,
             styles,
+            grids: tree.grids,
         });
     }
     host(vm)?.geometry.as_ref()
@@ -493,6 +496,24 @@ fn computed_value(vm: &mut Vm, data: u64, name: &str) -> Option<String> {
     // Largeur du bloc conteneur : celle du contenu du parent, à défaut la fenêtre.
     let h = host(vm)?;
     let geometry = h.geometry.as_ref()?;
+    // Pistes d'une grille : leurs tailles utilisées, `none` hors d'une grille.
+    if matches!(name, "grid-template-columns" | "grid-template-rows") {
+        let sizes = geometry.grids.get(&node).map(|tracks| {
+            if name == "grid-template-columns" {
+                &tracks.columns
+            } else {
+                &tracks.rows
+            }
+        });
+        return Some(match sizes {
+            Some(sizes) if !sizes.is_empty() => sizes
+                .iter()
+                .map(|size| px(*size))
+                .collect::<Vec<_>>()
+                .join(" "),
+            _ => "none".to_owned(),
+        });
+    }
     let base = h
         .doc
         .node(node)

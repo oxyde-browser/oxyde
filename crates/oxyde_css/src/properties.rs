@@ -75,6 +75,18 @@ pub enum Longhand {
     Order,
     RowGap,
     ColumnGap,
+    GridTemplateColumns,
+    GridTemplateRows,
+    GridAutoColumns,
+    GridAutoRows,
+    GridAutoFlow,
+    GridRowStart,
+    GridRowEnd,
+    GridColumnStart,
+    GridColumnEnd,
+    GridTemplateAreas,
+    JustifyItems,
+    JustifySelf,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -92,6 +104,14 @@ pub enum Value {
     CurrentColor,
     /// Liste de familles de polices.
     FontFamily(Vec<String>),
+    /// Liste de pistes de grille.
+    Tracks(crate::grid::TrackList<Length>),
+    /// Tailles de pistes implicites.
+    TrackSizes(Vec<crate::grid::TrackSize<Length>>),
+    /// Ligne de placement dans une grille.
+    Line(crate::grid::GridLine),
+    /// Zones nommées d'une grille.
+    Areas(crate::grid::GridAreas),
     /// `inherit`
     Inherit,
     /// `initial`
@@ -346,6 +366,39 @@ const ITEM_ALIGNMENTS: &[&str] = &[
     "center",
     "baseline",
 ];
+
+/// Alignements d'un élément dans sa zone (`justify-self`, `justify-items`).
+const SELF_ALIGNMENTS: &[&str] = &[
+    "auto",
+    "normal",
+    "stretch",
+    "flex-start",
+    "start",
+    "self-start",
+    "flex-end",
+    "end",
+    "self-end",
+    "center",
+    "baseline",
+    "left",
+    "right",
+    "legacy",
+];
+
+fn grid_line(tokens: &[Token]) -> Option<Value> {
+    crate::grid::parse_grid_line(tokens).map(Value::Line)
+}
+
+/// Ligne de fin sous-entendue par une ligne de début : le même nom si le
+/// début est un nom, `auto` sinon.
+fn implied_line(start: &Value) -> Value {
+    match start {
+        Value::Line(crate::grid::GridLine::Named(name)) => {
+            Value::Line(crate::grid::GridLine::Named(name.clone()))
+        }
+        _ => Value::Line(crate::grid::GridLine::Auto),
+    }
+}
 
 /// Entier (`z-index`, `order`).
 fn integer(token: &Token) -> Option<Value> {
@@ -869,6 +922,169 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "align-content" => single(Longhand::AlignContent, keyword(tokens, CONTENT_ALIGNMENTS)),
         "align-items" => single(Longhand::AlignItems, keyword(tokens, ITEM_ALIGNMENTS)),
         "align-self" => single(Longhand::AlignSelf, keyword(tokens, ITEM_ALIGNMENTS)),
+        "grid-template-columns" => single(
+            Longhand::GridTemplateColumns,
+            crate::grid::parse_track_list(tokens).map(Value::Tracks),
+        ),
+        "grid-template-rows" => single(
+            Longhand::GridTemplateRows,
+            crate::grid::parse_track_list(tokens).map(Value::Tracks),
+        ),
+        "grid-auto-columns" => single(
+            Longhand::GridAutoColumns,
+            crate::grid::parse_track_sizes(tokens).map(Value::TrackSizes),
+        ),
+        "grid-auto-rows" => single(
+            Longhand::GridAutoRows,
+            crate::grid::parse_track_sizes(tokens).map(Value::TrackSizes),
+        ),
+        "grid-auto-flow" => {
+            let words: Vec<String> = components(tokens)
+                .into_iter()
+                .filter_map(ident_of)
+                .collect();
+            let valid = !words.is_empty()
+                && words.len() == components(tokens).len()
+                && words.len() <= 2
+                && words
+                    .iter()
+                    .all(|w| matches!(w.as_str(), "row" | "column" | "dense"))
+                && words.iter().filter(|w| *w != "dense").count() <= 1;
+            let parsed = valid.then(|| {
+                let column = words.iter().any(|w| w == "column");
+                let dense = words.iter().any(|w| w == "dense");
+                Value::Ident(
+                    match (column, dense) {
+                        (false, false) => "row",
+                        (false, true) => "row dense",
+                        (true, false) => "column",
+                        (true, true) => "column dense",
+                    }
+                    .to_owned(),
+                )
+            });
+            single(Longhand::GridAutoFlow, parsed)
+        }
+        "grid-row-start" => single(Longhand::GridRowStart, grid_line(tokens)),
+        "grid-row-end" => single(Longhand::GridRowEnd, grid_line(tokens)),
+        "grid-column-start" => single(Longhand::GridColumnStart, grid_line(tokens)),
+        "grid-column-end" => single(Longhand::GridColumnEnd, grid_line(tokens)),
+        "grid-row" | "grid-column" => {
+            let (start, end) = if name == "grid-row" {
+                (Longhand::GridRowStart, Longhand::GridRowEnd)
+            } else {
+                (Longhand::GridColumnStart, Longhand::GridColumnEnd)
+            };
+            if let Some(w) = wide {
+                return Some(vec![(start, w.clone()), (end, w)]);
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            let first = grid_line(parts.first()?)?;
+            let second = match parts.as_slice() {
+                [_] => implied_line(&first),
+                [_, second] => grid_line(second)?,
+                _ => return None,
+            };
+            Some(vec![(start, first), (end, second)])
+        }
+        "grid-area" => {
+            let properties = [
+                Longhand::GridRowStart,
+                Longhand::GridColumnStart,
+                Longhand::GridRowEnd,
+                Longhand::GridColumnEnd,
+            ];
+            if let Some(w) = wide {
+                return Some(properties.iter().map(|p| (*p, w.clone())).collect());
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            if parts.is_empty() || parts.len() > 4 {
+                return None;
+            }
+            let given: Option<Vec<Value>> = parts.iter().map(|part| grid_line(part)).collect();
+            let given = given?;
+            // Valeurs omises : le nom de la valeur dont elles dépendent, sinon `auto`.
+            let row_start = given.first()?.clone();
+            let column_start = given
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&row_start));
+            let row_end = given
+                .get(2)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&row_start));
+            let column_end = given
+                .get(3)
+                .cloned()
+                .unwrap_or_else(|| implied_line(&column_start));
+            Some(
+                properties
+                    .into_iter()
+                    .zip([row_start, column_start, row_end, column_end])
+                    .collect(),
+            )
+        }
+        "grid-template-areas" => single(
+            Longhand::GridTemplateAreas,
+            crate::grid::parse_areas(tokens).map(Value::Areas),
+        ),
+        "grid-template" | "grid" => {
+            // Forme simple : `none`, ou `rangées / colonnes`.
+            let none = || Value::Tracks(crate::grid::TrackList::default());
+            let no_areas = || Value::Areas(crate::grid::GridAreas::default());
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::GridTemplateRows, w.clone()),
+                    (Longhand::GridTemplateColumns, w.clone()),
+                    (Longhand::GridTemplateAreas, w),
+                ]);
+            }
+            let parts: Vec<&[Token]> = tokens.split(|t| *t == Token::Delim('/')).collect();
+            let (rows, columns) = match parts.as_slice() {
+                [only] if keyword(crate::syntax::trim(only), &["none"]).is_some() => {
+                    (none(), none())
+                }
+                [rows, columns] => (
+                    Value::Tracks(crate::grid::parse_track_list(rows)?),
+                    Value::Tracks(crate::grid::parse_track_list(columns)?),
+                ),
+                _ => return None,
+            };
+            Some(vec![
+                (Longhand::GridTemplateRows, rows),
+                (Longhand::GridTemplateColumns, columns),
+                (Longhand::GridTemplateAreas, no_areas()),
+            ])
+        }
+        "justify-items" => single(Longhand::JustifyItems, keyword(tokens, SELF_ALIGNMENTS)),
+        "justify-self" => single(Longhand::JustifySelf, keyword(tokens, SELF_ALIGNMENTS)),
+        "place-items" | "place-self" | "place-content" => {
+            let (block, inline, allowed) = match name {
+                "place-items" => (
+                    Longhand::AlignItems,
+                    Longhand::JustifyItems,
+                    SELF_ALIGNMENTS,
+                ),
+                "place-self" => (Longhand::AlignSelf, Longhand::JustifySelf, SELF_ALIGNMENTS),
+                _ => (
+                    Longhand::AlignContent,
+                    Longhand::JustifyContent,
+                    CONTENT_ALIGNMENTS,
+                ),
+            };
+            if let Some(w) = wide {
+                return Some(vec![(block, w.clone()), (inline, w)]);
+            }
+            let words: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| keyword(std::slice::from_ref(t), allowed))
+                .collect();
+            match words?.as_slice() {
+                [both] => Some(vec![(block, both.clone()), (inline, both.clone())]),
+                [first, second] => Some(vec![(block, first.clone()), (inline, second.clone())]),
+                _ => None,
+            }
+        }
         "row-gap" | "grid-row-gap" => single(Longhand::RowGap, one().and_then(gap_value)),
         "column-gap" | "grid-column-gap" => single(Longhand::ColumnGap, one().and_then(gap_value)),
         "gap" | "grid-gap" => {
