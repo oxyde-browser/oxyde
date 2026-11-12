@@ -228,6 +228,8 @@ fn run_once(
 ) -> Outcome {
     let mut vm = Vm::new();
     vm.set_budget(Some(BUDGET));
+    // L'agent principal d'un lanceur de tests peut s'endormir.
+    vm.set_can_block(true);
     vm.host = Some(Box::new(Vec::<String>::new()));
     install_host(&mut vm);
 

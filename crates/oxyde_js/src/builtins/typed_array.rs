@@ -4,10 +4,14 @@
 //! propriétés indexées lisent et écrivent directement ces octets (voir
 //! `object.rs`), sans jamais consulter le prototype.
 //!
-//! LIMITES CONNUES : pas de `SharedArrayBuffer` ni d'`Atomics` ; `Symbol.species`
-//! n'est pas consulté (une méthode rend un tableau du même type que son
-//! receveur) ; `Object.defineProperty` sur un index n'est pas spécialisé ;
-//! un tampon est limité à 1 Gio.
+//! Un `SharedArrayBuffer` est un tampon dont les octets se partagent entre
+//! agents (voir `heap::SharedBytes`) ; les opérations d'`Atomics` sont dans
+//! `atomics.rs`.
+//!
+//! LIMITES CONNUES : `Symbol.species` n'est consulté que par `slice` des
+//! tampons (une méthode de tableau typé rend un tableau du même type que
+//! son receveur) ; `Object.defineProperty` sur un index n'est pas
+//! spécialisé ; un tampon est limité à 1 Gio.
 
 use std::sync::Arc;
 
@@ -175,7 +179,7 @@ fn encode(kind: ElementKind, value: f64) -> ([u8; 8], usize) {
 }
 
 /// Octets d'une valeur déjà convertie au type des éléments (nombre ou BigInt).
-fn encode_value(kind: ElementKind, value: &Value) -> ([u8; 8], usize) {
+pub(super) fn encode_value(kind: ElementKind, value: &Value) -> ([u8; 8], usize) {
     match value {
         Value::BigInt(big) => (big.low_u64().to_le_bytes(), 8),
         Value::Number(n) => encode(kind, *n),
@@ -184,7 +188,7 @@ fn encode_value(kind: ElementKind, value: &Value) -> ([u8; 8], usize) {
 }
 
 /// Valeur lue dans `bytes` : nombre, ou BigInt pour les types 64 bits entiers.
-fn decode_value(kind: ElementKind, bytes: &[u8]) -> Value {
+pub(super) fn decode_value(kind: ElementKind, bytes: &[u8]) -> Value {
     let mut raw = [0_u8; 8];
     for (slot, byte) in raw.iter_mut().zip(bytes) {
         *slot = *byte;
@@ -200,7 +204,7 @@ fn decode_value(kind: ElementKind, bytes: &[u8]) -> Value {
 
 /// Convertit `value` au type des éléments : `ToBigInt` pour les types 64 bits
 /// entiers, `ToNumber` pour les autres.
-fn convert(vm: &mut Vm, kind: ElementKind, value: &Value) -> JsResult<Value> {
+pub(super) fn convert(vm: &mut Vm, kind: ElementKind, value: &Value) -> JsResult<Value> {
     if matches!(kind, ElementKind::BigInt64 | ElementKind::BigUint64) {
         super::bigint::to_bigint(vm, value).map(Value::BigInt)
     } else {
@@ -233,12 +237,12 @@ fn decode(kind: ElementKind, bytes: &[u8]) -> f64 {
 }
 
 #[expect(clippy::cast_precision_loss, reason = "tailles petites devant 2^53")]
-fn number(n: usize) -> Value {
+pub(super) fn number(n: usize) -> Value {
     Value::Number(n as f64)
 }
 
 /// `ToIndex` : entier dans `[0, 2^53 - 1]`, sinon `RangeError`.
-fn to_index(vm: &mut Vm, value: &Value) -> JsResult<usize> {
+pub(super) fn to_index(vm: &mut Vm, value: &Value) -> JsResult<usize> {
     if *value == Value::Undefined {
         return Ok(0);
     }
@@ -258,14 +262,14 @@ fn to_index(vm: &mut Vm, value: &Value) -> JsResult<usize> {
 // ---- Accès aux tampons et aux vues -----------------------------------------------
 
 impl Vm {
-    fn buffer(&self, id: ObjId) -> Option<&BufferData> {
+    pub(super) fn buffer(&self, id: ObjId) -> Option<&BufferData> {
         match &self.heap.get(id).kind {
             Kind::ArrayBuffer(data) => Some(data),
             _ => None,
         }
     }
 
-    fn buffer_mut(&mut self, id: ObjId) -> Option<&mut BufferData> {
+    pub(super) fn buffer_mut(&mut self, id: ObjId) -> Option<&mut BufferData> {
         match &mut self.heap.get_mut(id).kind {
             Kind::ArrayBuffer(data) => Some(data),
             _ => None,
@@ -277,13 +281,44 @@ impl Vm {
         if len > MAX_BUFFER || max_len.is_some_and(|max| max > MAX_BUFFER) {
             return Err(vm_range(self, "tampon trop grand"));
         }
-        let data = BufferData {
-            bytes: vec![0; len],
-            detached: false,
-            max_len,
-        };
         Ok(self.heap.alloc(Object::new(
             Some(self.intrinsics.array_buffer_proto),
+            Kind::ArrayBuffer(Box::new(BufferData::new(len, max_len))),
+        )))
+    }
+
+    /// Prototype de `SharedArrayBuffer` : rangé à la suite de ceux des
+    /// tableaux typés, pour suivre le royaume courant comme eux.
+    fn shared_buffer_proto(&self) -> Option<ObjId> {
+        self.typed_protos.get(KINDS.len()).copied()
+    }
+
+    /// Nouveau tampon partagé de `len` octets nuls.
+    fn new_shared_buffer(&mut self, len: usize, max_len: Option<usize>) -> JsResult<ObjId> {
+        if len > MAX_BUFFER || max_len.is_some_and(|max| max > MAX_BUFFER) {
+            return Err(vm_range(self, "tampon trop grand"));
+        }
+        Ok(self.heap.alloc(Object::new(
+            self.shared_buffer_proto(),
+            Kind::ArrayBuffer(Box::new(BufferData::new_shared(len, max_len))),
+        )))
+    }
+
+    /// Stockage du tampon partagé `value`, pour le confier à un autre agent.
+    #[must_use]
+    pub fn shared_buffer_storage(&self, value: &Value) -> Option<SharedStorage> {
+        let buffer = self.buffer(value.as_object()?)?;
+        Some(SharedStorage {
+            bytes: Arc::clone(buffer.shared.as_ref()?),
+            max_len: buffer.max_len,
+        })
+    }
+
+    /// `SharedArrayBuffer` de cet agent sur un stockage reçu d'un autre.
+    pub fn shared_buffer_from_storage(&mut self, storage: &SharedStorage) -> Value {
+        let data = BufferData::from_shared(Arc::clone(&storage.bytes), storage.max_len);
+        Value::Object(self.heap.alloc(Object::new(
+            self.shared_buffer_proto(),
             Kind::ArrayBuffer(Box::new(data)),
         )))
     }
@@ -296,7 +331,10 @@ impl Vm {
     pub fn detach_array_buffer(&mut self, value: &Value) -> JsResult<()> {
         match value.as_object().and_then(|id| self.buffer_mut(id)) {
             Some(data) => {
-                data.bytes = Vec::new();
+                if data.shared.is_some() {
+                    return Err(self.type_error("un SharedArrayBuffer ne se détache pas"));
+                }
+                data.take_bytes();
                 data.detached = true;
                 Ok(())
             }
@@ -320,7 +358,7 @@ impl Vm {
             return None;
         }
         let size = view.kind.size();
-        let available = buffer.bytes.len().checked_sub(view.offset)?;
+        let available = buffer.len().checked_sub(view.offset)?;
         match view.length {
             Some(length) => (length.checked_mul(size)? <= available).then_some(length),
             None => Some(available / size),
@@ -334,11 +372,9 @@ impl Vm {
         }
         let view = self.typed_array(id)?;
         let start = view.offset + index * view.kind.size();
-        let bytes = self
-            .buffer(view.buffer)?
-            .bytes
-            .get(start..start + view.kind.size())?;
-        Some(decode_value(view.kind, bytes))
+        let size = view.kind.size();
+        let bytes = self.buffer(view.buffer)?.read(start, size)?;
+        Some(decode_value(view.kind, &bytes[..size]))
     }
 
     /// Convertit `value` au type des éléments, puis l'écrit dans l'élément
@@ -370,11 +406,8 @@ impl Vm {
         }
         let (bytes, size) = encode_value(view.kind, value);
         let start = view.offset + index * size;
-        if let Some(slot) = self
-            .buffer_mut(view.buffer)
-            .and_then(|b| b.bytes.get_mut(start..start + size))
-        {
-            slot.copy_from_slice(&bytes[..size]);
+        if let Some(buffer) = self.buffer_mut(view.buffer) {
+            buffer.write(start, &bytes[..size]);
         }
     }
 
@@ -413,7 +446,7 @@ fn vm_range(vm: &mut Vm, message: &str) -> Value {
 
 /// Tableau typé désigné par `this`, avec sa longueur ; `TypeError` si ce n'en
 /// est pas un ou s'il est hors des bornes de son tampon.
-fn validate(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, usize)> {
+pub(super) fn validate(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, usize)> {
     let Some(id) = this.as_object().filter(|id| vm.typed_array(*id).is_some()) else {
         return Err(vm.type_error("le receveur n'est pas un tableau typé"));
     };
@@ -430,26 +463,181 @@ fn array_buffer_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         return Err(vm.type_error("ArrayBuffer doit être appelé avec « new »"));
     }
     let len = to_index(vm, &arg(args, 0))?;
-    let options = arg(args, 1);
-    let max_len = if options.as_object().is_some() {
-        match vm.get(&options, "maxByteLength")? {
-            Value::Undefined => None,
-            other => Some(to_index(vm, &other)?),
-        }
-    } else {
-        None
-    };
+    let max_len = max_byte_length(vm, &arg(args, 1))?;
     if max_len.is_some_and(|max| len > max) {
         return Err(vm_range(vm, "byteLength dépasse maxByteLength"));
     }
     Ok(Value::Object(vm.new_buffer(len, max_len)?))
 }
 
+/// Stockage d'un `SharedArrayBuffer`, à confier à un autre agent : c'est la
+/// seule donnée d'un moteur qui se partage entre fils.
+#[derive(Clone, Debug)]
+pub struct SharedStorage {
+    bytes: Arc<crate::heap::SharedBytes>,
+    max_len: Option<usize>,
+}
+
+/// Tampon ordinaire désigné par `this` ; un `SharedArrayBuffer` n'en est pas un.
 fn this_buffer(vm: &mut Vm, this: &Value) -> JsResult<ObjId> {
-    match this.as_object().filter(|id| vm.buffer(*id).is_some()) {
+    match this
+        .as_object()
+        .filter(|id| vm.buffer(*id).is_some_and(|b| b.shared.is_none()))
+    {
         Some(id) => Ok(id),
         None => Err(vm.type_error("le receveur n'est pas un ArrayBuffer")),
     }
+}
+
+/// Tampon partagé désigné par `this`.
+fn this_shared(vm: &mut Vm, this: &Value) -> JsResult<ObjId> {
+    match this
+        .as_object()
+        .filter(|id| vm.buffer(*id).is_some_and(|b| b.shared.is_some()))
+    {
+        Some(id) => Ok(id),
+        None => Err(vm.type_error("le receveur n'est pas un SharedArrayBuffer")),
+    }
+}
+
+/// Taille maximale demandée par l'option `maxByteLength`, s'il y en a une.
+fn max_byte_length(vm: &mut Vm, options: &Value) -> JsResult<Option<usize>> {
+    if options.as_object().is_none() {
+        return Ok(None);
+    }
+    match vm.get(options, "maxByteLength")? {
+        Value::Undefined => Ok(None),
+        other => to_index(vm, &other).map(Some),
+    }
+}
+
+fn shared_buffer_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    if !vm.constructing {
+        return Err(vm.type_error("SharedArrayBuffer doit être appelé avec « new »"));
+    }
+    let len = to_index(vm, &arg(args, 0))?;
+    let max_len = max_byte_length(vm, &arg(args, 1))?;
+    if max_len.is_some_and(|max| len > max) {
+        return Err(vm_range(vm, "byteLength dépasse maxByteLength"));
+    }
+    Ok(Value::Object(vm.new_shared_buffer(len, max_len)?))
+}
+
+fn shared_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let id = this_shared(vm, this)?;
+    Ok(number(vm.buffer(id).map_or(0, BufferData::len)))
+}
+
+fn shared_max_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let id = this_shared(vm, this)?;
+    Ok(number(
+        vm.buffer(id).map_or(0, |b| b.max_len.unwrap_or(b.len())),
+    ))
+}
+
+fn shared_growable(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let id = this_shared(vm, this)?;
+    Ok(Value::Bool(
+        vm.buffer(id).is_some_and(|b| b.max_len.is_some()),
+    ))
+}
+
+fn shared_grow(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_shared(vm, this)?;
+    let Some(max) = vm.buffer(id).and_then(|b| b.max_len) else {
+        return Err(vm.type_error("ce SharedArrayBuffer n'est pas extensible"));
+    };
+    let len = to_index(vm, &arg(args, 0))?;
+    if len > max {
+        return Err(vm_range(vm, "taille au-delà de maxByteLength"));
+    }
+    let grown = vm
+        .buffer(id)
+        .and_then(|b| b.shared.as_ref())
+        .is_some_and(|shared| shared.grow(len));
+    if !grown {
+        return Err(vm_range(vm, "un SharedArrayBuffer ne rétrécit pas"));
+    }
+    Ok(Value::Undefined)
+}
+
+/// Constructeur à employer pour la copie rendue par `slice` : celui que
+/// désigne `Symbol.species` sur le constructeur du tampon, sinon `default`.
+fn buffer_species(vm: &mut Vm, this: &Value, default: &str) -> JsResult {
+    let global = Value::Object(vm.global);
+    let default = vm.get(&global, default)?;
+    let constructor = vm.get(this, "constructor")?;
+    if constructor == Value::Undefined {
+        return Ok(default);
+    }
+    if constructor.as_object().is_none() {
+        return Err(vm.type_error("« constructor » doit être un objet"));
+    }
+    let key = PropertyKey::Symbol(vm.well_known.species.clone());
+    let species = vm.get_key(&constructor, &key)?;
+    if species.is_nullish() {
+        return Ok(default);
+    }
+    if !vm.is_constructor(&species) {
+        return Err(vm.type_error("« Symbol.species » doit être un constructeur"));
+    }
+    Ok(species)
+}
+
+/// `slice` commun aux deux sortes de tampon (`shared` dit laquelle).
+fn slice_buffer(vm: &mut Vm, this: &Value, args: &[Value], shared: bool) -> JsResult {
+    let id = if shared {
+        this_shared(vm, this)?
+    } else {
+        let id = this_buffer(vm, this)?;
+        live_buffer(vm, id)?;
+        id
+    };
+    let len = vm.buffer(id).map_or(0, BufferData::len);
+    let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
+    let end = super::relative_index(vm, &arg(args, 1), len, len)?;
+    let count = end.saturating_sub(start);
+    let default = if shared {
+        "SharedArrayBuffer"
+    } else {
+        "ArrayBuffer"
+    };
+    let constructor = buffer_species(vm, this, default)?;
+    let created = vm.construct(&constructor, &[number(count)], &constructor)?;
+    // Le constructeur vient du script : ce qu'il rend est vérifié.
+    let Some(copy) = created.as_object().filter(|copy| {
+        vm.buffer(*copy)
+            .is_some_and(|b| b.shared.is_some() == shared)
+    }) else {
+        return Err(vm.type_error("le constructeur n'a pas rendu un tampon de la bonne sorte"));
+    };
+    if !shared {
+        live_buffer(vm, copy)?;
+    }
+    if copy == id {
+        return Err(vm.type_error("le constructeur a rendu le tampon lui-même"));
+    }
+    if vm.buffer(copy).map_or(0, BufferData::len) < count {
+        return Err(vm.type_error("le tampon rendu par le constructeur est trop petit"));
+    }
+    // Les conversions et le constructeur ont pu détacher ou rétrécir le tampon.
+    if !shared {
+        live_buffer(vm, id)?;
+    }
+    let current = vm.buffer(id).map_or(0, BufferData::len);
+    let available = current.saturating_sub(start).min(count);
+    let bytes: Vec<u8> = vm
+        .buffer(id)
+        .map(|b| b.copy_range(start, available))
+        .unwrap_or_default();
+    if let Some(target) = vm.buffer_mut(copy) {
+        target.write(0, &bytes);
+    }
+    Ok(created)
+}
+
+fn shared_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    slice_buffer(vm, this, args, true)
 }
 
 fn array_buffer_is_view(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -464,7 +652,7 @@ fn array_buffer_is_view(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult 
 
 fn buffer_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let id = this_buffer(vm, this)?;
-    Ok(number(vm.buffer(id).map_or(0, |b| b.bytes.len())))
+    Ok(number(vm.buffer(id).map_or(0, BufferData::len)))
 }
 
 fn buffer_max_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -474,7 +662,7 @@ fn buffer_max_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResul
         if b.detached {
             0
         } else {
-            b.max_len.unwrap_or(b.bytes.len())
+            b.max_len.unwrap_or(b.len())
         }
     })))
 }
@@ -500,26 +688,7 @@ fn live_buffer(vm: &mut Vm, id: ObjId) -> JsResult<()> {
 }
 
 fn buffer_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_buffer(vm, this)?;
-    live_buffer(vm, id)?;
-    let len = vm.buffer(id).map_or(0, |b| b.bytes.len());
-    let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
-    let end = super::relative_index(vm, &arg(args, 1), len, len)?;
-    let count = end.saturating_sub(start);
-    let copy = vm.new_buffer(count, None)?;
-    // Les conversions d'arguments ont pu détacher ou rétrécir le tampon.
-    live_buffer(vm, id)?;
-    let bytes: Vec<u8> = vm
-        .buffer(id)
-        .and_then(|b| b.bytes.get(start..start + count))
-        .map(<[u8]>::to_vec)
-        .unwrap_or_default();
-    if let Some(target) = vm.buffer_mut(copy)
-        && let Some(slot) = target.bytes.get_mut(..bytes.len())
-    {
-        slot.copy_from_slice(&bytes);
-    }
-    Ok(Value::Object(copy))
+    slice_buffer(vm, this, args, false)
 }
 
 fn buffer_resize(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -533,7 +702,7 @@ fn buffer_resize(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         return Err(vm_range(vm, "taille au-delà de maxByteLength"));
     }
     if let Some(buffer) = vm.buffer_mut(id) {
-        buffer.bytes.resize(len, 0);
+        buffer.resize(len);
     }
     Ok(Value::Undefined)
 }
@@ -541,7 +710,7 @@ fn buffer_resize(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn transfer(vm: &mut Vm, this: &Value, args: &[Value], keep_resizable: bool) -> JsResult {
     let id = this_buffer(vm, this)?;
     let len = match arg(args, 0) {
-        Value::Undefined => vm.buffer(id).map_or(0, |b| b.bytes.len()),
+        Value::Undefined => vm.buffer(id).map_or(0, BufferData::len),
         other => to_index(vm, &other)?,
     };
     live_buffer(vm, id)?;
@@ -555,11 +724,11 @@ fn transfer(vm: &mut Vm, this: &Value, args: &[Value], keep_resizable: bool) -> 
     let copy = vm.new_buffer(len, max_len)?;
     let mut bytes = vm
         .buffer_mut(id)
-        .map(|b| std::mem::take(&mut b.bytes))
+        .map(BufferData::take_bytes)
         .unwrap_or_default();
     bytes.resize(len, 0);
     if let Some(target) = vm.buffer_mut(copy) {
-        target.bytes = bytes;
+        target.set_bytes(bytes);
     }
     vm.detach_array_buffer(this)?;
     Ok(Value::Object(copy))
@@ -600,7 +769,7 @@ fn construct(vm: &mut Vm, kind: ElementKind, args: &[Value]) -> JsResult {
         live_buffer(vm, source_id)?;
         let (buffer_len, resizable) = vm
             .buffer(source_id)
-            .map_or((0, false), |b| (b.bytes.len(), b.max_len.is_some()));
+            .map_or((0, false), |b| (b.len(), b.max_len.is_some()));
         let length = match length {
             Some(length) => {
                 if length
@@ -1068,7 +1237,7 @@ fn data_view_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     live_buffer(vm, buffer)?;
     let (buffer_len, resizable) = vm
         .buffer(buffer)
-        .map_or((0, false), |b| (b.bytes.len(), b.max_len.is_some()));
+        .map_or((0, false), |b| (b.len(), b.max_len.is_some()));
     if offset > buffer_len {
         return Err(vm_range(vm, "décalage au-delà de la fin du tampon"));
     }
@@ -1088,7 +1257,7 @@ fn data_view_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     };
     // Les conversions ont pu détacher ou rétrécir le tampon.
     live_buffer(vm, buffer)?;
-    let current = vm.buffer(buffer).map_or(0, |b| b.bytes.len());
+    let current = vm.buffer(buffer).map_or(0, BufferData::len);
     if offset > current || length.is_some_and(|l| offset + l > current) {
         return Err(vm_range(vm, "la vue dépasse la fin du tampon"));
     }
@@ -1119,7 +1288,7 @@ fn data_view(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, usize, Option<usize>
     let current = vm
         .buffer(buffer)
         .filter(|b| !b.detached)
-        .and_then(|b| b.bytes.len().checked_sub(offset))
+        .and_then(|b| b.len().checked_sub(offset))
         .and_then(|available| match length {
             Some(length) => (length <= available).then_some(length),
             None => Some(available),
@@ -1159,8 +1328,7 @@ fn view_get(vm: &mut Vm, this: &Value, args: &[Value], kind: ElementKind) -> JsR
     let start = offset + index;
     let mut bytes: Vec<u8> = vm
         .buffer(buffer)
-        .and_then(|b| b.bytes.get(start..start + size))
-        .map(<[u8]>::to_vec)
+        .map(|b| b.copy_range(start, size))
         .unwrap_or_default();
     if !little_endian {
         bytes.reverse();
@@ -1184,11 +1352,8 @@ fn view_set(vm: &mut Vm, this: &Value, args: &[Value], kind: ElementKind) -> JsR
         bytes[..size].reverse();
     }
     let start = offset + index;
-    if let Some(slot) = vm
-        .buffer_mut(buffer)
-        .and_then(|b| b.bytes.get_mut(start..start + size))
-    {
-        slot.copy_from_slice(&bytes[..size]);
+    if let Some(target) = vm.buffer_mut(buffer) {
+        target.write(start, &bytes[..size]);
     }
     Ok(Value::Undefined)
 }
@@ -1346,6 +1511,26 @@ pub(super) fn install(vm: &mut Vm) {
         }
         protos.push(proto);
     }
+    // SharedArrayBuffer : son prototype suit ceux des tableaux typés.
+    let shared_proto = vm.new_object();
+    let shared_ctor = constructor(vm, "SharedArrayBuffer", 1, shared_buffer_ctor, shared_proto);
+    let shared_getters: &[(&str, NativeFn)] = &[
+        ("byteLength", shared_byte_length),
+        ("growable", shared_growable),
+        ("maxByteLength", shared_max_byte_length),
+    ];
+    for (name, func) in shared_getters {
+        getter(vm, shared_proto, name, *func);
+    }
+    vm.define_method(shared_proto, "grow", 1, shared_grow);
+    vm.define_method(shared_proto, "slice", 2, shared_slice);
+    vm.define_hidden_symbol(
+        shared_proto,
+        &known.to_string_tag,
+        Value::string("SharedArrayBuffer"),
+    );
+    let _ = shared_ctor;
+    protos.push(shared_proto);
     vm.typed_protos = protos;
 
     // DataView.

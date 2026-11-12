@@ -5,6 +5,7 @@
 
 mod array;
 mod async_generator;
+mod atomics;
 pub(crate) mod bigint;
 mod collections;
 mod date;
@@ -20,6 +21,7 @@ mod regexp_symbols;
 mod string;
 pub(crate) mod symbol;
 mod typed_array;
+pub use typed_array::SharedStorage;
 mod weak;
 
 use std::sync::Arc;
@@ -135,6 +137,7 @@ pub(crate) fn install(vm: &mut Vm) {
     bigint::install(vm);
     date::install(vm);
     typed_array::install(vm);
+    atomics::install(vm);
     generator::install(vm);
     async_generator::install(vm);
     promise::install(vm);

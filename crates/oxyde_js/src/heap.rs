@@ -8,7 +8,8 @@
 //! emplacement occupé. Un identifiant périmé ne peut pas provoquer d'accès
 //! mémoire invalide : il désigne au pire un autre objet ou l'objet vide.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use indexmap::IndexMap;
 
@@ -274,14 +275,307 @@ pub(crate) struct PromiseData {
     pub(crate) handled: bool,
 }
 
-/// Octets d'un `ArrayBuffer`.
+/// Agent endormi par `Atomics.wait` sur un octet d'un tampon partagé.
+#[derive(Debug)]
+struct Waiter {
+    id: u64,
+    /// Décalage, dans le tampon, de l'élément attendu.
+    index: usize,
+    notified: bool,
+}
+
+#[derive(Debug, Default)]
+struct WaitList {
+    waiters: Vec<Waiter>,
+    next_id: u64,
+}
+
+/// Octets d'un `SharedArrayBuffer`. Plusieurs agents peuvent les lire et
+/// les écrire en même temps : chaque octet est atomique, et les opérations
+/// d'`Atomics`, qui portent sur plusieurs octets, se sérialisent par
+/// [`SharedBytes::atomically`].
+///
+/// INVARIANT : `len` ne dépasse jamais `bytes.len()` (la capacité, fixée à
+/// la création) et ne fait que croître.
+#[derive(Debug)]
+pub(crate) struct SharedBytes {
+    bytes: Box<[AtomicU8]>,
+    len: AtomicUsize,
+    /// Verrou des opérations d'`Atomics`.
+    operations: Mutex<()>,
+    waiting: Mutex<WaitList>,
+    wake: Condvar,
+}
+
+/// Verrou repris même empoisonné : les données qu'il garde restent
+/// cohérentes après la panique d'un autre fil.
+fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+impl SharedBytes {
+    /// Tampon partagé de `len` octets nuls, extensible jusqu'à `capacity`.
+    pub(crate) fn new(len: usize, capacity: usize) -> Arc<Self> {
+        let capacity = capacity.max(len);
+        Arc::new(Self {
+            bytes: (0..capacity).map(|_| AtomicU8::new(0)).collect(),
+            len: AtomicUsize::new(len),
+            operations: Mutex::new(()),
+            waiting: Mutex::new(WaitList::default()),
+            wake: Condvar::new(),
+        })
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.len.load(Ordering::SeqCst)
+    }
+
+    /// Porte la longueur à `len` ; `false` si ce serait la réduire ou
+    /// dépasser la capacité.
+    pub(crate) fn grow(&self, len: usize) -> bool {
+        if len > self.bytes.len() {
+            return false;
+        }
+        // `fetch_max` : deux agents qui agrandissent en même temps ne se
+        // font pas rétrécir l'un l'autre.
+        let previous = self.len.fetch_max(len, Ordering::SeqCst);
+        previous <= len
+    }
+
+    fn read(&self, start: usize, out: &mut [u8]) -> bool {
+        let Some(cells) = start
+            .checked_add(out.len())
+            .filter(|end| *end <= self.len())
+            .and_then(|end| self.bytes.get(start..end))
+        else {
+            return false;
+        };
+        for (slot, cell) in out.iter_mut().zip(cells) {
+            *slot = cell.load(Ordering::Relaxed);
+        }
+        true
+    }
+
+    fn write(&self, start: usize, data: &[u8]) -> bool {
+        let Some(cells) = start
+            .checked_add(data.len())
+            .filter(|end| *end <= self.len())
+            .and_then(|end| self.bytes.get(start..end))
+        else {
+            return false;
+        };
+        for (cell, byte) in cells.iter().zip(data) {
+            cell.store(*byte, Ordering::Relaxed);
+        }
+        true
+    }
+
+    /// Exécute `operation` sans qu'aucune autre opération d'`Atomics` ne
+    /// s'intercale sur ce tampon.
+    pub(crate) fn atomically<R>(&self, operation: impl FnOnce() -> R) -> R {
+        let _guard = relock(&self.operations);
+        operation()
+    }
+
+    /// `Atomics.wait` : endort l'agent sur l'élément de décalage `index`
+    /// si `still_expected` est vrai au moment de s'endormir, `timeout` au
+    /// plus. Renvoie `None` si la valeur avait changé, sinon `true` s'il a
+    /// été réveillé par `notify`, `false` au terme du délai.
+    pub(crate) fn wait(
+        &self,
+        index: usize,
+        timeout: Option<std::time::Duration>,
+        still_expected: impl FnOnce() -> bool,
+    ) -> Option<bool> {
+        let deadline = timeout.map(|t| std::time::Instant::now() + t);
+        let mut list = relock(&self.waiting);
+        // La comparaison se fait sous le verrou des dormeurs : un `notify`
+        // ne peut pas passer entre elle et l'endormissement.
+        if !self.atomically(still_expected) {
+            return None;
+        }
+        list.next_id = list.next_id.wrapping_add(1);
+        let id = list.next_id;
+        list.waiters.push(Waiter {
+            id,
+            index,
+            notified: false,
+        });
+        loop {
+            let position = list.waiters.iter().position(|w| w.id == id);
+            if let Some(position) = position
+                && list.waiters[position].notified
+            {
+                list.waiters.remove(position);
+                return Some(true);
+            }
+            let remaining = match deadline {
+                Some(deadline) => {
+                    let now = std::time::Instant::now();
+                    if now >= deadline {
+                        list.waiters.retain(|w| w.id != id);
+                        return Some(false);
+                    }
+                    Some(deadline - now)
+                }
+                None => None,
+            };
+            list = match remaining {
+                Some(remaining) => {
+                    self.wake
+                        .wait_timeout(list, remaining)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0
+                }
+                None => self.wake.wait(list).unwrap_or_else(PoisonError::into_inner),
+            };
+        }
+    }
+
+    /// `Atomics.notify` : réveille, dans l'ordre où ils se sont endormis,
+    /// `count` agents au plus qui attendent sur `index`. Renvoie leur nombre.
+    pub(crate) fn notify(&self, index: usize, count: usize) -> usize {
+        let mut list = relock(&self.waiting);
+        let mut woken = 0;
+        for waiter in &mut list.waiters {
+            if woken == count {
+                break;
+            }
+            if waiter.index == index && !waiter.notified {
+                waiter.notified = true;
+                woken += 1;
+            }
+        }
+        drop(list);
+        if woken > 0 {
+            self.wake.notify_all();
+        }
+        woken
+    }
+}
+
+/// Octets d'un `ArrayBuffer` ou d'un `SharedArrayBuffer`.
 #[derive(Clone, Debug)]
 pub(crate) struct BufferData {
-    pub(crate) bytes: Vec<u8>,
+    /// Octets d'un tampon ordinaire ; vide pour un tampon partagé.
+    bytes: Vec<u8>,
     /// Tampon détaché : il n'a plus d'octets et ses vues sont vides.
     pub(crate) detached: bool,
     /// Taille maximale d'un tampon redimensionnable ; `None` : taille fixe.
     pub(crate) max_len: Option<usize>,
+    /// Octets d'un `SharedArrayBuffer`.
+    pub(crate) shared: Option<Arc<SharedBytes>>,
+}
+
+impl BufferData {
+    /// Tampon ordinaire de `len` octets nuls.
+    pub(crate) fn new(len: usize, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: vec![0; len],
+            detached: false,
+            max_len,
+            shared: None,
+        }
+    }
+
+    /// Tampon partagé de `len` octets nuls.
+    pub(crate) fn new_shared(len: usize, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: Vec::new(),
+            detached: false,
+            max_len,
+            shared: Some(SharedBytes::new(len, max_len.unwrap_or(len))),
+        }
+    }
+
+    /// Vue sur un stockage partagé existant (tampon reçu d'un autre agent).
+    pub(crate) fn from_shared(shared: Arc<SharedBytes>, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: Vec::new(),
+            detached: false,
+            max_len,
+            shared: Some(shared),
+        }
+    }
+
+    /// Longueur courante, en octets.
+    pub(crate) fn len(&self) -> usize {
+        match &self.shared {
+            Some(shared) => shared.len(),
+            None => self.bytes.len(),
+        }
+    }
+
+    /// Lit `size` octets (8 au plus) à partir de `start` ; `None` hors bornes.
+    pub(crate) fn read(&self, start: usize, size: usize) -> Option<[u8; 8]> {
+        let mut out = [0u8; 8];
+        let slot = out.get_mut(..size)?;
+        match &self.shared {
+            Some(shared) => shared.read(start, slot).then_some(out),
+            None => {
+                let end = start.checked_add(size)?;
+                slot.copy_from_slice(self.bytes.get(start..end)?);
+                Some(out)
+            }
+        }
+    }
+
+    /// Écrit `data` à partir de `start` ; `false`, sans rien écrire, hors
+    /// bornes.
+    pub(crate) fn write(&mut self, start: usize, data: &[u8]) -> bool {
+        match &self.shared {
+            Some(shared) => shared.write(start, data),
+            None => {
+                let Some(slot) = start
+                    .checked_add(data.len())
+                    .and_then(|end| self.bytes.get_mut(start..end))
+                else {
+                    return false;
+                };
+                slot.copy_from_slice(data);
+                true
+            }
+        }
+    }
+
+    /// Copie des `count` octets à partir de `start` ; vide hors bornes.
+    pub(crate) fn copy_range(&self, start: usize, count: usize) -> Vec<u8> {
+        match &self.shared {
+            Some(shared) => {
+                let mut out = vec![0; count];
+                if shared.read(start, &mut out) {
+                    out
+                } else {
+                    Vec::new()
+                }
+            }
+            None => start
+                .checked_add(count)
+                .and_then(|end| self.bytes.get(start..end))
+                .map(<[u8]>::to_vec)
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Change la longueur d'un tampon ordinaire ; les octets ajoutés sont
+    /// nuls. Sans effet sur un tampon partagé (voir [`SharedBytes::grow`]).
+    pub(crate) fn resize(&mut self, len: usize) {
+        if self.shared.is_none() {
+            self.bytes.resize(len, 0);
+        }
+    }
+
+    /// Retire ses octets à un tampon ordinaire, qui devient vide.
+    pub(crate) fn take_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.bytes)
+    }
+
+    /// Donne ses octets à un tampon ordinaire.
+    pub(crate) fn set_bytes(&mut self, bytes: Vec<u8>) {
+        if self.shared.is_none() {
+            self.bytes = bytes;
+        }
+    }
 }
 
 /// Type des éléments d'un tableau typé.

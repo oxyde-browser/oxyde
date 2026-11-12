@@ -215,6 +215,9 @@ pub struct Vm {
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
     pub(crate) native_new_target: Value,
+    /// Vrai si cet agent a le droit de s'endormir dans `Atomics.wait` : pas
+    /// le fil principal d'une page, qui doit rester réactif.
+    pub(crate) can_block: bool,
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
@@ -448,6 +451,7 @@ impl Vm {
             rejections: Vec::new(),
             constructing: false,
             native_new_target: Value::Undefined,
+            can_block: false,
             has_instance_function: None,
             slot_keys: std::collections::HashMap::new(),
             promise_ctor: None,
@@ -466,6 +470,13 @@ impl Vm {
         };
         crate::builtins::install(&mut vm);
         vm
+    }
+
+    /// Autorise ou non cet agent à s'endormir dans `Atomics.wait`. Un fil
+    /// principal de page ne le peut pas ; un agent de travail, ou un
+    /// lanceur de tests, le peut.
+    pub fn set_can_block(&mut self, can_block: bool) {
+        self.can_block = can_block;
     }
 
     /// Limite le nombre d'instructions exécutées jusqu'au prochain appel de
