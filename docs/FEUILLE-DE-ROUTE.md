@@ -606,14 +606,65 @@ Fin du jalon 7 : les écrans de la maquette qui manquent.
 - [ ] Infos du site et autorisations (avec K).
 - [ ] Menus contextuels (page, lien, image, onglet) et invites (`alert`, `confirm`,
       `prompt`, `beforeunload`, sélecteur de fichier).
-- [ ] Mots de passe : enregistrement à la connexion, remplissage, écran de gestion,
-      chiffrement par DPAPI.
+- [ ] **Mots de passe** : enregistrement à la connexion, remplissage, écran de gestion,
+      chiffrement par DPAPI, déverrouillage par Windows Hello avant tout affichage ou copie.
+- [ ] **Codes à usage unique (TOTP)**, à côté du mot de passe (maquettes « Mots de passe,
+      codes et clés d'accès » et « Proposition · Connexion ») :
+  - calcul selon la RFC 6238 (HMAC-SHA-1, SHA-256 et SHA-512 ; 6 ou 8 chiffres ; période
+    de 30 s par défaut), vérifié sur les vecteurs de test de la RFC ;
+  - enregistrement d'un secret : adresse `otpauth://`, QR code de configuration repéré
+    dans la page, ou saisie à la main ;
+  - **saisie à la place de l'utilisateur** : le champ du code est reconnu
+    (`autocomplete="one-time-code"`, champs à six cases) et rempli, avec une bulle qui dit
+    ce qui a été saisi et quand le code expire ;
+  - le code n'est saisi que sur le site où il a été enregistré, jamais sur un autre ni
+    dans un cadre d'un autre site ;
+  - le secret est chiffré comme les mots de passe et ne quitte pas le processus du
+    navigateur : le processus de rendu ne reçoit que le code du moment ;
+  - réglage « Demander Windows Hello avant de saisir un code », éteint par défaut : garder
+    le code à côté du mot de passe réduit les deux facteurs à un seul coffre, et ce
+    réglage est le moyen de garder un geste distinct ;
+  - export et import des secrets avec les mots de passe.
+- [ ] **Clés d'accès (passkeys)** :
+  - API WebAuthn des pages (`navigator.credentials.create` et `get`,
+    `PublicKeyCredential`, remplissage conditionnel), mesurée par les Web Platform Tests
+    `webauthn/` ;
+  - d'abord par l'authentificateur de Windows (Windows Hello, clés de sécurité USB et
+    NFC), dont les clés restent dans le module de sécurité de la machine ;
+  - puis un coffre propre à Oxyde (clés ES256, chiffrées comme les mots de passe), qui
+    permettra la synchronisation entre appareils ;
+  - une clé n'est proposée que pour le site qui l'a créée : c'est ce qui la rend
+    insensible à l'hameçonnage, et la vérification se fait dans le processus du navigateur ;
+  - invites de la maquette : choisir une clé pour se connecter, créer une clé à la place
+    du mot de passe ; gestion dans l'écran des mots de passe (détails, suppression).
 - [ ] Impression : pagination, aperçu, envoi au spouleur Windows, export PDF.
 - [ ] Réglages encore absents : thème clair et « comme Windows », zoom par site, langue,
       police par défaut, page d'accueil.
 - [ ] Zoom (Ctrl +, Ctrl −), plein écran (F11), glisser-déposer des onglets, défilement de
       la bande d'onglets et de la palette.
 - [ ] Teinte violette complète de la fenêtre privée.
+- [ ] **Icônes des sites** : télécharger l'icône déclarée par la page (`<link rel="icon">`,
+      sinon `/favicon.ico`), la conserver dans le profil, l'afficher dans les onglets,
+      l'historique, les favoris et la palette à la place de l'initiale ; en tirer la couleur
+      dominante.
+- [ ] **Écran de chargement** (maquette « Proposition · Chargement d'une page ») : quand une
+      page tarde, le volet montre l'icône du site entourée d'un anneau animé, son nom, son
+      hôte avec le cadenas et l'étape en cours, sur un fond teinté par l'icône, plutôt
+      qu'un écran blanc. Dépend des icônes des sites. Règles :
+  - l'ancienne page reste affichée pendant les 400 premières millisecondes : un site
+    rapide ne montre jamais l'écran ;
+  - l'écran s'efface dès le premier contenu de la page, pas à la fin du chargement ;
+  - c'est une surface du navigateur : l'hôte réel y figure toujours, et une page ne peut
+    ni le dessiner ni le modifier ;
+  - il occupe le volet de la page, pas la fenêtre : on peut toujours changer d'onglet ou
+    arrêter (Échap) ; l'onglet porte le même anneau, « Actualiser » devient « Arrêter » ;
+  - première visite : l'initiale et la couleur de l'onglet, remplacées par l'icône dès
+    qu'elle arrive ;
+  - après 8 secondes : « Ce site met du temps à répondre », avec « Continuer d'attendre »
+    et « Arrêter » ;
+  - animations réduites dans Windows : icône fixe et barre de progression.
+
+  Les seuils de 400 ms et de 8 s sont des propositions, à régler à l'usage.
 - [ ] Accessibilité du contenu des pages (arbre AccessKit des pages distantes), contraste
       et navigation au clavier de toute l'interface.
 - [ ] Fuseaux horaires IANA et calendriers pour `Temporal`, `Date` à l'heure locale, `Intl`.
