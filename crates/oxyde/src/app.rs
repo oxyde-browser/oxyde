@@ -120,7 +120,8 @@ impl App {
         }
         let result = result
             .and_then(|()| profile.save_history(&mut self.browser.history))
-            .and_then(|()| profile.save_bookmarks(&mut self.browser.bookmarks));
+            .and_then(|()| profile.save_bookmarks(&mut self.browser.bookmarks))
+            .and_then(|()| profile.save_settings(&mut self.browser.settings));
         if let Err(error) = result {
             eprintln!(
                 "profil non enregistré ({}) : {error}",
@@ -298,6 +299,11 @@ impl App {
             size.height,
             scale,
         );
+        // Les paramètres viennent de sauter à une rubrique : le défilement
+        // retenu par l'interface devient celui du navigateur.
+        if let Some(scroll) = self.chrome.settings_scroll {
+            self.browser.settle_settings_scroll(scroll);
+        }
         // Une liste raccourcie (ligne retirée, fenêtre agrandie) peut laisser le
         // défilement trop loin : il revient dans ses bornes à l'image suivante.
         if self

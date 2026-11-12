@@ -92,7 +92,7 @@ fn search_field(p: &mut Painter<'_>, state: &ChromeState<'_>, field: Rect) {
     const PLACEHOLDER: &str = "Rechercher dans l'historique";
     p.fill(field, theme::SURFACE, 10.0);
     let border = if state.editing {
-        theme::ACCENT
+        p.accent
     } else {
         theme::BORDER
     };

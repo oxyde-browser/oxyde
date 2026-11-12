@@ -33,6 +33,10 @@ pub const TEXT: Color = Color::rgb(0xE6, 0xE9, 0xED);
 pub const TEXT_TAB: Color = Color::rgb(0xD5, 0xDA, 0xE1);
 /// Texte secondaire.
 pub const TEXT_MUTED: Color = Color::rgb(0x9A, 0xA3, 0xAE);
+/// Explication sous le titre d'un réglage.
+pub const TEXT_SECONDARY: Color = Color::rgb(0xA3, 0xAD, 0xB9);
+/// Fond d'un interrupteur éteint, et du choix retenu dans un groupe.
+pub const SWITCH_OFF: Color = Color::rgb(0x2A, 0x32, 0x3D);
 /// Icône.
 pub const ICON: Color = Color::rgb(0xC3, 0xCA, 0xD3);
 /// Icône désactivée.

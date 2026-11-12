@@ -36,7 +36,7 @@ pub(crate) fn edit_field(
             h,
             max_w,
         );
-        p.fill(rect(x, caret_y, 1.5, caret_h), theme::ACCENT, 0.0);
+        p.fill(rect(x, caret_y, 1.5, caret_h), p.accent, 0.0);
         return;
     }
     let label = Label::new(state.address, size, theme::TEXT);
@@ -55,7 +55,7 @@ pub(crate) fn edit_field(
         let caret_x = p.measure(&Label::new(before, size, theme::TEXT)).min(max_w);
         p.fill(
             rect(x + caret_x + 1.0, caret_y, 1.5, caret_h),
-            theme::ACCENT,
+            p.accent,
             0.0,
         );
     }
@@ -329,7 +329,7 @@ pub(crate) fn error(
             theme::DANGER_BUTTON,
         )
     } else {
-        (theme::ACCENT, theme::ON_ACCENT, theme::ACTIVE)
+        (p.accent, theme::ON_ACCENT, theme::ACTIVE)
     };
     let mut button_x = x;
     let mut button = |p: &mut Painter<'_>, text: &str, hit: Hit, fill, color, weight: f32| {

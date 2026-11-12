@@ -409,7 +409,13 @@ Fait :
   l'historique après confirmation ; une page s'ouvre dans un nouvel onglet. L'heure locale vient
   d'`oxyde_platform` (API Win32 ; UTC ailleurs).
 
-Reste : les dossiers de favoris et l'import ; les écrans (paramètres, téléchargements, infos du site,
+- **Écran Paramètres** (Ctrl , ou le bouton de la barre latérale) : couleur d'accent, reprise
+  de la session au démarrage, moteur de recherche, conservation de l'historique, effacement de
+  l'historique. Chaque réglage agit et est conservé dans le profil ; ceux de la maquette qui
+  n'ont pas encore d'effet (disposition des onglets, thème clair, performances, traqueurs) n'y
+  figurent pas.
+
+Reste : les dossiers de favoris et l'import ; les écrans (téléchargements, infos du site,
 autorisations, recherche dans la page, navigation privée, palette de commandes, mots de passe,
 premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.

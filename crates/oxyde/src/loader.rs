@@ -10,10 +10,18 @@ use crate::network::{self, FailureClass, NetFailure};
 /// Taille maximale d'une ressource locale chargée en mémoire (64 Mio).
 const MAX_RESOURCE_BYTES: u64 = 64 * 1024 * 1024;
 
-/// Moteur de recherche utilisé quand la saisie n'est pas une adresse. Sa
-/// version HTML fonctionne sans JavaScript. Le choix du moteur sera un
-/// réglage de l'écran Paramètres (jalon 7).
-const SEARCH_URL: &str = "https://html.duckduckgo.com/html/";
+/// Moteurs de recherche proposés dans les paramètres. Le premier est celui
+/// par défaut : sa version HTML fonctionne sans JavaScript.
+pub(crate) const SEARCH_ENGINE_NAMES: [&str; 4] = ["DuckDuckGo", "Brave", "Mojeek", "Google"];
+
+/// Adresse de recherche de chaque moteur de [`SEARCH_ENGINE_NAMES`] ; la
+/// requête va dans le paramètre `q`.
+const SEARCH_URLS: [&str; 4] = [
+    "https://html.duckduckgo.com/html/",
+    "https://search.brave.com/search",
+    "https://www.mojeek.com/search",
+    "https://www.google.com/search",
+];
 
 /// Nature d'une erreur de chargement ; détermine la page d'erreur affichée.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,6 +112,13 @@ fn looks_like_host(input: &str) -> bool {
 /// Interprète ce que l'utilisateur a saisi : chemin local, URL absolue, nom
 /// d'hôte sans schéma (complété en `https://`), ou sinon recherche.
 pub(crate) fn resolve_input(input: &str) -> Result<Url, LoadError> {
+    resolve_input_with(input, 0)
+}
+
+/// Comme [`resolve_input`] ; une recherche va au moteur d'index `engine`
+/// dans [`SEARCH_ENGINE_NAMES`] (le premier si l'index est hors bornes).
+pub(crate) fn resolve_input_with(input: &str, engine: usize) -> Result<Url, LoadError> {
+    let search = SEARCH_URLS.get(engine).copied().unwrap_or(SEARCH_URLS[0]);
     let input = input.trim();
     let invalid = |e: &dyn std::fmt::Display| {
         LoadError::other(
@@ -131,7 +146,7 @@ pub(crate) fn resolve_input(input: &str) -> Result<Url, LoadError> {
     {
         return Ok(url);
     }
-    Url::parse_with_params(SEARCH_URL, [("q", input)]).map_err(|e| invalid(&e))
+    Url::parse_with_params(search, [("q", input)]).map_err(|e| invalid(&e))
 }
 
 fn read_file(url: &Url) -> Result<Vec<u8>, LoadError> {

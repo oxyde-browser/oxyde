@@ -7,13 +7,14 @@
 //!
 //! Écrans couverts : « Fenêtre principale · vue scindée » (`Main`), « Nouvel
 //! onglet » (`NewTab`), « Pages d'erreur » (`Errors`), « Historique »
-//! (`History`) et « Favoris » (`Bookmarks`).
+//! (`History`), « Favoris » (`Bookmarks`) et « Paramètres » (`Settings`).
 //!
 //! Les polices de la maquette (Inter, Space Grotesk, JetBrains Mono) sont
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
 
 mod library;
 mod panes;
+mod settings;
 pub mod theme;
 
 use kurbo::{BezPath, Circle, Shape};
@@ -77,6 +78,89 @@ pub enum Hit {
     LibrarySearch,
     /// Bibliothèque : effacer tout l'historique (à confirmer).
     LibraryClear,
+    /// Paramètres : rubrique d'index donné.
+    SettingsGroup(usize),
+    /// Paramètres : commande du réglage `row` (index parmi tous les
+    /// réglages) ; `option` : valeur choisie, pour un choix ou des pastilles.
+    Setting {
+        /// Index du réglage.
+        row: usize,
+        /// Index de la valeur choisie.
+        option: usize,
+    },
+}
+
+/// Commande d'un réglage.
+#[derive(Clone, Copy, Debug)]
+pub enum SettingControl<'a> {
+    /// Interrupteur.
+    Switch {
+        /// Activé.
+        on: bool,
+    },
+    /// Choix parmi quelques libellés.
+    Choice {
+        /// Libellés.
+        options: &'a [&'a str],
+        /// Index du libellé choisi.
+        selected: usize,
+    },
+    /// Pastilles de couleur.
+    Swatches {
+        /// Couleurs.
+        colors: &'a [Color],
+        /// Nom accessible de chaque couleur.
+        names: &'a [&'a str],
+        /// Index de la couleur choisie.
+        selected: usize,
+    },
+    /// Bouton d'action.
+    Button {
+        /// Libellé.
+        label: &'a str,
+        /// Action destructrice qui attend sa confirmation.
+        danger: bool,
+    },
+    /// Valeur en lecture seule.
+    Value {
+        /// Texte.
+        text: &'a str,
+    },
+}
+
+/// Réglage : un titre, une explication, une commande.
+#[derive(Clone, Copy, Debug)]
+pub struct SettingRow<'a> {
+    /// Titre.
+    pub title: &'a str,
+    /// Explication (vide s'il n'y en a pas).
+    pub description: &'a str,
+    /// Commande.
+    pub control: SettingControl<'a>,
+}
+
+/// Rubrique des paramètres.
+#[derive(Clone, Debug)]
+pub struct SettingsGroup<'a> {
+    /// Titre.
+    pub title: &'a str,
+    /// Réglages.
+    pub rows: Vec<SettingRow<'a>>,
+}
+
+/// Paramètres tels que l'interface les affiche.
+#[derive(Clone, Copy, Debug)]
+pub struct SettingsView<'a> {
+    /// Rubriques ; l'index d'un réglage, porté par [`Hit::Setting`], compte
+    /// à travers elles.
+    pub groups: &'a [SettingsGroup<'a>],
+    /// Rubrique mise en avant dans la colonne de gauche.
+    pub selected: usize,
+    /// Défilement, en pixels (borné par [`Chrome::library_scroll_max`]).
+    pub scroll: f32,
+    /// Rubrique à amener en haut du panneau ; le défilement retenu est
+    /// rendu par [`Chrome::settings_scroll`].
+    pub jump: Option<usize>,
 }
 
 /// Rubrique de la bibliothèque.
@@ -231,6 +315,10 @@ pub struct ChromeState<'a> {
     pub caret: usize,
     /// Bibliothèque ouverte à la place des onglets.
     pub library: Option<LibraryView<'a>>,
+    /// Paramètres ouverts à la place des onglets.
+    pub settings: Option<SettingsView<'a>>,
+    /// Couleur d'accent.
+    pub accent: Color,
 }
 
 /// Volet de page web : emplacement de la page et de son onglet.
@@ -259,6 +347,8 @@ pub enum Role {
     Heading,
     /// Texte.
     Text,
+    /// Interrupteur (`selected` : activé).
+    Switch,
 }
 
 /// Élément de l'interface exposé aux technologies d'assistance.
@@ -295,8 +385,12 @@ pub struct Chrome {
     pub tab_scroll_max: f32,
     /// Éléments exposés aux technologies d'assistance, dans l'ordre de lecture.
     pub widgets: Vec<Widget>,
-    /// Défilement maximal de la bibliothèque (nul si elle tient à l'écran).
+    /// Défilement maximal de la bibliothèque ou des paramètres (nul si
+    /// l'écran tient dans la fenêtre).
     pub library_scroll_max: f32,
+    /// Défilement retenu par les paramètres quand l'état demandait de
+    /// sauter à une rubrique.
+    pub settings_scroll: Option<f32>,
 }
 
 impl Chrome {
@@ -321,6 +415,8 @@ pub(crate) struct Painter<'a> {
     pub(crate) hits: Vec<(Rect, Hit)>,
     pub(crate) widgets: Vec<Widget>,
     pub(crate) hover: Option<Hit>,
+    /// Couleur d'accent.
+    pub(crate) accent: Color,
 }
 
 #[derive(Clone, Copy)]
@@ -620,13 +716,14 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         hits: Vec::new(),
         widgets: Vec::new(),
         hover: state.hover,
+        accent: state.accent,
     };
     let (w, h) = (state.width, state.height);
     p.fill(rect(0.0, 0.0, w, h), theme::WINDOW, 0.0);
 
     // ---- Barre de titre ----------------------------------------------------
     let title_h = theme::TITLE_BAR;
-    p.stroke_path(ICON_LOGO, 16.0, (title_h - 18.0) / 2.0, theme::ACCENT, 2.5);
+    p.stroke_path(ICON_LOGO, 16.0, (title_h - 18.0) / 2.0, p.accent, 2.5);
     p.dot(16.0 + 13.6, (title_h - 18.0) / 2.0 + 4.4, 1.6, theme::AMBER);
     let name = Label::new("Oxyde", 13.0, theme::TEXT)
         .weight(600.0)
@@ -665,6 +762,17 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
             ..Chrome::default()
         };
     }
+    if let Some(view) = &state.settings {
+        let (library_scroll_max, settings_scroll) = settings::build(&mut p, state, view);
+        return Chrome {
+            list: p.list,
+            hits: p.hits,
+            widgets: p.widgets,
+            library_scroll_max,
+            settings_scroll,
+            ..Chrome::default()
+        };
+    }
 
     // ---- Barre latérale ----------------------------------------------------
     let side_x = 8.0 + 4.0;
@@ -698,7 +806,7 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         p.fill(split_r, theme::PILL, 8.0);
     }
     let split_color = if state.split.is_some() {
-        theme::ACCENT
+        p.accent
     } else {
         theme::ICON
     };
@@ -726,7 +834,7 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
     p.outline(
         addr,
         if editing_here {
-            theme::ACCENT
+            p.accent
         } else {
             theme::BORDER_SOFT
         },
@@ -1059,7 +1167,7 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
             if tab_index == state.active {
                 overlay.items.push(DisplayItem::StrokeRect {
                     rect: frame,
-                    color: theme::ACCENT,
+                    color: state.accent,
                     width: 2.0,
                     radius: 12.0,
                 });
@@ -1100,6 +1208,7 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         tab_scroll_max,
         widgets: p.widgets,
         library_scroll_max: 0.0,
+        settings_scroll: None,
     }
 }
 
@@ -1153,6 +1262,8 @@ mod tests {
             tab_scroll: 0.0,
             caret: 0,
             library: None,
+            settings: None,
+            accent: theme::ACCENT,
         }
     }
 
@@ -1531,5 +1642,99 @@ mod tests {
         assert!(find_hit(&chrome, Hit::LibraryRow(0)).is_none());
         assert!(inside(&chrome));
         assert_eq!(chrome.library_scroll_max, max);
+    }
+
+    #[test]
+    fn settings_screen_exposes_its_controls() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let colors = [theme::ACCENT, theme::AMBER];
+        let names = ["Vert", "Ambre"];
+        let options = ["Un", "Deux", "Trois"];
+        let row = |title, description, control| SettingRow {
+            title,
+            description,
+            control,
+        };
+        let groups = vec![
+            SettingsGroup {
+                title: "Apparence",
+                rows: vec![row(
+                    "Couleur",
+                    "",
+                    SettingControl::Swatches {
+                        colors: &colors,
+                        names: &names,
+                        selected: 1,
+                    },
+                )],
+            },
+            SettingsGroup {
+                title: "Divers",
+                rows: vec![
+                    row(
+                        "Choix",
+                        "Explication",
+                        SettingControl::Choice {
+                            options: &options,
+                            selected: 0,
+                        },
+                    ),
+                    row("Bascule", "", SettingControl::Switch { on: true }),
+                    row(
+                        "Action",
+                        "",
+                        SettingControl::Button {
+                            label: "Faire",
+                            danger: false,
+                        },
+                    ),
+                    row("Version", "", SettingControl::Value { text: "1.0" }),
+                ],
+            },
+        ];
+        let mut s = state(&tabs, None);
+        s.settings = Some(SettingsView {
+            groups: &groups,
+            selected: 0,
+            scroll: 0.0,
+            jump: None,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        assert!(chrome.panes.is_empty());
+        assert_eq!(chrome.settings_scroll, None);
+        assert_eq!(chrome.library_scroll_max, 0.0);
+        for hit in [
+            Hit::LibraryBack,
+            Hit::SettingsGroup(1),
+            Hit::Setting { row: 0, option: 1 },
+            Hit::Setting { row: 1, option: 2 },
+            Hit::Setting { row: 2, option: 0 },
+            Hit::Setting { row: 3, option: 0 },
+        ] {
+            assert!(find_hit(&chrome, hit).is_some(), "{hit:?}");
+        }
+        // Une valeur en lecture seule n'est pas cliquable.
+        assert!(find_hit(&chrome, Hit::Setting { row: 4, option: 0 }).is_none());
+        let switch = chrome
+            .widgets
+            .iter()
+            .find(|w| w.role == Role::Switch)
+            .expect("interrupteur");
+        assert!(switch.selected);
+        assert_eq!(switch.label, "Bascule");
+        assert!(switch.rect.h >= 44.0, "cible tactile de 44 px");
+
+        // Dans une fenêtre basse, sauter à une rubrique fait défiler jusqu'à elle.
+        s.height = 300.0;
+        s.settings = Some(SettingsView {
+            groups: &groups,
+            selected: 1,
+            scroll: 0.0,
+            jump: Some(1),
+        });
+        let chrome = build_chrome(&s, &mut text);
+        let applied = chrome.settings_scroll.expect("saut");
+        assert!(applied > 0.0 && applied <= chrome.library_scroll_max);
     }
 }

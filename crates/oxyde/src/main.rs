@@ -13,8 +13,8 @@
 //!         que dans le profil de l'utilisateur
 //! oxyde --no-profile …
 //!         ne lit ni n'écrit aucun profil
-//! oxyde --screen historique|favoris …
-//!         ouvre la bibliothèque sur l'historique ou les favoris
+//! oxyde --screen historique|favoris|parametres …
+//!         ouvre l'historique, les favoris ou les paramètres
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
 //! oxyde --no-sandbox …
@@ -71,6 +71,8 @@ struct Args {
     no_profile: bool,
     /// Rubrique de la bibliothèque à ouvrir au lancement.
     screen: Option<LibrarySection>,
+    /// Ouvrir l'écran Paramètres au lancement.
+    settings: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -88,6 +90,7 @@ fn parse_args() -> Result<Args> {
         profile: None,
         no_profile: false,
         screen: None,
+        settings: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -107,13 +110,12 @@ fn parse_args() -> Result<Args> {
                 args.profile = Some(PathBuf::from(dir));
             }
             "--no-profile" => args.no_profile = true,
-            "--screen" => {
-                args.screen = Some(match it.next().as_deref() {
-                    Some("historique") => LibrarySection::History,
-                    Some("favoris") => LibrarySection::Bookmarks,
-                    _ => bail!("--screen attend « historique » ou « favoris »"),
-                });
-            }
+            "--screen" => match it.next().as_deref() {
+                Some("historique") => args.screen = Some(LibrarySection::History),
+                Some("favoris") => args.screen = Some(LibrarySection::Bookmarks),
+                Some("parametres") => args.settings = true,
+                _ => bail!("--screen attend « historique », « favoris » ou « parametres »"),
+            },
             "--page-only" => args.page_only = true,
             "--dump-dom" => args.dump_dom = true,
             "--dom-coverage" => args.dom_coverage = true,
@@ -223,9 +225,13 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         {
             browser.history = profile.load_history();
             browser.bookmarks = profile.load_bookmarks();
+            browser.settings = profile.load_settings();
         }
         if let Some(section) = args.screen {
             browser.open_screen(section);
+        }
+        if args.settings {
+            browser.open_settings();
         }
         frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
         theme::WINDOW
@@ -340,10 +346,15 @@ fn run() -> Result<()> {
         network::use_process();
     }
     let profile = open_profile(&args);
-    let mut browser = match profile
+    let settings = profile
         .as_ref()
-        .and_then(|p| Browser::from_session(&p.load_session()))
-    {
+        .map(Profile::load_settings)
+        .unwrap_or_default();
+    let restored = profile
+        .as_ref()
+        .filter(|_| settings.flag(browser::KEY_RESTORE, true))
+        .and_then(|p| Browser::from_session(&p.load_session()));
+    let mut browser = match restored {
         // Une session attend : elle revient, et les adresses de la ligne de
         // commande s'y ajoutent.
         Some(mut browser) => {
@@ -371,8 +382,12 @@ fn run() -> Result<()> {
         browser.history = profile.load_history();
         browser.bookmarks = profile.load_bookmarks();
     }
+    browser.settings = settings;
     if let Some(section) = args.screen {
         browser.open_screen(section);
+    }
+    if args.settings {
+        browser.open_settings();
     }
     app::run(browser, multi_process, profile)
 }

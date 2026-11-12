@@ -9,10 +9,11 @@
 use oxyde_content::{Navigation, Url};
 use oxyde_css::Color;
 use oxyde_platform::CivilTime;
-use oxyde_storage::{Bookmarks, History, Session, SessionTab};
+use oxyde_storage::{Bookmarks, History, Session, SessionTab, Settings};
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, LibraryRow, LibrarySection, LibraryView,
-    PaneContent, SpaceView, TabView, theme,
+    PaneContent, SettingControl, SettingRow, SettingsGroup, SettingsView, SpaceView, TabView,
+    theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
@@ -34,6 +35,39 @@ const SPACES: [(&str, Color); 3] = [
 
 /// Nombre d'onglets fermés gardés en mémoire.
 const MAX_CLOSED: usize = 10;
+
+/// Réglage : couleur d'accent (`vert`, `ambre` ou `bleu`).
+const KEY_ACCENT: &str = "apparence.accent";
+/// Réglage : rouvrir les onglets de la dernière session au démarrage.
+pub(crate) const KEY_RESTORE: &str = "session.restaurer";
+/// Réglage : moteur de recherche (nom en minuscules).
+const KEY_ENGINE: &str = "recherche.moteur";
+/// Réglage : noter les pages visitées dans l'historique.
+const KEY_HISTORY: &str = "historique.conserver";
+
+/// Couleurs d'accent de la maquette : valeur du réglage, nom, couleur.
+const ACCENT_KEYS: [&str; 3] = ["vert", "ambre", "bleu"];
+const ACCENT_NAMES: [&str; 3] = ["Vert-de-gris", "Ambre", "Bleu"];
+const ACCENT_COLORS: [Color; 3] = [theme::ACCENT, theme::AMBER, theme::BLUE];
+
+/// Index des réglages dans l'écran Paramètres (voir [`Browser::settings_groups`]).
+const ROW_ACCENT: usize = 0;
+const ROW_RESTORE: usize = 1;
+const ROW_ENGINE: usize = 2;
+const ROW_HISTORY: usize = 3;
+const ROW_CLEAR: usize = 4;
+
+/// Écran Paramètres ouvert à la place des onglets.
+struct SettingsScreen {
+    /// Rubrique mise en avant.
+    selected: usize,
+    /// Défilement, en pixels.
+    scroll: f32,
+    /// Rubrique à amener en haut à la prochaine image.
+    jump: Option<usize>,
+    /// L'effacement de l'historique attend sa confirmation.
+    confirm_clear: bool,
+}
 
 /// Nombre maximal de lignes affichées par la bibliothèque.
 const MAX_LIBRARY_ROWS: usize = 500;
@@ -255,6 +289,7 @@ pub(crate) struct Views<'a> {
     closed: Vec<ClosedView<'a>>,
     spaces: [SpaceView<'static>; SPACES.len()],
     library: Vec<LibraryRow<'a>>,
+    settings: Vec<SettingsGroup<'a>>,
 }
 
 pub(crate) struct Browser {
@@ -286,6 +321,10 @@ pub(crate) struct Browser {
     pub(crate) bookmarks: Bookmarks,
     /// Bibliothèque (historique, favoris), quand elle est ouverte.
     library: Option<Library>,
+    /// Réglages.
+    pub(crate) settings: Settings,
+    /// Écran Paramètres, quand il est ouvert.
+    settings_screen: Option<SettingsScreen>,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -326,6 +365,8 @@ impl Browser {
             history: History::default(),
             bookmarks: Bookmarks::default(),
             library: None,
+            settings: Settings::default(),
+            settings_screen: None,
         };
         browser.refresh_address();
         browser
@@ -442,7 +483,10 @@ impl Browser {
         let Some(tab) = self.tabs.get(index) else {
             return;
         };
-        if tab.error.is_none() && is_recorded(tab.page.url()) {
+        if tab.error.is_none()
+            && is_recorded(tab.page.url())
+            && self.settings.flag(KEY_HISTORY, true)
+        {
             self.history
                 .record(tab.page.url().as_str(), &tab.page.title(), now_seconds());
         }
@@ -539,7 +583,210 @@ impl Browser {
                     heading: entry.heading.as_deref(),
                 })
                 .collect(),
+            settings: if self.settings_screen.is_some() {
+                self.settings_groups()
+            } else {
+                Vec::new()
+            },
         }
+    }
+
+    /// Index de la couleur d'accent choisie dans [`ACCENT_COLORS`].
+    fn accent_index(&self) -> usize {
+        let chosen = self.settings.get(KEY_ACCENT);
+        ACCENT_KEYS
+            .iter()
+            .position(|key| Some(*key) == chosen)
+            .unwrap_or(0)
+    }
+
+    /// Index du moteur de recherche choisi dans [`loader::SEARCH_ENGINE_NAMES`].
+    fn engine_index(&self) -> usize {
+        let chosen = self.settings.get(KEY_ENGINE);
+        loader::SEARCH_ENGINE_NAMES
+            .iter()
+            .position(|name| chosen.is_some_and(|c| name.eq_ignore_ascii_case(c)))
+            .unwrap_or(0)
+    }
+
+    /// Contenu de l'écran Paramètres. L'ordre des réglages fixe leur index
+    /// (`ROW_ACCENT`, `ROW_RESTORE`…).
+    fn settings_groups(&self) -> Vec<SettingsGroup<'_>> {
+        let confirming = self
+            .settings_screen
+            .as_ref()
+            .is_some_and(|screen| screen.confirm_clear);
+        let row = |title, description, control| SettingRow {
+            title,
+            description,
+            control,
+        };
+        vec![
+            SettingsGroup {
+                title: "Apparence",
+                rows: vec![row(
+                    "Couleur d'accent",
+                    "",
+                    SettingControl::Swatches {
+                        colors: &ACCENT_COLORS,
+                        names: &ACCENT_NAMES,
+                        selected: self.accent_index(),
+                    },
+                )],
+            },
+            SettingsGroup {
+                title: "Démarrage",
+                rows: vec![row(
+                    "Rouvrir les onglets de la dernière session",
+                    "Sinon, Oxyde s'ouvre sur un nouvel onglet.",
+                    SettingControl::Switch {
+                        on: self.settings.flag(KEY_RESTORE, true),
+                    },
+                )],
+            },
+            SettingsGroup {
+                title: "Recherche",
+                rows: vec![row(
+                    "Moteur de recherche",
+                    "Pour ce qui n'est pas une adresse.",
+                    SettingControl::Choice {
+                        options: &loader::SEARCH_ENGINE_NAMES,
+                        selected: self.engine_index(),
+                    },
+                )],
+            },
+            SettingsGroup {
+                title: "Confidentialité et sécurité",
+                rows: vec![
+                    row(
+                        "Conserver l'historique",
+                        "Note les pages visitées pour les retrouver avec Ctrl H.",
+                        SettingControl::Switch {
+                            on: self.settings.flag(KEY_HISTORY, true),
+                        },
+                    ),
+                    row(
+                        "Données de navigation",
+                        "Efface toutes les pages notées dans l'historique.",
+                        SettingControl::Button {
+                            label: if confirming {
+                                "Confirmer l'effacement"
+                            } else {
+                                "Effacer l'historique…"
+                            },
+                            danger: confirming,
+                        },
+                    ),
+                ],
+            },
+            SettingsGroup {
+                title: "À propos d'Oxyde",
+                rows: vec![row(
+                    "Version",
+                    "Navigateur écrit en Rust, moteur de rendu et JavaScript compris.",
+                    SettingControl::Value {
+                        text: env!("CARGO_PKG_VERSION"),
+                    },
+                )],
+            },
+        ]
+    }
+
+    /// Ouvre l'écran Paramètres.
+    pub(crate) fn open_settings(&mut self) {
+        self.library = None;
+        self.editing = None;
+        self.settings_screen = Some(SettingsScreen {
+            selected: 0,
+            scroll: 0.0,
+            jump: None,
+            confirm_clear: false,
+        });
+    }
+
+    fn close_settings(&mut self) {
+        self.settings_screen = None;
+        self.refresh_address();
+    }
+
+    /// L'interface a amené la rubrique demandée en haut : le défilement
+    /// retenu devient celui de l'écran.
+    pub(crate) fn settle_settings_scroll(&mut self, scroll: f32) {
+        if let Some(screen) = &mut self.settings_screen {
+            screen.scroll = scroll;
+            screen.jump = None;
+        }
+    }
+
+    /// Clic dans l'écran Paramètres.
+    fn settings_click(&mut self, hit: Hit) {
+        let confirming = self
+            .settings_screen
+            .as_mut()
+            .is_some_and(|screen| std::mem::take(&mut screen.confirm_clear));
+        match hit {
+            Hit::LibraryBack => self.close_settings(),
+            Hit::SettingsGroup(group) => {
+                if let Some(screen) = &mut self.settings_screen {
+                    screen.selected = group;
+                    screen.jump = Some(group);
+                }
+            }
+            Hit::Setting {
+                row: ROW_ACCENT,
+                option,
+            } => {
+                if let Some(key) = ACCENT_KEYS.get(option) {
+                    self.settings.set(KEY_ACCENT, key);
+                }
+            }
+            Hit::Setting {
+                row: ROW_RESTORE, ..
+            } => {
+                let on = self.settings.flag(KEY_RESTORE, true);
+                self.settings.set_flag(KEY_RESTORE, !on);
+            }
+            Hit::Setting {
+                row: ROW_ENGINE,
+                option,
+            } => {
+                if let Some(name) = loader::SEARCH_ENGINE_NAMES.get(option) {
+                    self.settings.set(KEY_ENGINE, &name.to_ascii_lowercase());
+                }
+            }
+            Hit::Setting {
+                row: ROW_HISTORY, ..
+            } => {
+                let on = self.settings.flag(KEY_HISTORY, true);
+                self.settings.set_flag(KEY_HISTORY, !on);
+            }
+            Hit::Setting { row: ROW_CLEAR, .. } => {
+                if confirming {
+                    self.history.clear();
+                } else if let Some(screen) = &mut self.settings_screen {
+                    screen.confirm_clear = true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Touche pendant que l'écran Paramètres est ouvert ; `false` : la
+    /// touche suit son cours habituel.
+    fn settings_key(&mut self, key: &KeyPress) -> bool {
+        if let Some(screen) = &mut self.settings_screen {
+            screen.confirm_clear = false;
+        }
+        match key {
+            KeyPress::Escape | KeyPress::Ctrl(',' | 'w') => self.close_settings(),
+            // Ces raccourcis quittent les paramètres puis font leur office.
+            KeyPress::Ctrl('l' | 'k' | 't' | 'h') | KeyPress::CtrlShift('t' | 'o') => {
+                self.close_settings();
+                return false;
+            }
+            _ => {}
+        }
+        true
     }
 
     /// État complet de l'interface pour une fenêtre de `width` × `height`.
@@ -575,23 +822,36 @@ impl Browser {
                 confirm_clear: library.confirm_clear,
                 truncated: library.truncated,
             }),
+            settings: self.settings_screen.as_ref().map(|screen| SettingsView {
+                groups: &views.settings,
+                selected: screen.selected,
+                scroll: screen.scroll,
+                jump: screen.jump,
+            }),
+            accent: ACCENT_COLORS
+                .get(self.accent_index())
+                .copied()
+                .unwrap_or(theme::ACCENT),
         }
     }
 
-    /// Vrai si la bibliothèque est ouverte à la place des onglets.
+    /// Vrai si la bibliothèque ou les paramètres sont ouverts à la place des
+    /// onglets.
     pub(crate) fn library_open(&self) -> bool {
-        self.library.is_some()
+        self.library.is_some() || self.settings_screen.is_some()
     }
 
-    /// Fait défiler la bibliothèque de `dy` pixels, sans dépasser `max` ;
-    /// renvoie `true` si le défilement a changé.
+    /// Fait défiler la bibliothèque ou les paramètres de `dy` pixels, sans
+    /// dépasser `max` ; renvoie `true` si le défilement a changé.
     pub(crate) fn scroll_library(&mut self, dy: f32, max: f32) -> bool {
-        let Some(library) = &mut self.library else {
-            return false;
+        let scroll = match (&mut self.library, &mut self.settings_screen) {
+            (Some(library), _) => &mut library.scroll,
+            (None, Some(screen)) => &mut screen.scroll,
+            (None, None) => return false,
         };
-        let target = (library.scroll + dy).clamp(0.0, max.max(0.0));
-        let changed = (target - library.scroll).abs() > f32::EPSILON;
-        library.scroll = target;
+        let target = (*scroll + dy).clamp(0.0, max.max(0.0));
+        let changed = (target - *scroll).abs() > f32::EPSILON;
+        *scroll = target;
         changed
     }
 
@@ -601,6 +861,7 @@ impl Browser {
     }
 
     fn open_library(&mut self, section: LibrarySection) {
+        self.settings_screen = None;
         self.library = Some(Library {
             section,
             scroll: 0.0,
@@ -1101,12 +1362,16 @@ impl Browser {
     /// Clic sur un élément de l'interface. `page_point` : position dans la
     /// page (pixels CSS, défilement compris) quand le clic vise un volet.
     pub(crate) fn click(&mut self, hit: Hit, page_point: Option<(f32, f32)>) -> Vec<Command> {
-        if self.library.is_some() {
+        if self.library_open() {
             // Seuls les boutons de la fenêtre gardent leur rôle habituel.
             let window = matches!(
                 hit,
                 Hit::Minimize | Hit::Maximize | Hit::CloseWindow | Hit::TitleBar
             );
+            if !window && self.settings_screen.is_some() {
+                self.settings_click(hit);
+                return Vec::new();
+            }
             if !window {
                 return self.library_click(hit);
             }
@@ -1172,9 +1437,15 @@ impl Browser {
             Hit::Minimize => vec![Command::Minimize],
             Hit::Maximize => vec![Command::ToggleMaximize],
             Hit::CloseWindow => vec![Command::CloseWindow],
-            // Paramètres : écran prévu au jalon 7. Barre de titre : gérée par la fenêtre.
-            Hit::Settings | Hit::TitleBar => Vec::new(),
-            // La bibliothèque est fermée : ses éléments ne sont pas à l'écran.
+            Hit::Settings => {
+                self.open_settings();
+                Vec::new()
+            }
+            // Barre de titre : gérée par la fenêtre.
+            Hit::TitleBar => Vec::new(),
+            // La bibliothèque et les paramètres sont fermés : leurs éléments
+            // ne sont pas à l'écran.
+            Hit::SettingsGroup(_) | Hit::Setting { .. } => Vec::new(),
             Hit::LibraryBack
             | Hit::LibrarySection(_)
             | Hit::LibraryRow(_)
@@ -1256,12 +1527,16 @@ impl Browser {
 
     /// Touche du clavier.
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
+        if self.settings_screen.is_some() && self.settings_key(&key) {
+            return Vec::new();
+        }
         if self.library.is_some()
             && let Some(commands) = self.library_key(&key)
         {
             return commands;
         }
         match key {
+            KeyPress::Ctrl(',') => self.open_settings(),
             KeyPress::Ctrl('h') => self.open_library(LibrarySection::History),
             KeyPress::CtrlShift('o') => self.open_library(LibrarySection::Bookmarks),
             KeyPress::Ctrl('l' | 'k') => self.start_editing(),
@@ -1304,7 +1579,7 @@ impl Browser {
                 if let Some(input) = self.editing.take()
                     && !input.trim().is_empty()
                 {
-                    return match loader::resolve_input(&input) {
+                    return match loader::resolve_input_with(&input, self.engine_index()) {
                         Ok(url) => self.load(self.active, url, true),
                         Err(error) => {
                             let failed = Loaded {
@@ -1551,7 +1826,7 @@ impl Browser {
         down: bool,
         input: &oxyde_content::KeyInput<'_>,
     ) -> (bool, bool) {
-        if self.editing.is_some() || self.library.is_some() {
+        if self.editing.is_some() || self.library_open() {
             return (false, false);
         }
         let Some(tab) = self.tabs.get_mut(self.active) else {
@@ -2047,5 +2322,86 @@ mod tests {
         assert_eq!(day_label((2025, 8, 1), today, yesterday), "1er août 2025");
         // Un mois hors bornes ne fait rien paniquer.
         assert_eq!(day_label((2025, 0, 5), today, yesterday), "5  2025");
+    }
+
+    #[test]
+    fn settings_screen_changes_and_keeps_settings() {
+        let mut b = browser();
+        b.click(Hit::Settings, None);
+        assert!(b.library_open());
+        b.click(
+            Hit::Setting {
+                row: ROW_ACCENT,
+                option: 2,
+            },
+            None,
+        );
+        {
+            let views = b.views();
+            let state = b.chrome_state(&views, 1440.0, 900.0);
+            assert_eq!(state.accent, theme::BLUE);
+            assert_eq!(state.settings.map(|s| s.groups.len()), Some(5));
+        }
+        let toggle = |b: &mut Browser, row| {
+            b.click(Hit::Setting { row, option: 0 }, None);
+        };
+        b.click(
+            Hit::Setting {
+                row: ROW_ENGINE,
+                option: 2,
+            },
+            None,
+        );
+        toggle(&mut b, ROW_HISTORY);
+        toggle(&mut b, ROW_RESTORE);
+        assert!(!b.settings.flag(KEY_RESTORE, true));
+
+        // Effacer l'historique demande une confirmation.
+        b.history.record("https://x.test/", "X", 1);
+        toggle(&mut b, ROW_CLEAR);
+        assert_eq!(b.history.visits().len(), 1);
+        toggle(&mut b, ROW_CLEAR);
+        assert!(b.history.visits().is_empty());
+
+        // Une rubrique choisie à gauche vient en haut du panneau.
+        b.click(Hit::SettingsGroup(3), None);
+        {
+            let views = b.views();
+            let state = b.chrome_state(&views, 1440.0, 900.0);
+            let view = state.settings.expect("paramètres");
+            assert_eq!((view.selected, view.jump), (3, Some(3)));
+        }
+        b.settle_settings_scroll(120.0);
+        {
+            let views = b.views();
+            let state = b.chrome_state(&views, 1440.0, 900.0);
+            let view = state.settings.expect("paramètres");
+            assert_eq!((view.scroll, view.jump), (120.0, None));
+        }
+        b.key(KeyPress::Escape);
+        assert!(!b.library_open());
+
+        // La recherche va au moteur choisi, et la visite n'est plus notée.
+        b.key(KeyPress::Ctrl('l'));
+        b.key(KeyPress::Text("deux mots".into()));
+        let (_, url, _) = load_target(&b.key(KeyPress::Enter)).expect("recherche");
+        assert!(
+            url.starts_with("https://www.mojeek.com/search?q=deux+mots"),
+            "{url}"
+        );
+        b.finish_load(1, page("https://b.test/", "<title>B</title>"), true);
+        assert!(b.history.visits().is_empty());
+
+        // Les réglages reviennent tels quels après un passage par le disque.
+        let reread = Settings::decode(&b.settings.encode());
+        assert_eq!(reread.get(KEY_ACCENT), Some("bleu"));
+        assert_eq!(reread.get(KEY_ENGINE), Some("mojeek"));
+        assert!(!reread.flag(KEY_HISTORY, true));
+
+        // Ctrl , ouvre les paramètres ; Ctrl H passe à l'historique.
+        b.key(KeyPress::Ctrl(','));
+        assert!(b.settings_screen.is_some());
+        b.key(KeyPress::Ctrl('h'));
+        assert!(b.settings_screen.is_none() && b.library.is_some());
     }
 }
