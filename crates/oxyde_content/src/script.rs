@@ -945,6 +945,9 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         h.dirty = true;
         return Some(Ok(()));
     }
+    if matches!(key, "scrollTop" | "scrollLeft") && host(vm)?.doc.element(node).is_some() {
+        return Some(geometry::set_scroll_property(vm, node, key, value));
+    }
     // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
     if key == "value"
         && host(vm)?
@@ -1503,7 +1506,10 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "click", element_click),
     ("", "focus", no_op),
     ("", "blur", no_op),
-    ("", "scrollIntoView", no_op),
+    ("", "scrollIntoView", geometry::scroll_into_view),
+    ("", "scrollTo", geometry::element_scroll_to),
+    ("", "scroll", geometry::element_scroll_to),
+    ("", "scrollBy", geometry::element_scroll_by),
     (
         "",
         "getBoundingClientRect",
@@ -1911,6 +1917,9 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         ("removeEventListener", 2, remove_event_listener),
         ("dispatchEvent", 1, events::dispatch_event),
         ("getComputedStyle", 1, geometry::get_computed_style),
+        ("scrollTo", 2, geometry::window_scroll_to),
+        ("scroll", 2, geometry::window_scroll_to),
+        ("scrollBy", 2, geometry::window_scroll_by),
         ("alert", 1, window_alert),
         ("confirm", 1, window_confirm),
         ("prompt", 1, window_prompt),
@@ -1920,6 +1929,12 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     }
     define_getter(vm, global, "innerWidth", window_inner_width)?;
     define_getter(vm, global, "innerHeight", window_inner_height)?;
+    for name in ["scrollX", "pageXOffset"] {
+        define_getter(vm, global, name, geometry::window_scroll_x)?;
+    }
+    for name in ["scrollY", "pageYOffset"] {
+        define_getter(vm, global, name, geometry::window_scroll_y)?;
+    }
 
     let performance = vm.new_object();
     vm.define_method(performance, "now", 0, performance_now);
@@ -2325,6 +2340,23 @@ impl ScriptEngine {
         result: Result<crate::FetchResponse, String>,
     ) {
         self.run(doc, |vm| settle_fetch(vm, id, result));
+    }
+
+    /// Distribue l'événement `scroll` aux zones `ids` qui ont défilé : sur
+    /// le document pour la fenêtre, sur l'élément sinon.
+    pub(crate) fn scroll_events(&mut self, doc: &mut Document, ids: &[u32]) {
+        self.run(doc, |vm| {
+            for id in ids {
+                let Some(h) = host(vm) else { return };
+                if *id == oxyde_compositor::ROOT_SCROLLER {
+                    let document = h.doc.root();
+                    events::dispatch_simple(vm, document, "scroll", true);
+                } else if let Some(node) = h.doc.id_from_index(*id as usize) {
+                    events::dispatch_simple(vm, node, "scroll", false);
+                }
+                vm.run_microtasks();
+            }
+        });
     }
 
     /// Distribue aux scripts les événements d'animation et de transition.

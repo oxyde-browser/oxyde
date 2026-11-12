@@ -48,6 +48,48 @@
     expose(constructor.name, constructor);
   }
 
+  // Les méthodes de défilement rendent une promesse, tenue une fois le
+  // défilement fait : il est toujours immédiat ici.
+  const behaviors = ["auto", "instant", "smooth"];
+  const promised = (target, name, checked) => {
+    const native = target[name];
+    if (typeof native !== "function") return;
+    define(target, name, {
+      value: function (...args) {
+        try {
+          if (checked && args.length === 1) {
+            // Un seul argument : ce doit être un dictionnaire d'options valide.
+            const options = args[0];
+            if (options === null || typeof options !== "object") {
+              throw new TypeError(name + " : un seul argument doit être un dictionnaire");
+            }
+            const behavior = options.behavior;
+            if (behavior !== undefined && !behaviors.includes(String(behavior))) {
+              throw new TypeError(name + " : comportement de défilement inconnu");
+            }
+          }
+          native.apply(this, args);
+        } catch (error) {
+          return Promise.reject(error);
+        }
+        return Promise.resolve();
+      },
+      writable: true, enumerable: target !== global, configurable: true,
+    });
+    define(target[name], "name", { value: name, configurable: true });
+    define(target[name], "length", { value: native.length, configurable: true });
+  };
+  for (const name of ["scrollTo", "scroll", "scrollBy"]) {
+    promised(global, name, true);
+    promised(global.Element.prototype, name, true);
+  }
+  promised(global.Element.prototype, "scrollIntoView", false);
+
+  // `document.scrollingElement` : l'élément racine porte le défilement de la fenêtre.
+  define(global.Document.prototype, "scrollingElement", {
+    get() { return this.documentElement; }, enumerable: true, configurable: true,
+  });
+
   // ---- CSS -------------------------------------------------------------------------------
   // `CSS.escape` (CSSOM §2.1) : rend un identifiant utilisable dans un sélecteur.
   function escape(value) {

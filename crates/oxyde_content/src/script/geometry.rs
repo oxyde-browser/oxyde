@@ -6,9 +6,13 @@
 //! le champ, comme dans un navigateur (« mise en page forcée »). Le résultat
 //! est gardé tant que le document et la fenêtre ne changent pas.
 //!
+//! Le défilement (`scrollTop`, `scrollTo`, `scrollIntoView`, `window.scrollY`…)
+//! est tenu par l'arbre de défilement que la page partage avec son moteur
+//! de script ; il déplace les rectangles sans redemander de mise en page.
+//!
 //! LIMITES CONNUES : seul le document de la page est mis en page (pas ceux
-//! des cadres) ; rien ne défile, donc `scrollTop` et `scrollLeft` valent 0 et
-//! les rectangles sont relatifs à la page ; `getComputedStyle` ne connaît que
+//! des cadres) ; le défilement est toujours immédiat (`behavior: "smooth"`
+//! est ignoré) ; `getComputedStyle` ne connaît que
 //! les propriétés du style calculé d'Oxyde et ignore les pseudo-éléments ;
 //! `getClientRects` rend un seul rectangle par élément.
 
@@ -34,9 +38,20 @@ pub(super) struct Geometry {
     time: Option<f64>,
     /// Boîte de bordure de chaque nœud mis en page, en coordonnées de page.
     boxes: HashMap<u32, Rect>,
-    /// Rectangle englobant, une fois transformé, de chaque boîte soumise à
-    /// un `transform` (le sien ou celui d'un ancêtre).
+    /// Rectangle englobant, tel qu'il apparaît dans la fenêtre, de chaque
+    /// boîte déplacée par un `transform` ou par un défilement (les siens ou
+    /// ceux d'un ancêtre).
     transformed: HashMap<u32, Rect>,
+    /// Zones qui découpent leur contenu : largeur et hauteur du contenu,
+    /// puis de la partie visible.
+    extents: HashMap<u32, (f32, f32, f32, f32)>,
+    /// Version du défilement pour laquelle les rectangles ont été relevés.
+    measured: Option<u64>,
+    /// Fragment racine de la mise en page, gardé pour relever de nouveau les
+    /// rectangles quand le défilement change.
+    root: Option<Fragment>,
+    /// Largeur et hauteur du contenu de la page.
+    content: (f32, f32),
     /// Styles calculés.
     styles: StyleMap,
     /// Pistes de chaque conteneur en grille.
@@ -64,19 +79,49 @@ struct Collected {
     boxes: HashMap<u32, Rect>,
     /// Rectangles du texte des éléments en ligne.
     inline: HashMap<u32, Rect>,
-    /// Rectangles englobants des boîtes transformées.
+    /// Les mêmes, tels qu'ils apparaissent dans la fenêtre.
+    inline_visual: HashMap<u32, Rect>,
+    /// Rectangles englobants des boîtes transformées ou défilées.
     transformed: HashMap<u32, Rect>,
+    /// Étendue du contenu et de la partie visible des zones qui découpent.
+    extents: HashMap<u32, (f32, f32, f32, f32)>,
 }
 
-/// Relève les boîtes de `fragment` ; `matrix` est la transformation héritée
-/// des ancêtres, s'il y en a une.
-fn collect(fragment: &Fragment, matrix: Option<oxyde_css::Affine>, out: &mut Collected) {
+/// Compose `inner` après la transformation héritée `outer`.
+fn compose(
+    outer: Option<oxyde_css::Affine>,
+    inner: oxyde_css::Affine,
+) -> Option<oxyde_css::Affine> {
+    Some(match outer {
+        Some(outer) => outer.then_inner(inner),
+        None => inner,
+    })
+}
+
+/// Relève les boîtes de `fragment` ; `matrix` est le déplacement hérité des
+/// ancêtres (transformations et défilements), s'il y en a un, et `scroll`
+/// donne le défilement de chaque zone.
+fn collect(
+    fragment: &Fragment,
+    matrix: Option<oxyde_css::Affine>,
+    scroll: &dyn Fn(u32) -> (f32, f32),
+    out: &mut Collected,
+) {
+    use oxyde_css::Affine;
     match fragment {
         Fragment::Box(b) => {
-            let matrix = match (matrix, oxyde_layout::box_transform(b)) {
-                (Some(outer), Some(own)) => Some(outer.then_inner(own)),
-                (outer, own) => outer.or(own),
-            };
+            let mut matrix = matrix;
+            // Une boîte fixe ne suit pas le défilement de la fenêtre.
+            if b.style.position == oxyde_css::Position::Fixed {
+                let (x, y) = scroll(oxyde_compositor::ROOT_SCROLLER);
+                if x != 0.0 || y != 0.0 {
+                    matrix = compose(matrix, Affine::translate(x, y));
+                }
+            }
+            if let Some(own) = oxyde_layout::box_transform(b) {
+                matrix = compose(matrix, own);
+            }
+            let mut inner = matrix;
             if let Some(node) = b.node {
                 out.boxes
                     .entry(index(node))
@@ -91,16 +136,25 @@ fn collect(fragment: &Fragment, matrix: Option<oxyde_css::Affine>, out: &mut Col
                         .and_modify(|rect| *rect = union(*rect, bounds))
                         .or_insert(bounds);
                 }
+                if oxyde_layout::clips_content(&b.style) {
+                    let port = oxyde_layout::padding_box(b);
+                    let (width, height) = oxyde_layout::scrollable_extent(b);
+                    out.extents
+                        .insert(index(node), (width, height, port.w, port.h));
+                    let (x, y) = scroll(crate::scroll_id(node));
+                    if x != 0.0 || y != 0.0 {
+                        inner = compose(matrix, Affine::translate(-x, -y));
+                    }
+                }
             }
             for child in &b.children {
-                collect(child, matrix, out);
+                collect(child, inner, scroll, out);
             }
         }
         Fragment::Text(t) => {
             for child in &t.boxes {
-                collect(child, matrix, out);
+                collect(child, matrix, scroll, out);
             }
-            let inline = &mut out.inline;
             for line in t.layout.lines() {
                 let metrics = line.metrics();
                 for item in line.items() {
@@ -111,15 +165,68 @@ fn collect(fragment: &Fragment, matrix: Option<oxyde_css::Affine>, out: &mut Col
                             w: run.advance(),
                             h: metrics.block_max_coord - metrics.block_min_coord,
                         };
-                        inline
-                            .entry(run.style().brush.node)
+                        let node = run.style().brush.node;
+                        out.inline
+                            .entry(node)
                             .and_modify(|known| *known = union(*known, rect))
                             .or_insert(rect);
+                        if let Some(matrix) = matrix {
+                            let (x, y, w, h) = matrix.bounds(rect.x, rect.y, rect.w, rect.h);
+                            let bounds = Rect { x, y, w, h };
+                            out.inline_visual
+                                .entry(node)
+                                .and_modify(|known| *known = union(*known, bounds))
+                                .or_insert(bounds);
+                        }
                     }
                 }
             }
         }
     }
+}
+
+/// Relève les rectangles de la mise en page `root` pour le défilement
+/// `scroll` et les range dans `geometry`.
+fn measure(doc: &Document, geometry: &mut Geometry, scroll: &dyn Fn(u32) -> (f32, f32)) {
+    let mut collected = Collected::default();
+    if let Some(root) = &geometry.root {
+        // Le défilement de la fenêtre déplace toute la page.
+        let (x, y) = scroll(oxyde_compositor::ROOT_SCROLLER);
+        let matrix = (x != 0.0 || y != 0.0).then(|| oxyde_css::Affine::translate(-x, -y));
+        collect(root, matrix, scroll, &mut collected);
+    }
+    let Collected {
+        mut boxes,
+        inline,
+        inline_visual,
+        mut transformed,
+        extents,
+    } = collected;
+    // Un élément en ligne n'a pas de boîte : son rectangle est celui de
+    // son texte, et celui d'un ancêtre en ligne englobe ses descendants.
+    let styles = &geometry.styles;
+    let spread =
+        |from: HashMap<u32, Rect>, into: &mut HashMap<u32, Rect>, blocks: &HashMap<u32, Rect>| {
+            for (node, rect) in from {
+                let mut current = doc.id_from_index(node as usize);
+                while let Some(id) = current {
+                    let key = index(id);
+                    if blocks.contains_key(&key) && !inline_only(styles, id) {
+                        break;
+                    }
+                    into.entry(key)
+                        .and_modify(|known| *known = union(*known, rect))
+                        .or_insert(rect);
+                    current = doc.node(id).parent;
+                }
+            }
+        };
+    let blocks = boxes.clone();
+    spread(inline, &mut boxes, &blocks);
+    spread(inline_visual, &mut transformed, &blocks);
+    geometry.boxes = boxes;
+    geometry.transformed = transformed;
+    geometry.extents = extents;
 }
 
 /// Géométrie à jour du document de la page, recalculée si besoin.
@@ -135,42 +242,31 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
         let env = h.layout_env.as_ref()?;
         let text = h.text.get_or_insert_with(TextContext::new);
         let (styles, tree, time) = crate::layout_snapshot(&h.doc, env, viewport, text);
-        let mut collected = Collected::default();
-        if let Some(root) = &tree.root {
-            collect(root, None, &mut collected);
-        }
-        let Collected {
-            mut boxes,
-            inline,
-            transformed,
-        } = collected;
-        // Un élément en ligne n'a pas de boîte : son rectangle est celui de
-        // son texte, et celui d'un ancêtre en ligne englobe ses descendants.
-        let doc = &h.doc;
-        for (node, rect) in inline {
-            let mut current = doc.id_from_index(node as usize);
-            while let Some(id) = current {
-                let key = index(id);
-                if boxes.contains_key(&key) && !inline_only(&styles, id) {
-                    break;
-                }
-                boxes
-                    .entry(key)
-                    .and_modify(|known| *known = union(*known, rect))
-                    .or_insert(rect);
-                current = doc.node(id).parent;
-            }
-        }
         h.geometry = Some(Geometry {
             version,
             viewport,
             time,
-            boxes,
-            transformed,
+            boxes: HashMap::new(),
+            transformed: HashMap::new(),
+            extents: HashMap::new(),
+            measured: None,
+            content: (tree.width, tree.height),
+            root: tree.root,
             styles,
             grids: tree.grids,
         });
     }
+    // Les rectangles dépendent du défilement : ils sont relevés de nouveau
+    // quand il change, sans refaire la mise en page.
+    let scrolling = std::sync::Arc::clone(&h.layout_env.as_ref()?.scrolling);
+    let tree = scrolling.lock();
+    let scroll_version = tree.version();
+    let geometry = h.geometry.as_mut()?;
+    if geometry.measured != Some(scroll_version) {
+        measure(&h.doc, geometry, &|id| tree.offset(id));
+        geometry.measured = Some(scroll_version);
+    }
+    drop(tree);
     host(vm)?.geometry.as_ref()
 }
 
@@ -239,6 +335,247 @@ pub(super) fn get_client_rects(vm: &mut Vm, this: &Value, _args: &[Value]) -> Js
     Ok(vm.new_array(rects))
 }
 
+/// Identifiant de défilement de `node` : celui de la fenêtre pour l'élément
+/// racine.
+fn scroller_of(vm: &mut Vm, node: NodeId) -> Option<u32> {
+    let h = host(vm)?;
+    h.doc.element(node)?;
+    let is_root = h.doc.node(node).parent == Some(h.doc.root());
+    Some(if is_root {
+        oxyde_compositor::ROOT_SCROLLER
+    } else {
+        crate::scroll_id(node)
+    })
+}
+
+/// Défilement de `node`.
+fn scroll_offset(vm: &mut Vm, node: NodeId) -> (f32, f32) {
+    let Some(id) = scroller_of(vm, node) else {
+        return (0.0, 0.0);
+    };
+    host(vm)
+        .and_then(|h| h.layout_env.as_ref())
+        .map_or((0.0, 0.0), |env| env.scrolling.lock().offset(id))
+}
+
+/// Plus grand défilement de `node` d'après la mise en page courante ;
+/// `None` s'il ne défile pas.
+fn scroll_limit(vm: &mut Vm, node: NodeId) -> Option<(f32, f32)> {
+    let id = scroller_of(vm, node)?;
+    let geometry = ensure(vm)?;
+    if id == oxyde_compositor::ROOT_SCROLLER {
+        return Some((
+            (geometry.content.0 - geometry.viewport.0).max(0.0),
+            (geometry.content.1 - geometry.viewport.1).max(0.0),
+        ));
+    }
+    let (width, height, port_w, port_h) = *geometry.extents.get(&index(node))?;
+    // `overflow: clip` découpe sans défiler.
+    let style = geometry.styles.get(node)?;
+    let scrollable = |overflow: oxyde_css::Overflow| {
+        !matches!(
+            overflow,
+            oxyde_css::Overflow::Visible | oxyde_css::Overflow::Clip
+        )
+    };
+    (scrollable(style.overflow_x) || scrollable(style.overflow_y))
+        .then_some(((width - port_w).max(0.0), (height - port_h).max(0.0)))
+}
+
+/// Fait défiler `node` jusqu'à (`x`, `y`) ; une coordonnée absente garde sa
+/// valeur, et `relative` les ajoute au défilement courant.
+fn scroll_node(vm: &mut Vm, node: NodeId, x: Option<f64>, y: Option<f64>, relative: bool) {
+    let (Some(id), Some(max)) = (scroller_of(vm, node), scroll_limit(vm, node)) else {
+        return;
+    };
+    let (old_x, old_y) = scroll_offset(vm, node);
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "décalage en pixels : f32 suffit"
+    )]
+    let target = |wanted: Option<f64>, old: f32| match wanted {
+        Some(value) if value.is_finite() && relative => old + value as f32,
+        Some(value) if value.is_finite() => value as f32,
+        Some(_) => 0.0,
+        None => old,
+    };
+    let (x, y) = (target(x, old_x), target(y, old_y));
+    if let Some(env) = host(vm).and_then(|h| h.layout_env.as_ref()) {
+        env.scrolling.lock().scroll_to(id, x, y, max);
+    }
+}
+
+/// Arguments de `scrollTo` et `scrollBy` : `(x, y)` ou `{ left, top }`.
+fn scroll_arguments(vm: &mut Vm, args: &[Value]) -> JsResult<(Option<f64>, Option<f64>)> {
+    match args {
+        [] => Ok((None, None)),
+        [options @ Value::Object(_)] => {
+            let mut read = |name: &str| -> JsResult<Option<f64>> {
+                let value = vm.get(options, name)?;
+                if matches!(value, Value::Undefined) {
+                    Ok(None)
+                } else {
+                    vm.to_number(&value).map(Some)
+                }
+            };
+            Ok((read("left")?, read("top")?))
+        }
+        [x] => Ok((Some(vm.to_number(x)?), None)),
+        [x, y, ..] => Ok((Some(vm.to_number(x)?), Some(vm.to_number(y)?))),
+    }
+}
+
+/// Élément racine du document de la page : il porte le défilement de la
+/// fenêtre.
+fn root_element(vm: &mut Vm) -> Option<NodeId> {
+    let h = host(vm)?;
+    h.doc
+        .children(h.doc.root())
+        .find(|n| h.doc.element(*n).is_some())
+}
+
+pub(super) fn set_scroll_property(
+    vm: &mut Vm,
+    node: NodeId,
+    key: &str,
+    value: &Value,
+) -> JsResult<()> {
+    let value = vm.to_number(value)?;
+    if key == "scrollTop" {
+        scroll_node(vm, node, None, Some(value), false);
+    } else {
+        scroll_node(vm, node, Some(value), None, false);
+    }
+    Ok(())
+}
+
+pub(super) fn element_scroll_to(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let node = this_node(vm, this)?;
+    let (x, y) = scroll_arguments(vm, args)?;
+    scroll_node(vm, node, x, y, false);
+    Ok(Value::Undefined)
+}
+
+pub(super) fn element_scroll_by(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let node = this_node(vm, this)?;
+    let (x, y) = scroll_arguments(vm, args)?;
+    scroll_node(vm, node, x, y, true);
+    Ok(Value::Undefined)
+}
+
+pub(super) fn window_scroll_to(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let (x, y) = scroll_arguments(vm, args)?;
+    if let Some(root) = root_element(vm) {
+        scroll_node(vm, root, x, y, false);
+    }
+    Ok(Value::Undefined)
+}
+
+pub(super) fn window_scroll_by(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let (x, y) = scroll_arguments(vm, args)?;
+    if let Some(root) = root_element(vm) {
+        scroll_node(vm, root, x, y, true);
+    }
+    Ok(Value::Undefined)
+}
+
+pub(super) fn window_scroll_x(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let x = root_element(vm).map_or(0.0, |root| scroll_offset(vm, root).0);
+    Ok(Value::Number(f64::from(x)))
+}
+
+pub(super) fn window_scroll_y(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let y = root_element(vm).map_or(0.0, |root| scroll_offset(vm, root).1);
+    Ok(Value::Number(f64::from(y)))
+}
+
+/// `scrollIntoView` : chaque zone défilante qui contient l'élément, puis la
+/// fenêtre, défile pour l'amener en vue — en haut par défaut, en bas avec
+/// `false` ou `{ block: "end" }`, au milieu avec `{ block: "center" }`, et
+/// le moins possible avec `{ block: "nearest" }`.
+///
+/// LIMITE : l'axe horizontal ne défile que si l'élément est hors de vue.
+pub(super) fn scroll_into_view(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let node = this_node(vm, this)?;
+    let block = match args.first() {
+        Some(Value::Bool(false)) => "end".to_owned(),
+        Some(options @ Value::Object(_)) => {
+            let value = vm.get(options, "block")?;
+            if matches!(value, Value::Undefined) {
+                "start".to_owned()
+            } else {
+                vm.to_string(&value)?.to_string()
+            }
+        }
+        _ => "start".to_owned(),
+    };
+    let Some(mut rect) = border_box(vm, node) else {
+        return Ok(Value::Undefined);
+    };
+    // Position à donner au défilement pour qu'un segment [start, start + size[
+    // du contenu soit en vue dans une fenêtre de longueur `port` déjà
+    // défilée de `offset`.
+    let along = |start: f32, size: f32, port: f32, offset: f32, mode: &str| match mode {
+        "end" => start + size - port,
+        "center" => start + size / 2.0 - port / 2.0,
+        "nearest" => {
+            if start < offset {
+                start
+            } else if start + size > offset + port {
+                start + size - port
+            } else {
+                offset
+            }
+        }
+        _ => start,
+    };
+    let ancestors: Vec<NodeId> = match host(vm) {
+        Some(h) => h.doc.ancestors(node).collect(),
+        None => return Ok(Value::Undefined),
+    };
+    for ancestor in ancestors {
+        let is_root = scroller_of(vm, ancestor) == Some(oxyde_compositor::ROOT_SCROLLER);
+        let Some(max) = scroll_limit(vm, ancestor) else {
+            continue;
+        };
+        // Origine et taille de la partie visible de la zone.
+        let (origin, port) = if is_root {
+            let viewport = host(vm).map_or((0.0, 0.0), |h| h.viewport);
+            ((0.0, 0.0), viewport)
+        } else {
+            let (Some(outer), Some(style)) = (border_box(vm, ancestor), style_of(vm, ancestor))
+            else {
+                continue;
+            };
+            let borders = style.border_widths();
+            let Some((_, _, port_w, port_h)) =
+                ensure(vm).and_then(|geometry| geometry.extents.get(&index(ancestor)).copied())
+            else {
+                continue;
+            };
+            (
+                (outer.x + borders.left, outer.y + borders.top),
+                (port_w, port_h),
+            )
+        };
+        let (old_x, old_y) = scroll_offset(vm, ancestor);
+        let x = along(rect.x - origin.0, rect.w, port.0, old_x, "nearest");
+        let y = along(rect.y - origin.1, rect.h, port.1, old_y, &block);
+        let Some(id) = scroller_of(vm, ancestor) else {
+            continue;
+        };
+        if let Some(env) = host(vm).and_then(|h| h.layout_env.as_ref()) {
+            env.scrolling.lock().scroll_to(id, x, y, max);
+        }
+        // Pour les zones plus extérieures, l'élément est là où cette zone
+        // vient de l'amener.
+        let (new_x, new_y) = scroll_offset(vm, ancestor);
+        rect.x -= new_x;
+        rect.y -= new_y;
+    }
+    Ok(Value::Undefined)
+}
+
 /// Ancêtre par rapport auquel `offsetLeft` et `offsetTop` se mesurent : le
 /// plus proche ancêtre positionné, une cellule ou un tableau, sinon `<body>`.
 fn offset_parent(doc: &Document, styles: &StyleMap, node: NodeId) -> Option<NodeId> {
@@ -260,7 +597,9 @@ fn offset_parent(doc: &Document, styles: &StyleMap, node: NodeId) -> Option<Node
 /// Propriété de géométrie `key` de l'élément `node`.
 pub(super) fn property(vm: &mut Vm, node: NodeId, key: &str) -> Option<JsResult> {
     if matches!(key, "scrollTop" | "scrollLeft") {
-        return Some(Ok(Value::Number(0.0)));
+        let (x, y) = scroll_offset(vm, node);
+        let value = if key == "scrollTop" { y } else { x };
+        return Some(Ok(Value::Number(f64::from(value))));
     }
     let rect = border_box(vm, node);
     let style = style_of(vm, node);
@@ -299,6 +638,20 @@ pub(super) fn property(vm: &mut Vm, node: NodeId, key: &str) -> Option<JsResult>
             // jusqu'au bord des descendants qui en débordent vers la droite
             // ou vers le bas.
             let geometry = h.geometry.as_ref()?;
+            // Zone qui découpe : l'étendue de son contenu défilable.
+            // (`overflow` ne s'applique pas à un élément en ligne.)
+            if let Some((width, height, _, _)) = geometry
+                .extents
+                .get(&index(node))
+                .filter(|_| !is_root && style.display != Display::Inline)
+            {
+                let value = if key == "scrollWidth" {
+                    *width
+                } else {
+                    *height
+                };
+                return Some(Ok(Value::Number(f64::from(value.round()))));
+            }
             let (left, top) = (rect.x + borders.left, rect.y + borders.top);
             let (mut right, mut bottom) = (left + client_w, top + client_h);
             for descendant in h.doc.descendants(node) {

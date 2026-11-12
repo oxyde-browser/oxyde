@@ -774,10 +774,6 @@
   screen.pixelDepth = 24;
   expose("screen", screen);
   expose("devicePixelRatio", 1);
-  // LIMITE : la position de défilement appartient à l'interface ; les
-  // scripts voient 0 et leurs demandes de défilement sont sans effet.
-  for (const name of ["scrollX", "scrollY", "pageXOffset", "pageYOffset"]) expose(name, 0);
-  for (const name of ["scrollTo", "scroll", "scrollBy"]) expose(name, function () {});
   Object.assign(navigator, {
     onLine: true, platform: "Win32", vendor: "", cookieEnabled: false,
     hardwareConcurrency: 1, maxTouchPoints: 0,

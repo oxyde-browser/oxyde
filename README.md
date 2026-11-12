@@ -75,7 +75,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
 | `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
 | `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
-| `oxyde_compositor` | calques, défilement, animations | cc, Viz | **réservé — jalon 6** |
+| `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
 | `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |
 
@@ -93,7 +93,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
   pas encore. Conformité mesurée : 83,5 % de test262
-  ([conformance/test262.md](conformance/test262.md)) ; 92,4 % des membres des interfaces du DOM
+  ([conformance/test262.md](conformance/test262.md)) ; 96,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
   dossier `dom/` des Web Platform Tests, 286 fichiers de test entièrement réussis sur 693 (41,3 %)
   ([conformance/wpt.md](conformance/wpt.md)).

@@ -356,6 +356,19 @@ pub fn pop_clip(scene: &mut Scene) {
 /// Ajoute `list` à `scene`, transformée par `transform` (défilement, échelle
 /// de l'écran, position dans la fenêtre).
 pub fn append_display_list(scene: &mut Scene, list: &DisplayList, transform: Affine) {
+    append_scrolled(scene, list, transform, &|_| (0.0, 0.0));
+}
+
+/// Comme [`append_display_list`], le contenu de chaque zone défilante étant
+/// décalé de `scroll(identifiant)` ; l'identifiant
+/// [`oxyde_paint::ROOT_SCROLLER`] désigne le défilement de la fenêtre, dont
+/// `transform` tient déjà compte.
+pub fn append_scrolled(
+    scene: &mut Scene,
+    list: &DisplayList,
+    transform: Affine,
+    scroll: &dyn Fn(u32) -> (f32, f32),
+) {
     let mut clip_depth = 0usize;
     // Transformations en cours : celle de la liste, puis les groupes ouverts.
     let mut transform = transform;
@@ -370,6 +383,63 @@ pub fn append_display_list(scene: &mut Scene, list: &DisplayList, transform: Aff
                 // Une liste mal formée ne ferme pas un groupe qu'elle n'a pas ouvert.
                 if let Some(outer) = outer_transforms.pop() {
                     transform = outer;
+                }
+            }
+            DisplayItem::PushScroll { id } => {
+                let (x, y) = scroll(*id);
+                outer_transforms.push(transform);
+                transform *= Affine::translate((-f64::from(x), -f64::from(y)));
+            }
+            DisplayItem::PushFixed => {
+                let (x, y) = scroll(oxyde_paint::ROOT_SCROLLER);
+                outer_transforms.push(transform);
+                transform *= Affine::translate((f64::from(x), f64::from(y)));
+            }
+            DisplayItem::Scrollbar {
+                id,
+                track,
+                vertical,
+                visible,
+                total,
+            } => {
+                let (x, y) = scroll(*id);
+                let offset = if *vertical { y } else { x };
+                let length = if *vertical { track.h } else { track.w };
+                let range = total - visible;
+                if range > 0.0 && length > 0.0 {
+                    // Curseur : sa taille dit la part visible, sa position
+                    // l'avancement du défilement.
+                    let thumb = (length * visible / total).clamp(length.min(16.0), length);
+                    let start = (length - thumb) * (offset / range).clamp(0.0, 1.0);
+                    let inset = 2.0_f32;
+                    let rect = if *vertical {
+                        oxyde_paint::Rect {
+                            x: track.x + inset,
+                            y: track.y + start,
+                            w: (track.w - 2.0 * inset).max(1.0),
+                            h: thumb,
+                        }
+                    } else {
+                        oxyde_paint::Rect {
+                            x: track.x + start,
+                            y: track.y + inset,
+                            w: thumb,
+                            h: (track.h - 2.0 * inset).max(1.0),
+                        }
+                    };
+                    let color = oxyde_css::Color {
+                        r: 0,
+                        g: 0,
+                        b: 0,
+                        a: 110,
+                    };
+                    scene.fill(
+                        Fill::NonZero,
+                        transform,
+                        to_peniko(color),
+                        None,
+                        &shape_of(rect, rect.w.min(rect.h) / 2.0),
+                    );
                 }
             }
             DisplayItem::Rect {

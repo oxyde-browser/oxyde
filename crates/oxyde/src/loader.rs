@@ -362,6 +362,28 @@ pub(crate) fn load(url: Url) -> Loaded {
     load_with(url, None)
 }
 
+/// Taille de la zone où les pages s'affichent, telle que la dernière image
+/// l'a établie : les scripts d'une page qui se charge la voient avant sa
+/// première mise en page.
+static VIEWPORT_HINT: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+
+/// Note la taille de la zone où les pages s'affichent.
+pub(crate) fn set_viewport_hint(width: f32, height: f32) {
+    if width > 0.0 && height > 0.0 {
+        // Un verrou empoisonné ne protège qu'une taille : on la remplace.
+        *VIEWPORT_HINT
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((width, height));
+    }
+}
+
+fn viewport_hint() -> Option<oxyde_css::Viewport> {
+    let (width, height) = (*VIEWPORT_HINT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner))?;
+    Some(oxyde_css::Viewport { width, height })
+}
+
 /// Comme [`load`] ; `post` : la page est demandée par `POST` avec ce corps
 /// (soumission d'un formulaire).
 pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Loaded {
@@ -423,6 +445,9 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             let source = fetch(&module_url).ok().map(|(_, bytes)| decode(&bytes));
             page.set_module(&module_url, source);
         }
+    }
+    if let Some(viewport) = viewport_hint() {
+        page.set_viewport(viewport);
     }
     page.run_scripts();
     report_console(&mut page);

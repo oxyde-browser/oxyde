@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9711 / 28699 (33,8 %)** — fichiers entièrement réussis : 521 / 2267 (23,0 %).
+**Sous-tests réussis : 9890 / 28777 (34,4 %)** — fichiers entièrement réussis : 538 / 2267 (23,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -15,7 +15,7 @@ est le plus honnête des deux.
 |---|---:|---:|
 | `css/CSS2/floats` | 11 / 19 | 44 / 52 (84,6 %) |
 | `css/CSS2/normal-flow` | 19 / 31 | 103 / 130 (79,2 %) |
-| `css/CSS2/positioning` | 5 / 9 | 8 / 18 (44,4 %) |
+| `css/CSS2/positioning` | 6 / 9 | 9 / 18 (50,0 %) |
 | `css/css-align` | 0 / 3 | 4 / 27 (14,8 %) |
 | `css/css-align/abspos` | 0 / 69 | 132 / 1142 (11,6 %) |
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
@@ -80,7 +80,7 @@ est le plus honnête des deux.
 | `css/css-position/overlay` | 1 / 6 | 9 / 28 (32,1 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
-| `css/css-position/sticky` | 4 / 33 | 18 / 82 (22,0 %) |
+| `css/css-position/sticky` | 4 / 33 | 20 / 82 (24,4 %) |
 | `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
@@ -92,13 +92,13 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
-| `css/css-tables` | 28 / 82 | 187 / 285 (65,6 %) |
+| `css/css-tables` | 29 / 82 | 188 / 285 (66,0 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 2 / 5 | 5 / 10 (50,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 39 / 233 | 635 / 1747 (36,3 %) |
+| `css/cssom-view` | 54 / 233 | 810 / 1825 (44,4 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -128,7 +128,6 @@ est le plus honnête des deux.
 | `css/CSS2/positioning/inline-static-position-001.html` | 2 / 6 |  |
 | `css/CSS2/positioning/line-break-after-leading-float.html` | 0 / 1 |  |
 | `css/CSS2/positioning/relpos-percentage-offset-anonymous-block.html` | 1 / 5 |  |
-| `css/CSS2/positioning/relpos-percentage-top-in-scrollable.html` | 0 / 1 |  |
 | `css/css-align/abspos/align-self-default-overflow-htb-ltr-htb.html` | 2 / 14 |  |
 | `css/css-align/abspos/align-self-default-overflow-htb-ltr-vrl.html` | 2 / 14 |  |
 | `css/css-align/abspos/align-self-default-overflow-htb-rtl-htb.html` | 2 / 14 |  |
@@ -1356,6 +1355,7 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-horizontal-rtl-overconstrained.html` | 0 / 4 |  |
 | `css/css-position/sticky/position-sticky-inflow-position.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-inline-block-in-sticky-inline.html` | 0 / 2 |  |
+| `css/css-position/sticky/position-sticky-input-box-gets-focused-after-scroll.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-left-and-right-overconstrained.html` | 0 / 4 |  |
 | `css/css-position/sticky/position-sticky-left.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-margins.html` | 1 / 3 |  |
@@ -1365,10 +1365,9 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-nested-top.html` | 1 / 5 |  |
 | `css/css-position/sticky/position-sticky-offset-overflow.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-offset-top-left.html` | 0 / 2 |  |
-| `css/css-position/sticky/position-sticky-overflow-padding.html` | 1 / 3 |  |
+| `css/css-position/sticky/position-sticky-overflow-padding.html` | 2 / 3 |  |
 | `css/css-position/sticky/position-sticky-right.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-root-scroller.html` | 0 / 1 |  |
-| `css/css-position/sticky/position-sticky-scrollIntoView.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-single-axis-basic.html` | 0 / 2 |  |
 | `css/css-position/sticky/position-sticky-single-axis-dynamic.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-single-axis-nested.html` | 0 / 1 |  |
@@ -1376,7 +1375,7 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-top-and-bottom-overconstrained.html` | 0 / 4 |  |
 | `css/css-position/sticky/position-sticky-top-and-bottom.html` | 0 / 2 |  |
 | `css/css-position/sticky/position-sticky-top.html` | 1 / 3 |  |
-| `css/css-position/sticky/position-sticky-transforms-translate.html` | 0 / 3 |  |
+| `css/css-position/sticky/position-sticky-transforms-translate.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms.html` | 0 / 3 |  |
 | `css/css-position/sticky/sticky-after-input.html` | 0 / 1 |  |
 | `css/css-sizing/abspos-intrinsic-height-inset-percentage-child.html` | 3 / 6 |  |
@@ -1585,7 +1584,6 @@ est le plus honnête des deux.
 | `css/css-tables/html5-table-formatting-3.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/html5-table-formatting-fixed-layout-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/inheritance.html` | 0 / 10 |  |
-| `css/css-tables/no-overflow-with-table-cell-margins.html` | 0 / 1 |  |
 | `css/css-tables/parsing/border-collapse-computed.html` | 0 / 2 |  |
 | `css/css-tables/parsing/border-collapse-invalid.html` | 0 / 2 |  |
 | `css/css-tables/parsing/border-spacing-computed.html` | 0 / 6 |  |
@@ -1665,7 +1663,6 @@ est le plus honnête des deux.
 | `css/cssom-view/MediaQueryList-extends-EventTarget-interop.html` | 1 / 8 |  |
 | `css/cssom-view/MediaQueryList-extends-EventTarget.html` | 1 / 7 |  |
 | `css/cssom-view/MediaQueryListEvent.html` | 0 / 6 |  |
-| `css/cssom-view/background-change-during-smooth-scroll.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/checkVisibility.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/client-props-input.html` | 0 / 1 |  |
 | `css/cssom-view/client-scroll-props-input.html` | 0 / 2 |  |
@@ -1686,8 +1683,6 @@ est le plus honnête des deux.
 | `css/cssom-view/cssom-getBoxQuads-001.html` | 0 / 6 |  |
 | `css/cssom-view/cssom-getBoxQuads-002.html` | 0 / 1 |  |
 | `css/cssom-view/cssom-view-img-attributes-001.html` | 0 / 4 |  |
-| `css/cssom-view/dom-element-scroll.html` | 0 / 4 |  |
-| `css/cssom-view/element-scroll-arguments.html` | 0 / 12 |  |
 | `css/cssom-view/element-scroll-promise-after-removal.html` | 0 / 5 | harnais : TypeError: undefined n'est pas une fonction |
 | `css/cssom-view/element-scroll-promise-interruption.html` | 0 / 14 | harnais : TypeError: undefined n'est pas une fonction |
 | `css/cssom-view/element-scroll-promises.html` | 0 / 24 | harnais : TypeError: undefined n'est pas une fonction |
@@ -1706,8 +1701,6 @@ est le plus honnête des deux.
 | `css/cssom-view/elementFromPoint-visibility-hidden-resizer.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint.html` | 0 / 33 | harnais : 11 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the |
 | `css/cssom-view/elementFromPosition.html` | 0 / 16 |  |
-| `css/cssom-view/elementScroll-002.html` | 0 / 4 |  |
-| `css/cssom-view/elementScroll.html` | 0 / 8 |  |
 | `css/cssom-view/elementsFromPoint-iframes.html` | 0 / 2 |  |
 | `css/cssom-view/elementsFromPoint-inline-htb-ltr.html` | 0 / 1 |  |
 | `css/cssom-view/elementsFromPoint-inline-htb-rtl.html` | 0 / 1 |  |
@@ -1728,7 +1721,7 @@ est le plus honnête des deux.
 | `css/cssom-view/getBoundingClientRect-empty-inline-002.html` | 2 / 4 |  |
 | `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 1 |  |
 | `css/cssom-view/getBoundingClientRect-newline.html` | 0 / 1 |  |
-| `css/cssom-view/getBoundingClientRect-scroll.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
+| `css/cssom-view/getBoundingClientRect-scroll.html` | 5 / 6 |  |
 | `css/cssom-view/getBoundingClientRect-shy.html` | 0 / 12 |  |
 | `css/cssom-view/getBoundingClientRect-svg.html` | 0 / 3 |  |
 | `css/cssom-view/getBoundingClientRect-zoom.html` | 2 / 5 |  |
@@ -1771,72 +1764,63 @@ est le plus honnête des deux.
 | `css/cssom-view/resizeTo-negative.html` | 0 / 1 |  |
 | `css/cssom-view/screen-detached-frame.html` | 0 / 1 |  |
 | `css/cssom-view/screenLeftTop.html` | 0 / 2 |  |
-| `css/cssom-view/scroll-back-to-initial-position.html` | 0 / 2 |  |
-| `css/cssom-view/scroll-behavior-default-css.html` | 0 / 3 |  |
-| `css/cssom-view/scroll-behavior-element.html` | 0 / 39 |  |
-| `css/cssom-view/scroll-behavior-main-frame-root.html` | 1 / 40 |  |
-| `css/cssom-view/scroll-behavior-main-frame-window.html` | 1 / 28 |  |
+| `css/cssom-view/scroll-behavior-default-css.html` | 1 / 3 |  |
+| `css/cssom-view/scroll-behavior-element.html` | 16 / 39 |  |
+| `css/cssom-view/scroll-behavior-main-frame-root.html` | 2 / 40 |  |
+| `css/cssom-view/scroll-behavior-main-frame-window.html` | 2 / 28 |  |
 | `css/cssom-view/scroll-behavior-scrollintoview-nested.html` | 0 / 2 |  |
 | `css/cssom-view/scroll-behavior-smooth-after-hiding-iframe.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-behavior-smooth-navigation.html` | 0 / 3 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scroll-behavior-smooth-positions.html` | 0 / 23 |  |
+| `css/cssom-view/scroll-behavior-smooth-positions.html` | 18 / 23 |  |
 | `css/cssom-view/scroll-behavior-smooth.html` | 0 / 3 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/scroll-behavior-subframe-root.html` | 1 / 40 |  |
-| `css/cssom-view/scroll-behavior-subframe-window.html` | 1 / 28 |  |
+| `css/cssom-view/scroll-behavior-subframe-root.html` | 2 / 40 |  |
+| `css/cssom-view/scroll-behavior-subframe-window.html` | 2 / 28 |  |
 | `css/cssom-view/scroll-clamp-after-transform-shrinks-overflow.html` | 0 / 1 |  |
-| `css/cssom-view/scroll-no-layout-box.html` | 0 / 1 |  |
-| `css/cssom-view/scroll-offsets-fractional-zoom.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scroll-overflow-clip-quirks-001.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-overflow-clip-quirks-002.html` | 0 / 1 |  |
-| `css/cssom-view/scroll-position-root-child-ib-split-insertion.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-target-into-view-fragment-in-same-origin-subframe.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scroll-width-with-over-constrained-block-in-inline.html` | 1 / 2 |  |
-| `css/cssom-view/scroll-zoom.html` | 1 / 3 |  |
+| `css/cssom-view/scroll-zoom.html` | 2 / 3 |  |
 | `css/cssom-view/scrollIntoView-align-scrollport-covering-child.html` | 0 / 1 |  |
-| `css/cssom-view/scrollIntoView-container.html` | 0 / 5 |  |
+| `css/cssom-view/scrollIntoView-container.html` | 3 / 5 |  |
 | `css/cssom-view/scrollIntoView-fixed-outside-of-viewport.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-fixed.html` | 0 / 8 | harnais : 4 duplicate test names: "[Box A] scrollIntoView from unscrollable position:fixed", "[Box B] scrollIntoView from unscroll |
-| `css/cssom-view/scrollIntoView-horizontal-partially-visible.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
-| `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 0 / 9 |  |
+| `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 3 / 9 |  |
 | `css/cssom-view/scrollIntoView-iframes.html` | 1 / 4 |  |
-| `css/cssom-view/scrollIntoView-inline-image.html` | 0 / 1 |  |
-| `css/cssom-view/scrollIntoView-multiple-nested.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scrollIntoView-multiple.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scrollIntoView-multiple-nested.html` | 1 / 4 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scrollIntoView-multiple.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-nearest-oversized-element.html` | 0 / 1 |  |
-| `css/cssom-view/scrollIntoView-root-overflow-clip.html` | 0 / 2 |  |
+| `css/cssom-view/scrollIntoView-root-overflow-clip.html` | 1 / 2 |  |
 | `css/cssom-view/scrollIntoView-scrollMargin.html` | 0 / 3 |  |
 | `css/cssom-view/scrollIntoView-scrollPadding.html` | 0 / 3 |  |
-| `css/cssom-view/scrollIntoView-scrolling-box-with-large-border.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-scrolling-container.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-shadow.html` | 0 / 1 |  |
-| `css/cssom-view/scrollIntoView-sideways-lr-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
+| `css/cssom-view/scrollIntoView-sideways-lr-writing-mode-and-rtl-direction.html` | 1 / 9 |  |
 | `css/cssom-view/scrollIntoView-sideways-lr-writing-mode.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-sideways-rl-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-sideways-rl-writing-mode.html` | 0 / 9 |  |
-| `css/cssom-view/scrollIntoView-smooth.html` | 0 / 4 |  |
+| `css/cssom-view/scrollIntoView-smooth.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-stuck.tentative.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-svg-shape.html` | 0 / 3 |  |
 | `css/cssom-view/scrollIntoView-then-scrollBy.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-vertical-lr-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
-| `css/cssom-view/scrollIntoView-vertical-lr-writing-mode.html` | 0 / 9 |  |
+| `css/cssom-view/scrollIntoView-vertical-lr-writing-mode.html` | 1 / 9 |  |
 | `css/cssom-view/scrollIntoView-vertical-rl-writing-mode.html` | 0 / 9 |  |
-| `css/cssom-view/scrollLeft-of-scroller-with-wider-scrollbar.html` | 0 / 1 |  |
-| `css/cssom-view/scrollLeftTop.html` | 0 / 6 |  |
+| `css/cssom-view/scrollLeftTop.html` | 2 / 6 |  |
 | `css/cssom-view/scrollParent-quirks-mode.html` | 0 / 1 |  |
 | `css/cssom-view/scrollParent-shadow-tree.html` | 0 / 4 |  |
 | `css/cssom-view/scrollParent.html` | 0 / 12 |  |
 | `css/cssom-view/scrollWidthHeight-child-border-within-padding.tentative.html` | 0 / 5 |  |
 | `css/cssom-view/scrollWidthHeight-flex-column-padding-001.html` | 0 / 2 |  |
 | `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 80 / 200 |  |
-| `css/cssom-view/scrolling-no-browsing-context.html` | 0 / 1 |  |
 | `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollingElement.html` | 0 / 8 |  |
 | `css/cssom-view/scrollintoview-containingblock-chain.html` | 0 / 1 |  |
 | `css/cssom-view/scrollintoview-zero-height-item.html` | 0 / 1 |  |
 | `css/cssom-view/scrollintoview.html` | 0 / 40 |  |
-| `css/cssom-view/smooth-scroll-in-load-event.html` | 0 / 1 |  |
-| `css/cssom-view/smooth-scroll-nonstop.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/cssom-view/smooth-scroll-in-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/cssom-view/smooth-scroll-nonstop.html` | 1 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scrollIntoView-with-smooth-fragment-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scrollIntoView-with-unrelated-gesture-scroll.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/subpixel-sizes-and-offsets.tentative.html` | 12 / 15 |  |
@@ -1848,6 +1832,5 @@ est le plus honnête des deux.
 | `css/cssom-view/visual-scrollIntoView-001.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-002.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-003.html` | 0 / 1 |  |
-| `css/cssom-view/window-scroll-arguments.html` | 6 / 12 | harnais : 4 duplicate test names: " with 0 arguments", " with 1 non-dictionary argument", " with a valid ScrollToOptions argument" |
 | `css/cssom-view/window-scroll-promise-interruption.html` | 0 / 4 | harnais : TypeError: undefined n'est pas une fonction |
 | `css/cssom-view/window-scroll-promises.html` | 0 / 18 | harnais : TypeError: undefined n'est pas une fonction |

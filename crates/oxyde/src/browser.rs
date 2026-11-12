@@ -80,8 +80,6 @@ pub(crate) enum KeyPress {
 pub(crate) struct Tab {
     id: u64,
     pub(crate) page: Page,
-    /// Défilement vertical, en pixels CSS.
-    pub(crate) scroll: f32,
     history: Vec<Url>,
     /// Document de chaque entrée de `history` (voir [`next_document`]).
     documents: Vec<u64>,
@@ -104,7 +102,6 @@ impl Tab {
             history: vec![loaded.page.url().clone()],
             documents: vec![next_document()],
             page: loaded.page,
-            scroll: 0.0,
             position: 0,
             loading: false,
             title: String::new(),
@@ -854,17 +851,13 @@ impl Browser {
             .min()
     }
 
-    /// Molette au-dessus du volet de l'onglet `index` ; renvoie `true` si le
-    /// défilement a changé.
-    pub(crate) fn scroll_by(&mut self, index: usize, dy: f32, viewport_height: f32) -> bool {
-        let Some(tab) = self.tabs.get_mut(index) else {
-            return false;
-        };
-        let max = (tab.page.content_height() - viewport_height).max(0.0);
-        let target = (tab.scroll + dy).clamp(0.0, max);
-        let changed = (target - tab.scroll).abs() > f32::EPSILON;
-        tab.scroll = target;
-        changed
+    /// Molette de `dy` au point (`x`, `y`) du volet de l'onglet `index` : la
+    /// zone défilante sous le pointeur défile, ou la page. Renvoie `true` si
+    /// le défilement a changé.
+    pub(crate) fn scroll_by(&mut self, index: usize, x: f32, y: f32, dy: f32) -> bool {
+        self.tabs
+            .get_mut(index)
+            .is_some_and(|tab| tab.page.wheel(x, y, 0.0, dy))
     }
 
     fn finish_load_at(&mut self, index: usize, loaded: Loaded, push_history: bool) {
@@ -890,7 +883,6 @@ impl Browser {
         tab.page = loaded.page;
         tab.error = loaded.error;
         tab.show_details = false;
-        tab.scroll = 0.0;
         tab.loading = false;
         tab.refresh_labels();
         if index == self.active && self.editing.is_none() {

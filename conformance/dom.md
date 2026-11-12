@@ -4,7 +4,7 @@ Membres des interfaces décrites par les fichiers Web IDL d'Oxyde (`crates/oxyde
 
 La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : c'est le rôle des Web Platform Tests (voir `wpt.md`). Les interfaces que l'IDL d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) ne sont pas comptées.
 
-**Total : 326 membres disponibles sur 342 (95.3 %).**
+**Total : 329 membres disponibles sur 342 (96.2 %).**
 
 | Interface | Hérite de | Constantes | Attributs | Opérations |
 |---|---|---:|---:|---:|
@@ -19,7 +19,7 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 | `DOMImplementation` | — | — | — | 4 / 4 |
 | `DocumentType` | `Node` | — | 3 / 3 | 4 / 4 |
 | `DocumentFragment` | `Node` | — | 4 / 4 | 7 / 7 |
-| `Element` | `Node` | — | 25 / 26 | 38 / 42 |
+| `Element` | `Node` | — | 25 / 26 | 41 / 42 |
 | `NamedNodeMap` | — | — | 1 / 1 | 7 / 7 |
 | `Attr` | `Node` | — | 7 / 7 | — |
 | `CharacterData` | `Node` | — | 4 / 4 | 9 / 9 |
@@ -37,5 +37,5 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 ## Membres absents
 
 - `Document` : lastModified, open, close, write, writeln, execCommand
-- `Element` : shadowRoot, attachShadow, scroll, scrollTo, scrollBy
+- `Element` : shadowRoot, attachShadow
 - `CSSStyleDeclaration` : length, parentRule, cssFloat, item, getPropertyPriority

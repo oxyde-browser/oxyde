@@ -710,6 +710,14 @@ pub(super) fn dispatch_event(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRes
     Ok(Value::Bool(!canceled))
 }
 
+/// Distribue sur `node` un événement du navigateur de type `kind`, non
+/// annulable.
+pub(super) fn dispatch_simple(vm: &mut Vm, node: NodeId, kind: &str, bubbles: bool) {
+    let event = new_event(vm, "Event", kind, bubbles, false, true);
+    let target = Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX));
+    fire(vm, target, event);
+}
+
 /// Distribue un événement du navigateur, de type `kind`, sur `target` (la
 /// fenêtre si `None`). Renvoie `true` si `preventDefault()` a été appelé.
 pub(super) fn dispatch(vm: &mut Vm, target: Option<NodeId>, kind: &str) -> bool {

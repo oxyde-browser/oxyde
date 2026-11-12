@@ -184,6 +184,29 @@ pub(crate) struct LayoutEnv {
     sizes: HashMap<NodeId, (f32, f32)>,
     fonts: Vec<FontSlot>,
     pub(crate) animations: std::sync::Arc<Animations>,
+    pub(crate) scrolling: std::sync::Arc<Scrolling>,
+}
+
+/// Défilement de la fenêtre et des éléments, partagé entre la page — qui le
+/// borne à chaque peinture et y route la molette — et son moteur de script.
+#[derive(Debug, Default)]
+pub(crate) struct Scrolling {
+    tree: std::sync::Mutex<oxyde_compositor::ScrollTree>,
+}
+
+impl Scrolling {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, oxyde_compositor::ScrollTree> {
+        // Un verrou empoisonné garde des décalages valides : ils sont
+        // bornés de nouveau à la prochaine peinture.
+        self.tree
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// Identifiant de défilement d'un nœud.
+pub(crate) fn scroll_id(node: NodeId) -> u32 {
+    u32::try_from(node.index()).unwrap_or(oxyde_compositor::ROOT_SCROLLER - 1)
 }
 
 /// Durée d'une image d'animation.
@@ -514,6 +537,8 @@ pub struct Page {
     viewport: Viewport,
     /// Animations et transitions en cours, partagées avec le moteur de script.
     animations: std::sync::Arc<Animations>,
+    /// Défilement de la fenêtre et des éléments, partagé de même.
+    scrolling: std::sync::Arc<Scrolling>,
     /// Vrai si le style, les images, le DOM ou la taille ont changé depuis la dernière mise en page.
     dirty: bool,
 }
@@ -700,6 +725,7 @@ impl Page {
                 height: 0.0,
             },
             animations: std::sync::Arc::new(Animations::new()),
+            scrolling: std::sync::Arc::default(),
             dirty: true,
         }
     }
@@ -1134,6 +1160,7 @@ impl Page {
             sizes,
             fonts: self.fonts.clone(),
             animations: std::sync::Arc::clone(&self.animations),
+            scrolling: std::sync::Arc::clone(&self.scrolling),
         }
     }
 
@@ -1260,7 +1287,47 @@ impl Page {
                 redraw = true;
             }
         }
-        redraw | self.pump_animations()
+        redraw | self.pump_animations() | self.pump_scroll()
+    }
+
+    /// Distribue les événements `scroll` des zones qui ont défilé. Renvoie
+    /// `true` si la page doit être redessinée.
+    fn pump_scroll(&mut self) -> bool {
+        let changed = self.scrolling.lock().take_changed();
+        if changed.is_empty() {
+            return false;
+        }
+        if let Some(engine) = self.engine.as_mut() {
+            engine.scroll_events(&mut self.doc, &changed);
+            if engine.take_dirty() {
+                self.dom_changed();
+            }
+        }
+        true
+    }
+
+    /// Défilement de la fenêtre, en pixels CSS.
+    #[must_use]
+    pub fn scroll_offset(&self) -> (f32, f32) {
+        self.scrolling
+            .lock()
+            .offset(oxyde_compositor::ROOT_SCROLLER)
+    }
+
+    /// Défilement de la zone `id` de la liste d'affichage
+    /// ([`oxyde_paint::ROOT_SCROLLER`] pour la fenêtre) : à passer au
+    /// compositeur avec [`Page::display_list`].
+    #[must_use]
+    pub fn scroll_of(&self, id: u32) -> (f32, f32) {
+        self.scrolling.lock().offset(id)
+    }
+
+    /// Molette de (`dx`, `dy`) au point (`x`, `y`) de la fenêtre : fait
+    /// défiler la zone située sous le pointeur, ou la fenêtre. Renvoie
+    /// `true` si quelque chose a défilé ; seule la composition est à
+    /// refaire.
+    pub fn wheel(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
+        self.scrolling.lock().wheel(x, y, dx, dy).is_some()
     }
 
     /// Fait avancer les animations et les transitions jusqu'à l'instant
@@ -1292,9 +1359,8 @@ impl Page {
     #[must_use]
     pub fn next_wake(&mut self) -> Option<Instant> {
         let timer = self.engine.as_mut().and_then(|engine| engine.next_due());
-        let frame = self
-            .animations
-            .needs_frames()
+        // Une animation en cours, ou un événement `scroll` à distribuer.
+        let frame = (self.animations.needs_frames() || self.scrolling.lock().has_changed())
             .then(|| self.animations.instant_at(self.animations.now()) + FRAME);
         match (timer, frame) {
             (Some(a), Some(b)) => Some(a.min(b)),
@@ -1372,6 +1438,13 @@ impl Page {
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         self.list = oxyde_paint::paint(&tree, viewport, &image_of);
+        // Les décalages de défilement sont ramenés dans les bornes du
+        // nouveau contenu.
+        self.scrolling.lock().update(
+            &self.list.scrollers,
+            (viewport.width, viewport.height),
+            (tree.width, tree.height),
+        );
         self.tree = Some(tree);
         true
     }
@@ -1403,7 +1476,11 @@ impl Page {
     /// Nœud situé au point (`x`, `y`) de la page.
     #[must_use]
     pub fn node_at(&self, x: f32, y: f32) -> Option<NodeId> {
-        oxyde_layout::hit_test(&self.doc, self.root_fragment()?, x, y)
+        let tree = self.scrolling.lock();
+        let offset = |node: Option<NodeId>| {
+            tree.offset(node.map_or(oxyde_compositor::ROOT_SCROLLER, scroll_id))
+        };
+        oxyde_layout::hit_test_scrolled(&self.doc, self.root_fragment()?, x, y, &offset)
     }
 
     /// Cible du lien qui contient `node`, s'il y en a un.
@@ -1531,6 +1608,40 @@ mod tests {
         p.tick(wake + Duration::from_secs(2));
         p.update(&mut text, VIEWPORT);
         assert_eq!(p.next_wake(), None);
+    }
+
+    #[test]
+    fn wheel_scrolls_the_zone_under_the_pointer() {
+        let mut p = page(
+            "<style>body{margin:0}</style>\
+             <div id=zone style='height:100px;overflow:auto'>\
+             <a id=haut href='haut.html' style='display:block;height:150px'>haut</a>\
+             <a id=bas href='bas.html' style='display:block;height:150px'>bas</a></div>\
+             <div style='height:1000px'></div>",
+        );
+        let mut text = TextContext::new();
+        assert!(p.update(&mut text, VIEWPORT));
+        let link_at = |p: &Page, x: f32, y: f32| {
+            let node = p.node_at(x, y)?;
+            p.link_from(node).map(|url| url.path().to_owned())
+        };
+        assert_eq!(
+            link_at(&p, 10.0, 50.0).as_deref(),
+            Some("/dossier/haut.html")
+        );
+        // Au-dessus de la zone : c'est elle qui défile, pas la fenêtre.
+        assert!(p.wheel(10.0, 50.0, 0.0, 120.0));
+        assert_eq!(p.scroll_offset(), (0.0, 0.0));
+        assert_eq!(
+            link_at(&p, 10.0, 50.0).as_deref(),
+            Some("/dossier/bas.html")
+        );
+        // Ailleurs : la fenêtre, jusqu'au bout du contenu.
+        assert!(p.wheel(10.0, 200.0, 0.0, 5000.0));
+        assert_eq!(p.scroll_offset(), (0.0, 800.0));
+        assert!(!p.wheel(10.0, 200.0, 0.0, 10.0), "en butée");
+        // Le défilement ne redemande pas de mise en page.
+        assert!(!p.needs_update());
     }
 
     #[test]

@@ -284,25 +284,124 @@ pub fn box_transform(b: &BoxFragment) -> Option<oxyde_css::Affine> {
     )
 }
 
+/// Décalage de défilement d'un élément ; `None` désigne la fenêtre.
+pub type ScrollOffsets<'a> = &'a dyn Fn(Option<NodeId>) -> (f32, f32);
+
+/// Vrai si la boîte découpe son contenu (`overflow` autre que `visible`).
+#[must_use]
+pub fn clips_content(style: &ComputedStyle) -> bool {
+    style.overflow_x != oxyde_css::Overflow::Visible
+        || style.overflow_y != oxyde_css::Overflow::Visible
+}
+
+/// Boîte de marge intérieure de `b` : sa boîte de bordure moins les bordures.
+#[must_use]
+pub fn padding_box(b: &BoxFragment) -> Rect {
+    let bw = b.style.border_widths();
+    Rect {
+        x: b.border_box.x + bw.left,
+        y: b.border_box.y + bw.top,
+        w: (b.border_box.w - bw.left - bw.right).max(0.0),
+        h: (b.border_box.h - bw.top - bw.bottom).max(0.0),
+    }
+}
+
+/// Taille du contenu défilable de `b`, mesurée depuis le coin de sa boîte de
+/// marge intérieure : au moins cette boîte, agrandie jusqu'au bord des
+/// descendants qui en débordent vers la droite ou vers le bas.
+///
+/// LIMITE : les transformations des descendants ne sont pas prises en compte.
+#[must_use]
+pub fn scrollable_extent(b: &BoxFragment) -> (f32, f32) {
+    fn reach(fragment: &Fragment, right: &mut f32, bottom: &mut f32) {
+        match fragment {
+            Fragment::Box(b) => {
+                // Une boîte fixe tient à la fenêtre, pas à ce contenu.
+                if b.style.position == Position::Fixed {
+                    return;
+                }
+                *right = right.max(b.border_box.x + b.border_box.w);
+                *bottom = bottom.max(b.border_box.y + b.border_box.h);
+                if !clips_content(&b.style) {
+                    for child in &b.children {
+                        reach(child, right, bottom);
+                    }
+                }
+            }
+            Fragment::Text(t) => {
+                *right = right.max(t.x + t.layout.width());
+                *bottom = bottom.max(t.y + t.layout.height());
+                for child in &t.boxes {
+                    reach(child, right, bottom);
+                }
+            }
+        }
+    }
+    let port = padding_box(b);
+    let (mut right, mut bottom) = (port.x + port.w, port.y + port.h);
+    for child in &b.children {
+        reach(child, &mut right, &mut bottom);
+    }
+    (right - port.x, bottom - port.y)
+}
+
 /// Nœud du document situé au point (`x`, `y`) de la page, le plus profond.
 #[must_use]
 pub fn hit_test(doc: &Document, fragment: &Fragment, x: f32, y: f32) -> Option<NodeId> {
+    hit_test_scrolled(doc, fragment, x, y, &|_| (0.0, 0.0))
+}
+
+/// Comme [`hit_test`], le contenu des boîtes défilantes étant décalé de
+/// `scroll` ; (`x`, `y`) est un point de la page, défilement de la fenêtre
+/// compris.
+#[must_use]
+pub fn hit_test_scrolled(
+    doc: &Document,
+    fragment: &Fragment,
+    x: f32,
+    y: f32,
+    scroll: ScrollOffsets<'_>,
+) -> Option<NodeId> {
     match fragment {
         Fragment::Box(b) => {
+            // Une boîte fixe ne suit pas le défilement de la fenêtre.
+            let (x, y) = if b.style.position == Position::Fixed {
+                let (sx, sy) = scroll(None);
+                (x - sx, y - sy)
+            } else {
+                (x, y)
+            };
             // Boîte transformée : le point est ramené dans son repère d'origine.
             let (x, y) = match box_transform(b) {
                 Some(matrix) => matrix.inverse()?.apply(x, y),
                 None => (x, y),
             };
-            // Les enfants peuvent déborder de leur parent : on les teste toujours.
+            let own = || b.border_box.contains(x, y).then_some(b.node).flatten();
+            // Boîte qui découpe : son contenu n'est atteint qu'à travers elle,
+            // décalé de son défilement.
+            let (cx, cy) = if clips_content(&b.style) {
+                if !padding_box(b).contains(x, y) {
+                    return own();
+                }
+                let (sx, sy) = b.node.map_or((0.0, 0.0), |node| scroll(Some(node)));
+                (x + sx, y + sy)
+            } else {
+                // Les enfants peuvent déborder de leur parent : on les teste toujours.
+                (x, y)
+            };
             paint_order(&b.children)
                 .into_iter()
                 .rev()
-                .find_map(|c| hit_test(doc, c, x, y))
-                .or_else(|| b.border_box.contains(x, y).then_some(b.node).flatten())
+                .find_map(|c| hit_test_scrolled(doc, c, cx, cy, scroll))
+                .or_else(own)
         }
         Fragment::Text(t) => {
-            if let Some(hit) = t.boxes.iter().rev().find_map(|c| hit_test(doc, c, x, y)) {
+            if let Some(hit) = t
+                .boxes
+                .iter()
+                .rev()
+                .find_map(|c| hit_test_scrolled(doc, c, x, y, scroll))
+            {
                 return Some(hit);
             }
             let (lx, ly) = (x - t.x, y - t.y);
@@ -2182,6 +2281,41 @@ mod tests {
         let a = find(&doc, root, "a").expect("fragment");
         let matrix = box_transform(a).expect("transformation");
         assert_eq!(matrix.apply(0.0, 0.0), (200.0, 100.0));
+    }
+
+    #[test]
+    fn scroll_containers_measure_and_offset_their_content() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=s style='width:100px;height:50px;overflow:auto;border:5px solid black'>\
+             <div id=a style='height:40px'></div><div id=b style='width:300px;height:40px'></div>\
+             </div><div id=after style='height:20px'></div>",
+            400.0,
+        );
+        let root = tree.root.as_ref().expect("racine");
+        let scroller = find(&doc, root, "s").expect("fragment");
+        assert_eq!(scrollable_extent(scroller), (300.0, 80.0));
+        assert_eq!(padding_box(scroller).h, 50.0);
+        let id_at = |x: f32, y: f32, top: f32| {
+            let node = scroller.node;
+            hit_test_scrolled(&doc, root, x, y, &|n| {
+                if n.is_some() && n == node {
+                    (0.0, top)
+                } else {
+                    (0.0, 0.0)
+                }
+            })
+            .and_then(|n| doc.element(n))
+            .and_then(|e| e.id().map(str::to_owned))
+        };
+        assert_eq!(id_at(20.0, 20.0, 0.0).as_deref(), Some("a"));
+        assert_eq!(
+            id_at(20.0, 20.0, 30.0).as_deref(),
+            Some("b"),
+            "le contenu a défilé"
+        );
+        // Le contenu qui dépasse est découpé : on atteint ce qui est dessous.
+        assert_eq!(id_at(20.0, 70.0, 0.0).as_deref(), Some("after"));
     }
 
     #[test]

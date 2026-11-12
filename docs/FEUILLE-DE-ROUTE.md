@@ -193,12 +193,16 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 521 (23,0 %); une lecture force la
+  (9,4 %), aujourd'hui 538 (23,7 %); une lecture force la
   mise en page si le document a changé.
-- **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
-  `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
-  `visibility`, `opacity`, la famille flex (`flex`, `flex-flow`, `justify-content`,
-  `align-*`, `order`) et `gap`.
+- **Positionnement** : `position: relative`, `absolute`, `fixed`, décalages `inset`, blocs
+  conteneurs, hauteurs en pourcentage, `calc()`, police de test Ahem (`@font-face`).
+- **Flex et grille** (`oxyde_layout::flex`, `oxyde_layout::grid`) : algorithme flexible
+  complet (lignes, retours à la ligne, `flex-grow`/`shrink`/`basis`, alignements, `order`,
+  `gap`) ; grille avec pistes explicites et implicites, `fr`, `minmax()`, `repeat()`,
+  placement automatique, zones nommées, alignement des éléments.
+- **Peinture** : ordre d'empilement (`z-index`), découpe (`overflow`), `opacity`,
+  `visibility`.
 
 - **Tableaux** (`oxyde_layout::table`) : grille des cellules avec `colspan`/`rowspan`,
   en-tête et pied réordonnés, rangées et tableaux anonymes ; disposition automatique
@@ -233,10 +237,20 @@ Fait :
   l'API Web Animations, dont dépendent la plupart des tests, et l'interpolation des
   transformations par décomposition de matrice.
 
-Ordre prévu, chaque étape mesurée par la suite : positionnement et flottants ; `calc()` et
-police de test Ahem (`@font-face`), dont beaucoup de tests dépendent ; flex ; tailles
-intrinsèques (`min-content`, `max-content`, `fit-content`) ; tableaux ; grille ;
-transformations, animations et transitions ; calques composités et défilement.
+- **Défilement composité** (`oxyde_compositor`) : la peinture désigne chaque zone défilante
+  (`overflow` autre que `visible`) par un identifiant et n'en fige pas la position ; le
+  décalage est appliqué à la composition, si bien que faire défiler la fenêtre ou un élément
+  ne redemande ni style, ni mise en page, ni peinture. L'arbre de défilement borne les
+  décalages, route la molette vers la zone sous le pointeur puis vers celles qui la
+  contiennent, et dessine les barres de défilement ; `position: fixed` ne suit plus la
+  fenêtre. Côté script : `scrollTop`/`scrollLeft`, `scrollTo`/`scrollBy`/`scroll` (éléments
+  et fenêtre), `scrollIntoView`, `scrollX`/`scrollY`, `document.scrollingElement`, événement
+  `scroll`. Restent : la composition hors du fil principal, les calques mis en cache, les
+  animations jouées par le compositeur, le défilement fluide, `position: sticky`.
+
+Reste du jalon : l'API Web Animations ; les tests de référence WPT (comparaison d'images),
+qui couvrent la peinture que les tests `testharness.js` ne voient pas ; `<col>`, la ligne de
+base dans les tableaux, les modes d'écriture verticaux.
 
 ### Jalon 7 — Fonctions du navigateur
 

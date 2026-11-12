@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 42934 / 49886 (86,1 %)** — fichiers entièrement réussis : 286 / 693 (41,3 %).
+**Sous-tests réussis : 42936 / 49891 (86,1 %)** — fichiers entièrement réussis : 286 / 693 (41,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -18,7 +18,7 @@ est le plus honnête des deux.
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
 | `dom/events` | 52 / 100 | 340 / 496 (68,5 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
-| `dom/events/scrolling` | 0 / 39 | 12 / 103 (11,7 %) |
+| `dom/events/scrolling` | 0 / 39 | 14 / 108 (13,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
 | `dom/nodes` | 155 / 265 | 10324 / 13058 (79,1 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
@@ -141,19 +141,19 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 2 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-snap.html` | 0 / 2 |  |
 | `dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html` | 0 / 1 |  |
-| `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 0 / 8 |  |
-| `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 0 / 8 |  |
-| `dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fired-to-document.html` | 0 / 2 |  |
+| `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html` | 0 / 5 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-fired-to-document.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-to-element-with-overscroll-behavior.html` | 0 / 1 |  |
-| `dom/events/scrolling/scrollend-event-fired-to-window.html` | 0 / 1 |  |
+| `dom/events/scrolling/scrollend-event-fired-to-window.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 6 / 18 | harnais : 6 duplicate test names: "Tests that the target_div within iframe gets scrollend event when touch dragging.", "Tests that |
 | `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
-| `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 |  |
-| `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 0 / 3 |  |
-| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 | harnais : Test named 'No scroll via wheel on div shouldn't fire scrollend.' specified 1 'cleanup' function, and 1 failed. |
+| `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 2 / 3 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 |  |
 | `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
 | `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 |  |
