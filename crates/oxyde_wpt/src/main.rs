@@ -21,7 +21,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use oxyde_content::{FetchResponse, Page, Url, Viewport};
+use oxyde_content::{FetchResponse, Page, Url, Viewport, decode_image};
 
 /// Origine fictive sous laquelle les tests sont servis.
 const ORIGIN: &str = "https://web-platform.test";
@@ -214,7 +214,8 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         page.set_font(&url, data);
     }
     for url in page.pending_images() {
-        page.set_image(&url, None);
+        let image = read_url_bytes(suite, &url).and_then(|bytes| decode_image(&bytes));
+        page.set_image(&url, image);
     }
     for url in page.pending_frames() {
         let html = read_url(suite, &url);

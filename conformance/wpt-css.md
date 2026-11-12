@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 5601 / 28699 (19,5 %)** — fichiers entièrement réussis : 266 / 2267 (11,7 %).
+**Sous-tests réussis : 6443 / 28699 (22,5 %)** — fichiers entièrement réussis : 343 / 2267 (15,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,47 +13,47 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `css/CSS2/floats` | 4 / 19 | 6 / 52 (11,5 %) |
+| `css/CSS2/floats` | 5 / 19 | 10 / 52 (19,2 %) |
 | `css/CSS2/normal-flow` | 19 / 31 | 103 / 130 (79,2 %) |
 | `css/CSS2/positioning` | 5 / 9 | 8 / 18 (44,4 %) |
-| `css/css-align` | 0 / 3 | 0 / 27 (0,0 %) |
-| `css/css-align/abspos` | 0 / 69 | 130 / 1142 (11,4 %) |
+| `css/css-align` | 0 / 3 | 4 / 27 (14,8 %) |
+| `css/css-align/abspos` | 0 / 69 | 132 / 1142 (11,6 %) |
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-align/baseline-rules` | 1 / 4 | 9 / 20 (45,0 %) |
 | `css/css-align/blocks` | 0 / 37 | 55 / 556 (9,9 %) |
 | `css/css-align/content-distribution` | 1 / 17 | 143 / 573 (25,0 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
-| `css/css-align/gaps` | 0 / 20 | 15 / 162 (9,3 %) |
+| `css/css-align/gaps` | 1 / 20 | 121 / 162 (74,7 %) |
 | `css/css-align/multicol` | 0 / 1 | 0 / 32 (0,0 %) |
-| `css/css-align/parsing` | 1 / 50 | 205 / 759 (27,0 %) |
+| `css/css-align/parsing` | 1 / 50 | 210 / 759 (27,7 %) |
 | `css/css-align/self-alignment` | 1 / 16 | 160 / 731 (21,9 %) |
-| `css/css-box` | 1 / 3 | 21 / 33 (63,6 %) |
+| `css/css-box` | 1 / 3 | 27 / 33 (81,8 %) |
 | `css/css-box/animation` | 0 / 10 | 0 / 0 (—) |
-| `css/css-box/margin-trim` | 0 / 10 | 0 / 42 (0,0 %) |
+| `css/css-box/margin-trim` | 2 / 10 | 7 / 42 (16,7 %) |
 | `css/css-box/margin-trim/computed-margin-values` | 0 / 1 | 0 / 4 (0,0 %) |
-| `css/css-box/parsing` | 9 / 29 | 96 / 255 (37,6 %) |
-| `css/css-display` | 8 / 24 | 26 / 55 (47,3 %) |
+| `css/css-box/parsing` | 10 / 29 | 106 / 255 (41,6 %) |
+| `css/css-display` | 10 / 24 | 28 / 55 (50,9 %) |
 | `css/css-display/accessibility` | 0 / 1 | 0 / 0 (—) |
 | `css/css-display/animations` | 0 / 2 | 0 / 0 (—) |
 | `css/css-display/focus` | 0 / 1 | 0 / 5 (0,0 %) |
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 58 / 185 | 447 / 1804 (24,8 %) |
+| `css/css-flexbox` | 61 / 185 | 763 / 1804 (42,3 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
-| `css/css-flexbox/balance` | 1 / 10 | 12 / 68 (17,6 %) |
-| `css/css-flexbox/getcomputedstyle` | 3 / 75 | 5 / 78 (6,4 %) |
+| `css/css-flexbox/balance` | 1 / 10 | 15 / 68 (22,1 %) |
+| `css/css-flexbox/getcomputedstyle` | 51 / 75 | 53 / 78 (67,9 %) |
 | `css/css-flexbox/intrinsic-size` | 1 / 16 | 5 / 51 (9,8 %) |
-| `css/css-flexbox/parsing` | 4 / 27 | 40 / 215 (18,6 %) |
+| `css/css-flexbox/parsing` | 8 / 27 | 68 / 215 (31,6 %) |
 | `css/css-grid` | 2 / 11 | 30 / 187 (16,0 %) |
 | `css/css-grid/abspos` | 1 / 58 | 115 / 3513 (3,3 %) |
-| `css/css-grid/alignment` | 1 / 286 | 167 / 1778 (9,4 %) |
+| `css/css-grid/alignment` | 5 / 286 | 191 / 1778 (10,7 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
 | `css/css-grid/grid-definition` | 0 / 51 | 31 / 1318 (2,4 %) |
-| `css/css-grid/grid-items` | 4 / 50 | 173 / 984 (17,6 %) |
+| `css/css-grid/grid-items` | 9 / 50 | 283 / 984 (28,8 %) |
 | `css/css-grid/grid-lanes` | 0 / 2 | 2 / 35 (5,7 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
@@ -75,30 +75,30 @@ est le plus honnête des deux.
 | `css/css-grid/placement` | 0 / 24 | 0 / 316 (0,0 %) |
 | `css/css-grid/subgrid` | 5 / 26 | 54 / 256 (21,1 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 20 / 47 | 94 / 256 (36,7 %) |
+| `css/css-position` | 23 / 47 | 124 / 256 (48,4 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position/parsing` | 7 / 22 | 70 / 166 (42,2 %) |
+| `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
 | `css/css-position/sticky` | 4 / 33 | 18 / 82 (22,0 %) |
-| `css/css-sizing` | 10 / 53 | 135 / 705 (19,1 %) |
+| `css/css-sizing` | 11 / 53 | 172 / 705 (24,4 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
-| `css/css-sizing/aspect-ratio` | 2 / 24 | 51 / 291 (17,5 %) |
+| `css/css-sizing/aspect-ratio` | 2 / 24 | 59 / 291 (20,3 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 7 / 38 (18,4 %) |
-| `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1146 / 1338 (85,7 %) |
+| `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1140 / 1338 (85,2 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
-| `css/css-sizing/responsive-iframe` | 0 / 7 | 0 / 7 (0,0 %) |
+| `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 11 / 50 | 161 / 1015 (15,9 %) |
-| `css/css-tables` | 13 / 82 | 133 / 285 (46,7 %) |
+| `css/css-tables` | 13 / 82 | 128 / 285 (44,9 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 0 / 5 | 2 / 10 (20,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 1 / 23 | 46 / 333 (13,8 %) |
 | `css/css-tables/width-distribution` | 2 / 15 | 7 / 35 (20,0 %) |
-| `css/cssom-view` | 39 / 233 | 541 / 1747 (31,0 %) |
+| `css/cssom-view` | 38 / 233 | 625 / 1747 (35,8 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -115,7 +115,6 @@ est le plus honnête des deux.
 | `css/CSS2/floats/hit-test-floats-003.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-004.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-005.html` | 0 / 1 |  |
-| `css/CSS2/floats/inheritance.html` | 0 / 4 |  |
 | `css/CSS2/floats/zero-space-between-floats-001.html` | 0 / 1 |  |
 | `css/CSS2/floats/zero-space-between-floats-002.html` | 0 / 1 |  |
 | `css/CSS2/floats/zero-space-between-floats-003.html` | 0 / 1 |  |
@@ -162,7 +161,7 @@ est le plus honnête des deux.
 | `css/css-align/abspos/align-self-vrl-rtl-htb.html` | 2 / 16 |  |
 | `css/css-align/abspos/align-self-vrl-rtl-vlr.html` | 2 / 16 |  |
 | `css/css-align/abspos/align-self-vrl-rtl-vrl.html` | 2 / 16 |  |
-| `css/css-align/abspos/default-overflow-with-scroll.html` | 0 / 6 |  |
+| `css/css-align/abspos/default-overflow-with-scroll.html` | 2 / 6 |  |
 | `css/css-align/abspos/justify-self-default-overflow-htb-ltr-htb.html` | 2 / 14 |  |
 | `css/css-align/abspos/justify-self-default-overflow-htb-ltr-vrl.html` | 2 / 14 |  |
 | `css/css-align/abspos/justify-self-default-overflow-htb-rtl-htb.html` | 0 / 14 |  |
@@ -290,24 +289,23 @@ est le plus honnête des deux.
 | `css/css-align/gaps/column-gap-animation-001.html` | 0 / 1 |  |
 | `css/css-align/gaps/column-gap-animation-002.html` | 0 / 1 |  |
 | `css/css-align/gaps/column-gap-animation-003.html` | 0 / 1 |  |
-| `css/css-align/gaps/column-gap-parsing-001.html` | 1 / 18 |  |
+| `css/css-align/gaps/column-gap-parsing-001.html` | 16 / 18 |  |
 | `css/css-align/gaps/gap-animation-001.html` | 0 / 1 |  |
 | `css/css-align/gaps/gap-animation-002.html` | 0 / 1 |  |
 | `css/css-align/gaps/gap-animation-003.html` | 0 / 1 |  |
 | `css/css-align/gaps/gap-animation-004.html` | 0 / 1 |  |
-| `css/css-align/gaps/gap-normal-computed-001.html` | 0 / 6 |  |
-| `css/css-align/gaps/gap-parsing-001.html` | 2 / 26 |  |
+| `css/css-align/gaps/gap-parsing-001.html` | 22 / 26 |  |
 | `css/css-align/gaps/gap-parsing-002.html` | 6 / 16 |  |
 | `css/css-align/gaps/gap-serialization-cssom.html` | 1 / 3 |  |
-| `css/css-align/gaps/grid-column-gap-parsing-001.html` | 1 / 18 |  |
-| `css/css-align/gaps/grid-gap-parsing-001.html` | 2 / 26 |  |
-| `css/css-align/gaps/grid-row-gap-parsing-001.html` | 1 / 18 |  |
+| `css/css-align/gaps/grid-column-gap-parsing-001.html` | 16 / 18 |  |
+| `css/css-align/gaps/grid-gap-parsing-001.html` | 22 / 26 |  |
+| `css/css-align/gaps/grid-row-gap-parsing-001.html` | 16 / 18 |  |
 | `css/css-align/gaps/legacy-gap-aliases-001.html` | 0 / 3 |  |
 | `css/css-align/gaps/row-gap-animation-001.html` | 0 / 1 |  |
 | `css/css-align/gaps/row-gap-animation-002.html` | 0 / 1 |  |
 | `css/css-align/gaps/row-gap-animation-003.html` | 0 / 1 |  |
-| `css/css-align/gaps/row-gap-parsing-001.html` | 1 / 18 |  |
-| `css/css-align/inheritance.html` | 0 / 16 |  |
+| `css/css-align/gaps/row-gap-parsing-001.html` | 16 / 18 |  |
+| `css/css-align/inheritance.html` | 4 / 16 |  |
 | `css/css-align/multicol/align-content-multicol.html` | 0 / 32 |  |
 | `css/css-align/parsing/align-content-computed.html` | 0 / 18 |  |
 | `css/css-align/parsing/align-content-invalid.html` | 0 / 23 |  |
@@ -318,7 +316,7 @@ est le plus honnête des deux.
 | `css/css-align/parsing/align-self-computed.html` | 0 / 20 |  |
 | `css/css-align/parsing/align-self-invalid.html` | 0 / 24 |  |
 | `css/css-align/parsing/align-self-valid.html` | 20 / 21 |  |
-| `css/css-align/parsing/column-gap-computed.html` | 0 / 5 |  |
+| `css/css-align/parsing/column-gap-computed.html` | 2 / 5 |  |
 | `css/css-align/parsing/column-gap-invalid.html` | 0 / 5 |  |
 | `css/css-align/parsing/column-gap-valid.html` | 5 / 6 |  |
 | `css/css-align/parsing/gap-computed.html` | 0 / 11 |  |
@@ -355,7 +353,7 @@ est le plus honnête des deux.
 | `css/css-align/parsing/place-self-invalid.html` | 0 / 11 |  |
 | `css/css-align/parsing/place-self-shorthand.html` | 0 / 18 |  |
 | `css/css-align/parsing/place-self-valid.html` | 16 / 23 |  |
-| `css/css-align/parsing/row-gap-computed.html` | 0 / 6 |  |
+| `css/css-align/parsing/row-gap-computed.html` | 3 / 6 |  |
 | `css/css-align/parsing/row-gap-invalid.html` | 0 / 4 |  |
 | `css/css-align/parsing/row-gap-valid.html` | 4 / 5 |  |
 | `css/css-align/self-alignment/parse-align-self-001.html` | 0 / 18 |  |
@@ -383,22 +381,20 @@ est le plus honnête des deux.
 | `css/css-box/animation/padding-left-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-box/animation/padding-right-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-box/animation/padding-top-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-box/inheritance.html` | 16 / 24 |  |
+| `css/css-box/inheritance.html` | 22 / 24 |  |
 | `css/css-box/margin-trim/block-container-block-end-last-child-with-border.html` | 0 / 2 |  |
 | `css/css-box/margin-trim/block-container-block-end-nested-last-child-with-border.html` | 0 / 3 |  |
 | `css/css-box/margin-trim/block-container-block-end-propagation-boundaries.html` | 0 / 10 |  |
 | `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-nested-at-bottom.html` | 0 / 7 |  |
 | `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-nested-margin-trim.html` | 0 / 1 |  |
 | `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-offsets-nested-multiple-times.html` | 0 / 1 |  |
-| `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-offsets-nested-once.html` | 0 / 3 |  |
-| `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-offsets-vert-lr.html` | 0 / 3 |  |
-| `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-offsets.html` | 0 / 3 |  |
+| `css/css-box/margin-trim/block-container-block-end-self-collapsing-children-offsets-vert-lr.html` | 1 / 3 |  |
 | `css/css-box/margin-trim/computed-margin-values/block-container-style-change-triggers-layout-block.html` | 0 / 4 |  |
 | `css/css-box/margin-trim/margin-trim-computed-value.html` | 0 / 9 |  |
 | `css/css-box/negative-margin.html` | 4 / 8 |  |
-| `css/css-box/parsing/clear-computed.html` | 0 / 6 |  |
+| `css/css-box/parsing/clear-computed.html` | 4 / 6 |  |
 | `css/css-box/parsing/clear-invalid.html` | 0 / 2 |  |
-| `css/css-box/parsing/float-computed.html` | 0 / 5 |  |
+| `css/css-box/parsing/float-computed.html` | 3 / 5 |  |
 | `css/css-box/parsing/float-invalid.html` | 0 / 3 |  |
 | `css/css-box/parsing/height-invalid.html` | 0 / 10 |  |
 | `css/css-box/parsing/margin-computed.html` | 4 / 8 |  |
@@ -413,7 +409,6 @@ est le plus honnête des deux.
 | `css/css-box/parsing/padding-invalid.html` | 0 / 10 |  |
 | `css/css-box/parsing/padding-shorthand.html` | 4 / 20 |  |
 | `css/css-box/parsing/padding-valid.html` | 10 / 11 |  |
-| `css/css-box/parsing/visibility-computed.html` | 0 / 3 |  |
 | `css/css-box/parsing/visibility-invalid.html` | 0 / 2 |  |
 | `css/css-box/parsing/width-invalid.html` | 0 / 13 |  |
 | `css/css-display/accessibility/display-contents-role-and-label.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -433,8 +428,6 @@ est le plus honnête des deux.
 | `css/css-display/display-initial.html` | 4 / 6 |  |
 | `css/css-display/display-math-on-non-mathml-elements.html` | 2 / 10 |  |
 | `css/css-display/display-math-on-pseudo-elements-001.html` | 3 / 6 |  |
-| `css/css-display/display-with-float-dynamic.html` | 0 / 1 |  |
-| `css/css-display/display-with-float.html` | 0 / 1 |  |
 | `css/css-display/focus/display-contents-focus.html` | 0 / 5 |  |
 | `css/css-display/parsing/display-computed.html` | 13 / 112 |  |
 | `css/css-display/parsing/display-invalid.html` | 0 / 55 |  |
@@ -481,38 +474,37 @@ est le plus honnête des deux.
 | `css/css-flexbox/abspos/position-absolute-012.html` | 24 / 96 |  |
 | `css/css-flexbox/abspos/position-absolute-013.html` | 110 / 432 |  |
 | `css/css-flexbox/abspos/position-absolute-015.html` | 0 / 1 |  |
-| `css/css-flexbox/align-content-horiz-001a.html` | 0 / 72 |  |
-| `css/css-flexbox/align-content-horiz-001b.html` | 0 / 72 |  |
+| `css/css-flexbox/align-content-horiz-001a.html` | 1 / 72 |  |
+| `css/css-flexbox/align-content-horiz-001b.html` | 1 / 72 |  |
 | `css/css-flexbox/align-content-horiz-002.html` | 0 / 72 |  |
 | `css/css-flexbox/align-content-rounding.html` | 0 / 1 |  |
 | `css/css-flexbox/align-content-stretch-rounding.html` | 0 / 1 |  |
-| `css/css-flexbox/align-content-vert-001a.html` | 0 / 72 |  |
-| `css/css-flexbox/align-content-vert-001b.html` | 0 / 72 |  |
-| `css/css-flexbox/align-content-vert-002.html` | 0 / 72 |  |
-| `css/css-flexbox/align-content-wmvert-001.html` | 0 / 72 |  |
+| `css/css-flexbox/align-content-vert-001b.html` | 17 / 72 |  |
+| `css/css-flexbox/align-content-vert-002.html` | 52 / 72 |  |
+| `css/css-flexbox/align-content-wmvert-001.html` | 15 / 72 |  |
 | `css/css-flexbox/align-content-wrap-001.html` | 10 / 13 |  |
 | `css/css-flexbox/align-content-wrap-002.html` | 4 / 6 |  |
 | `css/css-flexbox/align-content-wrap-003.html` | 24 / 44 |  |
 | `css/css-flexbox/align-content-wrap-005.html` | 0 / 8 |  |
-| `css/css-flexbox/align-items-baseline-column-horz.html` | 0 / 5 |  |
-| `css/css-flexbox/align-items-baseline-column-vert-lr-flexbox-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-column-vert-lr-grid-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-column-vert-lr-items.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-column-vert-lr-table-item.html` | 0 / 2 |  |
+| `css/css-flexbox/align-items-baseline-column-horz.html` | 1 / 5 |  |
+| `css/css-flexbox/align-items-baseline-column-vert-lr-flexbox-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-column-vert-lr-grid-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-column-vert-lr-items.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-column-vert-lr-table-item.html` | 1 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert-rl-flexbox-item.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert-rl-grid-item.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert-rl-items.html` | 0 / 2 |  |
 | `css/css-flexbox/align-items-baseline-column-vert-rl-table-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-column-vert.html` | 0 / 3 |  |
-| `css/css-flexbox/align-items-baseline-row-horz.html` | 0 / 3 |  |
+| `css/css-flexbox/align-items-baseline-column-vert.html` | 1 / 3 |  |
+| `css/css-flexbox/align-items-baseline-row-horz.html` | 1 / 3 |  |
 | `css/css-flexbox/align-items-baseline-row-vert.html` | 0 / 5 |  |
-| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-flexbox-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-grid-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-items.html` | 0 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-flexbox-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-grid-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-lr-column-horz-items.html` | 1 / 2 |  |
 | `css/css-flexbox/align-items-baseline-vert-lr-column-horz-table-item.html` | 0 / 1 |  |
-| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-flexbox-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-grid-item.html` | 0 / 2 |  |
-| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-items.html` | 0 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-flexbox-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-grid-item.html` | 1 / 2 |  |
+| `css/css-flexbox/align-items-baseline-vert-rl-column-horz-items.html` | 1 / 2 |  |
 | `css/css-flexbox/align-items-baseline-vert-rl-column-horz-table-item.html` | 0 / 1 |  |
 | `css/css-flexbox/align-self-baseline-with-flex-wrap.html` | 0 / 16 |  |
 | `css/css-flexbox/alignment/flex-align-baseline-001.html` | 1 / 6 |  |
@@ -558,7 +550,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/balance/flex-flow-valid.html` | 4 / 9 |  |
 | `css/css-flexbox/balance/flex-line-count-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/balance/flex-line-count-invalid.html` | 0 / 5 |  |
-| `css/css-flexbox/balance/flex-wrap-computed.html` | 0 / 8 |  |
+| `css/css-flexbox/balance/flex-wrap-computed.html` | 3 / 8 |  |
 | `css/css-flexbox/balance/flex-wrap-invalid.html` | 0 / 13 |  |
 | `css/css-flexbox/balance/flex-wrap-valid.html` | 5 / 8 |  |
 | `css/css-flexbox/canvas-dynamic-change-001.html` | 0 / 1 |  |
@@ -566,10 +558,10 @@ est le plus honnête des deux.
 | `css/css-flexbox/checkbox-percentage-width-in-flex.html` | 0 / 4 |  |
 | `css/css-flexbox/column-reverse-wrap-auto-margins-001.html` | 0 / 3 |  |
 | `css/css-flexbox/dynamic-grid-flex-abspos.html` | 6 / 8 |  |
-| `css/css-flexbox/flex-aspect-ratio-img-column-011.html` | 2 / 10 |  |
+| `css/css-flexbox/flex-aspect-ratio-img-column-011.html` | 4 / 10 |  |
 | `css/css-flexbox/flex-aspect-ratio-img-column-017.html` | 0 / 1 |  |
-| `css/css-flexbox/flex-aspect-ratio-img-row-005.html` | 0 / 4 |  |
-| `css/css-flexbox/flex-aspect-ratio-img-row-013.html` | 1 / 5 |  |
+| `css/css-flexbox/flex-aspect-ratio-img-row-005.html` | 1 / 4 |  |
+| `css/css-flexbox/flex-aspect-ratio-img-row-013.html` | 0 / 5 |  |
 | `css/css-flexbox/flex-base-size-ignores-min-max-width-001.html` | 0 / 4 |  |
 | `css/css-flexbox/flex-base-size-ignores-min-max-width-003.html` | 0 / 4 |  |
 | `css/css-flexbox/flex-basis-009.html` | 0 / 1 |  |
@@ -624,80 +616,30 @@ est le plus honnête des deux.
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_align-self-invalid.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_align-self-stretch.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_display-inline.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-basis-0.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-basis-0percent.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-basis-auto.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-basis-percent.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-direction-column-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-direction-column.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-direction-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-direction-row-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-direction-row.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-reverse-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-reverse-wrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-wrap-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column-wrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-column.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-reverse-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-reverse-wrap-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-reverse-wrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-wrap-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row-wrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-row.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-flow-wrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-grow-0.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-grow-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-grow-number.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-0-auto.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-auto.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-initial.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-none.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand-number.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shorthand.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shrink-0.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shrink-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-shrink-number.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-wrap-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-wrap-nowrap.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-wrap-wrap-reverse.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_flex-wrap-wrap.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-center.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-flex-end.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-flex-start.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-space-around.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-space-between.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_min-auto-size.html` | 2 / 4 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_order-inherit.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_order-integer.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_order-invalid.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_order-negative.html` | 0 / 1 |  |
-| `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_order.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-anonymous-box.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-before-pseudo.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-overlapping-margin.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-overlapping-order.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-overlapping-relative.html` | 0 / 1 |  |
-| `css/css-flexbox/image-as-flexitem-size-001.html` | 2 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-001v.html` | 2 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-002.html` | 2 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-002v.html` | 2 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-003.html` | 6 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-003v.html` | 6 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-004.html` | 6 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-004v.html` | 6 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-005.html` | 4 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-005v.html` | 4 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-006.html` | 4 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-006v.html` | 4 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-007.html` | 2 / 18 |  |
-| `css/css-flexbox/image-as-flexitem-size-007v.html` | 2 / 18 |  |
-| `css/css-flexbox/inheritance.html` | 0 / 20 |  |
+| `css/css-flexbox/image-as-flexitem-size-001.html` | 14 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-001v.html` | 14 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-002.html` | 13 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-002v.html` | 13 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-003.html` | 11 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-003v.html` | 11 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-004.html` | 13 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-004v.html` | 13 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-006.html` | 8 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-006v.html` | 8 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-007.html` | 13 / 18 |  |
+| `css/css-flexbox/image-as-flexitem-size-007v.html` | 13 / 18 |  |
+| `css/css-flexbox/inheritance.html` | 12 / 20 |  |
 | `css/css-flexbox/inline-flexbox-wrap-vertically-width-calculation.html` | 2 / 16 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-004.html` | 0 / 1 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-005.html` | 0 / 1 |  |
@@ -721,29 +663,25 @@ est le plus honnête des deux.
 | `css/css-flexbox/negative-overflow-002.html` | 0 / 72 |  |
 | `css/css-flexbox/negative-overflow-003.html` | 0 / 48 |  |
 | `css/css-flexbox/negative-overflow-004-no-padding.html` | 0 / 96 |  |
-| `css/css-flexbox/negative-overflow.html` | 3 / 11 |  |
+| `css/css-flexbox/negative-overflow.html` | 6 / 11 |  |
 | `css/css-flexbox/orthogonal-writing-modes-and-intrinsic-sizing.html` | 1 / 2 |  |
-| `css/css-flexbox/parsing/flex-basis-computed.html` | 0 / 12 |  |
+| `css/css-flexbox/parsing/flex-basis-computed.html` | 7 / 12 |  |
 | `css/css-flexbox/parsing/flex-basis-invalid.html` | 0 / 7 |  |
 | `css/css-flexbox/parsing/flex-computed.html` | 0 / 14 |  |
-| `css/css-flexbox/parsing/flex-direction-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-direction-invalid.html` | 0 / 2 |  |
 | `css/css-flexbox/parsing/flex-flow-computed.html` | 0 / 2 |  |
 | `css/css-flexbox/parsing/flex-flow-invalid.html` | 0 / 2 |  |
 | `css/css-flexbox/parsing/flex-flow-shorthand.html` | 2 / 6 |  |
 | `css/css-flexbox/parsing/flex-flow-valid.html` | 1 / 7 |  |
-| `css/css-flexbox/parsing/flex-grow-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-grow-invalid.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-grow-valid.html` | 1 / 4 |  |
 | `css/css-flexbox/parsing/flex-invalid.html` | 0 / 6 |  |
 | `css/css-flexbox/parsing/flex-shorthand.html` | 13 / 68 |  |
-| `css/css-flexbox/parsing/flex-shrink-computed.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-shrink-invalid.html` | 0 / 4 |  |
 | `css/css-flexbox/parsing/flex-shrink-valid.html` | 1 / 4 |  |
 | `css/css-flexbox/parsing/flex-valid.html` | 4 / 16 |  |
-| `css/css-flexbox/parsing/flex-wrap-computed.html` | 0 / 3 |  |
 | `css/css-flexbox/parsing/flex-wrap-invalid.html` | 0 / 2 |  |
-| `css/css-flexbox/parsing/order-computed.html` | 0 / 7 |  |
+| `css/css-flexbox/parsing/order-computed.html` | 6 / 7 |  |
 | `css/css-flexbox/parsing/order-invalid.html` | 0 / 3 |  |
 | `css/css-flexbox/parsing/webkit-aliases.html` | 0 / 12 |  |
 | `css/css-flexbox/percent-height-flex-items-cross-sizes-with-mutations.html` | 7 / 21 |  |
@@ -758,8 +696,8 @@ est le plus honnête des deux.
 | `css/css-flexbox/position-relative-percentage-top-004.html` | 8 / 9 |  |
 | `css/css-flexbox/position-relative-percentage-top-005.html` | 7 / 8 |  |
 | `css/css-flexbox/position-relative-stretch-height-001.html` | 2 / 4 |  |
-| `css/css-flexbox/quirks-auto-block-size-with-percentage-item.html` | 0 / 1 |  |
 | `css/css-flexbox/relayout-image-load.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-flexbox/select-as-flex-item-child-with-overflow.html` | 0 / 1 |  |
 | `css/css-flexbox/svg-root-as-flex-item-006.html` | 0 / 1 |  |
 | `css/css-flexbox/svg-root-as-flex-item-007.html` | 0 / 2 |  |
 | `css/css-flexbox/table-as-item-cross-size.html` | 0 / 1 |  |
@@ -864,7 +802,7 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-align-justify-overflow.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-align-justify-stretch-with-orthogonal-flows.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-align-justify-stretch.html` | 0 / 16 |  |
-| `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 1 / 6 |  |
+| `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 5 / 6 |  |
 | `css/css-grid/alignment/grid-align.html` | 0 / 16 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-001.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-002.html` | 0 / 2 |  |
@@ -876,14 +814,12 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-alignment-implies-size-change-008.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-009.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-010.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-014.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-015.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-016.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-017.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-018.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-014.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-017.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-018.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-019.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-020.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-021.html` | 0 / 2 |  |
@@ -894,14 +830,12 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-alignment-implies-size-change-026.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-027.html` | 0 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-028.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-029.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-030.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-031.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-032.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-033.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-034.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-035.html` | 0 / 2 |  |
-| `css/css-grid/alignment/grid-alignment-implies-size-change-036.html` | 0 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-029.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-030.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-031.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-032.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-035.html` | 1 / 2 |  |
+| `css/css-grid/alignment/grid-alignment-implies-size-change-036.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-037.html` | 1 / 4 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-038.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-039.html` | 2 / 4 |  |
@@ -1182,7 +1116,6 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-item-min-auto-size-001.html` | 2 / 4 |  |
 | `css/css-grid/grid-items/grid-item-min-contribution-behaves-as-auto-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-items/grid-item-min-height-border-box-001.html` | 6 / 14 |  |
-| `css/css-grid/grid-items/grid-item-min-max-width-contribution-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-items/grid-item-min-width-height-auto-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-item-min-width-margin-box-001.html` | 1 / 14 |  |
 | `css/css-grid/grid-items/grid-item-minimum-size-single-axis-scroll-container.html` | 1 / 4 |  |
@@ -1191,13 +1124,9 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-item-percentage-resolution-writing-modes-quirks-001.html` | 0 / 4 |  |
 | `css/css-grid/grid-items/grid-items-minimum-height-orthogonal-001.html` | 0 / 46 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-002.html` | 22 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-orthogonal-001.html` | 0 / 46 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-orthogonal-002.html` | 22 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-lr-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-vertical-lr-002.html` | 22 / 44 |  |
 | `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-001.html` | 0 / 44 |  |
-| `css/css-grid/grid-items/grid-items-minimum-width-vertical-rl-002.html` | 22 / 44 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-percentage-margins-vertical-lr-001.html` | 0 / 8 |  |
@@ -1215,7 +1144,7 @@ est le plus honnête des deux.
 | `css/css-grid/grid-items/grid-items-percentage-paddings-vertical-rl-002.html` | 0 / 8 |  |
 | `css/css-grid/grid-items/grid-items-relative-offsets-001.html` | 0 / 6 |  |
 | `css/css-grid/grid-items/grid-items-relative-offsets-002.html` | 0 / 6 |  |
-| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 56 / 144 |  |
+| `css/css-grid/grid-items/grid-minimum-size-grid-items-021.html` | 76 / 144 |  |
 | `css/css-grid/grid-items/grid-minimum-size-grid-items-022.html` | 0 / 45 |  |
 | `css/css-grid/grid-items/grid-minimum-size-grid-items-023.html` | 0 / 60 |  |
 | `css/css-grid/grid-items/grid-minimum-size-grid-items-024.html` | 0 / 45 |  |
@@ -1524,7 +1453,6 @@ est le plus honnête des deux.
 | `css/css-position/backdrop-inherit-computed.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
 | `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/backdrop-ua-style.html` | 0 / 1 |  |
-| `css/css-position/inheritance.html` | 2 / 12 |  |
 | `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 1 / 17 |  |
 | `css/css-position/overlay/animation/overlay-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/overlay/overlay-computed.html` | 0 / 6 |  |
@@ -1532,21 +1460,19 @@ est le plus honnête des deux.
 | `css/css-position/overlay/overlay-transition-property.html` | 2 / 4 |  |
 | `css/css-position/overlay/overlay-transition.html` | 0 / 2 |  |
 | `css/css-position/overlay/overlay-user-agent-rules.html` | 0 / 4 |  |
-| `css/css-position/parsing/bottom-computed.html` | 0 / 5 |  |
+| `css/css-position/parsing/bottom-computed.html` | 3 / 5 |  |
 | `css/css-position/parsing/bottom-invalid.html` | 0 / 3 |  |
 | `css/css-position/parsing/inset-computed.html` | 0 / 20 |  |
 | `css/css-position/parsing/inset-invalid.html` | 0 / 22 |  |
 | `css/css-position/parsing/inset-valid.html` | 40 / 50 |  |
-| `css/css-position/parsing/left-computed.html` | 0 / 5 |  |
+| `css/css-position/parsing/left-computed.html` | 3 / 5 |  |
 | `css/css-position/parsing/left-invalid.html` | 0 / 3 |  |
 | `css/css-position/parsing/position-invalid.html` | 0 / 2 |  |
-| `css/css-position/parsing/right-computed.html` | 0 / 5 |  |
+| `css/css-position/parsing/right-computed.html` | 3 / 5 |  |
 | `css/css-position/parsing/right-invalid.html` | 0 / 3 |  |
-| `css/css-position/parsing/top-computed.html` | 0 / 5 |  |
+| `css/css-position/parsing/top-computed.html` | 3 / 5 |  |
 | `css/css-position/parsing/top-invalid.html` | 0 / 3 |  |
-| `css/css-position/parsing/z-index-computed.html` | 0 / 3 |  |
 | `css/css-position/parsing/z-index-invalid.html` | 0 / 4 |  |
-| `css/css-position/parsing/z-index-positioned-computed.html` | 0 / 3 |  |
 | `css/css-position/position-absolute-chrome-bug-002.html` | 0 / 1 |  |
 | `css/css-position/position-absolute-crash-chrome-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-position/position-absolute-dynamic-containing-block.html` | 4 / 8 |  |
@@ -1557,11 +1483,9 @@ est le plus honnête des deux.
 | `css/css-position/position-absolute-margin-auto-001.html` | 0 / 1 |  |
 | `css/css-position/position-absolute-padding-percentage.html` | 1 / 2 |  |
 | `css/css-position/position-absolute-percentage-height.html` | 0 / 2 |  |
-| `css/css-position/position-absolute-replaced-minmax.html` | 2 / 43 |  |
-| `css/css-position/position-absolute-scrollable-overflow-001.html` | 4 / 14 |  |
+| `css/css-position/position-absolute-replaced-minmax.html` | 11 / 43 |  |
 | `css/css-position/position-absolute-table-001.html` | 2 / 6 |  |
 | `css/css-position/position-absolute-with-negative-sized-imcb.html` | 4 / 30 |  |
-| `css/css-position/position-fixed-at-bottom-right-on-viewport.html` | 0 / 1 |  |
 | `css/css-position/position-fixed-dynamic-containing-block.html` | 0 / 4 |  |
 | `css/css-position/position-relative-015.html` | 15 / 20 |  |
 | `css/css-position/position-relative-016.html` | 16 / 18 |  |
@@ -1626,8 +1550,8 @@ est le plus honnête des deux.
 | `css/css-sizing/aspect-ratio/abspos-intrinsic-block-size.html` | 4 / 32 |  |
 | `css/css-sizing/aspect-ratio/aspect-ratio-minimum-size-single-axis-scroll-container.html` | 2 / 4 |  |
 | `css/css-sizing/aspect-ratio/box-sizing-aspect-ratio-positioned.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/box-sizing-dimensions.html` | 0 / 8 |  |
-| `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 4 / 16 |  |
+| `css/css-sizing/aspect-ratio/box-sizing-dimensions.html` | 2 / 8 |  |
+| `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 3 / 16 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-orthogonal-percentage-child.html` | 0 / 4 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-row-percentage-height-child.html` | 0 / 1 |  |
 | `css/css-sizing/aspect-ratio/fractional-aspect-ratio.html` | 0 / 2 |  |
@@ -1641,7 +1565,7 @@ est le plus honnête des deux.
 | `css/css-sizing/aspect-ratio/quirks-mode-003.html` | 0 / 1 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-036.html` | 0 / 2 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-042.html` | 0 / 4 |  |
-| `css/css-sizing/aspect-ratio/replaced-element-043.html` | 31 / 180 |  |
+| `css/css-sizing/aspect-ratio/replaced-element-043.html` | 38 / 180 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-044.html` | 0 / 4 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-intrinsic-contribution-transferred-min-width-001.html` | 0 / 3 |  |
 | `css/css-sizing/aspect-ratio/sign-function-aspect-ratio.html` | 0 / 1 |  |
@@ -1656,7 +1580,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-006.html` | 0 / 19 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
-| `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | le harnais n'a pas terminé |
+| `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-009.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-010.html` | 0 / 2 |  |
@@ -1674,7 +1598,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-030.html` | 0 / 24 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-031.html` | 0 / 12 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-032.html` | 1 / 9 |  |
-| `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-logical-003.html` | 10 / 48 |  |
+| `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-logical-003.html` | 4 / 48 |  |
 | `css/css-sizing/contain-intrinsic-size/forget-on-disconnect-in-iframe.html` | 0 / 2 | harnais : 1 duplicate test name: "Forget remembered size inside iframe" |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-computed.html` | 0 / 21 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-invalid.html` | 0 / 40 |  |
@@ -1684,7 +1608,7 @@ est le plus honnête des deux.
 | `css/css-sizing/form-control-in-inline-content-intrinsic-size-001.html` | 0 / 9 |  |
 | `css/css-sizing/image-min-max-content-intrinsic-size-change-009.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `css/css-sizing/intrinsic-percent-replaced-033.html` | 0 / 9 |  |
-| `css/css-sizing/intrinsic-size-fallback-replaced.html` | 0 / 8 |  |
+| `css/css-sizing/intrinsic-size-fallback-replaced.html` | 4 / 8 |  |
 | `css/css-sizing/intrinsic-size-fallback-video.html` | 0 / 4 |  |
 | `css/css-sizing/keyword-min-max-width-with-fixed-width-contribution.html` | 0 / 3 |  |
 | `css/css-sizing/keyword-sizes-for-intrinsic-contributions-002.html` | 0 / 8 |  |
@@ -1694,10 +1618,9 @@ est le plus honnête des deux.
 | `css/css-sizing/keyword-sizes-on-flex-item-002.html` | 19 / 74 |  |
 | `css/css-sizing/keyword-sizes-on-floated-element.html` | 19 / 74 |  |
 | `css/css-sizing/keyword-sizes-on-inline-block.html` | 20 / 74 |  |
-| `css/css-sizing/keyword-sizes-on-replaced-element.html` | 6 / 84 |  |
+| `css/css-sizing/keyword-sizes-on-replaced-element.html` | 39 / 84 |  |
 | `css/css-sizing/min-max-width-contribution-box-sizing.html` | 0 / 4 |  |
-| `css/css-sizing/min-width-max-width-precedence.html` | 0 / 1 |  |
-| `css/css-sizing/min-width-min-content-contribution.html` | 3 / 6 |  |
+| `css/css-sizing/min-width-min-content-contribution.html` | 2 / 6 |  |
 | `css/css-sizing/parsing/box-sizing-invalid.html` | 0 / 7 |  |
 | `css/css-sizing/parsing/height-invalid.html` | 0 / 4 |  |
 | `css/css-sizing/parsing/height-valid.html` | 9 / 10 |  |
@@ -1732,7 +1655,6 @@ est le plus honnête des deux.
 | `css/css-sizing/replaced-fractional-height-from-aspect-ratio-2.html` | 0 / 1 |  |
 | `css/css-sizing/replaced-keyword-max-width-contribution.html` | 0 / 3 |  |
 | `css/css-sizing/responsive-iframe/parsing/frame-sizing-computed.html` | 0 / 5 |  |
-| `css/css-sizing/responsive-iframe/responsive-iframe-allow-origins.html` | 0 / 1 |  |
 | `css/css-sizing/responsive-iframe/responsive-iframe-dom-content-loaded.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/responsive-iframe/responsive-iframe-icb.html` | 0 / 1 |  |
 | `css/css-sizing/responsive-iframe/responsive-iframe-navigation-unsized.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -1840,7 +1762,6 @@ est le plus honnête des deux.
 | `css/css-tables/parsing/empty-cells-invalid.html` | 0 / 2 |  |
 | `css/css-tables/parsing/table-layout-computed.html` | 0 / 2 |  |
 | `css/css-tables/parsing/table-layout-invalid.html` | 0 / 2 |  |
-| `css/css-tables/percent-height-overflow-auto-in-restricted-block-size-cell.html` | 0 / 1 |  |
 | `css/css-tables/percent-width-ignored-001.tentative.html` | 0 / 1 |  |
 | `css/css-tables/percent-width-ignored-002.tentative.html` | 0 / 1 |  |
 | `css/css-tables/percent-width-ignored-003.tentative.html` | 0 / 1 |  |
@@ -1848,7 +1769,7 @@ est le plus honnête des deux.
 | `css/css-tables/table-height-distribution-proportional.html` | 1 / 2 |  |
 | `css/css-tables/table-min-max-width-intrinsic-contribution-border-padding.html` | 0 / 5 |  |
 | `css/css-tables/table-min-max-width-intrinsic-contribution.html` | 0 / 4 |  |
-| `css/css-tables/table-model-fixup-2.html` | 24 / 40 |  |
+| `css/css-tables/table-model-fixup-2.html` | 20 / 40 |  |
 | `css/css-tables/table-model-fixup.html` | 5 / 11 |  |
 | `css/css-tables/table-stretch-in-flex-and-grid.html` | 4 / 6 |  |
 | `css/css-tables/tentative/baseline-table.html` | 3 / 15 |  |
@@ -1884,6 +1805,7 @@ est le plus honnête des deux.
 | `css/css-tables/visibility-collapse-row-002-dynamic.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-row-003-dynamic.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-row-004.html` | 0 / 1 |  |
+| `css/css-tables/visibility-collapse-row-005.html` | 0 / 2 |  |
 | `css/css-tables/visibility-collapse-row-group-001.html` | 2 / 5 |  |
 | `css/css-tables/visibility-collapse-row-group-002.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-rowcol-001.html` | 0 / 2 |  |
@@ -1914,7 +1836,7 @@ est le plus honnête des deux.
 | `css/cssom-view/DOMRectList.html` | 0 / 2 |  |
 | `css/cssom-view/Element-currentCSSZoom.html` | 0 / 2 |  |
 | `css/cssom-view/GetBoundingRect.html` | 0 / 1 |  |
-| `css/cssom-view/HTMLBody-ScrollArea_quirksmode.html` | 2 / 10 |  |
+| `css/cssom-view/HTMLBody-ScrollArea_quirksmode.html` | 3 / 10 |  |
 | `css/cssom-view/MediaQueryList-addListener-handleEvent.html` | 0 / 6 |  |
 | `css/cssom-view/MediaQueryList-addListener-removeListener.html` | 1 / 8 |  |
 | `css/cssom-view/MediaQueryList-change-event-matches-value.html` | 0 / 1 |  |
@@ -2046,7 +1968,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scroll-overflow-clip-quirks-002.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-position-root-child-ib-split-insertion.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-target-into-view-fragment-in-same-origin-subframe.html` | 0 / 3 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scroll-width-with-over-constrained-block-in-inline.html` | 0 / 2 |  |
+| `css/cssom-view/scroll-width-with-over-constrained-block-in-inline.html` | 1 / 2 |  |
 | `css/cssom-view/scroll-zoom.html` | 1 / 3 |  |
 | `css/cssom-view/scrollIntoView-align-scrollport-covering-child.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-container.html` | 0 / 5 |  |
@@ -2056,6 +1978,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-iframes.html` | 1 / 4 |  |
+| `css/cssom-view/scrollIntoView-inline-image.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-multiple-nested.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-multiple.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-nearest-oversized-element.html` | 0 / 1 |  |
@@ -2076,14 +1999,14 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-vertical-lr-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-vertical-lr-writing-mode.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-vertical-rl-writing-mode.html` | 0 / 9 |  |
+| `css/cssom-view/scrollLeft-of-scroller-with-wider-scrollbar.html` | 0 / 1 |  |
 | `css/cssom-view/scrollLeftTop.html` | 0 / 6 |  |
 | `css/cssom-view/scrollParent-quirks-mode.html` | 0 / 1 |  |
 | `css/cssom-view/scrollParent-shadow-tree.html` | 0 / 4 |  |
 | `css/cssom-view/scrollParent.html` | 0 / 12 |  |
 | `css/cssom-view/scrollWidthHeight-child-border-within-padding.tentative.html` | 0 / 5 |  |
 | `css/cssom-view/scrollWidthHeight-flex-column-padding-001.html` | 0 / 2 |  |
-| `css/cssom-view/scrollWidthHeight-negative-margin-001.html` | 0 / 4 |  |
-| `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 0 / 200 |  |
+| `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 80 / 200 |  |
 | `css/cssom-view/scrolling-no-browsing-context.html` | 0 / 1 |  |
 | `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollingElement.html` | 0 / 8 |  |

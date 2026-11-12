@@ -773,7 +773,8 @@ impl Engine<'_> {
                     .iter()
                     .map(|c| self.min_content(c))
                     .fold(0.0_f32, f32::max);
-                inner + pad.left + pad.right + bw.left + bw.right + margins
+                let extras = pad.left + pad.right + bw.left + bw.right;
+                crate::bounded_width(&b.style, inner, extras) + margins
             }
         }
     }

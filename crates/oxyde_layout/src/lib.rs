@@ -359,6 +359,26 @@ fn last_baseline(fragments: &[Fragment]) -> Option<f32> {
     })
 }
 
+/// Largeur de boîte de bordure d'un contenu de largeur `inner`, une fois
+/// appliqués les `min-width` et `max-width` en pixels de `style`.
+fn bounded_width(style: &ComputedStyle, inner: f32, extras: f32) -> f32 {
+    let outer = |size: f32| {
+        if style.border_box {
+            size.max(extras)
+        } else {
+            size + extras
+        }
+    };
+    let mut width = inner + extras;
+    if let Size::Px(max) = style.max_width {
+        width = width.min(outer(max));
+    }
+    if let Size::Px(min) = style.min_width {
+        width = width.max(outer(min));
+    }
+    width
+}
+
 /// Marge résultant de la fusion de deux marges adjacentes (CSS 2 §8.3.1) :
 /// la plus grande de deux marges positives, la plus négative de deux marges
 /// négatives, leur somme si elles sont de signes contraires.
@@ -439,6 +459,11 @@ impl Engine<'_> {
         if depth > MAX_DEPTH {
             return;
         }
+        // Une liste déroulante est dessinée d'un bloc : ses options ne sont
+        // pas mises en page.
+        if self.doc.element(node).is_some_and(|e| e.is_html("select")) {
+            return;
+        }
         for child in self.doc.children(node) {
             match &self.doc.node(child).data {
                 NodeData::Text(_) => out.push(child),
@@ -513,9 +538,10 @@ impl Engine<'_> {
                 outer
             }
         };
-        let intrinsic = self.intrinsic_size(node, style);
+        let dimensions = self.intrinsic_dimensions(node, style);
+        let intrinsic = dimensions.map(|(w, h, _)| (w, h));
         // Une image garde ses proportions ; un champ de formulaire, non.
-        let keeps_ratio = (self.intrinsic)(node).is_some();
+        let keeps_ratio = dimensions.is_some_and(|(_, _, ratio)| ratio);
         let specified = style.width.resolve(cb_w).map(to_content_w).or_else(|| {
             // Élément remplacé : largeur intrinsèque, ou déduite de la hauteur imposée.
             let (iw, ih) = intrinsic?;
@@ -814,13 +840,48 @@ impl Engine<'_> {
     /// Taille intrinsèque de `node` : celle de son image, ou la taille par
     /// défaut d'un champ de formulaire.
     fn intrinsic_size(&self, node: NodeId, style: &ComputedStyle) -> Option<(f32, f32)> {
-        if let Some(size) = (self.intrinsic)(node) {
-            return Some(size);
+        self.intrinsic_dimensions(node, style)
+            .map(|(w, h, _)| (w, h))
+    }
+
+    /// Comme [`Engine::intrinsic_size`], avec un troisième terme : vrai si
+    /// l'élément garde ses proportions quand une seule dimension est imposée.
+    fn intrinsic_dimensions(
+        &self,
+        node: NodeId,
+        style: &ComputedStyle,
+    ) -> Option<(f32, f32, bool)> {
+        if let Some((w, h)) = (self.intrinsic)(node) {
+            return Some((w, h, true));
         }
         let element = self.doc.element(node)?;
+        // `<canvas>` : ses attributs `width` et `height`, 300 × 150 à défaut.
+        let attribute = |name: &str, default: f32| {
+            element
+                .attr(name)
+                .and_then(|v| v.trim().parse::<f32>().ok())
+                .filter(|v| *v >= 0.0)
+                .unwrap_or(default)
+        };
+        if element.is_html("canvas") {
+            return Some((attribute("width", 300.0), attribute("height", 150.0), true));
+        }
+        if element.is_html("iframe") || element.is_html("video") {
+            return Some((attribute("width", 300.0), attribute("height", 150.0), false));
+        }
         if !element.is_html("input") && !element.is_html("select") && !element.is_html("textarea") {
             return None;
         }
+        self.control_size(element, style)
+            .map(|(w, h)| (w, h, false))
+    }
+
+    /// Taille par défaut d'un champ de formulaire.
+    fn control_size(
+        &self,
+        element: &oxyde_dom::ElementData,
+        style: &ComputedStyle,
+    ) -> Option<(f32, f32)> {
         let line = style.line_height_px();
         Some(match element.name.as_str() {
             "input" => match element.attr("type").map(str::to_ascii_lowercase).as_deref() {
@@ -852,8 +913,12 @@ impl Engine<'_> {
                 }
                 let pad = edges_px(b.style.padding, available);
                 let bw = b.style.border_widths();
+                let extras = pad.left + pad.right + bw.left + bw.right;
                 let inner = self.max_content_of(&b.style, &b.children, available);
-                inner + pad.left + pad.right + bw.left + bw.right + margins
+                // Le contenu ne descend pas sous `min-width` ni ne dépasse
+                // un `max-width` en pixels.
+                let outer = bounded_width(&b.style, inner, extras);
+                outer + margins
             }
         }
     }

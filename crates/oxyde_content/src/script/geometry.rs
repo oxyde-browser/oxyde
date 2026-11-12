@@ -239,17 +239,43 @@ pub(super) fn property(vm: &mut Vm, node: NodeId, key: &str) -> Option<JsResult>
     let value = match key {
         "offsetWidth" => rect.w.round(),
         "offsetHeight" => rect.h.round(),
-        "clientWidth" | "scrollWidth" => client_w.round(),
-        "clientHeight" | "scrollHeight" => client_h.round(),
+        "clientWidth" => client_w.round(),
+        "clientHeight" => client_h.round(),
+        "scrollWidth" | "scrollHeight" => {
+            // Étendue du contenu : la boîte de marge intérieure, agrandie
+            // jusqu'au bord des descendants qui en débordent vers la droite
+            // ou vers le bas.
+            let geometry = h.geometry.as_ref()?;
+            let (left, top) = (rect.x + borders.left, rect.y + borders.top);
+            let (mut right, mut bottom) = (left + client_w, top + client_h);
+            for descendant in h.doc.descendants(node) {
+                if let Some(inner) = geometry.boxes.get(&index(descendant)) {
+                    right = right.max(inner.x + inner.w);
+                    bottom = bottom.max(inner.y + inner.h);
+                }
+            }
+            if key == "scrollWidth" {
+                (right - left).round()
+            } else {
+                (bottom - top).round()
+            }
+        }
         "clientLeft" => borders.left.round(),
         "clientTop" => borders.top.round(),
         "offsetLeft" | "offsetTop" => {
             let geometry = h.geometry.as_ref()?;
             // Origine : le bord intérieur de la bordure du parent de décalage.
+            // Un `<body>` non positionné compte pour l'origine de la page,
+            // comme dans tous les navigateurs.
             let origin = offset_parent(&h.doc, &geometry.styles, node)
                 .and_then(|parent| {
+                    let parent_style = geometry.styles.get(parent)?;
+                    let is_body = h.doc.element(parent).is_some_and(|e| e.is_html("body"));
+                    if is_body && !parent_style.is_positioned() {
+                        return None;
+                    }
                     let outer = geometry.boxes.get(&index(parent))?;
-                    let widths = geometry.styles.get(parent)?.border_widths();
+                    let widths = parent_style.border_widths();
                     Some((outer.x + widths.left, outer.y + widths.top))
                 })
                 .unwrap_or((0.0, 0.0));
@@ -403,6 +429,44 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
             color(all[side(name.trim_end_matches("-color"))].unwrap_or(style.color))
         }
         "position" => style.position_name().to_owned(),
+        "top" | "right" | "bottom" | "left" => {
+            let inset = style.inset;
+            let all = [inset.top, inset.right, inset.bottom, inset.left];
+            size(all[side(name)], base, "auto")
+        }
+        "float" => format!("{:?}", style.float).to_ascii_lowercase(),
+        "clear" => format!("{:?}", style.clear).to_ascii_lowercase(),
+        "z-index" => style
+            .z_index
+            .map_or_else(|| "auto".to_owned(), |z| z.to_string()),
+        "overflow-x" => format!("{:?}", style.overflow_x).to_ascii_lowercase(),
+        "overflow-y" => format!("{:?}", style.overflow_y).to_ascii_lowercase(),
+        "visibility" => format!("{:?}", style.visibility).to_ascii_lowercase(),
+        "opacity" => format!("{}", style.opacity),
+        "flex-direction" => match style.flex_direction {
+            oxyde_css::FlexDirection::Row => "row",
+            oxyde_css::FlexDirection::RowReverse => "row-reverse",
+            oxyde_css::FlexDirection::Column => "column",
+            oxyde_css::FlexDirection::ColumnReverse => "column-reverse",
+        }
+        .to_owned(),
+        "flex-wrap" => match style.flex_wrap {
+            oxyde_css::FlexWrap::NoWrap => "nowrap",
+            oxyde_css::FlexWrap::Wrap => "wrap",
+            oxyde_css::FlexWrap::WrapReverse => "wrap-reverse",
+        }
+        .to_owned(),
+        "flex-grow" => format!("{}", style.flex_grow),
+        "flex-shrink" => format!("{}", style.flex_shrink),
+        "flex-basis" => match style.flex_basis {
+            None => "content".to_owned(),
+            Some(Size::Auto) => "auto".to_owned(),
+            Some(Size::Percent(p)) => format!("{p}%"),
+            Some(other) => size(other, base, "auto"),
+        },
+        "order" => style.order.to_string(),
+        "row-gap" => size(style.row_gap, base, "normal"),
+        "column-gap" => size(style.column_gap, base, "normal"),
         _ => return None,
     })
 }
