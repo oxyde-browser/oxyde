@@ -130,13 +130,33 @@ Le plan d'origine reste la référence. Ce qui suit le précise à la lumière d
 ### Finir le jalon 4 côté web
 
 Le moteur n'est qu'une moitié du jalon ; l'autre est ce que les pages peuvent en faire.
+Branche `jalon-4-web`, empilée sur `test262-conformite`.
 
-- **DOM** : 241 membres disponibles sur 291 décrits par l'IDL d'Oxyde (82,8 %), et l'IDL ne
-  décrit pas encore `Window`, les éléments HTML particuliers, les observateurs ni les plages.
-- **Manquent pour les sites réels** : `XMLHttpRequest`, les formulaires, `fetch` autre que
-  `GET`, les événements clavier et de saisie, `localStorage`, `history`, `location` complet.
-- **Web Platform Tests** : écrire le lanceur (il n'existe pas encore) pour mesurer le DOM comme
-  test262 mesure le langage. Sans cette mesure, « ça marche » reste une impression.
+Fait :
+
+- **DOM** : 241 membres disponibles sur 291 décrits par l'IDL d'Oxyde (82,8 %) ; événements
+  conformes (`Event`, `CustomEvent`, capture et bouillonnement, `dispatchEvent`),
+  `MutationObserver`, fragments de document, collections, `dataset`, une interface par balise
+  (`HTMLInputElement`, `HTMLAnchorElement`…).
+- **Réseau des pages** : `fetch` avec méthode, en-têtes et corps sous contrôle CORS
+  (pré-vérification comprise), `XMLHttpRequest`, `URL`, `URLSearchParams`, `Headers`.
+- **Navigation** : `location` complet, `history` (`pushState`, `popstate`), soumission des
+  formulaires en GET et en POST.
+- **Divers** : `localStorage`, événements clavier, `AbortController`, `TextEncoder`,
+  `structuredClone`, `matchMedia`, `FormData`.
+
+Reste :
+
+- **Web Platform Tests** : écrire le lanceur pour mesurer le DOM comme test262 mesure le
+  langage. Sans cette mesure, « ça marche » reste une impression. Demande de télécharger la
+  suite `web-platform-tests/wpt`.
+- **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
+  `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
+  `ResizeObserver`.
+- **Liés au stockage et au réseau** : cookies (`document.cookie`), persistance de
+  `localStorage` entre deux pages, `Request` et `Response` constructibles, `Blob`.
+- **Royaumes** : un objet global par cadre (`<iframe>`), ce qui débloque aussi 141 tests de
+  test262.
 
 ### Jalon 5 — Multi-processus
 
@@ -189,5 +209,5 @@ Le point 3 inverse l'ordre du plan d'origine (5 puis 6) : c'est une proposition,
 - Un fil du pilote graphique AMD occupe un cœur au repos après quelques images ; cause non élucidée.
 - Les méthodes de `Array.prototype` qui modifient le tableau directement ignorent une longueur figée.
 - Un module avec `await` de premier niveau bloque aussi ses modules frères.
-- La branche `test262-conformite` n'a pas de PR, et repose sur un commit de `jalon-4-javascript`
-  qui n'est pas dans `main`.
+- Les branches `test262-conformite` (PR n° 3) et `jalon-4-web` (PR n° 4, empilée sur la
+  précédente) attendent leur relecture.
