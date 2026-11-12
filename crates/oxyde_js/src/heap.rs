@@ -14,7 +14,7 @@ use indexmap::IndexMap;
 
 use crate::bytecode::{FunctionProto, Reg};
 use crate::value::{JsStr, ObjId, PropertyKey, Symbol, Value};
-use crate::vm::{NativeDataFn, NativeFn};
+use crate::vm::{NativeDataFn, NativeFn, Resume};
 
 /// Référence à une cellule de variable capturée par une fermeture.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,6 +78,7 @@ pub(crate) enum MapKey {
     Number(u64),
     String(JsStr),
     Symbol(Symbol),
+    BigInt(Arc<crate::bigint::BigInt>),
     Object(ObjId),
 }
 
@@ -99,6 +100,7 @@ impl MapKey {
             }
             Value::String(s) => Self::String(Arc::clone(s)),
             Value::Symbol(s) => Self::Symbol(s.clone()),
+            Value::BigInt(b) => Self::BigInt(Arc::clone(b)),
             Value::Object(id) => Self::Object(*id),
         }
     }
@@ -117,6 +119,9 @@ pub(crate) struct Closure {
     pub(crate) parent: Option<ObjId>,
     /// Fonction d'initialisation des champs d'instance de la classe.
     pub(crate) fields: Option<ObjId>,
+    /// Portée de premier niveau où la fonction résout ses noms libres :
+    /// celle de son module, ou `None` pour l'objet global.
+    pub(crate) scope: Option<ObjId>,
 }
 
 /// État d'un itérateur interne (`for…in`, `for…of`).
@@ -129,13 +134,34 @@ pub(crate) enum IterState {
     /// Valeurs figées (chaînes, `Map`, `Set`, itérables convertis).
     Values { values: Vec<Value>, index: usize },
     /// Objet respectant le protocole d'itération (`next()` → `{ value, done }`).
-    Protocol { iterator: Value, next: Value },
+    /// `done` : épuisé, ou fermé ; plus aucun appel ne lui sera fait.
+    Protocol {
+        iterator: Value,
+        next: Value,
+        done: bool,
+    },
+    /// Propriétés indexées d'un objet de type tableau, relues à chaque tour
+    /// (`Array.prototype.keys`, `values`, `entries`).
+    Indexed {
+        target: Value,
+        index: usize,
+        kind: IndexedKind,
+    },
+}
+
+/// Ce que rend un itérateur de tableau.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IndexedKind {
+    Keys,
+    Values,
+    Entries,
 }
 
 /// Cadre d'exécution d'une coroutine suspendue, sorti de la pile.
 #[derive(Clone, Debug)]
 pub(crate) struct SavedFrame {
     pub(crate) closure: ObjId,
+    pub(crate) scope: Option<ObjId>,
     pub(crate) proto: Arc<FunctionProto>,
     pub(crate) pc: usize,
     pub(crate) this: Value,
@@ -149,6 +175,28 @@ pub(crate) struct SavedFrame {
     pub(crate) upvalues: Vec<(usize, UpId)>,
     /// Registre qui reçoit la valeur transmise à la reprise.
     pub(crate) resume_reg: Reg,
+    /// Vrai si la suspension vient d'un `await` (et non d'un `yield`).
+    pub(crate) awaiting: bool,
+}
+
+/// Nature d'une coroutine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CoKind {
+    /// `function*`
+    Generator,
+    /// `async function`
+    Async,
+    /// `async function*`
+    AsyncGenerator,
+}
+
+/// Appel à `next`, `return` ou `throw` d'un générateur async, en attente.
+#[derive(Clone, Debug)]
+pub(crate) struct AsyncRequest {
+    /// Reprise demandée ; `None` une fois transmise au générateur.
+    pub(crate) mode: Option<Resume>,
+    /// Promesse rendue à l'appelant.
+    pub(crate) promise: ObjId,
 }
 
 /// État d'une coroutine (générateur ou fonction async).
@@ -168,8 +216,13 @@ pub(crate) enum CoState {
 #[derive(Clone, Debug)]
 pub(crate) struct Coroutine {
     pub(crate) state: CoState,
-    /// Promesse rendue par l'appel d'une fonction async ; `None` : générateur.
+    pub(crate) kind: CoKind,
+    /// Promesse rendue par l'appel d'une fonction async.
     pub(crate) promise: Option<ObjId>,
+    /// Requêtes d'un générateur async, la plus ancienne en tête.
+    pub(crate) queue: std::collections::VecDeque<AsyncRequest>,
+    /// Générateur async en cours d'exécution ou en attente d'une promesse.
+    pub(crate) busy: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -179,13 +232,38 @@ pub(crate) enum PromiseState {
     Rejected(Value),
 }
 
+/// Ce que devient le résultat d'une réaction de promesse.
+#[derive(Clone, Debug)]
+pub(crate) enum Derived {
+    /// Rien n'en dépend (`await`, combinateurs internes).
+    None,
+    /// Promesse ordinaire, résolue avec le résultat du gestionnaire.
+    Promise(ObjId),
+    /// Fonctions `resolve` et `reject` d'une promesse créée par un
+    /// constructeur du script (sous-classe, `Symbol.species`).
+    Functions(Box<(Value, Value)>),
+}
+
+impl Derived {
+    /// Ajoute à `out` les valeurs gardées en vie.
+    pub(crate) fn trace(&self, out: &mut Vec<Value>) {
+        match self {
+            Self::None => {}
+            Self::Promise(id) => out.push(Value::Object(*id)),
+            Self::Functions(functions) => {
+                out.push(functions.0.clone());
+                out.push(functions.1.clone());
+            }
+        }
+    }
+}
+
 /// Réaction enregistrée par `then` sur une promesse en attente.
 #[derive(Clone, Debug)]
 pub(crate) struct Reaction {
     pub(crate) on_fulfilled: Value,
     pub(crate) on_rejected: Value,
-    /// Promesse dérivée, résolue avec le résultat du gestionnaire.
-    pub(crate) target: Option<ObjId>,
+    pub(crate) target: Derived,
 }
 
 #[derive(Clone, Debug)]
@@ -194,6 +272,44 @@ pub(crate) struct PromiseData {
     pub(crate) reactions: Vec<Reaction>,
     /// Vrai dès qu'un gestionnaire a été attaché (rejets non gérés).
     pub(crate) handled: bool,
+}
+
+/// Octets d'un `ArrayBuffer`.
+#[derive(Clone, Debug)]
+pub(crate) struct BufferData {
+    pub(crate) bytes: Vec<u8>,
+    /// Tampon détaché : il n'a plus d'octets et ses vues sont vides.
+    pub(crate) detached: bool,
+    /// Taille maximale d'un tampon redimensionnable ; `None` : taille fixe.
+    pub(crate) max_len: Option<usize>,
+}
+
+/// Type des éléments d'un tableau typé.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ElementKind {
+    Int8,
+    Uint8,
+    Uint8Clamped,
+    Int16,
+    Uint16,
+    Int32,
+    Uint32,
+    Float16,
+    Float32,
+    Float64,
+    BigInt64,
+    BigUint64,
+}
+
+/// Vue typée sur un tampon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TypedArrayData {
+    pub(crate) buffer: ObjId,
+    pub(crate) kind: ElementKind,
+    /// Décalage du premier élément, en octets.
+    pub(crate) offset: usize,
+    /// Nombre d'éléments ; `None` : la vue suit la longueur du tampon.
+    pub(crate) length: Option<usize>,
 }
 
 /// Nature d'un objet (emplacements internes).
@@ -213,6 +329,16 @@ pub(crate) enum Kind {
     },
     Coroutine(Box<Coroutine>),
     Promise(Box<PromiseData>),
+    /// Date : valeur temporelle en millisecondes depuis 1970, ou `NaN`.
+    Date(f64),
+    ArrayBuffer(Box<BufferData>),
+    TypedArray(TypedArrayData),
+    /// Vue non typée sur un tampon ; `length` : `None` si elle suit sa longueur.
+    DataView {
+        buffer: ObjId,
+        offset: usize,
+        length: Option<usize>,
+    },
     /// Expression rationnelle compilée, avec le texte de son motif.
     RegExp {
         regex: Arc<crate::regexp::Regex>,
@@ -234,6 +360,83 @@ pub(crate) enum Kind {
         class: u32,
         data: u64,
     },
+    /// Objet exotique `Proxy`.
+    Proxy(ProxyData),
+    /// Objet `arguments` : ses éléments et sa longueur sont des propriétés
+    /// ordinaires.
+    /// Objet `arguments`. Hors mode strict, ses premiers éléments sont liés
+    /// aux paramètres de la fonction : capture du paramètre, ou `None` une
+    /// fois le lien rompu.
+    Arguments(Vec<Option<UpId>>),
+    /// `WeakMap` et `WeakSet` (références fortes, voir `builtins::weak`).
+    WeakMap(IndexMap<MapKey, (Value, Value)>),
+    WeakSet(IndexMap<MapKey, Value>),
+    /// `WeakRef` : sa cible.
+    WeakRef(Value),
+    FinalizationRegistry(Box<Registry>),
+    /// Objet rendu par `JSON.rawJSON` : son texte est émis tel quel.
+    RawJson,
+    /// Objet rendu par une aide d'itérateur (`map`, `filter`, `Iterator.from`…).
+    IteratorHelper(Box<IteratorHelper>),
+}
+
+/// État d'un `FinalizationRegistry`.
+#[derive(Clone, Debug)]
+pub(crate) struct Registry {
+    /// Fonction de nettoyage.
+    pub(crate) cleanup: Value,
+    /// Enregistrements : cible, valeur retenue, jeton de désinscription.
+    pub(crate) cells: Vec<(Value, Value, Value)>,
+}
+
+/// Nature d'une aide d'itérateur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HelperKind {
+    Map,
+    Filter,
+    Take,
+    Drop,
+    FlatMap,
+    /// `Iterator.concat` : parcourt `sources` l'une après l'autre.
+    Concat,
+    /// Enveloppe de `Iterator.from` autour d'un itérateur étranger.
+    Wrap,
+    /// Itérateur de `String.prototype.matchAll` : `iterator` est
+    /// l'expression, `next` le texte, `func` le drapeau global.
+    RegExpString,
+}
+
+/// État d'une aide d'itérateur.
+#[derive(Clone, Debug)]
+pub(crate) struct IteratorHelper {
+    pub(crate) kind: HelperKind,
+    /// Itérateur sous-jacent et sa méthode `next`.
+    pub(crate) iterator: Value,
+    pub(crate) next: Value,
+    /// Fonction de rappel (`map`, `filter`, `flatMap`).
+    pub(crate) func: Value,
+    /// Nombre de valeurs déjà passées à la fonction de rappel.
+    pub(crate) counter: f64,
+    /// Valeurs restant à prendre (`take`) ou à sauter (`drop`).
+    pub(crate) remaining: f64,
+    /// Itérateur interne en cours (`flatMap`, `concat`) et son `next`.
+    pub(crate) inner: Option<(Value, Value)>,
+    /// `concat` : (méthode d'itération, itérable) restant à parcourir.
+    pub(crate) sources: Vec<(Value, Value)>,
+    pub(crate) started: bool,
+    pub(crate) running: bool,
+    pub(crate) done: bool,
+}
+
+/// Cible et gestionnaire d'un `Proxy` ; `None` une fois le proxy révoqué.
+#[derive(Clone, Debug)]
+pub(crate) struct ProxyData {
+    pub(crate) target: Option<ObjId>,
+    pub(crate) handler: Option<ObjId>,
+    /// La cible était appelable à la création.
+    pub(crate) callable: bool,
+    /// La cible était un constructeur à la création.
+    pub(crate) constructor: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -244,6 +447,9 @@ pub(crate) struct Object {
     pub(crate) symbols: IndexMap<Symbol, Property>,
     pub(crate) kind: Kind,
     pub(crate) extensible: bool,
+    /// Propriétés virtuelles d'une fonction (`name`, `length`) supprimées ;
+    /// voir [`crate::internal::DELETED_NAME`].
+    pub(crate) deleted_virtual: u8,
 }
 
 impl Object {
@@ -254,6 +460,7 @@ impl Object {
             symbols: IndexMap::new(),
             kind,
             extensible: true,
+            deleted_virtual: 0,
         }
     }
 
@@ -280,7 +487,11 @@ impl Object {
     pub(crate) fn is_callable(&self) -> bool {
         matches!(
             self.kind,
-            Kind::Closure(_) | Kind::Native { .. } | Kind::NativeData { .. } | Kind::Bound { .. }
+            Kind::Closure(_)
+                | Kind::Native { .. }
+                | Kind::NativeData { .. }
+                | Kind::Bound { .. }
+                | Kind::Proxy(ProxyData { callable: true, .. })
         )
     }
 }
@@ -430,11 +641,17 @@ impl Heap {
                 }
             }
             match &object.kind {
+                Kind::Arguments(map) => pending_upvalues.extend(map.iter().flatten().copied()),
                 Kind::Ordinary
                 | Kind::Native { .. }
                 | Kind::Error
+                | Kind::RawJson
                 | Kind::Host { .. }
+                | Kind::Date(_)
+                | Kind::ArrayBuffer(_)
                 | Kind::RegExp { .. } => {}
+                Kind::TypedArray(view) => pending.push(view.buffer),
+                Kind::DataView { buffer, .. } => pending.push(*buffer),
                 Kind::Array(items) => items.iter().for_each(|v| push(v, &mut pending)),
                 Kind::Closure(closure) => {
                     pending_upvalues.extend(&closure.upvalues);
@@ -444,6 +661,7 @@ impl Heap {
                     pending.extend(closure.home);
                     pending.extend(closure.parent);
                     pending.extend(closure.fields);
+                    pending.extend(closure.scope);
                 }
                 Kind::Bound { target, this, args } => {
                     pending.push(*target);
@@ -451,9 +669,31 @@ impl Heap {
                     args.iter().for_each(|v| push(v, &mut pending));
                 }
                 Kind::Primitive(value) => push(value, &mut pending),
+                Kind::Proxy(proxy) => {
+                    pending.extend(proxy.target);
+                    pending.extend(proxy.handler);
+                }
+                Kind::IteratorHelper(helper) => {
+                    for value in [&helper.iterator, &helper.next, &helper.func] {
+                        push(value, &mut pending);
+                    }
+                    for (a, b) in helper.inner.iter().chain(&helper.sources) {
+                        push(a, &mut pending);
+                        push(b, &mut pending);
+                    }
+                }
                 Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),
                 Kind::Coroutine(coroutine) => {
                     pending.extend(coroutine.promise);
+                    for request in &coroutine.queue {
+                        pending.push(request.promise);
+                        match &request.mode {
+                            Some(Resume::Next(v) | Resume::Throw(v) | Resume::Return(v)) => {
+                                push(v, &mut pending);
+                            }
+                            None => {}
+                        }
+                    }
                     match &coroutine.state {
                         CoState::Start {
                             closure,
@@ -466,6 +706,7 @@ impl Heap {
                         }
                         CoState::Suspended(frame) => {
                             pending.push(frame.closure);
+                            pending.extend(frame.scope);
                             push(&frame.this, &mut pending);
                             push(&frame.new_target, &mut pending);
                             frame.args.iter().for_each(|v| push(v, &mut pending));
@@ -485,26 +726,42 @@ impl Heap {
                     for reaction in &promise.reactions {
                         push(&reaction.on_fulfilled, &mut pending);
                         push(&reaction.on_rejected, &mut pending);
-                        pending.extend(reaction.target);
+                        let mut kept = Vec::new();
+                        reaction.target.trace(&mut kept);
+                        for value in &kept {
+                            push(value, &mut pending);
+                        }
                     }
                 }
-                Kind::Map(map) => {
+                Kind::Map(map) | Kind::WeakMap(map) => {
                     for (key, value) in map.values() {
                         push(key, &mut pending);
                         push(value, &mut pending);
                     }
                 }
-                Kind::Set(set) => set.values().for_each(|v| push(v, &mut pending)),
+                Kind::Set(set) | Kind::WeakSet(set) => {
+                    set.values().for_each(|v| push(v, &mut pending))
+                }
+                Kind::WeakRef(target) => push(target, &mut pending),
+                Kind::FinalizationRegistry(registry) => {
+                    push(&registry.cleanup, &mut pending);
+                    for (target, held, token) in &registry.cells {
+                        push(target, &mut pending);
+                        push(held, &mut pending);
+                        push(token, &mut pending);
+                    }
+                }
                 Kind::Iterator(state) => match state {
                     IterState::Keys { .. } => {}
                     IterState::Array { target, .. } => pending.push(*target),
                     IterState::Values { values, .. } => {
                         values.iter().for_each(|v| push(v, &mut pending))
                     }
-                    IterState::Protocol { iterator, next } => {
+                    IterState::Protocol { iterator, next, .. } => {
                         push(iterator, &mut pending);
                         push(next, &mut pending);
                     }
+                    IterState::Indexed { target, .. } => push(target, &mut pending),
                 },
             }
         }

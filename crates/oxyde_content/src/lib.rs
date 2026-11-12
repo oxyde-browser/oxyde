@@ -10,6 +10,8 @@
 //! leur première image ; les images et feuilles externes ajoutées par un
 //! script ne sont pas chargées. Pour les scripts, voir le module `script`.
 
+#[path = "generated/dom.rs"]
+mod dom_idl;
 mod script;
 
 use std::collections::HashMap;
@@ -26,6 +28,15 @@ use oxyde_text::TextContext;
 pub use url::Url;
 
 use crate::script::ScriptEngine;
+
+/// Rapport de couverture du DOM : pour chaque interface décrite par les
+/// fichiers Web IDL d'Oxyde, les membres réellement disponibles aux scripts.
+/// Le rapport est établi en interrogeant une page d'essai, pas d'après une
+/// liste tenue à la main.
+#[must_use]
+pub fn dom_coverage_report() -> String {
+    script::dom_coverage_report()
+}
 
 /// Requête réseau émise par un script (`fetch`), à exécuter par l'embarqueur.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,12 +111,16 @@ struct ImageSlot {
 #[derive(Debug)]
 enum ScriptSlot {
     Inline(String),
+    /// `<script type="module">` en ligne.
+    InlineModule(String),
     /// `<script src>` ; `source` vaut `None` tant que la ressource n'est pas
     /// reçue, et reste `None` si elle est indisponible.
     External {
         url: Url,
         resolved: bool,
         source: Option<String>,
+        /// `<script type="module" src>`.
+        module: bool,
     },
 }
 
@@ -119,6 +134,9 @@ pub struct Page {
     sheets: Vec<SheetSlot>,
     images: HashMap<NodeId, ImageSlot>,
     scripts: Vec<ScriptSlot>,
+    /// Modules importés par les scripts de type module, par adresse ; `None` :
+    /// module indisponible.
+    modules: HashMap<Url, Option<String>>,
     engine: Option<Box<ScriptEngine>>,
     styles: StyleMap,
     tree: Option<LayoutTree>,
@@ -145,6 +163,28 @@ fn is_classic_script(kind: Option<&str>) -> bool {
             | "application/ecmascript"
             | "application/x-javascript"
     )
+}
+
+/// Vrai si l'attribut `type` d'un `<script>` désigne un module.
+fn is_module_script(kind: Option<&str>) -> bool {
+    kind.is_some_and(|k| k.trim().eq_ignore_ascii_case("module"))
+}
+
+/// Nombre maximal de modules importés par une page.
+const MAX_MODULES: usize = 512;
+
+/// Adresse du module désigné par `specifier` dans le module `referrer`.
+/// Comme dans un navigateur, un spécificateur « nu » (`"lodash"`) ne désigne
+/// rien : seuls les chemins (`./`, `../`, `/`) et les adresses absolues sont
+/// résolus, et seulement vers `http`, `https` ou le protocole de la page.
+pub(crate) fn resolve_module(referrer: &Url, specifier: &str) -> Option<Url> {
+    let relative = ["./", "../", "/"].iter().any(|p| specifier.starts_with(p));
+    let url = if relative {
+        referrer.join(specifier).ok()?
+    } else {
+        Url::parse(specifier).ok()?
+    };
+    (matches!(url.scheme(), "http" | "https") || url.scheme() == referrer.scheme()).then_some(url)
 }
 
 /// Feuilles de style du document, dans l'ordre du source. Les feuilles
@@ -215,9 +255,10 @@ impl Page {
                     },
                 );
             } else if el.is_html("script")
-                && is_classic_script(el.attr("type"))
+                && (is_classic_script(el.attr("type")) || is_module_script(el.attr("type")))
                 && scripts.len() < MAX_SCRIPTS
             {
+                let module = is_module_script(el.attr("type"));
                 match el.attr("src").filter(|s| !s.trim().is_empty()) {
                     Some(src) => {
                         if let Ok(target) = base.join(src.trim()) {
@@ -225,13 +266,18 @@ impl Page {
                                 url: target,
                                 resolved: false,
                                 source: None,
+                                module,
                             });
                         }
                     }
                     None => {
                         let source = doc.text_content(node);
                         if !source.trim().is_empty() {
-                            scripts.push(ScriptSlot::Inline(source));
+                            scripts.push(if module {
+                                ScriptSlot::InlineModule(source)
+                            } else {
+                                ScriptSlot::Inline(source)
+                            });
                         }
                     }
                 }
@@ -244,6 +290,7 @@ impl Page {
             sheets,
             images,
             scripts,
+            modules: HashMap::new(),
             engine: None,
             styles: StyleMap::default(),
             tree: None,
@@ -360,6 +407,7 @@ impl Page {
                 url: u,
                 resolved,
                 source: slot_source,
+                ..
             } = slot
                 && u == url
                 && !*resolved
@@ -372,25 +420,104 @@ impl Page {
         found
     }
 
-    /// Exécute les scripts du document, dans l'ordre du source, puis
-    /// distribue `DOMContentLoaded` et `load`. À appeler une fois, après avoir
-    /// fourni les scripts externes. Les exceptions vont dans la console.
+    /// Scripts de type module du document dont le texte est connu :
+    /// (adresse servant d'identifiant et de base de résolution, texte).
+    fn module_entries(&self) -> Vec<(Url, &str)> {
+        let mut entries = Vec::new();
+        for (index, slot) in self.scripts.iter().enumerate() {
+            match slot {
+                ScriptSlot::InlineModule(source) => {
+                    // Un module en ligne se résout par rapport à la page ; le
+                    // fragment distingue plusieurs modules en ligne.
+                    let mut id = self.base.clone();
+                    id.set_fragment(Some(&format!("module-{index}")));
+                    entries.push((id, source.as_str()));
+                }
+                ScriptSlot::External {
+                    url,
+                    source: Some(source),
+                    module: true,
+                    ..
+                } => entries.push((url.clone(), source.as_str())),
+                _ => {}
+            }
+        }
+        entries
+    }
+
+    /// Adresses des modules importés (`import … from`) qu'il reste à fournir
+    /// par [`Page::set_module`]. À rappeler après chaque fourniture : un module
+    /// reçu peut en importer d'autres. Vide quand le graphe est complet.
+    #[must_use]
+    pub fn pending_modules(&self) -> Vec<Url> {
+        let mut pending: Vec<Url> = Vec::new();
+        let known = self.module_entries().into_iter().chain(
+            self.modules
+                .iter()
+                .filter_map(|(url, source)| Some((url.clone(), source.as_deref()?))),
+        );
+        for (referrer, source) in known {
+            // Un module invalide n'importe rien : son erreur sera signalée à l'exécution.
+            for specifier in oxyde_js::module_requests(source).unwrap_or_default() {
+                if let Some(url) = resolve_module(&referrer, &specifier)
+                    && !self.modules.contains_key(&url)
+                    && !pending.contains(&url)
+                    && self.modules.len() + pending.len() < MAX_MODULES
+                {
+                    pending.push(url);
+                }
+            }
+        }
+        pending
+    }
+
+    /// Fournit le texte d'un module demandé par [`Page::pending_modules`] ;
+    /// `None` s'il est indisponible (les scripts qui l'importent échoueront).
+    ///
+    /// LIMITE : un module d'une autre origine est accepté sans contrôle CORS.
+    pub fn set_module(&mut self, url: &Url, source: Option<String>) {
+        if self.modules.len() < MAX_MODULES || self.modules.contains_key(url) {
+            self.modules.insert(url.clone(), source);
+        }
+    }
+
+    /// Exécute les scripts du document — les scripts classiques dans l'ordre
+    /// du source, puis les modules — et distribue `DOMContentLoaded` et
+    /// `load`. À appeler une fois, après avoir fourni les scripts externes et
+    /// les modules importés. Les exceptions vont dans la console.
     pub fn run_scripts(&mut self) {
-        let scripts = std::mem::take(&mut self.scripts);
-        if scripts.is_empty() {
+        if self.scripts.is_empty() {
             return;
         }
+        let entries: Vec<(String, String)> = self
+            .module_entries()
+            .into_iter()
+            .map(|(id, source)| (id.to_string(), source.to_owned()))
+            .collect();
+        let modules = std::mem::take(&mut self.modules);
+        let scripts = std::mem::take(&mut self.scripts);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
                 | ScriptSlot::External {
                     source: Some(source),
+                    module: false,
                     ..
                 } => source,
-                ScriptSlot::External { source: None, .. } => continue,
+                _ => continue,
             };
             engine.eval(&mut self.doc, source);
+        }
+        // Les modules sont différés : ils s'exécutent après les scripts classiques.
+        engine.set_modules(
+            modules
+                .into_iter()
+                .filter_map(|(url, source)| Some((url.to_string(), source?)))
+                .collect(),
+        );
+        for (id, source) in &entries {
+            engine.eval_module(&mut self.doc, source, id);
         }
         let root = self.doc.root();
         engine.dispatch(&mut self.doc, Some(root), "DOMContentLoaded");
@@ -756,7 +883,7 @@ mod tests {
                console.log(cible.outerHTML);
              </script>
              <script src='externe.js'></script>
-             <script type='module'>document.title = 'module ignoré';</script>
+             <script type='text/plain'>document.title = 'type inconnu ignoré';</script>
              <script>document.body.append(' fin');</script>",
         );
         assert_eq!(p.pending_scripts().len(), 1);
@@ -964,6 +1091,155 @@ mod tests {
         );
         assert!(!body_text(&p).contains("secret"));
         assert!(p.take_console().is_empty());
+    }
+
+    #[test]
+    fn module_scripts_import_their_dependencies() {
+        let mut p = page(
+            "<title>t</title><p id=p></p>
+             <script type=module>
+               import { saluer } from './lib/salut.js';
+               import defaut, * as outils from '/outils.js';
+               document.getElementById('p').textContent += saluer(outils.nom) + ' ' + defaut + ' ' + typeof prive + ';';
+             </script>
+             <script type=module src='entree.js'></script>
+             <script type=module>import 'paquet-nu';</script>
+             <script type=module>import './absent.js';</script>
+             <script>var prive = 'global'; document.getElementById('p').textContent += 'classique;';</script>",
+        );
+        // Le module externe est demandé comme un script ordinaire.
+        let scripts = p.pending_scripts();
+        assert_eq!(scripts.len(), 1);
+        assert!(
+            p.set_script(
+                &scripts[0],
+                Some(
+                    "import { saluer } from './lib/salut.js'; const prive = 1;
+                 document.getElementById('p').textContent += saluer('entrée') + ';';"
+                        .to_owned()
+                )
+            )
+        );
+        // Puis le graphe d'importations est fourni vague par vague.
+        let mut asked = Vec::new();
+        for _ in 0..8 {
+            let pending = p.pending_modules();
+            if pending.is_empty() {
+                break;
+            }
+            for url in pending {
+                let source = match url.path() {
+                    "/dossier/lib/salut.js" => Some(
+                        "import { ponctuation } from './ponctuation.js';
+                         export const saluer = nom => 'bonjour ' + nom + ponctuation;",
+                    ),
+                    "/dossier/lib/ponctuation.js" => Some("export const ponctuation = ' !';"),
+                    "/outils.js" => Some("export const nom = 'outils'; export default 42;"),
+                    _ => None,
+                };
+                asked.push(url.path().to_owned());
+                p.set_module(&url, source.map(str::to_owned));
+            }
+        }
+        asked.sort();
+        assert_eq!(
+            asked,
+            [
+                "/dossier/absent.js",
+                "/dossier/lib/ponctuation.js",
+                "/dossier/lib/salut.js",
+                "/outils.js"
+            ]
+        );
+        p.run_scripts();
+        // Classiques d'abord, puis modules dans l'ordre ; chaque module a sa
+        // portée, mais voit les globales des scripts classiques.
+        assert_eq!(
+            body_text(&p),
+            "classique;bonjour outils ! 42 string;bonjour entrée !;"
+        );
+        let console = p.take_console();
+        assert_eq!(console.len(), 2, "{console:?}");
+        assert!(console[0].text.contains("paquet-nu"), "{}", console[0].text);
+        assert!(console[1].text.contains("absent.js"), "{}", console[1].text);
+    }
+
+    #[test]
+    fn generated_bindings_are_up_to_date() {
+        // Le fichier versionné doit être exactement ce que le générateur
+        // produit à partir des fichiers IDL.
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("idl");
+        let mut paths: Vec<_> = std::fs::read_dir(&directory)
+            .expect("dossier idl")
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|path| path.extension().is_some_and(|e| e == "webidl"))
+            .collect();
+        paths.sort();
+        let mut definitions = Vec::new();
+        for path in &paths {
+            let source = std::fs::read_to_string(path).expect("fichier IDL lisible");
+            definitions.extend(oxyde_bindings::parse(&source).expect("IDL valide"));
+        }
+        let interfaces = oxyde_bindings::resolve(&definitions).expect("IDL cohérent");
+        let expected = oxyde_bindings::generate(&interfaces);
+        let actual = include_str!("generated/dom.rs").replace("\r\n", "\n");
+        assert!(
+            actual == expected,
+            "src/generated/dom.rs est périmé : relancer \
+             `cargo run -p oxyde_bindings -- crates/oxyde_content/idl crates/oxyde_content/src/generated/dom.rs`"
+        );
+    }
+
+    #[test]
+    fn dom_interfaces_come_from_the_idl() {
+        let mut q = page(
+            "<title>t</title><p id=p>texte<!--c--></p><svg id=s></svg><script>
+               const el = document.getElementById('p'), texte = el.firstChild, svg = document.getElementById('s');
+               document.title = [
+                 el instanceof HTMLElement, el instanceof Node, el instanceof EventTarget,
+                 texte instanceof Text, texte instanceof CharacterData, texte instanceof Element,
+                 el.lastChild instanceof Comment, document instanceof Document, document instanceof Element,
+                 svg instanceof Element, svg instanceof HTMLElement,
+                 Object.getPrototypeOf(HTMLElement) === Element, Object.getPrototypeOf(Element.prototype) === Node.prototype,
+                 Node.ELEMENT_NODE, el.TEXT_NODE, Node.DOCUMENT_POSITION_CONTAINED_BY,
+                 Object.prototype.toString.call(el), Object.prototype.toString.call(texte),
+                 Node.prototype.appendChild.length, Element.prototype.setAttribute.length, Node.prototype.cloneNode.length,
+                 typeof texte.getAttribute, typeof texte.remove, typeof el.click, typeof svg.click,
+                 typeof document.getElementById, typeof el.getElementById, typeof document.createElement,
+                 Object.hasOwn(Node.prototype, 'appendChild'), Object.hasOwn(Element.prototype, 'appendChild'),
+               ].join(' ');
+               try { new Node(); } catch (e) { document.title += ' ' + e.name; }
+               try { Element(); } catch (e) { document.title += ' ' + e.name; }
+             </script>",
+        );
+        q.run_scripts();
+        assert_eq!(q.take_console(), Vec::new());
+        assert_eq!(
+            q.title(),
+            "true true true true true false true true false true false true true 1 3 16 \
+             [object HTMLElement] [object Text] 1 2 0 \
+             undefined function function undefined function undefined function true false \
+             TypeError TypeError"
+        );
+    }
+
+    #[test]
+    fn dom_coverage_is_measured() {
+        let report = dom_coverage_report();
+        assert!(
+            report.contains("| `Node` | `EventTarget` | 18 / 18 |"),
+            "{report}"
+        );
+        assert!(report.contains("## Membres absents"));
+        // La couverture ne doit pas régresser : 125 membres au moment où le
+        // rapport a été branché.
+        let done: usize = report
+            .split("**Total : ")
+            .nth(1)
+            .and_then(|rest| rest.split(' ').next())
+            .and_then(|n| n.parse().ok())
+            .expect("total lisible");
+        assert!(done >= 125, "couverture en régression : {done} membres");
     }
 
     #[test]

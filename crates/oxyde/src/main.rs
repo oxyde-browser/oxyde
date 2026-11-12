@@ -34,6 +34,8 @@ struct Args {
     screenshot: Option<PathBuf>,
     page_only: bool,
     dump_dom: bool,
+    /// Affiche le rapport de couverture du DOM et quitte.
+    dom_coverage: bool,
     size: (u32, u32),
 }
 
@@ -45,6 +47,7 @@ fn parse_args() -> Result<Args> {
         screenshot: None,
         page_only: false,
         dump_dom: false,
+        dom_coverage: false,
         size: (1440, 900),
     };
     let mut it = std::env::args().skip(1);
@@ -62,6 +65,7 @@ fn parse_args() -> Result<Args> {
                 .push(it.next().context("--pin attend une adresse")?),
             "--page-only" => args.page_only = true,
             "--dump-dom" => args.dump_dom = true,
+            "--dom-coverage" => args.dom_coverage = true,
             "--size" => {
                 let value = it.next().context("--size attend LARGEURxHAUTEUR")?;
                 let (w, h) = value
@@ -135,6 +139,13 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
 
 fn main() -> Result<()> {
     let args = parse_args()?;
+    if args.dom_coverage {
+        #[expect(clippy::print_stdout, reason = "sortie demandée par --dom-coverage")]
+        {
+            print!("{}", oxyde_content::dom_coverage_report());
+        }
+        return Ok(());
+    }
     if args.dump_dom {
         let mut loaded = loader::load_input(args.target.as_deref().unwrap_or("about:newtab"));
         loader::settle_fetches(&mut loaded.page);

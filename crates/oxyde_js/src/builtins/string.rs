@@ -7,7 +7,9 @@
 use std::sync::Arc;
 
 use crate::object::char_at;
-use crate::value::{JsStr, Value, number_to_string, to_int32, to_uint32, utf16_len};
+use crate::value::{
+    JsStr, PropertyKey, Symbol, Value, number_to_string, to_int32, to_uint32, utf16_len,
+};
 use crate::vm::{JsResult, NativeFn, Vm};
 
 use super::{
@@ -16,7 +18,7 @@ use super::{
 };
 
 /// Longueur maximale d'une chaîne produite par une méthode.
-const MAX_STRING: usize = 1 << 28;
+pub(super) const MAX_STRING: usize = 1 << 28;
 
 fn this_str(vm: &mut Vm, this: &Value) -> JsResult<JsStr> {
     if this.is_nullish() {
@@ -27,6 +29,54 @@ fn this_str(vm: &mut Vm, this: &Value) -> JsResult<JsStr> {
 
 fn string(s: &str) -> JsResult {
     Ok(Value::string(s))
+}
+
+/// `CreateHTML` (ECMA-262 §B.2.2.2.1) : entoure la chaîne d'une balise, avec
+/// un attribut éventuel dont les guillemets sont échappés.
+fn create_html(
+    vm: &mut Vm,
+    this: &Value,
+    tag: &str,
+    attribute: Option<(&str, &Value)>,
+) -> JsResult {
+    let text = this_str(vm, this)?;
+    let mut out = format!("<{tag}");
+    if let Some((name, value)) = attribute {
+        let value = vm.to_string(value)?;
+        out.push_str(&format!(" {name}=\"{}\"", value.replace('"', "&quot;")));
+    }
+    out.push_str(&format!(">{text}</{tag}>"));
+    string(&out)
+}
+
+/// Méthodes HTML de `String.prototype` (annexe B) : `balise` sans attribut,
+/// ou `balise attribut` dont la valeur est le premier argument.
+macro_rules! html_methods {
+    ($($name:ident => $tag:literal $(, $attribute:literal)?;)*) => {
+        $(
+            fn $name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+                let _ = args;
+                let attribute: Option<(&str, Value)> = None $(.or(Some(($attribute, arg(args, 0)))))?;
+                create_html(vm, this, $tag, attribute.as_ref().map(|(name, value)| (*name, value)))
+            }
+        )*
+    };
+}
+
+html_methods! {
+    html_anchor => "a", "name";
+    html_big => "big";
+    html_blink => "blink";
+    html_bold => "b";
+    html_fixed => "tt";
+    html_fontcolor => "font", "color";
+    html_fontsize => "font", "size";
+    html_italics => "i";
+    html_link => "a", "href";
+    html_small => "small";
+    html_strike => "strike";
+    html_sub => "sub";
+    html_sup => "sup";
 }
 
 #[expect(
@@ -93,6 +143,10 @@ fn byte_of_unit(s: &str, unit: usize) -> usize {
 fn string_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let value = match args.first() {
         None => Value::string(""),
+        // Appelé comme fonction, `String` décrit un symbole au lieu de lever.
+        Some(Value::Symbol(symbol)) if !vm.constructing => {
+            Value::string(&format!("Symbol({})", symbol.description().unwrap_or("")))
+        }
         Some(v) => Value::String(vm.to_string(v)?),
     };
     if vm.constructing {
@@ -100,6 +154,41 @@ fn string_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     } else {
         Ok(value)
     }
+}
+
+/// `String.raw(template, ...substitutions)` (ECMA-262 §22.1.2.4).
+fn string_raw(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let cooked = vm.to_object(&arg(args, 0))?;
+    let raw = vm.get(&cooked, "raw")?;
+    let raw = vm.to_object(&raw)?;
+    let length = vm.get(&raw, "length")?;
+    let length = vm.to_number(&length)?;
+    let length = if length.is_nan() {
+        0.0
+    } else {
+        length.trunc().clamp(0.0, 9_007_199_254_740_991.0)
+    };
+    let mut out = String::new();
+    let mut index = 0_usize;
+    #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+    while (index as f64) < length {
+        vm.tick(1)?;
+        let part = vm.get(&raw, &index.to_string())?;
+        out.push_str(&vm.to_string(&part)?);
+        #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
+        let last = (index + 1) as f64 >= length;
+        if last {
+            break;
+        }
+        if let Some(substitution) = args.get(index + 1) {
+            out.push_str(&vm.to_string(substitution)?);
+        }
+        if out.len() > MAX_STRING {
+            return Err(vm.error("RangeError", "chaîne trop longue"));
+        }
+        index += 1;
+    }
+    string(&out)
 }
 
 fn from_char_code(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -136,15 +225,36 @@ fn from_code_point(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     string(&out)
 }
 
+/// Index d'une unité de code : `ToIntegerOrInfinity(value)`, ou `None` s'il
+/// sort de `[0, len[`.
+fn unit_index(vm: &mut Vm, value: &Value, len: usize) -> JsResult<Option<usize>> {
+    let n = vm.to_number(value)?;
+    let n = if n.is_nan() { 0.0 } else { n.trunc() };
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    if n < 0.0 || n >= len as f64 {
+        return Ok(None);
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "dans [0, len["
+    )]
+    Ok(Some(n as usize))
+}
+
 fn char_at_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return string("");
+    };
     string(&char_at(&s, index).unwrap_or_default())
 }
 
 fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return Ok(Value::Number(f64::NAN));
+    };
     Ok(s.encode_utf16()
         .nth(index)
         .map_or(Value::Number(f64::NAN), |u| Value::Number(f64::from(u))))
@@ -152,7 +262,9 @@ fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn code_point_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return Ok(Value::Undefined);
+    };
     let byte = byte_of_unit(&s, index);
     Ok(s.get(byte..)
         .and_then(|rest| rest.chars().next())
@@ -162,6 +274,7 @@ fn code_point_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
     let n = vm.to_number(&arg(args, 0))?;
+    let n = if n.is_nan() { 0.0 } else { n };
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     let index = if n < 0.0 {
         utf16_len(&s) as f64 + n.trunc()
@@ -200,6 +313,9 @@ fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("includes : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
     Ok(Value::Bool(
@@ -210,6 +326,9 @@ fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn starts_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("startsWith : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
     Ok(Value::Bool(
@@ -220,6 +339,9 @@ fn starts_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn ends_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("endsWith : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let len = utf16_len(&s);
     let end = position(vm, &arg(args, 1), len, len)?;
@@ -339,15 +461,87 @@ fn concat(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     string(&out)
 }
 
+/// `RequireObjectCoercible(this)`.
+fn coercible(vm: &mut Vm, this: &Value) -> JsResult<()> {
+    if this.is_nullish() {
+        return Err(vm.type_error("méthode de chaîne appelée sur null ou undefined"));
+    }
+    Ok(())
+}
+
+/// Méthode `symbol` de `value`, si c'est un objet qui en a une (`GetMethod`).
+fn symbol_method(vm: &mut Vm, value: &Value, symbol: &Symbol) -> JsResult<Option<Value>> {
+    if value.as_object().is_none() {
+        return Ok(None);
+    }
+    let method = vm.get_key(value, &PropertyKey::Symbol(symbol.clone()))?;
+    if method.is_nullish() {
+        return Ok(None);
+    }
+    if !is_callable(vm, &method) {
+        return Err(vm.type_error(&format!(
+            "{} n'est pas une fonction",
+            symbol.description().unwrap_or("la méthode")
+        )));
+    }
+    Ok(Some(method))
+}
+
+/// `IsRegExp` (ECMA-262 §7.2.8).
+fn is_regexp(vm: &mut Vm, value: &Value) -> JsResult<bool> {
+    if value.as_object().is_none() {
+        return Ok(false);
+    }
+    let key = PropertyKey::Symbol(vm.well_known.match_.clone());
+    let matcher = vm.get_key(value, &key)?;
+    if matcher != Value::Undefined {
+        return Ok(matcher.truthy());
+    }
+    Ok(vm.regexp_parts(value).is_some())
+}
+
+/// `matchAll` et `replaceAll` refusent une expression rationnelle non globale.
+fn require_global(vm: &mut Vm, regexp: &Value, method: &str) -> JsResult<()> {
+    if !is_regexp(vm, regexp)? {
+        return Ok(());
+    }
+    let flags = vm.get(regexp, "flags")?;
+    if flags.is_nullish() || !vm.to_string(&flags)?.contains('g') {
+        return Err(vm.type_error(&format!(
+            "{method} exige une expression rationnelle globale (drapeau g)"
+        )));
+    }
+    Ok(())
+}
+
+/// `Invoke(RegExpCreate(pattern, flags), symbol, « text »)`.
+fn invoke_regexp(
+    vm: &mut Vm,
+    pattern: &Value,
+    flags: &str,
+    symbol: &Symbol,
+    text: JsStr,
+) -> JsResult {
+    let source: JsStr = match pattern {
+        Value::Undefined => Arc::from(""),
+        other => vm.to_string(other)?,
+    };
+    let regexp = vm.new_regexp(&source, &Arc::from(flags))?;
+    let method = vm.get_key(&regexp, &PropertyKey::Symbol(symbol.clone()))?;
+    vm.call(&method, &regexp, &[Value::String(text)])
+}
+
 fn split(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
+    coercible(vm, this)?;
+    let split_symbol = vm.well_known.split.clone();
+    if let Some(splitter) = symbol_method(vm, &arg(args, 0), &split_symbol)? {
+        return vm.call(&splitter, &arg(args, 0), &[this.clone(), arg(args, 1)]);
+    }
+    let s = vm.to_string(this)?;
     let limit = match arg(args, 1) {
         Value::Undefined => usize::MAX,
         other => to_uint32(vm.to_number(&other)?) as usize,
     };
-    if let Some((_, regex)) = vm.regexp_parts(&arg(args, 0)) {
-        return super::regexp::string_split(vm, &s, &regex, limit);
-    }
     let parts: Vec<Value> = match arg(args, 0) {
         Value::Undefined => vec![Value::String(Arc::clone(&s))],
         separator => {
@@ -410,12 +604,26 @@ fn replacement(
 }
 
 fn replace_impl(vm: &mut Vm, this: &Value, args: &[Value], all: bool) -> JsResult {
-    let s = this_str(vm, this)?;
+    coercible(vm, this)?;
+    let search_value = arg(args, 0);
     let replacer = arg(args, 1);
-    if let Some((regexp, regex)) = vm.regexp_parts(&arg(args, 0)) {
-        return super::regexp::string_replace(vm, &s, regexp, &regex, &replacer, all);
+    if search_value.as_object().is_some() {
+        if all {
+            require_global(vm, &search_value, "replaceAll")?;
+        }
+        let replace_symbol = vm.well_known.replace.clone();
+        if let Some(method) = symbol_method(vm, &search_value, &replace_symbol)? {
+            return vm.call(&method, &search_value, &[this.clone(), replacer]);
+        }
     }
-    let pattern = vm.to_string(&arg(args, 0))?;
+    let s = vm.to_string(this)?;
+    let pattern = vm.to_string(&search_value)?;
+    // La valeur de remplacement est convertie une seule fois, avant la recherche.
+    let replacer = if is_callable(vm, &replacer) {
+        replacer
+    } else {
+        Value::String(vm.to_string(&replacer)?)
+    };
     let mut out = String::new();
     let mut cursor = 0;
     while let Some(found) = s.get(cursor..).and_then(|rest| rest.find(&*pattern)) {
@@ -451,18 +659,37 @@ fn replace_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn match_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_match(vm, &s, args)
+    coercible(vm, this)?;
+    let symbol = vm.well_known.match_.clone();
+    if let Some(matcher) = symbol_method(vm, &arg(args, 0), &symbol)? {
+        return vm.call(&matcher, &arg(args, 0), std::slice::from_ref(this));
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &arg(args, 0), "", &symbol, s)
 }
 
 fn match_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_match_all(vm, &s, args)
+    coercible(vm, this)?;
+    let regexp = arg(args, 0);
+    let symbol = vm.well_known.match_all.clone();
+    if regexp.as_object().is_some() {
+        require_global(vm, &regexp, "matchAll")?;
+        if let Some(matcher) = symbol_method(vm, &regexp, &symbol)? {
+            return vm.call(&matcher, &regexp, std::slice::from_ref(this));
+        }
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &regexp, "g", &symbol, s)
 }
 
 fn search(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let s = this_str(vm, this)?;
-    super::regexp::string_search(vm, &s, args)
+    coercible(vm, this)?;
+    let symbol = vm.well_known.search.clone();
+    if let Some(searcher) = symbol_method(vm, &arg(args, 0), &symbol)? {
+        return vm.call(&searcher, &arg(args, 0), std::slice::from_ref(this));
+    }
+    let s = vm.to_string(this)?;
+    invoke_regexp(vm, &arg(args, 0), "", &symbol, s)
 }
 
 fn locale_compare(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -491,7 +718,11 @@ fn string_value_of(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 fn number_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let value = match args.first() {
         None => Value::Number(0.0),
-        Some(v) => Value::Number(vm.to_number(v)?),
+        // `Number(1n)` est la conversion explicite d'un BigInt.
+        Some(v) => match vm.to_numeric(v)? {
+            Value::BigInt(big) => Value::Number(big.to_f64()),
+            other => other,
+        },
     };
     if vm.constructing {
         vm.to_object(&value)
@@ -529,32 +760,209 @@ fn number_to_string_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResul
     string(&number_to_radix(n, radix as u32))
 }
 
-fn number_to_fixed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let n = this_number(vm, this)?;
-    let digits = vm.to_number(&arg(args, 0))?;
-    let digits = if digits.is_nan() { 0.0 } else { digits.trunc() };
-    if !(0.0..=100.0).contains(&digits) {
-        return Err(vm.error(
-            "RangeError",
-            "toFixed : le nombre de décimales doit être entre 0 et 100",
-        ));
+/// Chiffres décimaux exacts de `|x|` (fini, non nul), sans zéros de fin, et
+/// exposant décimal du premier : `x = d₀,d₁d₂… × 10^exposant`.
+fn exact_decimal(x: f64) -> (Vec<u8>, i32) {
+    // 800 décimales suffisent à écrire exactement n'importe quel `f64`.
+    let text = format!("{:.800e}", x.abs());
+    let (mantissa, exponent) = text.split_once('e').unwrap_or((&text, "0"));
+    let mut digits: Vec<u8> = mantissa
+        .bytes()
+        .filter(u8::is_ascii_digit)
+        .map(|b| b - b'0')
+        .collect();
+    while digits.len() > 1 && digits.last() == Some(&0) {
+        digits.pop();
     }
-    if !n.is_finite() || n.abs() >= 1e21 {
-        return string(&number_to_string(n));
+    (digits, exponent.parse().unwrap_or(0))
+}
+
+/// Arrondit à `count` chiffres significatifs (`count ≥ 1`), la moitié vers
+/// le haut comme le prescrit le standard ; complète de zéros au besoin.
+fn round_digits(mut digits: Vec<u8>, mut exponent: i32, count: usize) -> (Vec<u8>, i32) {
+    if digits.len() > count {
+        let up = digits.get(count).is_some_and(|d| *d >= 5);
+        digits.truncate(count);
+        if up {
+            let mut carried = true;
+            for digit in digits.iter_mut().rev() {
+                if *digit == 9 {
+                    *digit = 0;
+                } else {
+                    *digit += 1;
+                    carried = false;
+                    break;
+                }
+            }
+            if carried {
+                // 9,99… devient 1,00… × 10.
+                digits.insert(0, 1);
+                digits.pop();
+                exponent += 1;
+            }
+        }
+    }
+    digits.resize(count, 0);
+    (digits, exponent)
+}
+
+fn digit_text(digits: &[u8]) -> String {
+    digits.iter().map(|d| char::from(b'0' + d)).collect()
+}
+
+/// Écriture décimale sans exposant de `d₀,d₁… × 10^exponent`, avec
+/// `fraction` chiffres après la virgule.
+fn fixed_text(digits: &[u8], exponent: i32, fraction: usize) -> String {
+    let mut whole = String::new();
+    let mut rest = String::new();
+    if exponent >= 0 {
+        let split = usize::try_from(exponent).unwrap_or(0) + 1;
+        for index in 0..split {
+            whole.push(char::from(b'0' + digits.get(index).copied().unwrap_or(0)));
+        }
+        rest.push_str(&digit_text(digits.get(split..).unwrap_or(&[])));
+    } else {
+        whole.push('0');
+        let zeros = usize::try_from(-exponent - 1).unwrap_or(0);
+        rest.push_str(&"0".repeat(zeros));
+        rest.push_str(&digit_text(digits));
+    }
+    while rest.len() < fraction {
+        rest.push('0');
+    }
+    rest.truncate(fraction);
+    if fraction == 0 {
+        whole
+    } else {
+        format!("{whole}.{rest}")
+    }
+}
+
+/// Écriture avec exposant : `d₀.d₁…e±n`.
+fn exponential_text(digits: &[u8], exponent: i32) -> String {
+    let mut out = digit_text(digits.get(..1).unwrap_or(&[0]));
+    if digits.len() > 1 {
+        out.push('.');
+        out.push_str(&digit_text(digits.get(1..).unwrap_or(&[])));
+    }
+    out.push('e');
+    out.push(if exponent < 0 { '-' } else { '+' });
+    out.push_str(&exponent.unsigned_abs().to_string());
+    out
+}
+
+/// Nombre de chiffres demandé à une méthode de formatage : entier, ou `None`
+/// s'il sort de `[min, 100]`.
+fn digit_count(vm: &mut Vm, value: &Value, min: f64) -> JsResult<Option<usize>> {
+    let count = vm.to_number(value)?;
+    let count = if count.is_nan() { 0.0 } else { count.trunc() };
+    if !(min..=100.0).contains(&count) {
+        return Ok(None);
     }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "dans [0, 100]"
     )]
-    let digits = digits as usize;
-    let formatted = format!("{n:.digits$}");
-    // « -0.00 » s'écrit « 0.00 » en JavaScript quand la valeur est nulle.
-    string(if n == 0.0 {
-        formatted.trim_start_matches('-')
+    Ok(Some(count as usize))
+}
+
+fn number_to_fixed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let Some(fraction) = digit_count(vm, &arg(args, 0), 0.0)? else {
+        return Err(vm.error(
+            "RangeError",
+            "toFixed : le nombre de décimales doit être entre 0 et 100",
+        ));
+    };
+    if !n.is_finite() || n.abs() >= 1e21 {
+        return string(&number_to_string(n));
+    }
+    if n == 0.0 {
+        return string(&fixed_text(&[0], 0, fraction));
+    }
+    let (digits, exponent) = exact_decimal(n);
+    // Chiffres significatifs gardés : ceux de la partie entière et `fraction`.
+    let kept = i64::from(exponent) + 1 + i64::try_from(fraction).unwrap_or(100);
+    let (digits, exponent) = match usize::try_from(kept) {
+        Ok(0) if digits.first().is_some_and(|d| *d >= 5) => {
+            (vec![1], -i32::try_from(fraction).unwrap_or(100))
+        }
+        Ok(0) | Err(_) => (vec![0], 0),
+        Ok(kept) => round_digits(digits, exponent, kept),
+    };
+    let text = fixed_text(&digits, exponent, fraction);
+    string(&if n < 0.0 { format!("-{text}") } else { text })
+}
+
+fn number_to_exponential(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let requested = arg(args, 0);
+    let fraction = digit_count(vm, &requested, 0.0)?;
+    if !n.is_finite() {
+        return string(&number_to_string(n));
+    }
+    let Some(fraction) = fraction else {
+        return Err(vm.error(
+            "RangeError",
+            "toExponential : le nombre de décimales doit être entre 0 et 100",
+        ));
+    };
+    let (digits, exponent) = if n == 0.0 {
+        (vec![0; fraction + 1], 0)
+    } else if requested == Value::Undefined {
+        // Autant de chiffres qu'il en faut pour désigner le nombre sans ambiguïté.
+        let shortest = format!("{:e}", n.abs());
+        let (mantissa, exponent) = shortest.split_once('e').unwrap_or((&shortest, "0"));
+        let digits = mantissa
+            .bytes()
+            .filter(u8::is_ascii_digit)
+            .map(|b| b - b'0')
+            .collect();
+        (digits, exponent.parse().unwrap_or(0))
     } else {
-        &formatted
-    })
+        let (digits, exponent) = exact_decimal(n);
+        round_digits(digits, exponent, fraction + 1)
+    };
+    let text = exponential_text(&digits, exponent);
+    string(&if n < 0.0 { format!("-{text}") } else { text })
+}
+
+fn number_to_precision(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let n = this_number(vm, this)?;
+    let requested = arg(args, 0);
+    if requested == Value::Undefined {
+        return string(&number_to_string(n));
+    }
+    let precision = digit_count(vm, &requested, 1.0)?;
+    if !n.is_finite() {
+        return string(&number_to_string(n));
+    }
+    let Some(precision) = precision else {
+        return Err(vm.error(
+            "RangeError",
+            "toPrecision : la précision doit être entre 1 et 100",
+        ));
+    };
+    let (digits, exponent) = if n == 0.0 {
+        (vec![0; precision], 0)
+    } else {
+        let (digits, exponent) = exact_decimal(n);
+        round_digits(digits, exponent, precision)
+    };
+    let wide = i64::from(exponent) >= i64::try_from(precision).unwrap_or(100);
+    let text = if exponent < -6 || wide {
+        exponential_text(&digits, exponent)
+    } else {
+        let whole = usize::try_from(exponent.max(0)).unwrap_or(0) + 1;
+        let fraction = if exponent >= 0 {
+            precision.saturating_sub(whole)
+        } else {
+            precision + usize::try_from(-exponent - 1).unwrap_or(0)
+        };
+        fixed_text(&digits, exponent, fraction)
+    };
+    string(&if n < 0.0 { format!("-{text}") } else { text })
 }
 
 fn number_value_of(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -610,6 +1018,17 @@ math_fn!(math_exp, |x| x.exp());
 math_fn!(math_log, |x| x.ln());
 math_fn!(math_log2, |x| x.log2());
 math_fn!(math_log10, |x| x.log10());
+math_fn!(math_acosh, |x| x.acosh());
+math_fn!(math_asinh, |x| x.asinh());
+math_fn!(math_atanh, |x| x.atanh());
+math_fn!(math_cosh, |x| x.cosh());
+math_fn!(math_sinh, |x| x.sinh());
+math_fn!(math_tanh, |x| x.tanh());
+math_fn!(math_expm1, |x| x.exp_m1());
+math_fn!(math_log1p, |x| x.ln_1p());
+math_fn!(math_f16round, |x| super::typed_array::f16_bits_to_f64(
+    super::typed_array::f64_to_f16_bits(x)
+));
 math_fn!(math_fround, |x| {
     #[expect(
         clippy::cast_possible_truncation,
@@ -714,6 +1133,7 @@ pub(super) fn install(vm: &mut Vm) {
     let ctor = constructor(vm, "String", 1, string_ctor, proto);
     vm.define_method(ctor, "fromCharCode", 1, from_char_code);
     vm.define_method(ctor, "fromCodePoint", 1, from_code_point);
+    vm.define_method(ctor, "raw", 1, string_raw);
     let methods: &[(&str, u32, NativeFn)] = &[
         ("charAt", 1, char_at_method),
         ("charCodeAt", 1, char_code_at),
@@ -734,6 +1154,19 @@ pub(super) fn install(vm: &mut Vm) {
         ("trim", 0, trim),
         ("trimStart", 0, trim_start),
         ("trimEnd", 0, trim_end),
+        ("anchor", 1, html_anchor),
+        ("big", 0, html_big),
+        ("blink", 0, html_blink),
+        ("bold", 0, html_bold),
+        ("fixed", 0, html_fixed),
+        ("fontcolor", 1, html_fontcolor),
+        ("fontsize", 1, html_fontsize),
+        ("italics", 0, html_italics),
+        ("link", 1, html_link),
+        ("small", 0, html_small),
+        ("strike", 0, html_strike),
+        ("sub", 0, html_sub),
+        ("sup", 0, html_sup),
         ("padStart", 2, pad_start),
         ("padEnd", 2, pad_end),
         ("repeat", 1, repeat),
@@ -751,12 +1184,21 @@ pub(super) fn install(vm: &mut Vm) {
     for (name, arity, func) in methods {
         vm.define_method(proto, name, *arity, *func);
     }
+    // `trimLeft` et `trimRight` sont les fonctions mêmes de `trimStart` et
+    // `trimEnd` (annexe B).
+    for (alias, name) in [("trimLeft", "trimStart"), ("trimRight", "trimEnd")] {
+        if let Ok(function) = vm.get(&Value::Object(proto), name) {
+            vm.define_hidden(proto, alias, function);
+        }
+    }
 
     let proto = vm.intrinsics.number_proto;
     let ctor = constructor(vm, "Number", 1, number_ctor, proto);
     vm.define_method(proto, "toString", 1, number_to_string_method);
     vm.define_method(proto, "toLocaleString", 0, number_to_string_method);
     vm.define_method(proto, "toFixed", 1, number_to_fixed);
+    vm.define_method(proto, "toExponential", 1, number_to_exponential);
+    vm.define_method(proto, "toPrecision", 1, number_to_precision);
     vm.define_method(proto, "valueOf", 0, number_value_of);
     let statics: &[(&str, u32, NativeFn)] = &[
         ("isNaN", 1, number_is_nan),
@@ -780,7 +1222,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("NaN", f64::NAN),
     ];
     for (name, value) in constants {
-        vm.define_hidden(ctor, name, Value::Number(*value));
+        vm.define_constant(ctor, name, Value::Number(*value));
     }
 
     let math = vm.new_object();
@@ -809,6 +1251,15 @@ pub(super) fn install(vm: &mut Vm) {
         ("log", 1, math_log),
         ("log2", 1, math_log2),
         ("log10", 1, math_log10),
+        ("acosh", 1, math_acosh),
+        ("asinh", 1, math_asinh),
+        ("atanh", 1, math_atanh),
+        ("cosh", 1, math_cosh),
+        ("sinh", 1, math_sinh),
+        ("tanh", 1, math_tanh),
+        ("expm1", 1, math_expm1),
+        ("log1p", 1, math_log1p),
+        ("f16round", 1, math_f16round),
         ("fround", 1, math_fround),
         ("clz32", 1, math_clz32),
         ("imul", 2, math_imul),
@@ -827,7 +1278,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("SQRT1_2", std::f64::consts::FRAC_1_SQRT_2),
     ];
     for (name, value) in constants {
-        vm.define_hidden(math, name, Value::Number(*value));
+        vm.define_constant(math, name, Value::Number(*value));
     }
     vm.define_hidden(vm.global, "Math", Value::Object(math));
 }

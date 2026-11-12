@@ -76,6 +76,8 @@ pub(crate) enum PropKind {
     Setter(Arc<Function>),
     /// `...objet`
     Spread(Expr),
+    /// `__proto__: valeur` : fixe le prototype de l'objet créé.
+    Proto(Expr),
 }
 
 #[derive(Clone, Debug)]
@@ -87,6 +89,7 @@ pub(crate) struct Property {
 #[derive(Clone, Debug)]
 pub(crate) enum Expr {
     Number(f64),
+    BigInt(Arc<crate::bigint::BigInt>),
     String(Arc<str>),
     Bool(bool),
     Null,
@@ -95,6 +98,14 @@ pub(crate) enum Expr {
     /// `quasis.len() == exprs.len() + 1`
     Template {
         quasis: Vec<Arc<str>>,
+        exprs: Vec<Expr>,
+    },
+    /// Gabarit étiqueté ``tag`…` `` : `cooked[i]` vaut `None` si le morceau
+    /// contient un échappement invalide.
+    TaggedTemplate {
+        tag: Box<Expr>,
+        cooked: Vec<Option<Arc<str>>>,
+        raw: Vec<Arc<str>>,
         exprs: Vec<Expr>,
     },
     Regex {
@@ -165,6 +176,8 @@ pub(crate) enum Expr {
     /// `super(...)`
     SuperCall(Vec<Expr>),
     NewTarget,
+    /// `import(spécificateur)` et son second argument éventuel (options).
+    ImportCall(Box<Expr>, Option<Box<Expr>>),
     /// `yield expr`, `yield* expr` (dans un générateur seulement).
     Yield {
         arg: Option<Box<Expr>>,
@@ -172,6 +185,24 @@ pub(crate) enum Expr {
     },
     /// `await expr` (dans une fonction async seulement).
     Await(Box<Expr>),
+    /// Nom privé (`#x`) : vaut la clé du membre privé, liée dans le corps de
+    /// la classe qui le déclare. N'apparaît que comme index (`obj.#x`) ou à
+    /// gauche de `in`.
+    PrivateName(Arc<str>),
+    /// Initialisation d'un champ d'instance : définit la propriété `key` de
+    /// `this` (sans passer par un mutateur hérité).
+    FieldInit {
+        key: PropKey,
+        value: Box<Expr>,
+    },
+    /// Installation d'une méthode ou d'un accesseur privé sur `this`, à la
+    /// construction : `key` est le nom privé, `binding` la liaison cachée
+    /// qui porte la fonction, `kind` vaut 0 (méthode), 1 (`get`) ou 2 (`set`).
+    PrivateInit {
+        key: Arc<str>,
+        binding: Arc<str>,
+        kind: u8,
+    },
 }
 
 /// Cible d'affectation ou de déclaration.
@@ -196,8 +227,35 @@ pub(crate) struct Param {
     pub(crate) default: Option<Expr>,
 }
 
+/// Texte source d'une fonction ou d'une classe, que rend
+/// `Function.prototype.toString` : un intervalle du source analysé.
+#[derive(Clone)]
+pub(crate) struct SourceSpan {
+    pub(crate) text: Arc<[char]>,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
+impl SourceSpan {
+    /// Le texte de l'intervalle.
+    pub(crate) fn text(&self) -> String {
+        self.text
+            .get(self.start..self.end)
+            .map(|chars| chars.iter().collect())
+            .unwrap_or_default()
+    }
+}
+
+impl std::fmt::Debug for SourceSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SourceSpan({}..{})", self.start, self.end)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Function {
+    /// Texte source, absent d'une fonction synthétisée par le compilateur.
+    pub(crate) source: Option<SourceSpan>,
     pub(crate) name: Option<Arc<str>>,
     pub(crate) params: Vec<Param>,
     pub(crate) rest: Option<Pattern>,
@@ -210,6 +268,11 @@ pub(crate) struct Function {
     pub(crate) is_async: bool,
     /// `function*` ou méthode `*nom() {}`.
     pub(crate) is_generator: bool,
+    /// Le corps est du code en mode strict.
+    pub(crate) strict: bool,
+    /// La fonction (ou une fonction fléchée qu'elle contient) appelle
+    /// `eval(…)` : le code évalué peut y créer des variables.
+    pub(crate) has_direct_eval: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -225,10 +288,15 @@ pub(crate) enum ClassMemberKind {
     Getter(Arc<Function>),
     Setter(Arc<Function>),
     Field(Option<Expr>),
+    /// Bloc `static { … }` : une méthode sans paramètre, appelée une fois sur
+    /// la classe.
+    StaticBlock(Arc<Function>),
 }
 
 #[derive(Clone, Debug)]
 pub(crate) struct Class {
+    /// Texte source de la classe entière.
+    pub(crate) source: Option<SourceSpan>,
     pub(crate) name: Option<Arc<str>>,
     pub(crate) parent: Option<Expr>,
     pub(crate) constructor: Option<Arc<Function>>,
@@ -271,6 +339,8 @@ pub(crate) enum Stmt {
         object: Expr,
         body: Box<Stmt>,
         of: bool,
+        /// `for await (… of …)`.
+        is_await: bool,
     },
     While {
         test: Expr,
@@ -295,5 +365,7 @@ pub(crate) enum Stmt {
     },
     Block(Vec<Stmt>),
     Labeled(Arc<str>, Box<Stmt>),
+    /// `with (objet) instruction`.
+    With(Expr, Box<Stmt>),
     Empty,
 }

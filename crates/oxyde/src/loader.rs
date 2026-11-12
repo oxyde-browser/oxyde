@@ -309,6 +309,9 @@ pub(crate) fn decode(bytes: &[u8]) -> String {
 }
 
 /// Charge la page `url`, ses feuilles de style et ses images.
+/// Profondeur maximale d'un graphe de modules suivi au chargement.
+const MAX_MODULE_ROUNDS: usize = 64;
+
 pub(crate) fn load(url: Url) -> Loaded {
     let (url, html) = match fetch(&url) {
         Ok((final_url, bytes)) => (final_url, decode(&bytes)),
@@ -338,6 +341,17 @@ pub(crate) fn load(url: Url) -> Loaded {
         // Un script indisponible est sauté ; les suivants s'exécutent quand même.
         let source = fetch(&script_url).ok().map(|(_, bytes)| decode(&bytes));
         page.set_script(&script_url, source);
+    }
+    // Modules importés : un module reçu peut en importer d'autres.
+    for _ in 0..MAX_MODULE_ROUNDS {
+        let pending = page.pending_modules();
+        if pending.is_empty() {
+            break;
+        }
+        for module_url in pending {
+            let source = fetch(&module_url).ok().map(|(_, bytes)| decode(&bytes));
+            page.set_module(&module_url, source);
+        }
     }
     page.run_scripts();
     report_console(&mut page);

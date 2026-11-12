@@ -24,11 +24,32 @@ pub struct Symbol(Arc<SymbolData>);
 struct SymbolData {
     id: u64,
     description: Option<JsStr>,
+    /// Nom privé de classe (`#x`) : invisible de toute énumération.
+    private: bool,
 }
 
 impl Symbol {
     pub(crate) fn new(id: u64, description: Option<JsStr>) -> Self {
-        Self(Arc::new(SymbolData { id, description }))
+        Self(Arc::new(SymbolData {
+            id,
+            description,
+            private: false,
+        }))
+    }
+
+    /// Symbole servant de clé à un membre privé de classe.
+    pub(crate) fn new_private(id: u64, name: JsStr) -> Self {
+        Self(Arc::new(SymbolData {
+            id,
+            description: Some(name),
+            private: true,
+        }))
+    }
+
+    /// Vrai pour la clé d'un membre privé de classe.
+    #[must_use]
+    pub fn is_private(&self) -> bool {
+        self.0.private
     }
 
     /// Identifiant unique du symbole dans sa machine virtuelle.
@@ -102,6 +123,8 @@ pub enum Value {
     String(JsStr),
     /// Symbole.
     Symbol(Symbol),
+    /// Entier de précision arbitraire.
+    BigInt(Arc<crate::bigint::BigInt>),
     /// Objet (y compris fonctions et tableaux).
     Object(ObjId),
     /// Interne : liaison `let` / `const` pas encore initialisée, ou trou de
@@ -130,6 +153,7 @@ impl Value {
             Self::Bool(b) => *b,
             Self::Number(n) => *n != 0.0 && !n.is_nan(),
             Self::String(s) => !s.is_empty(),
+            Self::BigInt(b) => !b.is_zero(),
             Self::Symbol(_) | Self::Object(_) => true,
         }
     }
@@ -277,6 +301,36 @@ pub fn to_uint32(n: f64) -> u32 {
     )]
     let wrapped = n.trunc().rem_euclid(4_294_967_296.0) as u32;
     wrapped
+}
+
+/// Clé numérique canonique d'un tableau typé (ECMA-262,
+/// « CanonicalNumericIndexString ») : `None` si `key` n'est pas l'écriture
+/// canonique d'un nombre ; `Some(None)` si c'en est une qui ne peut désigner
+/// aucun élément (`"-0"`, `"1.5"`, `"-1"`, `"NaN"`…) ; `Some(Some(i))` pour un
+/// entier positif.
+#[must_use]
+pub fn canonical_numeric_index(key: &str) -> Option<Option<usize>> {
+    // Tri rapide : un nom ordinaire (`length`, `buffer`…) n'est pas numérique.
+    let first = key.bytes().next()?;
+    if !(first.is_ascii_digit() || matches!(first, b'-' | b'I' | b'N')) {
+        return None;
+    }
+    if key == "-0" {
+        return Some(None);
+    }
+    let n = string_to_number(key);
+    if number_to_string(n) != key {
+        return None;
+    }
+    if n.fract() == 0.0 && (0.0..9_007_199_254_740_992.0).contains(&n) {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "entier vérifié dans [0, 2^53)"
+        )]
+        return Some(Some(n as usize));
+    }
+    Some(None)
 }
 
 /// Index de tableau canonique désigné par une clé de propriété, s'il y en a un.

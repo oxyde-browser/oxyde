@@ -1,63 +1,261 @@
 //! `Array` et `Array.prototype`.
 //!
-//! LIMITES CONNUES : les méthodes n'opèrent que sur de vrais tableaux (pas
-//! sur des objets « de type tableau » passés comme `this`) ; les itérateurs
-//! de `keys` et `entries` parcourent une copie prise à leur création.
+//! Les méthodes sont génériques, comme l'exige ECMA-262 : elles opèrent sur
+//! tout objet muni d'une propriété `length`, en passant par ses propriétés
+//! indexées (trous, accesseurs et prototype compris).
+//!
+//! LIMITES CONNUES : `toLocaleString` vaut `toString` ; un résultat ordinaire
+//! est borné à `MAX_LENGTH` éléments ; `Array.fromAsync` est écrit en
+//! JavaScript (`from_async.js`).
 
-use crate::heap::{IterState, Kind};
+use std::sync::Arc;
+
+use crate::heap::{IndexedKind, IterState, Kind};
 use crate::value::{ObjId, PropertyKey, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
-use super::{arg, array_like_to_vec, callable, constructor, is_callable, relative_index};
+use super::{arg, callable, constructor, is_callable, relative_index};
 
 /// Nombre maximal d'éléments qu'une méthode peut produire d'un coup.
 const MAX_LENGTH: usize = 1 << 26;
-
-fn this_array(vm: &mut Vm, this: &Value) -> JsResult<ObjId> {
-    match this.as_object() {
-        Some(id) if matches!(vm.heap.get(id).kind, Kind::Array(_)) => Ok(id),
-        _ => Err(vm.type_error("cette méthode attend un tableau comme receveur")),
-    }
-}
-
-/// Copie des éléments (les trous deviennent `undefined`).
-fn items(vm: &Vm, id: ObjId) -> Vec<Value> {
-    match &vm.heap.get(id).kind {
-        Kind::Array(items) => items
-            .iter()
-            .map(|v| {
-                if *v == Value::Hole {
-                    Value::Undefined
-                } else {
-                    v.clone()
-                }
-            })
-            .collect(),
-        _ => Vec::new(),
-    }
-}
-
-fn items_mut(vm: &mut Vm, id: ObjId) -> Option<&mut Vec<Value>> {
-    match &mut vm.heap.get_mut(id).kind {
-        Kind::Array(items) => Some(items),
-        _ => None,
-    }
-}
-
-fn len(vm: &Vm, id: ObjId) -> usize {
-    match &vm.heap.get(id).kind {
-        Kind::Array(items) => items.len(),
-        _ => 0,
-    }
-}
+/// Plus grande longueur d'un objet de type tableau (2^53 - 1).
+const MAX_SAFE_LENGTH: f64 = 9_007_199_254_740_991.0;
 
 #[expect(
     clippy::cast_precision_loss,
-    reason = "index de tableau petit devant 2^53"
+    reason = "index inférieur à 2^53, exactement représentable"
 )]
 fn number(n: usize) -> Value {
     Value::Number(n as f64)
 }
+
+/// Receveur d'une méthode : l'objet (`ToObject(this)`) et sa longueur.
+struct Target {
+    object: Value,
+    id: ObjId,
+    len: usize,
+}
+
+/// `LengthOfArrayLike` : `ToLength(obj.length)`.
+pub(super) fn length_of(vm: &mut Vm, object: &Value) -> JsResult<usize> {
+    let length = vm.get(object, "length")?;
+    let length = vm.to_number(&length)?;
+    let length = if length.is_nan() {
+        0.0
+    } else {
+        length.trunc().clamp(0.0, MAX_SAFE_LENGTH)
+    };
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "entier ramené dans [0, 2^53 - 1]"
+    )]
+    Ok(length as usize)
+}
+
+fn target(vm: &mut Vm, this: &Value) -> JsResult<Target> {
+    let object = vm.to_object(this)?;
+    let Some(id) = object.as_object() else {
+        return Err(vm.type_error("un objet est attendu comme receveur"));
+    };
+    // Un tableau typé a une longueur interne, que `length` ne peut masquer.
+    let len = if vm.typed_array(id).is_some() {
+        vm.typed_length(id).unwrap_or(0)
+    } else {
+        length_of(vm, &object)?
+    };
+    Ok(Target { object, id, len })
+}
+
+fn get(vm: &mut Vm, target: &Target, index: usize) -> JsResult {
+    vm.get_element(&target.object, &number(index))
+}
+
+/// `Set(O, index, value, true)` : une écriture refusée lève `TypeError`.
+fn set(vm: &mut Vm, target: &Target, index: usize, value: Value) -> JsResult<()> {
+    if vm.put_element(&target.object, &number(index), value)? {
+        Ok(())
+    } else {
+        Err(vm.type_error(&format!("l'élément {index} ne peut pas être écrit")))
+    }
+}
+
+/// Vrai si l'élément `index` existe (propriété propre ou héritée).
+fn has(vm: &mut Vm, target: &Target, index: usize) -> JsResult<bool> {
+    if let Kind::Array(items) = &vm.heap.get(target.id).kind
+        && items.get(index).is_some_and(|v| *v != Value::Hole)
+    {
+        return Ok(true);
+    }
+    let key = PropertyKey::String(Arc::from(index.to_string()));
+    vm.has_property_op(target.id, &key)
+}
+
+/// `DeletePropertyOrThrow(O, index)`.
+fn delete(vm: &mut Vm, target: &Target, index: usize) -> JsResult<()> {
+    if vm.delete(&target.object, &index.to_string())? {
+        Ok(())
+    } else {
+        Err(vm.type_error(&format!("l'élément {index} ne peut pas être supprimé")))
+    }
+}
+
+/// `Set(O, "length", len, true)`.
+fn set_length(vm: &mut Vm, target: &Target, len: usize) -> JsResult<()> {
+    if vm.put(&target.object, "length", number(len))? {
+        Ok(())
+    } else {
+        Err(vm.type_error("la longueur ne peut pas être écrite"))
+    }
+}
+
+/// Refuse de bâtir un résultat démesuré.
+fn check_length(vm: &mut Vm, len: usize) -> JsResult<()> {
+    if len > MAX_LENGTH {
+        return Err(vm.error("RangeError", "tableau trop grand"));
+    }
+    Ok(())
+}
+
+pub(super) fn is_array(vm: &Vm, value: &Value) -> bool {
+    let mut current = value.as_object();
+    // Un proxy est un tableau si sa cible en est un.
+    for _ in 0..10_000 {
+        let Some(id) = current else { return false };
+        match &vm.heap.get(id).kind {
+            Kind::Array(_) => return true,
+            Kind::Proxy(proxy) => current = proxy.target,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Éléments d'un vrai tableau sans trou, pour les chemins rapides : dans ce
+/// cas aucune lecture ne peut atteindre le prototype ni un accesseur.
+fn dense_mut(vm: &mut Vm, id: ObjId) -> Option<&mut Vec<Value>> {
+    match &mut vm.heap.get_mut(id).kind {
+        Kind::Array(items) if !items.contains(&Value::Hole) => Some(items),
+        _ => None,
+    }
+}
+
+/// `ToIntegerOrInfinity`.
+fn to_integer(vm: &mut Vm, value: &Value) -> JsResult<f64> {
+    let n = vm.to_number(value)?;
+    Ok(if n.is_nan() { 0.0 } else { n.trunc() })
+}
+
+// ---- Tableau résultat --------------------------------------------------------------
+
+/// Tableau que rend une méthode : un vrai tableau, bâti d'un coup, ou
+/// l'objet créé par un constructeur que fournit le script (`Symbol.species`,
+/// receveur de `Array.from` et `Array.of`), rempli propriété par propriété.
+enum Sink {
+    Plain(Vec<Value>),
+    Custom(Value, ObjId),
+}
+
+impl Sink {
+    fn plain(vm: &mut Vm, len: usize) -> JsResult<Self> {
+        check_length(vm, len)?;
+        Ok(Self::Plain(Vec::new()))
+    }
+
+    fn construct(vm: &mut Vm, ctor: &Value, len: Option<usize>) -> JsResult<Self> {
+        let args: Vec<Value> = len.map(number).into_iter().collect();
+        let object = vm.construct(ctor, &args, ctor)?;
+        match object.as_object() {
+            Some(id) => Ok(Self::Custom(object, id)),
+            None => Err(vm.type_error("le constructeur doit rendre un objet")),
+        }
+    }
+
+    /// `ArraySpeciesCreate(original, len)` (ECMA-262 §23.1.3.1.1).
+    fn species(vm: &mut Vm, original: &Value, len: usize) -> JsResult<Self> {
+        if !is_array(vm, original) {
+            return Self::plain(vm, len);
+        }
+        let mut ctor = vm.get(original, "constructor")?;
+        if ctor.as_object().is_some() {
+            let key = PropertyKey::Symbol(vm.well_known.species.clone());
+            ctor = vm.get_key(&ctor, &key)?;
+            if ctor == Value::Null {
+                ctor = Value::Undefined;
+            }
+        }
+        if ctor == Value::Undefined || ctor.as_object() == vm.array_ctor {
+            return Self::plain(vm, len);
+        }
+        if !vm.is_constructor(&ctor) {
+            return Err(vm.type_error("le constructeur de l'espèce n'est pas un constructeur"));
+        }
+        Self::construct(vm, &ctor, Some(len))
+    }
+
+    /// Résultat de `Array.from` et `Array.of` : `new C(len)` si le receveur
+    /// `C` est un constructeur, sinon un tableau.
+    fn receiver(vm: &mut Vm, ctor: &Value, len: Option<usize>) -> JsResult<Self> {
+        if ctor.as_object() == vm.array_ctor || !vm.is_constructor(ctor) {
+            return Self::plain(vm, len.unwrap_or(0));
+        }
+        Self::construct(vm, ctor, len)
+    }
+
+    /// Refuse d'avance un résultat ordinaire démesuré.
+    fn reserve(&self, vm: &mut Vm, len: usize) -> JsResult<()> {
+        match self {
+            Self::Plain(_) => check_length(vm, len),
+            Self::Custom(..) => Ok(()),
+        }
+    }
+
+    /// `CreateDataPropertyOrThrow(A, index, value)`.
+    fn put(&mut self, vm: &mut Vm, index: usize, value: Value) -> JsResult<()> {
+        match self {
+            Self::Plain(items) => {
+                if index >= items.len() {
+                    check_length(vm, index.saturating_add(1))?;
+                    items.resize(index + 1, Value::Hole);
+                }
+                if let Some(slot) = items.get_mut(index) {
+                    *slot = value;
+                }
+                Ok(())
+            }
+            Self::Custom(_, id) => {
+                let key = PropertyKey::String(Arc::from(index.to_string()));
+                if vm.create_data_property(*id, &key, value)? {
+                    Ok(())
+                } else {
+                    Err(vm.type_error(&format!("l'élément {index} ne peut pas être défini")))
+                }
+            }
+        }
+    }
+
+    /// Termine le résultat, long d'au moins `len` éléments. `set_length` :
+    /// la méthode écrit `length` sur l'objet d'un constructeur du script.
+    fn finish(self, vm: &mut Vm, len: usize, set_length: bool) -> JsResult {
+        match self {
+            Self::Plain(mut items) => {
+                if len > items.len() {
+                    check_length(vm, len)?;
+                    items.resize(len, Value::Hole);
+                }
+                Ok(vm.new_array(items))
+            }
+            Self::Custom(object, _) => {
+                if set_length && !vm.put(&object, "length", number(len))? {
+                    return Err(vm.type_error("la longueur ne peut pas être écrite"));
+                }
+                Ok(object)
+            }
+        }
+    }
+}
+
+// ---- Constructeur ----------------------------------------------------------------
 
 fn array_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     if let [Value::Number(n)] = args {
@@ -77,267 +275,682 @@ fn array_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn array_is_array(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let is_array = arg(args, 0)
-        .as_object()
-        .is_some_and(|id| matches!(vm.heap.get(id).kind, Kind::Array(_)));
-    Ok(Value::Bool(is_array))
+    Ok(Value::Bool(is_array(vm, &arg(args, 0))))
 }
 
-fn array_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    Ok(vm.new_array(args.to_vec()))
+fn array_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let mut sink = Sink::receiver(vm, this, Some(args.len()))?;
+    for (k, value) in args.iter().enumerate() {
+        sink.put(vm, k, value.clone())?;
+    }
+    sink.finish(vm, args.len(), true)
 }
 
-fn array_from(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let source = arg(args, 0);
-    let map = arg(args, 1);
-    let values = match &source {
-        Value::Undefined | Value::Null | Value::Hole => {
+/// `Array.from(items, mapper, thisArg)` (ECMA-262 §23.1.2.1).
+fn array_from(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let (items, map, this_arg) = (arg(args, 0), arg(args, 1), arg(args, 2));
+    let mapping = map != Value::Undefined;
+    if mapping && !is_callable(vm, &map) {
+        return Err(vm.type_error("Array.from : la fonction de transformation n'est pas appelable"));
+    }
+    // Itérable intégré intact : chercher sa méthode d'itération ne s'observe pas.
+    let fast = match &items {
+        Value::String(_) => true,
+        Value::Object(id) => match &vm.heap.get(*id).kind {
+            Kind::Array(_) => vm.array_iteration_intact(*id),
+            Kind::Map(_) | Kind::Set(_) | Kind::Iterator(_) => true,
+            _ => false,
+        },
+        _ => false,
+    };
+    let method = if fast {
+        None
+    } else {
+        if items.is_nullish() {
             return Err(vm.type_error("Array.from : la source n'est pas itérable"));
         }
-        Value::String(_) => vm.iterate_to_vec(&source)?,
-        Value::Object(id) => match &vm.heap.get(*id).kind {
-            Kind::Array(_) | Kind::Map(_) | Kind::Set(_) | Kind::Iterator(_) => {
-                vm.iterate_to_vec(&source)?
-            }
-            // Itérable (`Symbol.iterator`), sinon objet de type tableau (`{ length: n }`).
-            _ if vm.has_key(*id, &PropertyKey::Symbol(vm.well_known.iterator.clone())) => {
-                vm.iterate_to_vec(&source)?
-            }
-            _ if vm.has_property(*id, "length") => array_like_to_vec(vm, &source)?,
-            _ => Vec::new(),
-        },
-        _ => Vec::new(),
+        let key = PropertyKey::Symbol(vm.well_known.iterator.clone());
+        let method = vm.get_key(&items, &key)?;
+        if method.is_nullish() {
+            None
+        } else if is_callable(vm, &method) {
+            Some(method)
+        } else {
+            return Err(vm.type_error("Symbol.iterator n'est pas une fonction"));
+        }
     };
-    if map == Value::Undefined {
-        return Ok(vm.new_array(values));
+    let transform = |vm: &mut Vm, value: Value, k: usize| {
+        if mapping {
+            vm.call(&map, &this_arg, &[value, number(k)])
+        } else {
+            Ok(value)
+        }
+    };
+    if fast || method.is_some() {
+        let mut sink = Sink::receiver(vm, this, None)?;
+        let iterator = match &method {
+            Some(method) => vm.iterator_from_method(&items, method)?,
+            None => vm.iterator_for(&items)?,
+        };
+        let mut k = 0;
+        loop {
+            vm.tick(1)?;
+            let Some(value) = vm.iterator_next(&iterator)? else {
+                return sink.finish(vm, k, true);
+            };
+            let stored = transform(vm, value, k).and_then(|value| sink.put(vm, k, value));
+            if let Err(error) = stored {
+                vm.iterator_close(&iterator, true)?;
+                return Err(error);
+            }
+            k += 1;
+        }
     }
-    let map = callable(vm, &map)?;
-    let mut out = Vec::with_capacity(values.len());
-    for (i, value) in values.into_iter().enumerate() {
-        out.push(vm.call(&map, &Value::Undefined, &[value, number(i)])?);
+    // Objet de type tableau.
+    let object = vm.to_object(&items)?;
+    let len = length_of(vm, &object)?;
+    let mut sink = Sink::receiver(vm, this, Some(len))?;
+    for k in 0..len {
+        vm.tick(1)?;
+        let value = vm.get_element(&object, &number(k))?;
+        let value = transform(vm, value, k)?;
+        sink.put(vm, k, value)?;
     }
-    Ok(vm.new_array(out))
+    sink.finish(vm, len, true)
 }
 
-fn push(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    if let Some(items) = items_mut(vm, id) {
-        items.extend_from_slice(args);
+fn is_constructor_native(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    Ok(Value::Bool(vm.is_constructor(&arg(args, 0))))
+}
+
+fn async_from_sync_native(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    vm.async_from_sync(arg(args, 0))
+}
+
+/// Installe `Array.fromAsync`, écrit en JavaScript : le script rend une
+/// fabrique, appelée avec les deux opérations qu'il ne peut pas exprimer.
+pub(super) fn install_from_async(vm: &mut Vm) {
+    let Some(ctor) = vm.array_ctor else { return };
+    let Ok(factory) = vm.eval_script(include_str!("from_async.js")) else {
+        return;
+    };
+    let helpers = [
+        Value::Object(vm.new_function("isConstructor", 1, is_constructor_native)),
+        Value::Object(vm.new_function("asyncFromSync", 1, async_from_sync_native)),
+    ];
+    if let Ok(from_async) = vm.call(&factory, &Value::Undefined, &helpers) {
+        // Un intégré : son prototype est `Function.prototype`.
+        if let Some(id) = from_async.as_object() {
+            vm.self_hosted.push(id);
+            vm.heap.get_mut(id).proto = Some(vm.intrinsics.function_proto);
+        }
+        vm.define_hidden(ctor, "fromAsync", from_async);
     }
-    Ok(number(len(vm, id)))
+}
+
+// ---- Modification en place -------------------------------------------------------
+
+fn push(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    #[expect(clippy::cast_precision_loss, reason = "comparaison à 2^53 - 1")]
+    if (t.len + args.len()) as f64 > MAX_SAFE_LENGTH {
+        return Err(vm.type_error("longueur de tableau dépassée"));
+    }
+    for (offset, value) in args.iter().enumerate() {
+        set(vm, &t, t.len + offset, value.clone())?;
+    }
+    let len = t.len + args.len();
+    set_length(vm, &t, len)?;
+    Ok(number(len))
 }
 
 fn pop(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let value = items_mut(vm, id)
-        .and_then(Vec::pop)
-        .unwrap_or(Value::Undefined);
-    Ok(if value == Value::Hole {
-        Value::Undefined
-    } else {
-        value
-    })
+    let t = target(vm, this)?;
+    if t.len == 0 {
+        set_length(vm, &t, 0)?;
+        return Ok(Value::Undefined);
+    }
+    let value = get(vm, &t, t.len - 1)?;
+    delete(vm, &t, t.len - 1)?;
+    set_length(vm, &t, t.len - 1)?;
+    Ok(value)
 }
 
 fn shift(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let Some(items) = items_mut(vm, id) else {
-        return Ok(Value::Undefined);
-    };
-    if items.is_empty() {
+    let t = target(vm, this)?;
+    if t.len == 0 {
+        set_length(vm, &t, 0)?;
         return Ok(Value::Undefined);
     }
-    let value = items.remove(0);
-    Ok(if value == Value::Hole {
-        Value::Undefined
-    } else {
-        value
-    })
+    if let Some(items) = dense_mut(vm, t.id)
+        && items.len() == t.len
+    {
+        return Ok(items.remove(0));
+    }
+    let first = get(vm, &t, 0)?;
+    for k in 1..t.len {
+        vm.tick(1)?;
+        if has(vm, &t, k)? {
+            let value = get(vm, &t, k)?;
+            set(vm, &t, k - 1, value)?;
+        } else {
+            delete(vm, &t, k - 1)?;
+        }
+    }
+    delete(vm, &t, t.len - 1)?;
+    set_length(vm, &t, t.len - 1)?;
+    Ok(first)
 }
 
 fn unshift(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    if let Some(items) = items_mut(vm, id) {
+    let t = target(vm, this)?;
+    let count = args.len();
+    if let Some(items) = dense_mut(vm, t.id)
+        && items.len() == t.len
+    {
         items.splice(0..0, args.iter().cloned());
+        return Ok(number(t.len + count));
     }
-    Ok(number(len(vm, id)))
+    if count > 0 {
+        #[expect(clippy::cast_precision_loss, reason = "comparaison à 2^53 - 1")]
+        if (t.len + count) as f64 > MAX_SAFE_LENGTH {
+            return Err(vm.type_error("longueur de tableau dépassée"));
+        }
+        for k in (0..t.len).rev() {
+            vm.tick(1)?;
+            if has(vm, &t, k)? {
+                let value = get(vm, &t, k)?;
+                set(vm, &t, k + count, value)?;
+            } else {
+                delete(vm, &t, k + count)?;
+            }
+        }
+        for (k, value) in args.iter().enumerate() {
+            set(vm, &t, k, value.clone())?;
+        }
+    }
+    set_length(vm, &t, t.len + count)?;
+    Ok(number(t.len + count))
 }
 
-fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let length = len(vm, id);
-    let start = relative_index(vm, &arg(args, 0), length, 0)?;
-    let end = relative_index(vm, &arg(args, 1), length, length)?;
-    let all = items(vm, id);
-    Ok(vm.new_array(all.get(start..end.max(start)).unwrap_or(&[]).to_vec()))
-}
-
-fn splice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let length = len(vm, id);
-    let start = relative_index(vm, &arg(args, 0), length, 0)?;
+/// Début et nombre d'éléments à retirer d'un `splice`.
+fn splice_bounds(vm: &mut Vm, args: &[Value], len: usize) -> JsResult<(usize, usize)> {
+    let start = relative_index(vm, &arg(args, 0), len, 0)?;
     let count = match args.get(1) {
         None if args.is_empty() => 0,
-        None => length - start,
+        None => len - start,
         Some(value) => {
-            let n = vm.to_number(value)?;
+            let n = to_integer(vm, value)?;
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
-                reason = "ramené dans [0, length - start]"
+                clippy::cast_precision_loss,
+                reason = "ramené dans [0, len - start]"
             )]
-            let count = n.max(0.0).min((length - start) as f64) as usize;
+            let count = n.clamp(0.0, (len - start) as f64) as usize;
             count
         }
     };
-    let inserted = args.get(2..).unwrap_or(&[]).to_vec();
-    let removed: Vec<Value> = match items_mut(vm, id) {
-        Some(items) => items.splice(start..start + count, inserted).collect(),
-        None => Vec::new(),
-    };
-    Ok(vm.new_array(removed))
+    Ok((start, count))
+}
+
+fn splice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let (start, count) = splice_bounds(vm, args, t.len)?;
+    let inserted = args.get(2..).unwrap_or(&[]);
+    let mut sink = Sink::species(vm, &t.object, count)?;
+    if matches!(sink, Sink::Plain(_))
+        && let Some(items) = dense_mut(vm, t.id)
+        && items.len() == t.len
+    {
+        let removed: Vec<Value> = items
+            .splice(start..start + count, inserted.iter().cloned())
+            .collect();
+        return Ok(vm.new_array(removed));
+    }
+    for k in 0..count {
+        vm.tick(1)?;
+        if has(vm, &t, start + k)? {
+            let value = get(vm, &t, start + k)?;
+            sink.put(vm, k, value)?;
+        }
+    }
+    let removed = sink.finish(vm, count, true)?;
+    let added = inserted.len();
+    let tail = t.len - start - count;
+    if added < count {
+        for k in 0..tail {
+            vm.tick(1)?;
+            let (from, to) = (start + count + k, start + added + k);
+            if has(vm, &t, from)? {
+                let value = get(vm, &t, from)?;
+                set(vm, &t, to, value)?;
+            } else {
+                delete(vm, &t, to)?;
+            }
+        }
+        for k in (t.len - count + added..t.len).rev() {
+            vm.tick(1)?;
+            delete(vm, &t, k)?;
+        }
+    } else if added > count {
+        for k in (0..tail).rev() {
+            vm.tick(1)?;
+            let (from, to) = (start + count + k, start + added + k);
+            if has(vm, &t, from)? {
+                let value = get(vm, &t, from)?;
+                set(vm, &t, to, value)?;
+            } else {
+                delete(vm, &t, to)?;
+            }
+        }
+    }
+    for (k, value) in inserted.iter().enumerate() {
+        set(vm, &t, start + k, value.clone())?;
+    }
+    set_length(vm, &t, t.len - count + added)?;
+    Ok(removed)
+}
+
+pub(super) fn reverse(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    for lower in 0..t.len / 2 {
+        vm.tick(1)?;
+        let upper = t.len - 1 - lower;
+        let (has_lower, has_upper) = (has(vm, &t, lower)?, has(vm, &t, upper)?);
+        let low = if has_lower {
+            Some(get(vm, &t, lower)?)
+        } else {
+            None
+        };
+        let high = if has_upper {
+            Some(get(vm, &t, upper)?)
+        } else {
+            None
+        };
+        match high {
+            Some(value) => set(vm, &t, lower, value)?,
+            None => delete(vm, &t, lower)?,
+        }
+        match low {
+            Some(value) => set(vm, &t, upper, value)?,
+            None => delete(vm, &t, upper)?,
+        }
+    }
+    Ok(t.object)
+}
+
+fn fill(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let start = relative_index(vm, &arg(args, 1), t.len, 0)?;
+    let end = relative_index(vm, &arg(args, 2), t.len, t.len)?;
+    let value = arg(args, 0);
+    for k in start..end.max(start) {
+        vm.tick(1)?;
+        set(vm, &t, k, value.clone())?;
+    }
+    Ok(t.object)
+}
+
+pub(super) fn copy_within(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let to = relative_index(vm, &arg(args, 0), t.len, 0)?;
+    let from = relative_index(vm, &arg(args, 1), t.len, 0)?;
+    let end = relative_index(vm, &arg(args, 2), t.len, t.len)?;
+    let count = end.saturating_sub(from).min(t.len - to);
+    // Copie à reculons si les plages se chevauchent vers la droite.
+    let backwards = from < to && to < from + count;
+    for step in 0..count {
+        vm.tick(1)?;
+        let offset = if backwards { count - 1 - step } else { step };
+        if has(vm, &t, from + offset)? {
+            let value = get(vm, &t, from + offset)?;
+            set(vm, &t, to + offset, value)?;
+        } else {
+            delete(vm, &t, to + offset)?;
+        }
+    }
+    Ok(t.object)
+}
+
+// ---- Copies ----------------------------------------------------------------------
+
+fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let start = relative_index(vm, &arg(args, 0), t.len, 0)?;
+    let end = relative_index(vm, &arg(args, 1), t.len, t.len)?;
+    let count = end.saturating_sub(start);
+    let mut sink = Sink::species(vm, &t.object, count)?;
+    for n in 0..count {
+        vm.tick(1)?;
+        if has(vm, &t, start + n)? {
+            let value = get(vm, &t, start + n)?;
+            sink.put(vm, n, value)?;
+        }
+    }
+    sink.finish(vm, count, true)
 }
 
 fn concat(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let mut out = items(vm, id);
-    for value in args {
-        match value
-            .as_object()
-            .filter(|o| matches!(vm.heap.get(*o).kind, Kind::Array(_)))
-        {
-            Some(other) => out.extend(items(vm, other)),
-            None => out.push(value.clone()),
-        }
-        if out.len() > MAX_LENGTH {
-            return Err(vm.error("RangeError", "tableau trop grand"));
+    let receiver = vm.to_object(this)?;
+    let mut sink = Sink::species(vm, &receiver, 0)?;
+    let mut n: usize = 0;
+    let spreadable_key = PropertyKey::Symbol(vm.well_known.is_concat_spreadable.clone());
+    for value in std::iter::once(&receiver).chain(args) {
+        // `IsConcatSpreadable` : la propriété l'emporte sur la nature de l'objet.
+        let spreadable = if value.as_object().is_some() {
+            match vm.get_key(value, &spreadable_key)? {
+                Value::Undefined => is_array(vm, value),
+                flag => flag.truthy(),
+            }
+        } else {
+            false
+        };
+        if spreadable {
+            let t = target(vm, value)?;
+            let total = n.saturating_add(t.len);
+            #[expect(clippy::cast_precision_loss, reason = "comparaison à 2^53 - 1")]
+            if total as f64 > MAX_SAFE_LENGTH {
+                return Err(vm.type_error("longueur de tableau dépassée"));
+            }
+            sink.reserve(vm, total)?;
+            for k in 0..t.len {
+                vm.tick(1)?;
+                if has(vm, &t, k)? {
+                    let element = get(vm, &t, k)?;
+                    sink.put(vm, n + k, element)?;
+                }
+            }
+            n = total;
+        } else {
+            sink.put(vm, n, value.clone())?;
+            n += 1;
         }
     }
-    Ok(vm.new_array(out))
+    sink.finish(vm, n, true)
 }
 
-fn join(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
+pub(super) fn join(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
     let separator = match arg(args, 0) {
-        Value::Undefined => ",".into(),
+        Value::Undefined => Arc::from(","),
         other => vm.to_string(&other)?,
     };
     let mut out = String::new();
-    for (i, value) in items(vm, id).into_iter().enumerate() {
-        if i > 0 {
+    for k in 0..t.len {
+        vm.tick(1)?;
+        if k > 0 {
             out.push_str(&separator);
         }
+        let value = get(vm, &t, k)?;
         if !value.is_nullish() {
             out.push_str(&vm.to_string(&value)?);
+        }
+        if out.len() > super::string::MAX_STRING {
+            return Err(vm.error("RangeError", "chaîne trop longue"));
         }
     }
     Ok(Value::string(&out))
 }
 
-fn reverse(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    if let Some(items) = items_mut(vm, id) {
-        items.reverse();
+fn to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let object = vm.to_object(this)?;
+    let join_method = vm.get(&object, "join")?;
+    if is_callable(vm, &join_method) {
+        return vm.call(&join_method, &object, &[]);
     }
-    Ok(this.clone())
+    super::object_proto_to_string(vm, &object, &[])
 }
 
-fn index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let all = items(vm, id);
-    let from = relative_index(vm, &arg(args, 1), all.len(), 0)?;
+/// Copie des éléments `0..len`, trous lus comme `undefined`.
+fn snapshot(vm: &mut Vm, t: &Target) -> JsResult<Vec<Value>> {
+    check_length(vm, t.len)?;
+    let mut out = Vec::with_capacity(t.len);
+    for k in 0..t.len {
+        vm.tick(1)?;
+        out.push(get(vm, t, k)?);
+    }
+    Ok(out)
+}
+
+fn to_reversed(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let mut out = snapshot(vm, &t)?;
+    out.reverse();
+    Ok(vm.new_array(out))
+}
+
+fn to_spliced(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let (start, count) = splice_bounds(vm, args, t.len)?;
+    let inserted = args.get(2..).unwrap_or(&[]);
+    check_length(vm, t.len - count + inserted.len())?;
+    let mut out = snapshot(vm, &t)?;
+    out.splice(start..start + count, inserted.iter().cloned());
+    Ok(vm.new_array(out))
+}
+
+fn with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let relative = to_integer(vm, &arg(args, 0))?;
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    let index = if relative < 0.0 {
+        t.len as f64 + relative
+    } else {
+        relative
+    };
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    if index < 0.0 || index >= t.len as f64 {
+        return Err(vm.error("RangeError", "index hors du tableau"));
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "index vérifié dans [0, len)"
+    )]
+    let replaced = index as usize;
+    check_length(vm, t.len)?;
+    let mut out = Vec::with_capacity(t.len);
+    for k in 0..t.len {
+        vm.tick(1)?;
+        // L'élément remplacé n'est pas lu.
+        out.push(if k == replaced {
+            arg(args, 1)
+        } else {
+            get(vm, &t, k)?
+        });
+    }
+    Ok(vm.new_array(out))
+}
+
+// ---- Recherche -------------------------------------------------------------------
+
+pub(super) fn index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    if t.len == 0 {
+        return Ok(Value::Number(-1.0));
+    }
+    let from = relative_index(vm, &arg(args, 1), t.len, 0)?;
     let needle = arg(args, 0);
-    let found = all
-        .iter()
-        .enumerate()
-        .skip(from)
-        .find(|(_, v)| Vm::strict_equals(v, &needle));
-    Ok(found.map_or(Value::Number(-1.0), |(i, _)| number(i)))
+    for k in from..t.len {
+        vm.tick(1)?;
+        if has(vm, &t, k)? && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
+            return Ok(number(k));
+        }
+    }
+    Ok(Value::Number(-1.0))
 }
 
-fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let all = items(vm, id);
+pub(super) fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    if t.len == 0 {
+        return Ok(Value::Number(-1.0));
+    }
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    let len = t.len as f64;
+    let from = match args.get(1) {
+        Some(value) => to_integer(vm, value)?,
+        None => len - 1.0,
+    };
+    let last = if from >= 0.0 {
+        from.min(len - 1.0)
+    } else {
+        len + from
+    };
+    if last < 0.0 {
+        return Ok(Value::Number(-1.0));
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "ramené dans [0, len - 1]"
+    )]
+    let last = last as usize;
     let needle = arg(args, 0);
-    let found = all
-        .iter()
-        .enumerate()
-        .rev()
-        .find(|(_, v)| Vm::strict_equals(v, &needle));
-    Ok(found.map_or(Value::Number(-1.0), |(i, _)| number(i)))
+    for k in (0..=last).rev() {
+        vm.tick(1)?;
+        if has(vm, &t, k)? && Vm::strict_equals(&get(vm, &t, k)?, &needle) {
+            return Ok(number(k));
+        }
+    }
+    Ok(Value::Number(-1.0))
 }
 
-fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
+pub(super) fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    if t.len == 0 {
+        return Ok(Value::Bool(false));
+    }
+    let from = relative_index(vm, &arg(args, 1), t.len, 0)?;
     let needle = arg(args, 0);
-    Ok(Value::Bool(
-        items(vm, id)
-            .iter()
-            .any(|v| Vm::same_value_zero(v, &needle)),
-    ))
+    for k in from..t.len {
+        vm.tick(1)?;
+        if Vm::same_value_zero(&get(vm, &t, k)?, &needle) {
+            return Ok(Value::Bool(true));
+        }
+    }
+    Ok(Value::Bool(false))
 }
 
-/// Appelle `callback(élément, index, tableau)` sur chaque élément, en relisant
-/// le tableau à chaque tour (le rappel peut le modifier).
-fn each(
+pub(super) fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let relative = to_integer(vm, &arg(args, 0))?;
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    let index = if relative < 0.0 {
+        t.len as f64 + relative
+    } else {
+        relative
+    };
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    if index < 0.0 || index >= t.len as f64 {
+        return Ok(Value::Undefined);
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "index vérifié dans [0, len)"
+    )]
+    get(vm, &t, index as usize)
+}
+
+// ---- Parcours avec rappel --------------------------------------------------------
+
+/// Appelle `callback(élément, index, objet)` sur chaque élément. `skip_holes`
+/// : les éléments absents ne sont pas visités (`forEach`, `map`…) ; sinon ils
+/// sont lus comme `undefined` (`find`…). `visit` reçoit l'index, l'élément et
+/// le résultat du rappel, et renvoie `false` pour arrêter.
+/// Receveur, fonction de rappel et `thisArg` d'une méthode d'itération.
+fn prepare(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult<(Target, Value, Value)> {
+    let t = target(vm, this)?;
+    let callback = callable(vm, &arg(args, 0))?;
+    Ok((t, callback, arg(args, 1)))
+}
+
+fn each_in(
     vm: &mut Vm,
-    this: &Value,
-    args: &[Value],
+    t: &Target,
+    callback: &Value,
+    this_arg: &Value,
     reverse: bool,
+    skip_holes: bool,
     mut visit: impl FnMut(&mut Vm, usize, Value, Value) -> JsResult<bool>,
 ) -> JsResult<()> {
-    let id = this_array(vm, this)?;
-    let callback = callable(vm, &arg(args, 0))?;
-    let this_arg = arg(args, 1);
-    let length = len(vm, id);
-    for step in 0..length {
-        let i = if reverse { length - 1 - step } else { step };
-        let Some(value) = (match &vm.heap.get(id).kind {
-            Kind::Array(items) => items.get(i).cloned(),
-            _ => None,
-        }) else {
+    for step in 0..t.len {
+        vm.tick(1)?;
+        let k = if reverse { t.len - 1 - step } else { step };
+        if skip_holes && !has(vm, t, k)? {
             continue;
-        };
-        let value = if value == Value::Hole {
-            Value::Undefined
-        } else {
-            value
-        };
+        }
+        let value = get(vm, t, k)?;
         let result = vm.call(
-            &callback,
-            &this_arg,
-            &[value.clone(), number(i), this.clone()],
+            callback,
+            this_arg,
+            &[value.clone(), number(k), t.object.clone()],
         )?;
-        if !visit(vm, i, value, result)? {
+        if !visit(vm, k, value, result)? {
             break;
         }
     }
     Ok(())
 }
 
-fn for_each(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    each(vm, this, args, false, |_, _, _, _| Ok(true))?;
+fn each(
+    vm: &mut Vm,
+    this: &Value,
+    args: &[Value],
+    reverse: bool,
+    skip_holes: bool,
+    visit: impl FnMut(&mut Vm, usize, Value, Value) -> JsResult<bool>,
+) -> JsResult<Target> {
+    let (t, callback, this_arg) = prepare(vm, this, args)?;
+    each_in(vm, &t, &callback, &this_arg, reverse, skip_holes, visit)?;
+    Ok(t)
+}
+
+pub(super) fn for_each(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    each(vm, this, args, false, true, |_, _, _, _| Ok(true))?;
     Ok(Value::Undefined)
 }
 
 fn map(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let mut out = Vec::new();
-    each(vm, this, args, false, |_, _, _, result| {
-        out.push(result);
-        Ok(true)
-    })?;
-    Ok(vm.new_array(out))
+    let (t, callback, this_arg) = prepare(vm, this, args)?;
+    let mut sink = Sink::species(vm, &t.object, t.len)?;
+    // Les éléments absents de la source restent absents du résultat.
+    each_in(
+        vm,
+        &t,
+        &callback,
+        &this_arg,
+        false,
+        true,
+        |vm, k, _, result| {
+            sink.put(vm, k, result)?;
+            Ok(true)
+        },
+    )?;
+    sink.finish(vm, t.len, false)
 }
 
 fn filter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let mut out = Vec::new();
-    each(vm, this, args, false, |_, _, value, result| {
-        if result.truthy() {
-            out.push(value);
-        }
-        Ok(true)
-    })?;
-    Ok(vm.new_array(out))
+    let (t, callback, this_arg) = prepare(vm, this, args)?;
+    let mut sink = Sink::species(vm, &t.object, 0)?;
+    let mut kept = 0;
+    each_in(
+        vm,
+        &t,
+        &callback,
+        &this_arg,
+        false,
+        true,
+        |vm, _, value, result| {
+            if result.truthy() {
+                sink.put(vm, kept, value)?;
+                kept += 1;
+            }
+            Ok(true)
+        },
+    )?;
+    sink.finish(vm, kept, false)
 }
 
 fn find_impl(
@@ -352,9 +965,9 @@ fn find_impl(
     } else {
         Value::Undefined
     };
-    each(vm, this, args, reverse, |_, i, value, result| {
+    each(vm, this, args, reverse, false, |_, k, value, result| {
         if result.truthy() {
-            found = if want_index { number(i) } else { value };
+            found = if want_index { number(k) } else { value };
             return Ok(false);
         }
         Ok(true)
@@ -362,34 +975,34 @@ fn find_impl(
     Ok(found)
 }
 
-fn find(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn find(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     find_impl(vm, this, args, false, false)
 }
 
-fn find_index(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn find_index(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     find_impl(vm, this, args, false, true)
 }
 
-fn find_last(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn find_last(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     find_impl(vm, this, args, true, false)
 }
 
-fn find_last_index(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn find_last_index(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     find_impl(vm, this, args, true, true)
 }
 
-fn some(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn some(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let mut any = false;
-    each(vm, this, args, false, |_, _, _, result| {
+    each(vm, this, args, false, true, |_, _, _, result| {
         any = result.truthy();
         Ok(!any)
     })?;
     Ok(Value::Bool(any))
 }
 
-fn every(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn every(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let mut all = true;
-    each(vm, this, args, false, |_, _, _, result| {
+    each(vm, this, args, false, true, |_, _, _, result| {
         all = result.truthy();
         Ok(all)
     })?;
@@ -397,39 +1010,56 @@ fn every(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn reduce_impl(vm: &mut Vm, this: &Value, args: &[Value], reverse: bool) -> JsResult {
-    let id = this_array(vm, this)?;
+    let t = target(vm, this)?;
     let callback = callable(vm, &arg(args, 0))?;
-    let mut all = items(vm, id);
-    if reverse {
-        all.reverse();
-    }
-    let length = all.len();
-    let mut iter = all.into_iter().enumerate();
+    let index = |step: usize| if reverse { t.len - 1 - step } else { step };
+    let mut step = 0;
     let mut acc = match args.get(1) {
         Some(initial) => initial.clone(),
-        None => match iter.next() {
-            Some((_, first)) => first,
-            None => return Err(vm.type_error("reduce sur un tableau vide sans valeur initiale")),
-        },
+        None => {
+            // Premier élément présent.
+            let mut first = None;
+            while step < t.len && first.is_none() {
+                vm.tick(1)?;
+                let k = index(step);
+                step += 1;
+                if has(vm, &t, k)? {
+                    first = Some(get(vm, &t, k)?);
+                }
+            }
+            match first {
+                Some(value) => value,
+                None => {
+                    return Err(vm.type_error("reduce sur un tableau vide sans valeur initiale"));
+                }
+            }
+        }
     };
-    for (step, value) in iter {
-        let index = if reverse { length - 1 - step } else { step };
-        acc = vm.call(
-            &callback,
-            &Value::Undefined,
-            &[acc, value, number(index), this.clone()],
-        )?;
+    while step < t.len {
+        vm.tick(1)?;
+        let k = index(step);
+        step += 1;
+        if has(vm, &t, k)? {
+            let value = get(vm, &t, k)?;
+            acc = vm.call(
+                &callback,
+                &Value::Undefined,
+                &[acc, value, number(k), t.object.clone()],
+            )?;
+        }
     }
     Ok(acc)
 }
 
-fn reduce(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn reduce(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     reduce_impl(vm, this, args, false)
 }
 
-fn reduce_right(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn reduce_right(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     reduce_impl(vm, this, args, true)
 }
+
+// ---- Tri -------------------------------------------------------------------------
 
 /// Tri par fusion stable. Écrit à la main : le comparateur vient du script
 /// et peut être incohérent, ce que les tris de la bibliothèque standard de
@@ -474,145 +1104,162 @@ fn merge_sort(
     Ok(runs.pop().unwrap_or_default())
 }
 
-fn sort(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
+fn comparator_arg(vm: &mut Vm, args: &[Value]) -> JsResult<Value> {
     let comparator = arg(args, 0);
     if comparator != Value::Undefined && !is_callable(vm, &comparator) {
-        return Err(vm.type_error("le comparateur de sort doit être une fonction"));
+        return Err(vm.type_error("le comparateur de tri doit être une fonction"));
     }
-    let all = items(vm, id);
-    // `undefined` est toujours placé à la fin, sans appeler le comparateur.
+    Ok(comparator)
+}
+
+/// Trie `values` : les `undefined` vont à la fin sans appeler le comparateur.
+fn sort_values(vm: &mut Vm, values: Vec<Value>, comparator: &Value) -> JsResult<Vec<Value>> {
     let (defined, undefined): (Vec<Value>, Vec<Value>) =
-        all.into_iter().partition(|v| *v != Value::Undefined);
+        values.into_iter().partition(|v| *v != Value::Undefined);
     let mut less_or_equal = |vm: &mut Vm, a: &Value, b: &Value| -> JsResult<bool> {
-        if comparator == Value::Undefined {
+        if *comparator == Value::Undefined {
             let (x, y) = (vm.to_string(a)?, vm.to_string(b)?);
             return Ok(x.encode_utf16().le(y.encode_utf16()));
         }
-        let result = vm.call(&comparator, &Value::Undefined, &[a.clone(), b.clone()])?;
+        let result = vm.call(comparator, &Value::Undefined, &[a.clone(), b.clone()])?;
         // NaN compte pour zéro : les éléments gardent leur ordre.
         Ok(vm.to_number(&result)?.partial_cmp(&0.0) != Some(std::cmp::Ordering::Greater))
     };
     let mut sorted = merge_sort(vm, defined, &mut less_or_equal)?;
     sorted.extend(undefined);
-    if let Some(items) = items_mut(vm, id) {
-        *items = sorted;
-    }
-    Ok(this.clone())
+    Ok(sorted)
 }
 
-fn flatten(vm: &mut Vm, values: Vec<Value>, depth: usize, out: &mut Vec<Value>) -> JsResult<()> {
-    for value in values {
-        match value
-            .as_object()
-            .filter(|o| depth > 0 && matches!(vm.heap.get(*o).kind, Kind::Array(_)))
-        {
-            Some(inner) => flatten(vm, items(vm, inner), depth - 1, out)?,
-            None => out.push(value),
+fn sort(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let comparator = comparator_arg(vm, args)?;
+    let t = target(vm, this)?;
+    check_length(vm, t.len)?;
+    // Seuls les éléments présents sont triés ; les trous finissent à la fin.
+    let mut values = Vec::new();
+    for k in 0..t.len {
+        vm.tick(1)?;
+        if has(vm, &t, k)? {
+            values.push(get(vm, &t, k)?);
         }
-        if out.len() > MAX_LENGTH {
-            return Err(vm.error("RangeError", "tableau trop grand"));
+    }
+    let sorted = sort_values(vm, values, &comparator)?;
+    let count = sorted.len();
+    for (k, value) in sorted.into_iter().enumerate() {
+        set(vm, &t, k, value)?;
+    }
+    for k in count..t.len {
+        vm.tick(1)?;
+        if has(vm, &t, k)? {
+            delete(vm, &t, k)?;
+        }
+    }
+    Ok(t.object)
+}
+
+fn to_sorted(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let comparator = comparator_arg(vm, args)?;
+    let t = target(vm, this)?;
+    let values = snapshot(vm, &t)?;
+    let sorted = sort_values(vm, values, &comparator)?;
+    Ok(vm.new_array(sorted))
+}
+
+// ---- Aplatissement ---------------------------------------------------------------
+
+/// `FlattenIntoArray` : verse les éléments de `t` dans `sink` à partir de
+/// l'index `next`, en ouvrant les tableaux imbriqués jusqu'à `depth` niveaux.
+fn flatten(
+    vm: &mut Vm,
+    t: &Target,
+    depth: usize,
+    sink: &mut Sink,
+    next: &mut usize,
+) -> JsResult<()> {
+    for k in 0..t.len {
+        vm.tick(1)?;
+        if !has(vm, t, k)? {
+            continue;
+        }
+        let value = get(vm, t, k)?;
+        if depth > 0 && is_array(vm, &value) {
+            let inner = target(vm, &value)?;
+            flatten(vm, &inner, depth - 1, sink, next)?;
+        } else {
+            sink.put(vm, *next, value)?;
+            *next += 1;
         }
     }
     Ok(())
 }
 
 fn flat(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
+    let t = target(vm, this)?;
     let depth = match arg(args, 0) {
         Value::Undefined => 1.0,
-        other => vm.to_number(&other)?,
+        other => to_integer(vm, &other)?,
     };
-    // Borne la récursion : au-delà de 1000 niveaux, le résultat ne change plus en pratique.
+    // Borne la récursion native : au-delà, le résultat ne change plus en pratique.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
-        reason = "ramené dans [0, 1000]"
+        reason = "ramené dans [0, 64]"
     )]
-    let depth = depth.clamp(0.0, 1000.0) as usize;
-    let mut out = Vec::new();
-    flatten(vm, items(vm, id), depth, &mut out)?;
-    Ok(vm.new_array(out))
+    let depth = depth.clamp(0.0, 64.0) as usize;
+    let mut sink = Sink::species(vm, &t.object, 0)?;
+    let mut next = 0;
+    flatten(vm, &t, depth, &mut sink, &mut next)?;
+    sink.finish(vm, next, false)
 }
 
 fn flat_map(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let mut mapped = Vec::new();
-    each(vm, this, args, false, |_, _, _, result| {
-        mapped.push(result);
-        Ok(true)
-    })?;
-    let mut out = Vec::new();
-    flatten(vm, mapped, 1, &mut out)?;
-    Ok(vm.new_array(out))
+    let (t, callback, this_arg) = prepare(vm, this, args)?;
+    let mut sink = Sink::species(vm, &t.object, 0)?;
+    let mut next = 0;
+    for k in 0..t.len {
+        vm.tick(1)?;
+        if !has(vm, &t, k)? {
+            continue;
+        }
+        let value = get(vm, &t, k)?;
+        let mapped = vm.call(&callback, &this_arg, &[value, number(k), t.object.clone()])?;
+        if is_array(vm, &mapped) {
+            let inner = target(vm, &mapped)?;
+            flatten(vm, &inner, 0, &mut sink, &mut next)?;
+        } else {
+            sink.put(vm, next, mapped)?;
+            next += 1;
+        }
+    }
+    sink.finish(vm, next, false)
 }
 
-fn fill(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let length = len(vm, id);
-    let start = relative_index(vm, &arg(args, 1), length, 0)?;
-    let end = relative_index(vm, &arg(args, 2), length, length)?;
-    let value = arg(args, 0);
-    if let Some(slice) = items_mut(vm, id).and_then(|items| items.get_mut(start..end.max(start))) {
-        slice.fill(value);
-    }
-    Ok(this.clone())
-}
+// ---- Itérateurs ------------------------------------------------------------------
 
-fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let all = items(vm, id);
-    let n = vm.to_number(&arg(args, 0))?;
-    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
-    let index = if n < 0.0 {
-        all.len() as f64 + n.trunc()
-    } else {
-        n.trunc()
-    };
-    if index < 0.0 || index.is_nan() {
-        return Ok(Value::Undefined);
-    }
-    #[expect(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "positif vérifié"
-    )]
-    Ok(all.get(index as usize).cloned().unwrap_or(Value::Undefined))
+fn indexed_iterator(vm: &mut Vm, this: &Value, kind: IndexedKind) -> JsResult {
+    let target = vm.to_object(this)?;
+    Ok(vm.new_iterator(IterState::Indexed {
+        target,
+        index: 0,
+        kind,
+    }))
 }
 
 fn keys(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let values = (0..len(vm, id)).map(number).collect();
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    indexed_iterator(vm, this, IndexedKind::Keys)
 }
 
 fn values(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    Ok(vm.new_iterator(IterState::Array {
-        target: id,
-        index: 0,
-    }))
+    indexed_iterator(vm, this, IndexedKind::Values)
 }
 
 fn entries(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let id = this_array(vm, this)?;
-    let pairs = items(vm, id)
-        .into_iter()
-        .enumerate()
-        .map(|(i, v)| vm.new_array(vec![number(i), v]))
-        .collect();
-    Ok(vm.new_iterator(IterState::Values {
-        values: pairs,
-        index: 0,
-    }))
-}
-
-fn to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    join(vm, this, &[])
+    indexed_iterator(vm, this, IndexedKind::Entries)
 }
 
 pub(super) fn install(vm: &mut Vm) {
     let proto = vm.intrinsics.array_proto;
     let ctor = constructor(vm, "Array", 1, array_ctor, proto);
+    vm.array_ctor = Some(ctor);
     vm.define_method(ctor, "isArray", 1, array_is_array);
     vm.define_method(ctor, "of", 0, array_of);
     vm.define_method(ctor, "from", 1, array_from);
@@ -644,11 +1291,17 @@ pub(super) fn install(vm: &mut Vm) {
         ("flat", 0, flat),
         ("flatMap", 1, flat_map),
         ("fill", 1, fill),
+        ("copyWithin", 2, copy_within),
         ("at", 1, at),
         ("keys", 0, keys),
         ("values", 0, values),
         ("entries", 0, entries),
+        ("toReversed", 0, to_reversed),
+        ("toSorted", 1, to_sorted),
+        ("toSpliced", 2, to_spliced),
+        ("with", 2, with),
         ("toString", 0, to_string),
+        ("toLocaleString", 0, to_string),
     ];
     for (name, arity, func) in methods {
         vm.define_method(proto, name, *arity, *func);

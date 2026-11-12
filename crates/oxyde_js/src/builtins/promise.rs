@@ -4,15 +4,16 @@
 //! déclenche : elles sont mises en file et exécutées par
 //! [`Vm::run_microtasks`], que l'hôte appelle à la fin de chaque tâche.
 //!
-//! LIMITES CONNUES : les combinateurs (`all`, `race`…) et `await` attachent
-//! leurs réactions directement, sans passer par une méthode `then` redéfinie ;
-//! `Promise.resolve`, `all`… ignorent `this` (pas de sous-classes) ; pas de
-//! `Promise.withResolvers` ni `Promise.try`.
+//! LIMITE CONNUE : `await` attache ses réactions directement à une promesse
+//! ordinaire, sans consulter sa propriété `constructor` ni sa méthode `then`.
+
+use std::sync::Arc;
 
 use super::{arg, constructor, is_callable};
-use crate::heap::{Kind, Object, PromiseData, PromiseState, Reaction};
-use crate::value::{ObjId, Value};
-use crate::vm::{CoOutcome, JsResult, NativeFn, Resume, Vm};
+use crate::heap::{Derived, Kind, Object, PromiseData, PromiseState, Property, Reaction, Slot};
+use crate::internal::{key_value, same_value};
+use crate::value::{JsStr, ObjId, PropertyKey, Value};
+use crate::vm::{CoOutcome, JsResult, NativeDataFn, NativeFn, Resume, Vm};
 
 /// Microtâche en attente.
 #[derive(Clone, Debug)]
@@ -23,13 +24,19 @@ pub(crate) enum Job {
         handler: Value,
         argument: Value,
         rejected: bool,
-        target: Option<ObjId>,
+        target: Derived,
     },
     /// Résolution par un objet « thenable » : appelle `then(resolve, reject)`.
     Thenable {
         promise: ObjId,
         thenable: Value,
         then: Value,
+    },
+    /// `import()` : charge et évalue le module, puis règle `promise`.
+    Import {
+        promise: ObjId,
+        specifier: JsStr,
+        referrer: JsStr,
     },
 }
 
@@ -45,7 +52,7 @@ impl Job {
             } => {
                 out.push(handler.clone());
                 out.push(argument.clone());
-                out.extend(target.map(Value::Object));
+                target.trace(out);
             }
             Self::Thenable {
                 promise,
@@ -56,6 +63,7 @@ impl Job {
                 out.push(thenable.clone());
                 out.push(then.clone());
             }
+            Self::Import { promise, .. } => out.push(Value::Object(*promise)),
         }
     }
 }
@@ -171,6 +179,19 @@ impl Vm {
         on_rejected: Value,
         target: Option<ObjId>,
     ) {
+        let derived = target.map_or(Derived::None, Derived::Promise);
+        self.promise_then_derived(promise, on_fulfilled, on_rejected, derived);
+    }
+
+    /// `PerformPromiseThen` : comme [`Vm::promise_then`], le résultat du
+    /// gestionnaire allant à `target`.
+    pub(crate) fn promise_then_derived(
+        &mut self,
+        promise: ObjId,
+        on_fulfilled: Value,
+        on_rejected: Value,
+        target: Derived,
+    ) {
         let Some(data) = self.promise_data(promise) else {
             return;
         };
@@ -220,8 +241,8 @@ impl Vm {
             .alloc(Object::new(None, Kind::Primitive(Value::Bool(false))));
         let data = vec![Value::Object(promise), Value::Object(flag)];
         (
-            self.new_native_data(resolver_resolve, data.clone()),
-            self.new_native_data(resolver_reject, data),
+            anonymous(self, resolver_resolve, data.clone(), 1.0),
+            anonymous(self, resolver_reject, data, 1.0),
         )
     }
 
@@ -293,8 +314,13 @@ impl Vm {
         });
     }
 
-    fn run_job(&mut self, job: Job) {
+    pub(crate) fn run_job(&mut self, job: Job) {
         match job {
+            Job::Import {
+                promise,
+                specifier,
+                referrer,
+            } => self.run_import(promise, &specifier, &referrer),
             Job::Reaction {
                 handler,
                 argument,
@@ -308,10 +334,18 @@ impl Vm {
                 } else {
                     Ok(argument)
                 };
-                if let Some(target) = target {
-                    match outcome {
+                match target {
+                    Derived::None => {}
+                    Derived::Promise(target) => match outcome {
                         Ok(value) => self.resolve_promise(target, value),
                         Err(thrown) => self.settle(target, true, thrown),
+                    },
+                    Derived::Functions(functions) => {
+                        let (resolve, reject) = *functions;
+                        let _ = match outcome {
+                            Ok(value) => self.call(&resolve, &Value::Undefined, &[value]),
+                            Err(thrown) => self.call(&reject, &Value::Undefined, &[thrown]),
+                        };
                     }
                 }
             }
@@ -338,7 +372,7 @@ impl Vm {
         match self.resume(coroutine, mode) {
             Ok(CoOutcome::Return(value)) => self.resolve_promise(promise, value),
             Err(thrown) => self.settle(promise, true, thrown),
-            Ok(CoOutcome::Yield(awaited)) => {
+            Ok(CoOutcome::Yield(awaited) | CoOutcome::Await(awaited)) => {
                 let awaited = self.promise_resolve(&awaited);
                 let data = vec![Value::Object(coroutine)];
                 let on_fulfilled = self.new_native_data(async_fulfilled, data.clone());
@@ -397,6 +431,151 @@ fn async_rejected(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) ->
     Ok(Value::Undefined)
 }
 
+// ---- Capacités -------------------------------------------------------------------
+
+/// Capacité de promesse (ECMA-262 §27.2.1.1) : une promesse et les fonctions
+/// qui la règlent.
+pub(crate) struct Capability {
+    pub(crate) promise: Value,
+    pub(crate) resolve: Value,
+    pub(crate) reject: Value,
+}
+
+/// Fonction native anonyme (`name` vide) de longueur `length`.
+fn anonymous(vm: &mut Vm, func: NativeDataFn, data: Vec<Value>, length: f64) -> Value {
+    let function = vm.new_native_data(func, data);
+    if let Some(id) = function.as_object() {
+        for (key, value) in [
+            ("length", Value::Number(length)),
+            ("name", Value::string("")),
+        ] {
+            vm.heap.get_mut(id).props.insert(
+                Arc::from(key),
+                Property {
+                    slot: Slot::Data(value),
+                    writable: false,
+                    enumerable: false,
+                    configurable: true,
+                },
+            );
+        }
+    }
+    function
+}
+
+/// Liste interne, portée par un tableau que le script ne voit jamais.
+fn list_mut<'a>(vm: &'a mut Vm, list: &Value) -> Option<&'a mut Vec<Value>> {
+    match &mut vm.heap.get_mut(list.as_object()?).kind {
+        Kind::Array(items) => Some(items),
+        _ => None,
+    }
+}
+
+fn list_get(vm: &mut Vm, list: &Value, index: usize) -> Value {
+    list_mut(vm, list)
+        .and_then(|items| items.get(index).cloned())
+        .unwrap_or(Value::Undefined)
+}
+
+/// Exécuteur passé au constructeur par `NewPromiseCapability` : range les
+/// fonctions `resolve` et `reject` reçues dans la liste `data[0]`.
+fn capability_executor(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let holder = data.first().cloned().unwrap_or(Value::Undefined);
+    if list_get(vm, &holder, 0) != Value::Undefined || list_get(vm, &holder, 1) != Value::Undefined
+    {
+        return Err(vm.type_error("l'exécuteur d'une capacité de promesse a déjà été appelé"));
+    }
+    if let Some(items) = list_mut(vm, &holder) {
+        *items = vec![arg(args, 0), arg(args, 1)];
+    }
+    Ok(Value::Undefined)
+}
+
+impl Vm {
+    /// Le constructeur `Promise` d'origine.
+    fn promise_ctor_value(&self) -> Value {
+        self.promise_ctor.map_or(Value::Undefined, Value::Object)
+    }
+
+    /// `NewPromiseCapability(C)` (ECMA-262 §27.2.1.5).
+    pub(crate) fn new_capability(&mut self, ctor: &Value) -> JsResult<Capability> {
+        if self.promise_ctor.is_some() && ctor.as_object() == self.promise_ctor {
+            let promise = self.new_promise();
+            let (resolve, reject) = self.resolvers(promise);
+            return Ok(Capability {
+                promise: Value::Object(promise),
+                resolve,
+                reject,
+            });
+        }
+        if !self.is_constructor(ctor) {
+            return Err(self.type_error("un constructeur de promesse est attendu"));
+        }
+        let holder = self.new_array(vec![Value::Undefined, Value::Undefined]);
+        let executor = anonymous(self, capability_executor, vec![holder.clone()], 2.0);
+        let promise = self.construct(ctor, &[executor], ctor)?;
+        let resolve = list_get(self, &holder, 0);
+        let reject = list_get(self, &holder, 1);
+        if !is_callable(self, &resolve) || !is_callable(self, &reject) {
+            return Err(self.type_error(
+                "le constructeur de promesse n'a pas fourni ses fonctions de résolution",
+            ));
+        }
+        Ok(Capability {
+            promise,
+            resolve,
+            reject,
+        })
+    }
+}
+
+/// `Invoke(target, name, args)`.
+fn invoke(vm: &mut Vm, target: &Value, name: &str, args: &[Value]) -> JsResult {
+    let method = vm.get(target, name)?;
+    vm.call(&method, target, args)
+}
+
+/// `SpeciesConstructor(promise, %Promise%)`.
+fn promise_species(vm: &mut Vm, promise: &Value) -> JsResult {
+    let ctor = vm.get(promise, "constructor")?;
+    if ctor == Value::Undefined {
+        return Ok(vm.promise_ctor_value());
+    }
+    if ctor.as_object().is_none() {
+        return Err(vm.type_error("la propriété « constructor » n'est pas un objet"));
+    }
+    let key = PropertyKey::Symbol(vm.well_known.species.clone());
+    let species = vm.get_key(&ctor, &key)?;
+    if species.is_nullish() {
+        return Ok(vm.promise_ctor_value());
+    }
+    if vm.is_constructor(&species) {
+        Ok(species)
+    } else {
+        Err(vm.type_error("l'espèce de la promesse n'est pas un constructeur"))
+    }
+}
+
+/// `PromiseResolve(C, value)` (ECMA-262 §27.2.4.7.1).
+fn promise_resolve_with(vm: &mut Vm, ctor: &Value, value: &Value) -> JsResult {
+    let is_promise = value
+        .as_object()
+        .is_some_and(|id| matches!(vm.heap.get(id).kind, Kind::Promise(_)));
+    if is_promise {
+        let own = vm.get(value, "constructor")?;
+        if same_value(&own, ctor) {
+            return Ok(value.clone());
+        }
+    }
+    let capability = vm.new_capability(ctor)?;
+    vm.call(
+        &capability.resolve,
+        &Value::Undefined,
+        std::slice::from_ref(value),
+    )?;
+    Ok(capability.promise)
+}
+
 // ---- Constructeur et prototype ---------------------------------------------------
 
 fn promise_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -419,49 +598,53 @@ fn this_promise(vm: &mut Vm, this: &Value) -> JsResult<ObjId> {
     }
 }
 
+/// `Promise.prototype.then` (ECMA-262 §27.2.5.4).
 fn promise_then(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let promise = this_promise(vm, this)?;
-    let target = vm.new_promise();
-    vm.promise_then(promise, arg(args, 0), arg(args, 1), Some(target));
-    Ok(Value::Object(target))
+    let ctor = promise_species(vm, this)?;
+    if ctor.as_object() == vm.promise_ctor {
+        let target = vm.new_promise();
+        vm.promise_then(promise, arg(args, 0), arg(args, 1), Some(target));
+        return Ok(Value::Object(target));
+    }
+    let capability = vm.new_capability(&ctor)?;
+    let derived = Derived::Functions(Box::new((capability.resolve, capability.reject)));
+    vm.promise_then_derived(promise, arg(args, 0), arg(args, 1), derived);
+    Ok(capability.promise)
 }
 
 fn promise_catch(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let promise = this_promise(vm, this)?;
-    let target = vm.new_promise();
-    vm.promise_then(promise, Value::Undefined, arg(args, 0), Some(target));
-    Ok(Value::Object(target))
+    invoke(vm, this, "then", &[Value::Undefined, arg(args, 0)])
 }
 
+/// `Promise.prototype.finally` (ECMA-262 §27.2.5.3).
 fn promise_finally(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let promise = this_promise(vm, this)?;
-    let target = vm.new_promise();
-    let callback = arg(args, 0);
-    if is_callable(vm, &callback) {
-        let on_fulfilled = vm.new_native_data(finally_fulfilled, vec![callback.clone()]);
-        let on_rejected = vm.new_native_data(finally_rejected, vec![callback]);
-        vm.promise_then(promise, on_fulfilled, on_rejected, Some(target));
-    } else {
-        vm.promise_then(promise, callback.clone(), callback, Some(target));
+    if this.as_object().is_none() {
+        return Err(vm.type_error("le receveur de « finally » n'est pas un objet"));
     }
-    Ok(Value::Object(target))
+    let ctor = promise_species(vm, this)?;
+    let callback = arg(args, 0);
+    let (then_finally, catch_finally) = if is_callable(vm, &callback) {
+        let data = vec![callback, ctor];
+        (
+            anonymous(vm, finally_fulfilled, data.clone(), 1.0),
+            anonymous(vm, finally_rejected, data, 1.0),
+        )
+    } else {
+        (callback.clone(), callback)
+    };
+    invoke(vm, this, "then", &[then_finally, catch_finally])
 }
 
 /// Appelle le rappel de `finally`, attend son résultat, puis laisse passer
-/// l'issue d'origine au moyen de `pass`.
-fn run_finally(
-    vm: &mut Vm,
-    data: &[Value],
-    pass: crate::vm::NativeDataFn,
-    outcome: Value,
-) -> JsResult {
+/// l'issue d'origine au moyen de `pass`. `data` : rappel, constructeur.
+fn run_finally(vm: &mut Vm, data: &[Value], pass: NativeDataFn, outcome: Value) -> JsResult {
     let callback = data.first().cloned().unwrap_or(Value::Undefined);
+    let ctor = data.get(1).cloned().unwrap_or(Value::Undefined);
     let result = vm.call(&callback, &Value::Undefined, &[])?;
-    let awaited = vm.promise_resolve(&result);
-    let target = vm.new_promise();
-    let pass = vm.new_native_data(pass, vec![outcome]);
-    vm.promise_then(awaited, pass, Value::Undefined, Some(target));
-    Ok(Value::Object(target))
+    let promise = promise_resolve_with(vm, &ctor, &result)?;
+    let pass = anonymous(vm, pass, vec![outcome], 0.0);
+    invoke(vm, &promise, "then", &[pass])
 }
 
 fn finally_fulfilled(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
@@ -482,15 +665,61 @@ fn throw_value(_vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> 
 
 // ---- Méthodes statiques ----------------------------------------------------------
 
-fn promise_static_resolve(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    Ok(Value::Object(vm.promise_resolve(&arg(args, 0))))
+fn promise_static_resolve(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    if this.as_object().is_none() {
+        return Err(vm.type_error("Promise.resolve : le receveur n'est pas un objet"));
+    }
+    promise_resolve_with(vm, this, &arg(args, 0))
 }
 
-fn promise_static_reject(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let promise = vm.new_promise();
-    vm.settle(promise, true, arg(args, 0));
-    Ok(Value::Object(promise))
+fn promise_static_reject(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let capability = vm.new_capability(this)?;
+    vm.call(&capability.reject, &Value::Undefined, &[arg(args, 0)])?;
+    Ok(capability.promise)
 }
+
+/// `Promise.withResolvers()` : `{ promise, resolve, reject }`.
+fn promise_with_resolvers(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let capability = vm.new_capability(this)?;
+    let object = vm.new_object();
+    for (name, value) in [
+        ("promise", capability.promise),
+        ("resolve", capability.resolve),
+        ("reject", capability.reject),
+    ] {
+        vm.create_data_property(object, &PropertyKey::String(Arc::from(name)), value)?;
+    }
+    Ok(Value::Object(object))
+}
+
+/// `Promise.try(callback, ...args)` : appelle `callback` et rend une
+/// promesse de son résultat, rejetée s'il lève une exception.
+fn promise_try(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    if this.as_object().is_none() {
+        return Err(vm.type_error("Promise.try : le receveur n'est pas un objet"));
+    }
+    let capability = vm.new_capability(this)?;
+    let rest = args.get(1..).unwrap_or(&[]);
+    match vm.call(&arg(args, 0), &Value::Undefined, rest) {
+        Ok(value) => {
+            // Une promesse du même constructeur est rendue telle quelle.
+            let is_promise = value
+                .as_object()
+                .is_some_and(|id| matches!(vm.heap.get(id).kind, Kind::Promise(_)));
+            if is_promise {
+                let own = vm.get(&value, "constructor")?;
+                if same_value(&own, this) {
+                    return Ok(value);
+                }
+            }
+            vm.call(&capability.resolve, &Value::Undefined, &[value])?
+        }
+        Err(thrown) => vm.call(&capability.reject, &Value::Undefined, &[thrown])?,
+    };
+    Ok(capability.promise)
+}
+
+// ---- Combinateurs ------------------------------------------------------------------
 
 /// Combinateur : quelle issue de chaque élément compte, et comment conclure.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -498,176 +727,329 @@ enum Combine {
     All,
     AllSettled,
     Any,
+    Race,
 }
 
-impl Combine {
+/// Ce qu'une fonction d'élément range dans la liste des résultats.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Element {
+    /// La valeur reçue (`all`).
+    Value,
+    /// `{ status: "fulfilled", value }` (`allSettled`).
+    Fulfilled,
+    /// `{ status: "rejected", reason }` (`allSettled`).
+    Rejected,
+    /// L'erreur reçue ; la conclusion est une `AggregateError` (`any`).
+    Error,
+}
+
+impl Element {
     fn code(self) -> f64 {
         match self {
-            Self::All => 0.0,
-            Self::AllSettled => 1.0,
-            Self::Any => 2.0,
+            Self::Value => 0.0,
+            Self::Fulfilled => 1.0,
+            Self::Rejected => 2.0,
+            Self::Error => 3.0,
         }
     }
 
     fn from_value(value: Option<&Value>) -> Self {
         match value {
-            Some(Value::Number(n)) if *n == 1.0 => Self::AllSettled,
-            Some(Value::Number(n)) if *n == 2.0 => Self::Any,
-            _ => Self::All,
+            Some(Value::Number(n)) if *n == 1.0 => Self::Fulfilled,
+            Some(Value::Number(n)) if *n == 2.0 => Self::Rejected,
+            Some(Value::Number(n)) if *n == 3.0 => Self::Error,
+            _ => Self::Value,
         }
     }
 }
 
-/// Conclut un combinateur dont tous les éléments sont réglés.
-fn combine_finish(vm: &mut Vm, result: ObjId, values: Value, mode: Combine) {
-    if mode == Combine::Any {
+/// Cellule interne portant un compteur ou un drapeau.
+fn cell(vm: &mut Vm, value: Value) -> Value {
+    Value::Object(vm.heap.alloc(Object::new(None, Kind::Primitive(value))))
+}
+
+/// Ajoute `delta` au compteur `cell` et rend sa nouvelle valeur.
+fn count(vm: &mut Vm, cell: &Value, delta: f64) -> f64 {
+    let Some(id) = cell.as_object() else {
+        return 0.0;
+    };
+    match &mut vm.heap.get_mut(id).kind {
+        Kind::Primitive(Value::Number(n)) => {
+            *n += delta;
+            *n
+        }
+        _ => 0.0,
+    }
+}
+
+/// Lève le drapeau `cell` ; vrai s'il l'était déjà.
+fn already_called(vm: &mut Vm, cell: &Value) -> bool {
+    let Some(id) = cell.as_object() else {
+        return true;
+    };
+    match &mut vm.heap.get_mut(id).kind {
+        Kind::Primitive(state) => std::mem::replace(state, Value::Bool(true)) == Value::Bool(true),
+        _ => true,
+    }
+}
+
+/// Valeur qui conclut un combinateur : tableau des résultats, objet
+/// `clé → résultat` (variantes « Keyed »), ou `AggregateError` (`any`).
+fn conclusion(vm: &mut Vm, element: Element, values: &Value, keys: &Value) -> JsResult {
+    let items = list_mut(vm, values).cloned().unwrap_or_default();
+    if element == Element::Error {
         let error = vm.error("AggregateError", "toutes les promesses ont été rejetées");
+        let errors = vm.new_array(items);
         if let Some(id) = error.as_object() {
-            vm.define_hidden(id, "name", Value::string("AggregateError"));
-            vm.define_hidden(id, "errors", values);
+            vm.define_hidden(id, "errors", errors);
         }
-        vm.settle(result, true, error);
-    } else {
-        vm.settle(result, false, values);
+        return Ok(error);
     }
+    let Some(keys) = list_mut(vm, keys).cloned() else {
+        return Ok(vm.new_array(items));
+    };
+    let object = vm.heap.alloc(Object::new(None, Kind::Ordinary));
+    for (key, value) in keys.into_iter().zip(items) {
+        let key = match key {
+            Value::Symbol(symbol) => PropertyKey::Symbol(symbol),
+            other => PropertyKey::String(vm.to_string(&other)?),
+        };
+        vm.create_data_property(object, &key, value)?;
+    }
+    Ok(Value::Object(object))
 }
 
-/// Réaction d'un élément de combinateur.
-/// `data` : promesse résultat, tableau des valeurs, compteur restant, index,
-/// issue de l'élément (`true` : rejeté), mode.
+/// Fonction d'élément d'un combinateur (`Promise.all Resolve Element
+/// Functions` et ses semblables).
+/// `data` : drapeau « déjà appelée », liste des résultats, compteur restant,
+/// index, fonction qui conclut, nature de l'élément, liste des clés.
 fn combine_element(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
-    let (Some(result), Some(values), Some(remaining)) = (
-        data_object(data, 0),
-        data.get(1).cloned(),
-        data_object(data, 2),
-    ) else {
+    let [flag, values, remaining, index, settle, element, keys] = data else {
         return Ok(Value::Undefined);
     };
-    let index = data.get(3).cloned().unwrap_or(Value::Undefined);
-    let rejected = data.get(4) == Some(&Value::Bool(true));
-    let mode = Combine::from_value(data.get(5));
+    if already_called(vm, flag) {
+        return Ok(Value::Undefined);
+    }
+    let element = Element::from_value(Some(element));
     let value = arg(args, 0);
-    let stored = match (mode, rejected) {
-        (Combine::All, true) => {
-            vm.settle(result, true, value);
-            return Ok(Value::Undefined);
-        }
-        (Combine::Any, false) => {
-            vm.resolve_promise(result, value);
-            return Ok(Value::Undefined);
-        }
-        (Combine::All, false) | (Combine::Any, true) => value,
-        (Combine::AllSettled, _) => {
-            let entry = Value::Object(vm.new_object());
-            let (status, key) = if rejected {
+    let stored = match element {
+        Element::Value | Element::Error => value,
+        Element::Fulfilled | Element::Rejected => {
+            let entry = vm.new_object();
+            let (status, key) = if element == Element::Rejected {
                 ("rejected", "reason")
             } else {
                 ("fulfilled", "value")
             };
-            vm.set(&entry, "status", Value::string(status))?;
-            vm.set(&entry, key, value)?;
-            entry
+            vm.create_data_property(
+                entry,
+                &PropertyKey::String(Arc::from("status")),
+                Value::string(status),
+            )?;
+            vm.create_data_property(entry, &PropertyKey::String(Arc::from(key)), value)?;
+            Value::Object(entry)
         }
     };
-    vm.set_element(&values, &index, stored)?;
-    let Kind::Primitive(Value::Number(count)) = &mut vm.heap.get_mut(remaining).kind else {
-        return Ok(Value::Undefined);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "index rangé par le combinateur : entier positif"
+    )]
+    let position = match index {
+        Value::Number(n) => *n as usize,
+        _ => 0,
     };
-    *count -= 1.0;
-    if *count <= 0.0 {
-        combine_finish(vm, result, values, mode);
+    if let Some(slot) = list_mut(vm, values).and_then(|items| items.get_mut(position)) {
+        *slot = stored;
+    }
+    if count(vm, remaining, -1.0) == 0.0 {
+        let result = conclusion(vm, element, values, keys)?;
+        return vm.call(settle, &Value::Undefined, &[result]);
     }
     Ok(Value::Undefined)
 }
 
-fn combine(vm: &mut Vm, args: &[Value], mode: Combine) -> JsResult {
-    let result = vm.new_promise();
-    let items = match vm.iterate_to_vec(&arg(args, 0)) {
-        Ok(items) => items,
-        Err(thrown) => {
-            vm.settle(result, true, thrown);
-            return Ok(Value::Object(result));
+/// État partagé par les éléments d'un combinateur.
+struct Combinator<'a> {
+    ctor: &'a Value,
+    capability: &'a Capability,
+    /// `C.resolve`, lue une fois.
+    resolve: Value,
+    mode: Combine,
+    values: Value,
+    keys: Value,
+    remaining: Value,
+}
+
+impl Combinator<'_> {
+    /// Abonne le combinateur à l'élément `next`, de rang `index`.
+    fn subscribe(&self, vm: &mut Vm, next: Value, index: usize) -> JsResult<()> {
+        let capability = self.capability;
+        if self.mode != Combine::Race
+            && let Some(items) = list_mut(vm, &self.values)
+        {
+            items.push(Value::Undefined);
         }
-    };
-    let values = vm.new_array(vec![Value::Undefined; items.len()]);
-    if items.is_empty() {
-        combine_finish(vm, result, values, mode);
-        return Ok(Value::Object(result));
-    }
-    let count = f64::from(u32::try_from(items.len()).unwrap_or(u32::MAX));
-    let remaining = vm
-        .heap
-        .alloc(Object::new(None, Kind::Primitive(Value::Number(count))));
-    for (index, item) in items.iter().enumerate() {
-        let promise = vm.promise_resolve(item);
-        let index = f64::from(u32::try_from(index).unwrap_or(u32::MAX));
-        let reaction = |vm: &mut Vm, rejected: bool| {
-            vm.new_native_data(
-                combine_element,
-                vec![
-                    Value::Object(result),
-                    values.clone(),
-                    Value::Object(remaining),
-                    Value::Number(index),
-                    Value::Bool(rejected),
-                    Value::Number(mode.code()),
-                ],
-            )
+        let promise = vm.call(&self.resolve, self.ctor, &[next])?;
+        let flag = cell(vm, Value::Bool(false));
+        #[expect(clippy::cast_precision_loss, reason = "rang petit devant 2^53")]
+        let index = Value::Number(index as f64);
+        let element = |vm: &mut Vm, element: Element, settle: &Value| {
+            let data = vec![
+                flag.clone(),
+                self.values.clone(),
+                self.remaining.clone(),
+                index.clone(),
+                settle.clone(),
+                Value::Number(element.code()),
+                self.keys.clone(),
+            ];
+            anonymous(vm, combine_element, data, 1.0)
         };
-        let on_fulfilled = reaction(vm, false);
-        let on_rejected = reaction(vm, true);
-        vm.promise_then(promise, on_fulfilled, on_rejected, None);
-    }
-    Ok(Value::Object(result))
-}
-
-fn promise_all(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    combine(vm, args, Combine::All)
-}
-
-fn promise_all_settled(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    combine(vm, args, Combine::AllSettled)
-}
-
-fn promise_any(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    combine(vm, args, Combine::Any)
-}
-
-/// Règle la promesse `data[0]` avec l'argument ; `data[1]` : rejet.
-fn settle_with(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
-    if let Some(promise) = data_object(data, 0) {
-        if data.get(1) == Some(&Value::Bool(true)) {
-            vm.settle(promise, true, arg(args, 0));
-        } else {
-            vm.resolve_promise(promise, arg(args, 0));
+        let (on_fulfilled, on_rejected) = match self.mode {
+            Combine::Race => (capability.resolve.clone(), capability.reject.clone()),
+            Combine::All => (
+                element(vm, Element::Value, &capability.resolve),
+                capability.reject.clone(),
+            ),
+            Combine::AllSettled => (
+                element(vm, Element::Fulfilled, &capability.resolve),
+                element(vm, Element::Rejected, &capability.resolve),
+            ),
+            Combine::Any => (
+                capability.resolve.clone(),
+                element(vm, Element::Error, &capability.reject),
+            ),
+        };
+        if self.mode != Combine::Race {
+            count(vm, &self.remaining, 1.0);
         }
+        invoke(vm, &promise, "then", &[on_fulfilled, on_rejected])?;
+        Ok(())
     }
-    Ok(Value::Undefined)
+
+    /// Tous les éléments sont abonnés : conclut si plus aucun n'est en attente.
+    fn finish(&self, vm: &mut Vm) -> JsResult<()> {
+        if self.mode == Combine::Race || count(vm, &self.remaining, -1.0) != 0.0 {
+            return Ok(());
+        }
+        if self.mode == Combine::Any {
+            return Err(conclusion(vm, Element::Error, &self.values, &self.keys)?);
+        }
+        let result = conclusion(vm, Element::Value, &self.values, &self.keys)?;
+        vm.call(&self.capability.resolve, &Value::Undefined, &[result])?;
+        Ok(())
+    }
 }
 
-fn promise_race(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let result = vm.new_promise();
-    let items = match vm.iterate_to_vec(&arg(args, 0)) {
-        Ok(items) => items,
-        Err(thrown) => {
-            vm.settle(result, true, thrown);
-            return Ok(Value::Object(result));
+/// Corps d'un combinateur ; une erreur rejette la promesse résultat.
+fn perform(
+    vm: &mut Vm,
+    ctor: &Value,
+    source: &Value,
+    capability: &Capability,
+    mode: Combine,
+    keyed: bool,
+) -> JsResult<()> {
+    // `GetPromiseResolve(C)`.
+    let resolve = vm.get(ctor, "resolve")?;
+    if !is_callable(vm, &resolve) {
+        return Err(vm.type_error("la méthode « resolve » du constructeur n'est pas une fonction"));
+    }
+    let values = vm.new_array(Vec::new());
+    let keys = if keyed {
+        vm.new_array(Vec::new())
+    } else {
+        Value::Undefined
+    };
+    let combinator = Combinator {
+        ctor,
+        capability,
+        resolve,
+        mode,
+        values,
+        keys,
+        remaining: cell(vm, Value::Number(1.0)),
+    };
+    if keyed {
+        let Some(id) = source.as_object() else {
+            return Err(vm.type_error("un objet de promesses est attendu"));
+        };
+        let mut index = 0;
+        for key in vm.own_property_keys(id)? {
+            let enumerable = vm
+                .get_own_property(id, &key)?
+                .is_some_and(|descriptor| descriptor.enumerable == Some(true));
+            if !enumerable {
+                continue;
+            }
+            let value = vm.get_key(source, &key)?;
+            if let Some(items) = list_mut(vm, &combinator.keys) {
+                items.push(key_value(&key));
+            }
+            combinator.subscribe(vm, value, index)?;
+            index += 1;
+        }
+        return combinator.finish(vm);
+    }
+    let iterator = vm.iterator_for(source)?;
+    let mut index = 0;
+    let outcome = loop {
+        if let Err(error) = vm.tick(1) {
+            break Err(error);
+        }
+        match vm.iterator_next(&iterator) {
+            Ok(Some(next)) => {
+                if let Err(error) = combinator.subscribe(vm, next, index) {
+                    break Err(error);
+                }
+                index += 1;
+            }
+            Ok(None) => return combinator.finish(vm),
+            // L'itérateur a échoué : il n'est pas fermé.
+            Err(error) => return Err(error),
         }
     };
-    for item in &items {
-        let promise = vm.promise_resolve(item);
-        let on_fulfilled =
-            vm.new_native_data(settle_with, vec![Value::Object(result), Value::Bool(false)]);
-        let on_rejected =
-            vm.new_native_data(settle_with, vec![Value::Object(result), Value::Bool(true)]);
-        vm.promise_then(promise, on_fulfilled, on_rejected, None);
+    vm.iterator_close(&iterator, true)?;
+    outcome
+}
+
+fn combinator(vm: &mut Vm, this: &Value, args: &[Value], mode: Combine, keyed: bool) -> JsResult {
+    let capability = vm.new_capability(this)?;
+    if let Err(thrown) = perform(vm, this, &arg(args, 0), &capability, mode, keyed) {
+        vm.call(&capability.reject, &Value::Undefined, &[thrown])?;
     }
-    Ok(Value::Object(result))
+    Ok(capability.promise)
+}
+
+fn promise_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::All, false)
+}
+
+fn promise_all_settled(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::AllSettled, false)
+}
+
+fn promise_any(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::Any, false)
+}
+
+fn promise_race(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::Race, false)
+}
+
+fn promise_all_keyed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::All, true)
+}
+
+fn promise_all_settled_keyed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    combinator(vm, this, args, Combine::AllSettled, true)
 }
 
 pub(super) fn install(vm: &mut Vm) {
     let proto = vm.intrinsics.promise_proto;
     let ctor = constructor(vm, "Promise", 1, promise_ctor, proto);
+    vm.promise_ctor = Some(ctor);
     let statics: &[(&str, u32, NativeFn)] = &[
         ("resolve", 1, promise_static_resolve),
         ("reject", 1, promise_static_reject),
@@ -675,6 +1057,10 @@ pub(super) fn install(vm: &mut Vm) {
         ("allSettled", 1, promise_all_settled),
         ("any", 1, promise_any),
         ("race", 1, promise_race),
+        ("withResolvers", 0, promise_with_resolvers),
+        ("try", 1, promise_try),
+        ("allKeyed", 1, promise_all_keyed),
+        ("allSettledKeyed", 1, promise_all_settled_keyed),
     ];
     for (name, arity, func) in statics {
         vm.define_method(ctor, name, *arity, *func);

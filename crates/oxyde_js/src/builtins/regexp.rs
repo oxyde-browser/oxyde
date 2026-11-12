@@ -1,17 +1,17 @@
 //! `RegExp` et les méthodes de `String` qui s'appuient dessus (`match`,
 //! `matchAll`, `search`, `replace`, `replaceAll`, `split`).
 //!
-//! LIMITES CONNUES : un motif littéral invalide (`/(/`) lève `SyntaxError` à
-//! l'exécution et non à l'analyse du script ; les méthodes de `String`
-//! reconnaissent les objets `RegExp` directement, sans passer par
-//! `Symbol.match`, `Symbol.replace`, `Symbol.split`… ; `RegExp.prototype.exec`
-//! redéfini par un script n'est pas consulté ; pas de propriétés statiques
-//! héritées (`RegExp.$1`), ni `compile`, ni `indices` (drapeau `d`).
+//! Les méthodes désignées par un symbole (`Symbol.match`, `replace`…) sont
+//! dans [`super::regexp_symbols`] ; ce module fournit la recherche intégrée
+//! et les raccourcis qu'elles prennent pour une expression non modifiée.
+//!
+//! LIMITES CONNUES : pas de propriétés statiques héritées (`RegExp.$1`), ni
+//! `compile`, ni `indices` (drapeau `d`).
 
 use std::sync::Arc;
 
 use super::{arg, constructor, getter, is_callable};
-use crate::heap::{IterState, Kind, Object, Property, Slot};
+use crate::heap::{Kind, Object, Property, Slot};
 use crate::regexp::{Captures, Regex};
 use crate::value::{JsStr, ObjId, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
@@ -173,13 +173,18 @@ impl Vm {
         })
     }
 
+    /// Écrit `lastIndex` ; `TypeError` si la propriété est figée.
     fn set_last_index(&mut self, regexp: ObjId, index: usize) -> JsResult<()> {
-        self.set(&Value::Object(regexp), "lastIndex", number(index))
+        if self.put(&Value::Object(regexp), "lastIndex", number(index))? {
+            Ok(())
+        } else {
+            Err(self.type_error("« lastIndex » ne peut pas être écrit"))
+        }
     }
 
     /// `RegExpBuiltinExec` : recherche à partir de `lastIndex` (drapeaux `g`
     /// et `y`) et met `lastIndex` à jour.
-    fn regexp_exec(
+    pub(crate) fn regexp_exec(
         &mut self,
         regexp: ObjId,
         regex: &Regex,
@@ -230,7 +235,7 @@ impl Vm {
     }
 
     /// Tableau résultat d'une correspondance : textes, `index`, `input`, `groups`.
-    fn match_array(
+    pub(crate) fn match_array(
         &mut self,
         regex: &Regex,
         input: &RegexInput,
@@ -297,7 +302,7 @@ fn regexp_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     vm.new_regexp(&source, &flags)
 }
 
-fn this_regexp(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, Arc<Regex>)> {
+pub(super) fn this_regexp(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, Arc<Regex>)> {
     match vm.regexp_parts(this) {
         Some(parts) => Ok(parts),
         None => Err(vm.type_error("le receveur n'est pas une expression rationnelle")),
@@ -350,18 +355,45 @@ fn regexp_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 }
 
 fn regexp_source(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    // `RegExp.prototype` n'est pas une expression, mais ne lève pas.
+    if this.as_object() == Some(vm.intrinsics.regexp_proto) {
+        return Ok(Value::string("(?:)"));
+    }
     let (id, _) = this_regexp(vm, this)?;
     Ok(Value::string(&source_text(vm, id)))
 }
 
+/// `get RegExp.prototype.flags` (ECMA-262 §22.2.6.4) : chaque drapeau est lu
+/// sur le receveur, qui peut être un objet quelconque.
 fn regexp_flags(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let (_, regex) = this_regexp(vm, this)?;
-    Ok(Value::string(&regex.flags.canonical()))
+    if this.as_object().is_none() {
+        return Err(vm.type_error("RegExp.prototype.flags : le receveur doit être un objet"));
+    }
+    let mut flags = String::new();
+    for (name, letter) in [
+        ("hasIndices", 'd'),
+        ("global", 'g'),
+        ("ignoreCase", 'i'),
+        ("multiline", 'm'),
+        ("dotAll", 's'),
+        ("unicode", 'u'),
+        ("unicodeSets", 'v'),
+        ("sticky", 'y'),
+    ] {
+        if vm.get(this, name)?.truthy() {
+            flags.push(letter);
+        }
+    }
+    Ok(Value::string(&flags))
 }
 
 macro_rules! flag_getter {
     ($name:ident, $field:ident) => {
         fn $name(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+            // `RegExp.prototype` n'est pas une expression, mais ne lève pas.
+            if this.as_object() == Some(vm.intrinsics.regexp_proto) {
+                return Ok(Value::Undefined);
+            }
             let (_, regex) = this_regexp(vm, this)?;
             Ok(Value::Bool(regex.flags.$field))
         }
@@ -459,20 +491,6 @@ pub(super) fn expand_template(
     out
 }
 
-/// Expression désignée par un argument de `match` ou `search` : l'objet
-/// `RegExp` lui-même, ou une expression construite à partir de sa valeur.
-fn regexp_from_arg(vm: &mut Vm, value: &Value, flags: &str) -> JsResult<(ObjId, Arc<Regex>)> {
-    if let Some(parts) = vm.regexp_parts(value) {
-        return Ok(parts);
-    }
-    let pattern: JsStr = match value {
-        Value::Undefined => Arc::from(""),
-        other => vm.to_string(other)?,
-    };
-    let created = vm.new_regexp(&pattern, &Arc::from(flags))?;
-    this_regexp(vm, &created)
-}
-
 /// Toutes les correspondances de `regex` dans `input`, de gauche à droite.
 fn all_matches(vm: &mut Vm, regex: &Regex, input: &RegexInput) -> JsResult<Vec<Captures>> {
     let mut found = Vec::new();
@@ -489,17 +507,17 @@ fn all_matches(vm: &mut Vm, regex: &Regex, input: &RegexInput) -> JsResult<Vec<C
     Ok(found)
 }
 
-pub(super) fn string_match(vm: &mut Vm, text: &JsStr, args: &[Value]) -> JsResult {
-    let (id, regex) = regexp_from_arg(vm, &arg(args, 0), "")?;
+/// `regexp[Symbol.match](text)` pour une expression non modifiée.
+pub(super) fn match_with(vm: &mut Vm, text: &JsStr, id: ObjId, regex: &Regex) -> JsResult {
     if !regex.flags.global {
-        return match vm.regexp_exec(id, &regex, text)? {
-            Some((input, captures)) => vm.match_array(&regex, &input, text, &captures),
+        return match vm.regexp_exec(id, regex, text)? {
+            Some((input, captures)) => vm.match_array(regex, &input, text, &captures),
             None => Ok(Value::Null),
         };
     }
     vm.set_last_index(id, 0)?;
     let input = vm.regex_input(text);
-    let matches = all_matches(vm, &regex, &input)?;
+    let matches = all_matches(vm, regex, &input)?;
     if matches.is_empty() {
         return Ok(Value::Null);
     }
@@ -511,39 +529,23 @@ pub(super) fn string_match(vm: &mut Vm, text: &JsStr, args: &[Value]) -> JsResul
     Ok(vm.new_array(texts))
 }
 
-pub(super) fn string_match_all(vm: &mut Vm, text: &JsStr, args: &[Value]) -> JsResult {
-    let (_, regex) = regexp_from_arg(vm, &arg(args, 0), "g")?;
-    if !regex.flags.global {
-        return Err(vm.type_error("matchAll exige une expression rationnelle globale (drapeau g)"));
-    }
+/// `regexp[Symbol.search](text)` pour une expression non modifiée.
+pub(super) fn search_with(vm: &mut Vm, text: &JsStr, regex: &Regex) -> JsResult {
     let input = vm.regex_input(text);
-    let matches = all_matches(vm, &regex, &input)?;
-    let mut values = Vec::with_capacity(matches.len());
-    for captures in &matches {
-        values.push(vm.match_array(&regex, &input, text, captures)?);
-    }
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    Ok(match vm.regex_find(regex, &input, 0, regex.flags.sticky)? {
+        Some(captures) => {
+            let start = captures
+                .first()
+                .copied()
+                .flatten()
+                .map_or(0, |(start, _)| start);
+            number(input.units_at(start))
+        }
+        None => Value::Number(-1.0),
+    })
 }
 
-pub(super) fn string_search(vm: &mut Vm, text: &JsStr, args: &[Value]) -> JsResult {
-    let (_, regex) = regexp_from_arg(vm, &arg(args, 0), "")?;
-    let input = vm.regex_input(text);
-    Ok(
-        match vm.regex_find(&regex, &input, 0, regex.flags.sticky)? {
-            Some(captures) => {
-                let start = captures
-                    .first()
-                    .copied()
-                    .flatten()
-                    .map_or(0, |(start, _)| start);
-                number(input.units_at(start))
-            }
-            None => Value::Number(-1.0),
-        },
-    )
-}
-
-/// `text.replace(regexp, replacer)` et `replaceAll`.
+/// `regexp[Symbol.replace](text, replacer)` pour une expression non modifiée.
 pub(super) fn string_replace(
     vm: &mut Vm,
     text: &JsStr,

@@ -19,11 +19,14 @@
 #![allow(clippy::wrong_self_convention, reason = "noms repris d'ECMA-262")]
 
 mod ast;
+pub mod bigint;
 mod builtins;
 mod bytecode;
 mod compiler;
 mod heap;
+mod internal;
 pub mod lexer;
+mod module;
 mod object;
 mod ops;
 mod parser;
@@ -33,6 +36,7 @@ mod vm;
 
 pub use builtins::ConsoleMessage;
 pub use lexer::SyntaxError;
+pub use module::{ModuleLoader, module_requests};
 pub use value::{JsStr, ObjId, PropertyKey, Symbol, Value};
 pub use vm::{HostHooks, JsResult, NativeDataFn, NativeFn, Vm};
 
@@ -72,8 +76,9 @@ impl Vm {
     /// [`EvalError::Syntax`] si le source est invalide, [`EvalError::Thrown`]
     /// si le script lève une exception non rattrapée.
     pub fn eval(&mut self, source: &str) -> Result<Value, EvalError> {
-        let program = parser::parse_program(source).map_err(EvalError::Syntax)?;
-        let proto = compiler::compile_script(&program).map_err(EvalError::Syntax)?;
+        let script = parser::parse_program(source).map_err(EvalError::Syntax)?;
+        let proto = compiler::compile_script(&script.body, script.strict, false, false, false)
+            .map_err(EvalError::Syntax)?;
         let result = self.run_script(proto);
         // Fin de la tâche : les réactions de promesses en attente s'exécutent.
         self.run_microtasks();
@@ -87,8 +92,24 @@ impl Vm {
     /// cours d'exécution (`eval`, `Function`). Une erreur de syntaxe devient
     /// une exception `SyntaxError`.
     pub(crate) fn eval_global(&mut self, source: &str) -> JsResult {
+        let proto = parser::parse_eval(source, false)
+            .and_then(|script| {
+                compiler::compile_script(&script.body, script.strict, false, false, true)
+            })
+            .map_err(|error| self.error("SyntaxError", &error.message))?;
+        self.run_script(proto)
+    }
+
+    /// Compile et exécute `source` comme un script distinct, depuis du code
+    /// en cours d'exécution (une fonction de l'hôte qui évalue un script).
+    ///
+    /// # Errors
+    /// `SyntaxError` si le source est invalide ; toute valeur levée par le script.
+    pub fn eval_script(&mut self, source: &str) -> vm::JsResult {
         let proto = parser::parse_program(source)
-            .and_then(|program| compiler::compile_script(&program))
+            .and_then(|script| {
+                compiler::compile_script(&script.body, script.strict, false, false, false)
+            })
             .map_err(|error| self.error("SyntaxError", &error.message))?;
         self.run_script(proto)
     }

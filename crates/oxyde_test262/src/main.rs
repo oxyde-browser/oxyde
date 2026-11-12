@@ -3,13 +3,14 @@
 //! ```text
 //! cargo run -p oxyde_test262 --release -- [--suite DOSSIER] [--filtre TEXTE]
 //!                                         [--echecs N] [--publier]
+//! cargo run -p oxyde_test262 --release -- --evaluer "1 + 1" [--evaluer …]
 //! ```
 //!
 //! Chaque test s'exécute dans une machine neuve, précédé des fichiers du
 //! harnais qu'il demande, en mode non strict puis strict comme le prescrit
 //! `INTERPRETING.md`. Un test n'est compté réussi que si tous ses modes
 //! passent. Rien n'est écarté d'avance : un test qui demande une
-//! fonctionnalité absente d'Oxyde (modules, `eval`…) échoue et pèse dans le
+//! fonctionnalité absente d'Oxyde (`BigInt`, tableaux typés…) échoue et pèse dans le
 //! taux.
 //!
 //! La suite n'est pas versionnée avec Oxyde : la cloner dans `vendor/test262`
@@ -159,16 +160,54 @@ fn host_print(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
-/// Objet `$262` minimal exposé aux tests.
-const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {} };";
+/// `$262.detachArrayBuffer(tampon)`.
+fn host_detach(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let buffer = args.first().cloned().unwrap_or(Value::Undefined);
+    vm.detach_array_buffer(&buffer)?;
+    Ok(Value::Null)
+}
 
-/// Exécute `source` une fois, dans le mode demandé.
-fn run_once(harness: &Harness, meta: &Metadata, source: &str, strict: bool) -> Outcome {
+/// `$262.evalScript(source)` : évalue `source` comme un script distinct.
+fn host_eval_script(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    match args.first() {
+        Some(Value::String(source)) => vm.eval_script(source),
+        _ => Ok(Value::Undefined),
+    }
+}
+
+/// Objet `$262` minimal exposé aux tests.
+const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach, \
+     evalScript: __evalScript };";
+
+/// Chargeur de modules : lit le fichier désigné par `specifier`, relatif au
+/// module qui l'importe. L'identifiant d'un module est son chemin.
+fn file_loader(_vm: &mut Vm, specifier: &str, referrer: &str) -> Result<(String, String), String> {
+    if !specifier.starts_with("./") && !specifier.starts_with("../") {
+        return Err("seuls les chemins relatifs sont permis".to_owned());
+    }
+    let directory = Path::new(referrer).parent().unwrap_or(Path::new("."));
+    // `components()` retire les « ./ » : un même fichier a un seul identifiant.
+    let path: PathBuf = directory.join(specifier).components().collect();
+    let source = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    Ok((path.to_string_lossy().into_owned(), source))
+}
+
+/// Exécute `source` une fois, dans le mode demandé. `path` : chemin du test,
+/// qui sert d'identifiant à son module.
+fn run_once(
+    harness: &Harness,
+    meta: &Metadata,
+    source: &str,
+    path: &Path,
+    strict: bool,
+) -> Outcome {
     let mut vm = Vm::new();
     vm.set_budget(Some(BUDGET));
     vm.host = Some(Box::new(Vec::<String>::new()));
     let global = vm.global();
     vm.define_method(global, "print", 1, host_print);
+    vm.define_method(global, "__detach", 1, host_detach);
+    vm.define_method(global, "__evalScript", 1, host_eval_script);
 
     if !meta.has("raw") {
         let mut prelude = String::from(HOST_OBJECT);
@@ -191,12 +230,17 @@ fn run_once(harness: &Harness, meta: &Metadata, source: &str, strict: bool) -> O
         vm.set_budget(Some(BUDGET));
     }
 
-    let code = if strict {
-        format!("\"use strict\";\n{source}")
+    // Les scripts aussi peuvent importer, par `import()`.
+    vm.set_module_loader(file_loader);
+    vm.set_script_url(&path.to_string_lossy());
+    let result = if meta.has("module") {
+        vm.eval_module(source, &path.to_string_lossy())
+            .map(|()| Value::Undefined)
+    } else if strict {
+        vm.eval(&format!("\"use strict\";\n{source}"))
     } else {
-        source.to_owned()
+        vm.eval(source)
     };
-    let result = vm.eval(&code);
     if vm.was_interrupted() {
         return Outcome::Fail("budget d'instructions épuisé".to_owned());
     }
@@ -234,12 +278,10 @@ fn run_once(harness: &Harness, meta: &Metadata, source: &str, strict: bool) -> O
 }
 
 /// Exécute un test dans tous les modes que ses métadonnées demandent.
-fn run_test(harness: &Harness, source: &str) -> Outcome {
+fn run_test(harness: &Harness, source: &str, path: &Path) -> Outcome {
     let meta = parse_metadata(source);
-    if meta.has("module") {
-        return Outcome::Fail("modules non pris en charge".to_owned());
-    }
-    let modes: &[bool] = if meta.has("raw") || meta.has("noStrict") {
+    // Un module est toujours strict : un seul mode.
+    let modes: &[bool] = if meta.has("module") || meta.has("raw") || meta.has("noStrict") {
         &[false]
     } else if meta.has("onlyStrict") {
         &[true]
@@ -247,7 +289,7 @@ fn run_test(harness: &Harness, source: &str) -> Outcome {
         &[false, true]
     };
     for strict in modes {
-        if let Outcome::Fail(reason) = run_once(harness, &meta, source, *strict) {
+        if let Outcome::Fail(reason) = run_once(harness, &meta, source, path, *strict) {
             let mode = if *strict { "strict" } else { "non strict" };
             return Outcome::Fail(format!("[{mode}] {reason}"));
         }
@@ -305,6 +347,8 @@ struct Args {
     filter: Option<String>,
     failures: usize,
     publish: bool,
+    /// Sources à évaluer une à une au lieu de lancer la suite (diagnostic).
+    evaluate: Vec<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -313,6 +357,7 @@ fn parse_args() -> Result<Args, String> {
         filter: None,
         failures: 0,
         publish: false,
+        evaluate: Vec::new(),
     };
     let mut iter = std::env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -326,6 +371,7 @@ fn parse_args() -> Result<Args, String> {
                     .map_err(|_| "--echecs attend un nombre".to_owned())?;
             }
             "--publier" => args.publish = true,
+            "--evaluer" => args.evaluate.push(value("--evaluer")?),
             other => return Err(format!("option inconnue : {other}")),
         }
     }
@@ -391,6 +437,28 @@ fn report(groups: &BTreeMap<String, Count>, total: Count, revision: &str) -> Str
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args()?;
+    if !args.evaluate.is_empty() {
+        #[expect(
+            clippy::print_stdout,
+            reason = "sortie de l'outil en ligne de commande"
+        )]
+        for source in &args.evaluate {
+            let mut vm = Vm::new();
+            vm.set_budget(Some(BUDGET));
+            match vm.eval(source) {
+                Ok(value) => println!(
+                    "{source}
+    => {}",
+                    vm.display(&value)
+                ),
+                Err(error) => println!(
+                    "{source}
+    !! {error}"
+                ),
+            }
+        }
+        return Ok(());
+    }
     if !args.suite.join("test").is_dir() {
         return Err(format!(
             "suite introuvable dans {} : la cloner avec « git clone --depth 1 \
@@ -426,7 +494,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // Une panique du moteur est un défaut d'Oxyde : elle
                                 // est comptée comme un échec et signalée.
                                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    run_test(&harness, &source)
+                                    run_test(&harness, &source, path)
                                 }))
                                 .unwrap_or_else(|_| Outcome::Fail("PANIQUE du moteur".to_owned()))
                             }
@@ -536,6 +604,10 @@ mod tests {
         );
     }
 
+    fn run_test_at(harness: &Harness, source: &str) -> Outcome {
+        run_test(harness, source, Path::new("test.js"))
+    }
+
     #[test]
     fn outcomes_follow_the_metadata() {
         let harness = Harness {
@@ -553,48 +625,55 @@ mod tests {
             ]),
         };
         assert_eq!(
-            run_test(&harness, "assert(chargé && 1 + 1 === 2);"),
+            run_test_at(&harness, "assert(chargé && 1 + 1 === 2);"),
             Outcome::Pass
         );
         assert!(matches!(
-            run_test(&harness, "assert(false);"),
+            run_test_at(&harness, "assert(false);"),
             Outcome::Fail(_)
         ));
         assert_eq!(
-            run_test(
+            run_test_at(
                 &harness,
                 "/*---\nnegative:\n  phase: parse\n  type: SyntaxError\n---*/\nvar = ;"
             ),
             Outcome::Pass
         );
         assert!(matches!(
-            run_test(
+            run_test_at(
                 &harness,
                 "/*---\nnegative:\n  phase: runtime\n  type: TypeError\n---*/\n1;"
             ),
             Outcome::Fail(_)
         ));
         assert_eq!(
-            run_test(
+            run_test_at(
                 &harness,
                 "/*---\nflags: [async]\n---*/\nPromise.resolve().then(() => $DONE());"
             ),
             Outcome::Pass
         );
         assert!(matches!(
-            run_test(&harness, "/*---\nflags: [async]\n---*/\n1;"),
+            run_test_at(&harness, "/*---\nflags: [async]\n---*/\n1;"),
+            Outcome::Fail(_)
+        ));
+        assert_eq!(
+            run_test_at(
+                &harness,
+                "/*---\nflags: [module]\n---*/\nexport const a = typeof this; assert(a === 'undefined');"
+            ),
+            Outcome::Pass
+        );
+        assert!(matches!(
+            run_test_at(&harness, "/*---\nflags: [module]\n---*/\nimport 'fs';"),
             Outcome::Fail(_)
         ));
         assert!(matches!(
-            run_test(&harness, "/*---\nflags: [module]\n---*/\n1;"),
+            run_test_at(&harness, "/*---\nflags: [noStrict]\n---*/\nwhile (true) {}"),
             Outcome::Fail(_)
         ));
         assert!(matches!(
-            run_test(&harness, "/*---\nflags: [noStrict]\n---*/\nwhile (true) {}"),
-            Outcome::Fail(_)
-        ));
-        assert!(matches!(
-            run_test(&harness, "/*---\nincludes: [absent.js]\n---*/\n1;"),
+            run_test_at(&harness, "/*---\nincludes: [absent.js]\n---*/\n1;"),
             Outcome::Fail(_)
         ));
     }

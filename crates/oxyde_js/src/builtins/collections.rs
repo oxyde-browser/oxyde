@@ -1,8 +1,7 @@
-//! `Map`, `Set`, `WeakMap` et `WeakSet`.
+//! `Map` et `Set` (les variantes faibles sont dans `weak`).
 //!
-//! LIMITES CONNUES : `WeakMap` et `WeakSet` retiennent leurs clés (ce sont des
-//! `Map` et `Set` restreints aux clés objets) ; les itérateurs de `keys`,
-//! `values` et `entries` parcourent une copie prise à leur création.
+//! LIMITE CONNUE : les itérateurs de `keys`, `values` et `entries`
+//! parcourent une copie prise à leur création.
 
 use indexmap::IndexMap;
 
@@ -40,63 +39,26 @@ fn set_mut(vm: &mut Vm, id: ObjId) -> Option<&mut IndexMap<MapKey, Value>> {
     }
 }
 
-/// Prototype à donner à une instance : celui du constructeur global `name`.
-fn proto_of(vm: &mut Vm, name: &str, fallback: ObjId) -> JsResult<ObjId> {
-    let ctor = vm.get(&Value::Object(vm.global), name)?;
-    Ok(match ctor {
-        Value::Object(_) => vm.get(&ctor, "prototype")?.as_object().unwrap_or(fallback),
-        _ => fallback,
-    })
-}
-
-fn build_map(vm: &mut Vm, proto: ObjId, source: &Value) -> JsResult {
-    let mut map = IndexMap::new();
-    if !source.is_nullish() {
-        for entry in vm.iterate_to_vec(source)? {
-            if entry.as_object().is_none() {
-                return Err(vm.type_error("Map : chaque entrée doit être une paire [clé, valeur]"));
-            }
-            let (key, value) = (vm.get(&entry, "0")?, vm.get(&entry, "1")?);
-            map.insert(MapKey::from_value(&key), (key, value));
-        }
-    }
-    Ok(Value::Object(
-        vm.heap.alloc(Object::new(Some(proto), Kind::Map(map))),
-    ))
-}
-
-fn build_set(vm: &mut Vm, proto: ObjId, source: &Value) -> JsResult {
-    let mut set = IndexMap::new();
-    if !source.is_nullish() {
-        for value in vm.iterate_to_vec(source)? {
-            set.insert(MapKey::from_value(&value), value);
-        }
-    }
-    Ok(Value::Object(
-        vm.heap.alloc(Object::new(Some(proto), Kind::Set(set))),
-    ))
-}
-
 fn map_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    super::weak::require_new(vm, "Map")?;
     let proto = vm.intrinsics.map_proto;
-    build_map(vm, proto, &arg(args, 0))
+    let map = Value::Object(
+        vm.heap
+            .alloc(Object::new(Some(proto), Kind::Map(IndexMap::new()))),
+    );
+    super::weak::fill(vm, &map, &arg(args, 0), "set", true)?;
+    Ok(map)
 }
 
 fn set_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    super::weak::require_new(vm, "Set")?;
     let proto = vm.intrinsics.set_proto;
-    build_set(vm, proto, &arg(args, 0))
-}
-
-fn weak_map_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let fallback = vm.intrinsics.map_proto;
-    let proto = proto_of(vm, "WeakMap", fallback)?;
-    build_map(vm, proto, &arg(args, 0))
-}
-
-fn weak_set_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let fallback = vm.intrinsics.set_proto;
-    let proto = proto_of(vm, "WeakSet", fallback)?;
-    build_set(vm, proto, &arg(args, 0))
+    let set = Value::Object(
+        vm.heap
+            .alloc(Object::new(Some(proto), Kind::Set(IndexMap::new()))),
+    );
+    super::weak::fill(vm, &set, &arg(args, 0), "add", false)?;
+    Ok(set)
 }
 
 fn map_get(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -120,6 +82,44 @@ fn map_set(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         map.insert(MapKey::from_value(&key), (key, value));
     }
     Ok(this.clone())
+}
+
+/// Clé normalisée d'une `Map` (`-0` devient `+0`).
+fn map_key(key: Value) -> Value {
+    if key == Value::Number(0.0) {
+        Value::Number(0.0)
+    } else {
+        key
+    }
+}
+
+/// `getOrInsert(key, value)` : la valeur présente, sinon `value`, qui est insérée.
+fn map_get_or_insert(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_map(vm, this)?;
+    let (key, value) = (map_key(arg(args, 0)), arg(args, 1));
+    let Some(map) = map_mut(vm, id) else {
+        return Ok(Value::Undefined);
+    };
+    let entry = map.entry(MapKey::from_value(&key)).or_insert((key, value));
+    Ok(entry.1.clone())
+}
+
+/// `getOrInsertComputed(key, callback)` : la valeur présente, sinon celle
+/// que rend `callback(key)`, qui est insérée.
+fn map_get_or_insert_computed(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_map(vm, this)?;
+    let callback = callable(vm, &arg(args, 1))?;
+    let key = map_key(arg(args, 0));
+    let map_key = MapKey::from_value(&key);
+    if let Some((_, present)) = map_mut(vm, id).and_then(|map| map.get(&map_key)) {
+        return Ok(present.clone());
+    }
+    let value = vm.call(&callback, &Value::Undefined, std::slice::from_ref(&key))?;
+    // La fonction de rappel a pu insérer la clé : sa valeur est remplacée.
+    if let Some(map) = map_mut(vm, id) {
+        map.insert(map_key, (key, value.clone()));
+    }
+    Ok(value)
 }
 
 fn map_has(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -275,6 +275,252 @@ fn set_entries(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     }))
 }
 
+// ---- Opérations ensemblistes de Set ------------------------------------------
+
+/// `GetSetRecord` (ECMA-262 §24.2.1.2) : taille, `has` et `keys` d'un objet
+/// qui se comporte comme un ensemble.
+struct SetRecord {
+    object: Value,
+    size: f64,
+    has: Value,
+    keys: Value,
+}
+
+fn set_record(vm: &mut Vm, other: &Value) -> JsResult<SetRecord> {
+    if other.as_object().is_none() {
+        return Err(vm.type_error("un objet de type ensemble est attendu"));
+    }
+    let size = vm.get(other, "size")?;
+    let size = vm.to_number(&size)?;
+    if size.is_nan() {
+        return Err(vm.type_error("la taille de l'ensemble n'est pas un nombre"));
+    }
+    let size = size.trunc();
+    if size < 0.0 {
+        return Err(vm.error("RangeError", "la taille de l'ensemble est négative"));
+    }
+    let has = vm.get(other, "has")?;
+    let has = callable(vm, &has)?;
+    let keys = vm.get(other, "keys")?;
+    let keys = callable(vm, &keys)?;
+    Ok(SetRecord {
+        object: other.clone(),
+        size,
+        has,
+        keys,
+    })
+}
+
+/// Élément normalisé (`-0` devient `+0`).
+fn canonical(value: Value) -> Value {
+    if value == Value::Number(0.0) {
+        Value::Number(0.0)
+    } else {
+        value
+    }
+}
+
+fn record_has(vm: &mut Vm, record: &SetRecord, value: &Value) -> JsResult<bool> {
+    Ok(vm
+        .call(&record.has, &record.object, std::slice::from_ref(value))?
+        .truthy())
+}
+
+/// Itérateur des clés de l'autre ensemble et sa méthode `next`.
+fn record_keys(vm: &mut Vm, record: &SetRecord) -> JsResult<(Value, Value)> {
+    let iterator = vm.call(&record.keys, &record.object, &[])?;
+    if iterator.as_object().is_none() {
+        return Err(vm.type_error("« keys » doit rendre un itérateur"));
+    }
+    let next = vm.get(&iterator, "next")?;
+    Ok((iterator, next))
+}
+
+/// Clé suivante de l'autre ensemble ; `None` quand il est épuisé.
+fn next_key(vm: &mut Vm, iterator: &Value, next: &Value) -> JsResult<Option<Value>> {
+    vm.tick(1)?;
+    let result = vm.call(next, iterator, &[])?;
+    if result.as_object().is_none() {
+        return Err(vm.type_error("le résultat d'un itérateur doit être un objet"));
+    }
+    if vm.get(&result, "done")?.truthy() {
+        return Ok(None);
+    }
+    vm.get(&result, "value").map(|value| Some(canonical(value)))
+}
+
+/// Ferme l'itérateur des clés quand la réponse est connue avant sa fin.
+fn close_keys(vm: &mut Vm, iterator: &Value) -> JsResult<()> {
+    let method = vm.get(iterator, "return")?;
+    if !method.is_nullish() {
+        vm.call(&method, iterator, &[])?;
+    }
+    Ok(())
+}
+
+fn set_len(vm: &mut Vm, id: ObjId) -> usize {
+    set_mut(vm, id).map_or(0, |set| set.len())
+}
+
+/// Élément d'index `index` du Set `id`, relu à chaque tour : une fonction de
+/// rappel peut modifier l'ensemble.
+fn set_at(vm: &mut Vm, id: ObjId, index: usize) -> Option<Value> {
+    set_mut(vm, id)?.get_index(index).map(|(_, v)| v.clone())
+}
+
+fn set_contains(vm: &mut Vm, id: ObjId, value: &Value) -> bool {
+    set_mut(vm, id).is_some_and(|set| set.contains_key(&MapKey::from_value(value)))
+}
+
+fn new_set(vm: &mut Vm, items: IndexMap<MapKey, Value>) -> Value {
+    Value::Object(
+        vm.heap
+            .alloc(Object::new(Some(vm.intrinsics.set_proto), Kind::Set(items))),
+    )
+}
+
+fn set_copy(vm: &mut Vm, id: ObjId) -> IndexMap<MapKey, Value> {
+    set_mut(vm, id).cloned().unwrap_or_default()
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "taille d'ensemble petite devant 2^53"
+)]
+fn this_is_smaller(vm: &mut Vm, id: ObjId, record: &SetRecord) -> bool {
+    set_len(vm, id) as f64 <= record.size
+}
+
+fn set_union(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    let (iterator, next) = record_keys(vm, &record)?;
+    let mut result = set_copy(vm, id);
+    while let Some(key) = next_key(vm, &iterator, &next)? {
+        result.entry(MapKey::from_value(&key)).or_insert(key);
+    }
+    Ok(new_set(vm, result))
+}
+
+fn set_intersection(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    let mut result = IndexMap::new();
+    if this_is_smaller(vm, id, &record) {
+        let mut index = 0;
+        while let Some(value) = set_at(vm, id, index) {
+            index += 1;
+            if record_has(vm, &record, &value)? {
+                result.entry(MapKey::from_value(&value)).or_insert(value);
+            }
+        }
+    } else {
+        let (iterator, next) = record_keys(vm, &record)?;
+        while let Some(key) = next_key(vm, &iterator, &next)? {
+            if set_contains(vm, id, &key) {
+                result.entry(MapKey::from_value(&key)).or_insert(key);
+            }
+        }
+    }
+    Ok(new_set(vm, result))
+}
+
+fn set_difference(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    let mut result = set_copy(vm, id);
+    if this_is_smaller(vm, id, &record) {
+        let mut index = 0;
+        while let Some(value) = set_at(vm, id, index) {
+            index += 1;
+            if record_has(vm, &record, &value)? {
+                result.shift_remove(&MapKey::from_value(&value));
+            }
+        }
+    } else {
+        let (iterator, next) = record_keys(vm, &record)?;
+        while let Some(key) = next_key(vm, &iterator, &next)? {
+            result.shift_remove(&MapKey::from_value(&key));
+        }
+    }
+    Ok(new_set(vm, result))
+}
+
+fn set_symmetric_difference(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    let (iterator, next) = record_keys(vm, &record)?;
+    let mut result = set_copy(vm, id);
+    while let Some(key) = next_key(vm, &iterator, &next)? {
+        let map_key = MapKey::from_value(&key);
+        if set_contains(vm, id, &key) {
+            result.shift_remove(&map_key);
+        } else {
+            result.entry(map_key).or_insert(key);
+        }
+    }
+    Ok(new_set(vm, result))
+}
+
+fn set_is_subset_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    if !this_is_smaller(vm, id, &record) {
+        return Ok(Value::Bool(false));
+    }
+    let mut index = 0;
+    while let Some(value) = set_at(vm, id, index) {
+        index += 1;
+        if !record_has(vm, &record, &value)? {
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
+fn set_is_superset_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "taille d'ensemble petite devant 2^53"
+    )]
+    if (set_len(vm, id) as f64) < record.size {
+        return Ok(Value::Bool(false));
+    }
+    let (iterator, next) = record_keys(vm, &record)?;
+    while let Some(key) = next_key(vm, &iterator, &next)? {
+        if !set_contains(vm, id, &key) {
+            close_keys(vm, &iterator)?;
+            return Ok(Value::Bool(false));
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
+fn set_is_disjoint_from(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
+    let record = set_record(vm, &arg(args, 0))?;
+    if this_is_smaller(vm, id, &record) {
+        let mut index = 0;
+        while let Some(value) = set_at(vm, id, index) {
+            index += 1;
+            if record_has(vm, &record, &value)? {
+                return Ok(Value::Bool(false));
+            }
+        }
+    } else {
+        let (iterator, next) = record_keys(vm, &record)?;
+        while let Some(key) = next_key(vm, &iterator, &next)? {
+            if set_contains(vm, id, &key) {
+                close_keys(vm, &iterator)?;
+                return Ok(Value::Bool(false));
+            }
+        }
+    }
+    Ok(Value::Bool(true))
+}
+
 pub(super) fn install(vm: &mut Vm) {
     let map_methods: &[(&str, u32, NativeFn)] = &[
         ("get", 1, map_get),
@@ -286,6 +532,8 @@ pub(super) fn install(vm: &mut Vm) {
         ("keys", 0, map_keys),
         ("values", 0, map_values),
         ("entries", 0, map_entries),
+        ("getOrInsert", 2, map_get_or_insert),
+        ("getOrInsertComputed", 2, map_get_or_insert_computed),
     ];
     let set_methods: &[(&str, u32, NativeFn)] = &[
         ("add", 1, set_add),
@@ -296,6 +544,13 @@ pub(super) fn install(vm: &mut Vm) {
         ("keys", 0, set_values),
         ("values", 0, set_values),
         ("entries", 0, set_entries),
+        ("union", 1, set_union),
+        ("intersection", 1, set_intersection),
+        ("difference", 1, set_difference),
+        ("symmetricDifference", 1, set_symmetric_difference),
+        ("isSubsetOf", 1, set_is_subset_of),
+        ("isSupersetOf", 1, set_is_superset_of),
+        ("isDisjointFrom", 1, set_is_disjoint_from),
     ];
     let map_proto = vm.intrinsics.map_proto;
     constructor(vm, "Map", 0, map_ctor, map_proto);
@@ -303,6 +558,8 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(map_proto, name, *arity, *func);
     }
     getter(vm, map_proto, "size", map_size);
+    let tag = vm.well_known.to_string_tag.clone();
+    vm.define_hidden_symbol(map_proto, &tag, Value::string("Map"));
 
     let set_proto = vm.intrinsics.set_proto;
     constructor(vm, "Set", 0, set_ctor, set_proto);
@@ -310,16 +567,5 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(set_proto, name, *arity, *func);
     }
     getter(vm, set_proto, "size", set_size);
-
-    // Variantes « faibles » : mêmes opérations de base, sans énumération.
-    let weak_map_proto = vm.new_object();
-    constructor(vm, "WeakMap", 0, weak_map_ctor, weak_map_proto);
-    for (name, arity, func) in map_methods.iter().take(4) {
-        vm.define_method(weak_map_proto, name, *arity, *func);
-    }
-    let weak_set_proto = vm.new_object();
-    constructor(vm, "WeakSet", 0, weak_set_ctor, weak_set_proto);
-    for (name, arity, func) in set_methods.iter().take(3) {
-        vm.define_method(weak_set_proto, name, *arity, *func);
-    }
+    vm.define_hidden_symbol(set_proto, &tag, Value::string("Set"));
 }
