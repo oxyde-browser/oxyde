@@ -1900,10 +1900,16 @@ impl Vm {
                     .map_or(Value::Undefined, |f| f.new_target.clone());
                 self.set_reg(dst, value);
             }
-            Op::ImportCall { dst, src, source } => {
+            Op::ImportCall {
+                dst,
+                src,
+                options,
+                source,
+            } => {
                 let specifier = self.reg(src).clone();
+                let options = self.reg(options);
                 let scope = self.frames.last().and_then(|f| f.scope);
-                let promise = self.dynamic_import(&specifier, scope, source);
+                let promise = self.dynamic_import(&specifier, scope, source, &options);
                 self.set_reg(dst, promise);
             }
             Op::LoadCallee { dst } => {

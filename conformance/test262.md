@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 43336 réussis sur 48795 (88.8 %).**
+**Total : 43360 réussis sur 48795 (88.9 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -83,17 +83,17 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 342 | 98.6 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10993 | 98.5 % |
+| `language/expressions` | 11156 | 11001 | 98.6 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 42 | 100.0 % |
 | `language/identifier-resolution` | 14 | 13 | 92.9 % |
 | `language/identifiers` | 268 | 268 | 100.0 % |
-| `language/import` | 129 | 15 | 11.6 % |
+| `language/import` | 129 | 30 | 23.3 % |
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
 | `language/literals` | 536 | 535 | 99.8 % |
-| `language/module-code` | 599 | 532 | 88.8 % |
+| `language/module-code` | 599 | 533 | 89.0 % |
 | `language/punctuators` | 11 | 11 | 100.0 % |
 | `language/reserved-words` | 27 | 27 | 100.0 % |
 | `language/rest-parameters` | 11 | 11 | 100.0 % |

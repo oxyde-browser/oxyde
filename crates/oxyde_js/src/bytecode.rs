@@ -105,6 +105,8 @@ pub(crate) enum Op {
     ImportCall {
         dst: Reg,
         src: Reg,
+        /// Second argument d'`import()` (`undefined` s'il est absent).
+        options: Reg,
         /// `import.source(…)` : la source du module, non son espace de noms.
         source: bool,
     },

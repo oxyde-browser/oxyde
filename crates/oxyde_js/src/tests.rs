@@ -3082,3 +3082,78 @@ fn shadow_realm_boundary() {
         "[object ShadowRealm]"
     );
 }
+
+#[test]
+fn import_attributes() {
+    // Modules JSON et texte : un seul export, `default`.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    r#"import config from './config' with { type: 'json' };
+                       import * as ns from './config' with { "type": "json" };
+                       import texte from './config' with { type: 'text' };
+                       globalThis.out = [config.nom, config.liste.length, ns.default === config,
+                         Object.keys(ns).join(), typeof texte, texte.length].join();"#
+                ),
+                (
+                    "config",
+                    r#"{ "nom": "oxyde", "liste": [1, 2, 3], "__proto__": 1 }"#
+                ),
+            ],
+            "out"
+        ),
+        "oxyde,3,true,default,string,54"
+    );
+    // Un JSON invalide est une erreur de syntaxe ; un type inconnu est refusé.
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import x from './data' with { type: 'json' };"),
+                ("data", "{ nom: 1 }")
+            ],
+            "1"
+        )
+        .contains("SyntaxError")
+    );
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import x from './data' with { type: 'css' };"),
+                ("data", "a {}")
+            ],
+            "1"
+        )
+        .contains("TypeError")
+    );
+    // Seul `type` est reconnu, et un attribut ne se répète pas.
+    for source in [
+        "import x from './data' with { mode: 'x' };",
+        "import x from './data' with { type: 'json', type: 'json' };",
+        "import x from './data' with { type: json };",
+    ] {
+        assert!(
+            eval_modules(&[("main", source), ("data", "1")], "1").contains("SyntaxError"),
+            "{source}"
+        );
+    }
+    // `import()` : le second argument porte les attributs.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    r#"globalThis.out = [];
+                       import('./data', { with: { type: 'json' } }).then(ns => out.push(ns.default.n));
+                       import('./data', 1).catch(e => out.push(e.name));
+                       import('./data', { with: { type: 1 } }).catch(e => out.push(e.name));
+                       import('./data', { with: { autre: 'x' } }).catch(e => out.push(e.name));"#
+                ),
+                ("data", r#"{ "n": 7 }"#),
+            ],
+            "out.sort().join()"
+        ),
+        "7,TypeError,TypeError,TypeError"
+    );
+}

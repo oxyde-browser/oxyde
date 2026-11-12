@@ -36,6 +36,22 @@ const MAX_MODULES: usize = 10_000;
 /// Profondeur maximale d'une chaîne d'importations.
 const MAX_DEPTH: usize = 400;
 
+/// Sépare, dans une demande de module, le spécificateur de son type.
+const TYPE_MARK: char = '\u{1}';
+
+/// Demande du module `specifier` avec l'attribut `type: kind`.
+pub(crate) fn typed_request(specifier: &str, kind: &str) -> String {
+    format!("{specifier}{TYPE_MARK}{kind}")
+}
+
+/// Spécificateur et type (attribut `type`) d'une demande de module.
+fn split_request(request: &str) -> (&str, Option<&str>) {
+    match request.split_once(TYPE_MARK) {
+        Some((specifier, kind)) => (specifier, Some(kind)),
+        None => (request, None),
+    }
+}
+
 /// Liaison importée par un module.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Import {
@@ -120,7 +136,15 @@ impl ModuleRecord {
 /// L'erreur de syntaxe de `source`.
 pub fn module_requests(source: &str) -> Result<Vec<String>, SyntaxError> {
     let (_, info) = parser::parse_module(source)?;
-    Ok(info.requests.iter().map(|r| r.to_string()).collect())
+    // Sans doublon : un même fichier peut être demandé sous deux types.
+    let mut requests: Vec<String> = Vec::new();
+    for request in &info.requests {
+        let specifier = split_request(request).0.to_owned();
+        if !requests.contains(&specifier) {
+            requests.push(specifier);
+        }
+    }
+    Ok(requests)
 }
 
 /// Accesseur d'une liaison importée : lit `data[1]` dans la portée `data[0]`.
@@ -154,6 +178,7 @@ impl Vm {
         specifier: &Value,
         scope: Option<ObjId>,
         source: bool,
+        options: &Value,
     ) -> Value {
         let promise = self.new_promise();
         let meta = scope.and_then(|scope| {
@@ -176,7 +201,13 @@ impl Vm {
             Some(Value::String(url)) => url,
             _ => Arc::clone(&self.script_url),
         };
-        match self.to_string(specifier) {
+        let request = self.to_string(specifier).and_then(|specifier| {
+            Ok(match self.import_type(options)? {
+                Some(kind) => Arc::from(typed_request(&specifier, &kind)),
+                None => specifier,
+            })
+        });
+        match request {
             Ok(specifier) => self.jobs.push_back(crate::builtins::promise::Job::Import {
                 promise,
                 specifier,
@@ -186,6 +217,45 @@ impl Vm {
             Err(thrown) => self.settle(promise, true, thrown),
         }
         Value::Object(promise)
+    }
+
+    /// Attribut `type` du second argument d'`import()` : `{ with: { type } }`.
+    /// Tout y est vérifié : les options et `with` sont des objets, les
+    /// valeurs des chaînes, et `type` est le seul attribut reconnu.
+    fn import_type(&mut self, options: &Value) -> JsResult<Option<JsStr>> {
+        if *options == Value::Undefined {
+            return Ok(None);
+        }
+        if options.as_object().is_none() {
+            return Err(self.type_error("import() : les options doivent être un objet"));
+        }
+        let attributes = self.get(options, "with")?;
+        if attributes == Value::Undefined {
+            return Ok(None);
+        }
+        let Some(id) = attributes.as_object() else {
+            return Err(self.type_error("import() : « with » doit être un objet"));
+        };
+        let mut kind = None;
+        let mut unsupported = None;
+        for key in self.enumerable_own_keys(id)? {
+            let Value::String(value) = self.get(&attributes, &key)? else {
+                return Err(self.type_error(
+                    "import() : la valeur d'un attribut d'importation doit être une chaîne",
+                ));
+            };
+            if &*key == "type" {
+                kind = Some(value);
+            } else {
+                unsupported.get_or_insert(key);
+            }
+        }
+        if let Some(key) = unsupported {
+            return Err(self.type_error(&format!(
+                "import() : attribut d'importation « {key} » non pris en charge"
+            )));
+        }
+        Ok(kind)
     }
 
     /// Microtâche d'un `import()` : règle `promise` avec l'espace de noms du
@@ -218,8 +288,12 @@ impl Vm {
         }
     }
 
-    /// Charge et lie le module `specifier`, sans l'évaluer.
-    fn load_only(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<()> {
+    /// Charge le module que désigne `request` (un spécificateur, suivi le cas
+    /// échéant de son type) depuis `referrer`, et rend sa clé. Avec le type
+    /// `json` ou `text`, le module est synthétique : son seul export,
+    /// `default`, est la valeur du fichier.
+    fn load_request(&mut self, request: &str, referrer: &str, depth: usize) -> JsResult<JsStr> {
+        let (specifier, kind) = split_request(request);
         let Some(loader) = self.module_loader else {
             return Err(self.type_error(&format!(
                 "module « {specifier} » introuvable : aucun chargeur de modules"
@@ -233,11 +307,53 @@ impl Vm {
                 );
             }
         };
-        let id: JsStr = Arc::from(id);
+        let Some(kind) = kind else {
+            let id: JsStr = Arc::from(id);
+            self.load_module(&id, &source, depth)?;
+            return Ok(id);
+        };
+        let key: JsStr = Arc::from(typed_request(&id, kind));
+        if self.modules.contains_key(&key) {
+            return Ok(key);
+        }
+        if self.modules.len() >= MAX_MODULES {
+            return Err(self.error("RangeError", "trop de modules imbriqués ou chargés"));
+        }
+        let value = match kind {
+            "json" => self.parse_json_text(&source)?,
+            "text" => Value::string(&source),
+            other => {
+                return Err(self.type_error(&format!(
+                    "module « {specifier} » : type « {other} » non pris en charge"
+                )));
+            }
+        };
+        let scope = self.heap.alloc(Object::new(None, Kind::Ordinary));
+        self.define_hidden(scope, parser::DEFAULT_EXPORT, value);
+        let info = ModuleInfo {
+            local_exports: vec![(Arc::from("default"), Arc::from(parser::DEFAULT_EXPORT))],
+            ..ModuleInfo::default()
+        };
+        self.modules.insert(
+            Arc::clone(&key),
+            ModuleRecord {
+                scope,
+                info: Arc::new(info),
+                proto: None,
+                deps: Vec::new(),
+                state: ModuleState::Loaded,
+                namespace: None,
+            },
+        );
+        Ok(key)
+    }
+
+    /// Charge et lie le module `specifier`, sans l'évaluer.
+    fn load_only(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<()> {
         let before = self.modules.len();
         let loaded = self
-            .load_module(&id, &source, 0)
-            .and_then(|()| self.link_modules());
+            .load_request(specifier, referrer, 0)
+            .and_then(|_| self.link_modules());
         if loaded.is_err() {
             self.modules.truncate(before);
         }
@@ -249,30 +365,17 @@ impl Vm {
         specifier: &JsStr,
         referrer: &JsStr,
     ) -> JsResult<ObjId> {
-        let Some(loader) = self.module_loader else {
-            return Err(self.type_error(&format!(
-                "module « {specifier} » introuvable : aucun chargeur de modules"
-            )));
-        };
-        let (id, source) = match loader(self, specifier, referrer) {
-            Ok(loaded) => loaded,
-            Err(message) => {
-                return Err(
-                    self.type_error(&format!("module « {specifier} » introuvable : {message}"))
-                );
-            }
-        };
-        let id: JsStr = Arc::from(id);
         // Un chargement ou une liaison qui échoue ne laisse aucun module à
         // moitié chargé : les importations suivantes repartent d'un état sain.
         let before = self.modules.len();
-        let loaded = self
-            .load_module(&id, &source, 0)
-            .and_then(|()| self.link_modules());
-        if let Err(thrown) = loaded {
-            self.modules.truncate(before);
-            return Err(thrown);
-        }
+        let loaded = self.load_request(specifier, referrer, 0);
+        let id = match loaded.and_then(|id| self.link_modules().map(|()| id)) {
+            Ok(id) => id,
+            Err(thrown) => {
+                self.modules.truncate(before);
+                return Err(thrown);
+            }
+        };
         self.evaluate_module(&id, 0)?;
         self.module_namespace(&id)
     }
@@ -378,23 +481,8 @@ impl Vm {
             },
         );
         let mut deps = Vec::with_capacity(info.requests.len());
-        for specifier in &info.requests {
-            let Some(loader) = self.module_loader else {
-                return Err(self.type_error(&format!(
-                    "module « {specifier} » introuvable : aucun chargeur de modules"
-                )));
-            };
-            let (dep_id, dep_source) = match loader(self, specifier, id) {
-                Ok(loaded) => loaded,
-                Err(message) => {
-                    return Err(
-                        self.type_error(&format!("module « {specifier} » introuvable : {message}"))
-                    );
-                }
-            };
-            let dep_id: JsStr = Arc::from(dep_id);
-            self.load_module(&dep_id, &dep_source, depth + 1)?;
-            deps.push(dep_id);
+        for request in &info.requests {
+            deps.push(self.load_request(request, id, depth + 1)?);
         }
         if let Some(record) = self.modules.get_mut(id) {
             record.deps = deps;

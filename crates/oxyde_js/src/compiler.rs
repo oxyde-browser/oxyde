@@ -3519,14 +3519,19 @@ impl Compiler {
                 let mark = self.mark();
                 let src = self.alloc()?;
                 self.expr(specifier, Some(src))?;
-                if let Some(options) = options {
-                    // Évaluées pour leurs effets ; les attributs sont ignorés.
-                    let ignored = self.alloc()?;
-                    self.expr(options, Some(ignored))?;
+                let options_reg = self.alloc()?;
+                match options {
+                    Some(options) => {
+                        self.expr(options, Some(options_reg))?;
+                    }
+                    None => {
+                        self.emit(Op::LoadUndefined { dst: options_reg });
+                    }
                 }
                 self.emit(Op::ImportCall {
                     dst,
                     src,
+                    options: options_reg,
                     source: *source,
                 });
                 self.free_to(mark);

@@ -394,11 +394,45 @@ impl Parser {
         let Tok::Str(specifier) = &self.tok.tok else {
             return self.error("nom de module attendu (chaîne)");
         };
-        let request = info.request(specifier);
+        let specifier = specifier.clone();
         self.advance()?;
-        if self.is_kw("with") {
-            return self.unsupported("les attributs d'importation");
+        // Attributs d'importation : seul `type` est reconnu ; il fait
+        // partie de la demande (voir `module::split_request`).
+        let mut kind: Option<String> = None;
+        if self.eat_kw("with")? {
+            self.expect_punct("{")?;
+            let mut seen: Vec<String> = Vec::new();
+            while !self.eat_punct("}")? {
+                let key = match &self.tok.tok {
+                    Tok::Ident(name) | Tok::Str(name) => name.clone(),
+                    _ => return self.error("nom d'attribut d'importation attendu"),
+                };
+                self.advance()?;
+                if seen.contains(&key) {
+                    return self.error(format!("attribut d'importation « {key} » répété"));
+                }
+                self.expect_punct(":")?;
+                let Tok::Str(value) = &self.tok.tok else {
+                    return self.error("valeur d'attribut d'importation attendue (chaîne)");
+                };
+                if key == "type" {
+                    kind = Some(value.clone());
+                } else {
+                    return self.error(format!(
+                        "attribut d'importation « {key} » non pris en charge"
+                    ));
+                }
+                self.advance()?;
+                seen.push(key);
+                if !self.is_punct("}") {
+                    self.expect_punct(",")?;
+                }
+            }
         }
+        let request = match kind {
+            Some(kind) => info.request(&crate::module::typed_request(&specifier, &kind)),
+            None => info.request(&specifier),
+        };
         Ok(request)
     }
 

@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **43 336 tests de test262 sur 48 795 (88,8 %)** ; il en reste 5 459.
+- `oxyde_js` réussit **43 360 tests de test262 sur 48 795 (88,9 %)** ; il en reste 5 435.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -146,8 +146,11 @@ aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isol
   d'appel `import.source(x)` et `import.defer(x)` sont lues (149 tests). `import.source`
   charge le module puis rejette sa promesse, un module JavaScript n'ayant pas de source à
   rendre. LIMITE : `import.defer(x)` évalue encore le module aussitôt, comme `import(x)`.
-  Restent les déclarations `import defer` et `import source`, l'évaluation différée, et
-  les attributs d'importation (`with { type: "json" }`).
+  Les attributs d'importation sont faits (24 tests) : `with { type: "json" }` et
+  `with { type: "text" }` donnent un module dont le seul export, `default`, est la
+  valeur du fichier ; `import()` les reçoit par son second argument. Le type `bytes`
+  manque (5 tests) : le chargeur de modules ne fournit que du texte. Restent les
+  déclarations `import defer` et `import source`, et l'évaluation différée.
 - **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
   `includes` et `join` (210 tests). Restent 3 tests qui écrivent `length = 2^32 - 1` sur
   un tableau : les tableaux d'Oxyde sont denses.
