@@ -614,6 +614,28 @@ Fin du jalon 7 : les écrans de la maquette qui manquent.
 - [ ] Zoom (Ctrl +, Ctrl −), plein écran (F11), glisser-déposer des onglets, défilement de
       la bande d'onglets et de la palette.
 - [ ] Teinte violette complète de la fenêtre privée.
+- [ ] **Icônes des sites** : télécharger l'icône déclarée par la page (`<link rel="icon">`,
+      sinon `/favicon.ico`), la conserver dans le profil, l'afficher dans les onglets,
+      l'historique, les favoris et la palette à la place de l'initiale ; en tirer la couleur
+      dominante.
+- [ ] **Écran de chargement** (maquette « Proposition · Chargement d'une page ») : quand une
+      page tarde, le volet montre l'icône du site entourée d'un anneau animé, son nom, son
+      hôte avec le cadenas et l'étape en cours, sur un fond teinté par l'icône, plutôt
+      qu'un écran blanc. Dépend des icônes des sites. Règles :
+  - l'ancienne page reste affichée pendant les 400 premières millisecondes : un site
+    rapide ne montre jamais l'écran ;
+  - l'écran s'efface dès le premier contenu de la page, pas à la fin du chargement ;
+  - c'est une surface du navigateur : l'hôte réel y figure toujours, et une page ne peut
+    ni le dessiner ni le modifier ;
+  - il occupe le volet de la page, pas la fenêtre : on peut toujours changer d'onglet ou
+    arrêter (Échap) ; l'onglet porte le même anneau, « Actualiser » devient « Arrêter » ;
+  - première visite : l'initiale et la couleur de l'onglet, remplacées par l'icône dès
+    qu'elle arrive ;
+  - après 8 secondes : « Ce site met du temps à répondre », avec « Continuer d'attendre »
+    et « Arrêter » ;
+  - animations réduites dans Windows : icône fixe et barre de progression.
+
+  Les seuils de 400 ms et de 8 s sont des propositions, à régler à l'usage.
 - [ ] Accessibilité du contenu des pages (arbre AccessKit des pages distantes), contraste
       et navigation au clavier de toute l'interface.
 - [ ] Fuseaux horaires IANA et calendriers pour `Temporal`, `Date` à l'heure locale, `Intl`.
