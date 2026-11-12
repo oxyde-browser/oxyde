@@ -78,6 +78,10 @@ struct DomHost {
     navigations: Vec<crate::Navigation>,
     /// Fonctions du prélude que le moteur appelle en retour.
     hooks: Option<Value>,
+    /// Fonctions d'activation au clic (`before`, `after`).
+    activation: Option<Value>,
+    /// Prototype des éléments HTML de chaque balise.
+    tag_protos: HashMap<String, ObjId>,
     /// Identifiant du prochain écouteur enregistré.
     next_listener: u64,
     timers: Vec<Timer>,
@@ -149,7 +153,16 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
         NodeData::Comment(_) => "Comment",
         NodeData::Fragment => "DocumentFragment",
     };
-    let proto = h.protos.get(interface).copied().unwrap_or(h.node_proto);
+    // Un élément HTML prend le prototype de l'interface de sa balise.
+    let by_tag = match &h.doc.node(node).data {
+        NodeData::Element(element) if element.ns == Namespace::Html => {
+            h.tag_protos.get(element.name.as_str()).copied()
+        }
+        _ => None,
+    };
+    let proto = by_tag
+        .or_else(|| h.protos.get(interface).copied())
+        .unwrap_or(h.node_proto);
     let id = vm.new_host_object(proto, CLASS_NODE, u64::from(index));
     vm.add_root(Value::Object(id));
     if let Some(h) = host(vm) {
@@ -589,6 +602,14 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "hidden" if is_element(doc, node) => Ok(Value::Bool(
             doc.element(node).is_some_and(|e| e.has_attr("hidden")),
         )),
+        // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
+        "value"
+            if doc
+                .element(node)
+                .is_some_and(|e| e.is_html("select") || e.is_html("textarea")) =>
+        {
+            return None;
+        }
         name if REFLECTED.contains(&name) && is_element(doc, node) => string(&attr(name)),
         "childElementCount" => Ok(number(
             doc.children(node).filter(|c| is_element(doc, *c)).count(),
@@ -759,6 +780,15 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
 
 fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option<JsResult<()>> {
     let node = host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)?;
+    // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
+    if key == "value"
+        && host(vm)?
+            .doc
+            .element(node)
+            .is_some_and(|e| e.is_html("select") || e.is_html("textarea"))
+    {
+        return None;
+    }
     let is_text_key = matches!(
         key,
         "textContent"
@@ -1624,6 +1654,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         observers: Vec::new(),
         navigations: Vec::new(),
         hooks: None,
+        activation: None,
+        tag_protos: HashMap::new(),
         next_listener: 0,
         timers: Vec::new(),
         fetch_queue: Vec::new(),
@@ -1703,6 +1735,20 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     vm.add_root(hooks.clone());
     if let Some(h) = host(vm) {
         h.hooks = Some(hooks);
+    }
+    // Interfaces des éléments HTML et formulaires.
+    let elements = vm.eval_script(include_str!("script/elements.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("registerInterface", 2, register_interface)),
+        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
+        Value::Object(vm.new_function("changeUrl", 3, change_url)),
+        Value::Object(vm.new_function("locationHref", 0, location_href)),
+        Value::Object(vm.new_function("navigate", 3, navigate)),
+    ];
+    let activation = vm.call(&elements, &Value::Undefined, &helpers)?;
+    vm.add_root(activation.clone());
+    if let Some(h) = host(vm) {
+        h.activation = Some(activation);
     }
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
     // qui reçoit le `fetch` d'origine.
@@ -1883,6 +1929,30 @@ impl ScriptEngine {
                 report(vm, &thrown);
             }
         });
+    }
+
+    /// Clic sur `node` : comportement d'activation (case cochée, bouton de
+    /// formulaire) autour de l'événement `click`. Renvoie `true` si un script
+    /// a annulé l'action par défaut.
+    pub(crate) fn click(&mut self, doc: &mut Document, node: NodeId) -> bool {
+        self.run(doc, |vm| {
+            let activation = host(vm).and_then(|h| h.activation.clone());
+            let target = wrap(vm, node);
+            let hook = |vm: &mut Vm, name: &str, args: &[Value]| {
+                let hooks = activation.clone()?;
+                match vm.get(&hooks, name).and_then(|f| vm.call(&f, &hooks, args)) {
+                    Ok(value) => Some(value),
+                    Err(thrown) => {
+                        report(vm, &thrown);
+                        None
+                    }
+                }
+            };
+            let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
+            let prevented = dispatch(vm, Some(node), "click");
+            hook(vm, "after", &[state, Value::Bool(prevented)]);
+            prevented
+        })
     }
 
     /// Touche enfoncée (`down`) ou relâchée : distribue `keydown` (et
@@ -2367,6 +2437,20 @@ fn response_json(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
 
 // ---- Navigation ------------------------------------------------------------------
 
+/// `registerInterface(balise, prototype)` : les éléments HTML de cette
+/// balise prendront ce prototype.
+fn register_interface(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let tag = vm.to_string(&arg(args, 0))?.to_string();
+    let proto = arg(args, 1);
+    if let Some(id) = proto.as_object() {
+        vm.add_root(proto);
+        if let Some(h) = host(vm) {
+            h.tag_protos.insert(tag, id);
+        }
+    }
+    Ok(Value::Undefined)
+}
+
 /// `locationHref()` : l'adresse courante du document.
 fn location_href(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Ok(host(vm).map_or(Value::Undefined, |h| Value::string(h.url.as_str())))
@@ -2408,9 +2492,21 @@ fn navigate(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                         replace: &*kind == "replaceState",
                     }
                 }
+                "post" => {
+                    let body = vm.to_string(&arg(args, 2))?;
+                    crate::Navigation::Load {
+                        url,
+                        replace: false,
+                        post: Some(crate::FormPost {
+                            content_type: "application/x-www-form-urlencoded".to_owned(),
+                            body: body.as_bytes().to_vec(),
+                        }),
+                    }
+                }
                 _ => crate::Navigation::Load {
                     url,
                     replace: &*kind == "replace",
+                    post: None,
                 },
             }
         }

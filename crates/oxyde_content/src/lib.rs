@@ -83,16 +83,28 @@ pub struct KeyInput<'a> {
     pub repeat: bool,
 }
 
+/// Corps d'une soumission de formulaire par la méthode `POST`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormPost {
+    /// Valeur de l'en-tête `Content-Type`.
+    pub content_type: String,
+    /// Données du formulaire, déjà encodées.
+    pub body: Vec<u8>,
+}
+
 /// Navigation demandée par un script, à exécuter par l'embarqueur.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Navigation {
-    /// Charger `url` (`location.assign`, `location.href = …`) ; `replace` :
-    /// la page prend la place de l'entrée courante de l'historique.
+    /// Charger `url` (`location.assign`, `location.href = …`, soumission
+    /// d'un formulaire) ; `replace` : la page prend la place de l'entrée
+    /// courante de l'historique.
     Load {
         /// Adresse à charger.
         url: Url,
         /// Remplacer l'entrée courante au lieu d'en ajouter une.
         replace: bool,
+        /// Formulaire soumis par `POST` : la page est demandée avec ce corps.
+        post: Option<FormPost>,
     },
     /// Recharger la page (`location.reload()`).
     Reload,
@@ -704,11 +716,17 @@ impl Page {
     /// n'a pas été annulée.
     pub fn click(&mut self, x: f32, y: f32) -> Option<Url> {
         let node = self.node_at(x, y)?;
+        self.click_node(node)
+    }
+
+    /// Clic sur le nœud `node`, comme [`Page::click`] quand ce nœud est sous
+    /// le pointeur.
+    pub fn click_node(&mut self, node: NodeId) -> Option<Url> {
         let link = self.link_from(node);
         let Some(engine) = self.engine.as_mut() else {
             return link;
         };
-        let prevented = engine.dispatch(&mut self.doc, Some(node), "click");
+        let prevented = engine.click(&mut self.doc, node);
         if engine.take_dirty() {
             self.dom_changed();
         }
@@ -1327,7 +1345,7 @@ mod tests {
         assert_eq!(
             q.title(),
             "true true true true true false true true false true false true true 1 3 16 \
-             [object HTMLElement] [object Text] 1 2 0 \
+             [object HTMLParagraphElement] [object Text] 1 2 0 \
              undefined function function undefined function undefined function true false \
              TypeError TypeError"
         );
@@ -1697,11 +1715,13 @@ mod tests {
                 },
                 Navigation::Load {
                     url: at("/suite"),
-                    replace: false
+                    replace: false,
+                    post: None
                 },
                 Navigation::Load {
                     url: at("/dossier/fin"),
-                    replace: true
+                    replace: true,
+                    post: None
                 },
                 Navigation::Reload,
                 Navigation::Traverse(-1),
@@ -1758,6 +1778,89 @@ mod tests {
                 "keydown a KeyA 65 false|keypress a KeyA 97 false|keyup a KeyA 65 false|",
                 "keydown Enter Enter 13 true"
             )
+        );
+    }
+
+    #[test]
+    fn typed_elements_and_form_submission() {
+        let mut p = page(
+            "<form id=f action='/recherche' method=get>
+               <input name=q value='deux mots'>
+               <input type=checkbox name=c id=c value=oui>
+               <input type=radio name=r value=1 checked><input type=radio name=r value=2 id=r2>
+               <select name=s><option>un<option value=2 selected>deux</select>
+               <textarea name=t>texte</textarea>
+               <input name=ignore disabled value=x>
+               <button id=b name=bouton value=ok>Envoyer</button>
+             </form>
+             <form id=g action='/depot' method=post><input name=a value=1></form>
+             <a id=lien href='page?x=1#h'>lien</a><pre id=out></pre>
+             <script>
+               const log = [];
+               const $ = id => document.getElementById(id);
+               const form = $('f');
+               log.push(form instanceof HTMLFormElement, form instanceof HTMLElement);
+               log.push(form.elements.length, form.method, form.action);
+               log.push($('lien').pathname + $('lien').search, $('lien') instanceof HTMLAnchorElement);
+               form.querySelector('select').value = 'un';
+               log.push(form.querySelector('select').selectedIndex, form.querySelector('textarea').value);
+               log.push(new URLSearchParams([...new FormData(form)]).toString());
+               $('c').addEventListener('change', () => log.push('change ' + $('c').checked));
+               form.addEventListener('submit', e => {
+                 log.push('envoi ' + e.submitter.id);
+                 $('out').textContent = log.join('|');
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let by_id = |p: &Page, id: &str| {
+            let doc = p.document();
+            doc.descendants(doc.root())
+                .find(|n| doc.element(*n).is_some_and(|e| e.attr("id") == Some(id)))
+                .expect("élément")
+        };
+        for id in ["c", "r2", "b"] {
+            let node = by_id(&p, id);
+            p.click_node(node);
+        }
+        let doc = p.document();
+        let out = doc
+            .descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.attr("id") == Some("out")))
+            .map(|n| doc.text_content(n))
+            .unwrap_or_default();
+        assert_eq!(
+            out,
+            concat!(
+                "true|true|8|get|https://exemple.test/recherche|/dossier/page?x=1|true|0|texte|",
+                "q=deux+mots&r=1&s=un&t=texte|change true|envoi b"
+            )
+        );
+        let at = |path: &str| Url::parse(&format!("https://exemple.test{path}")).expect("url");
+        assert_eq!(
+            p.take_navigations(),
+            [Navigation::Load {
+                url: at("/recherche?q=deux+mots&c=oui&r=2&s=un&t=texte&bouton=ok"),
+                replace: false,
+                post: None,
+            }]
+        );
+        // Soumission par POST : les données partent dans le corps.
+        let mut p = page(
+            "<form id=g action='/depot' method=post><input name=a value='1 2'></form>
+             <script>document.getElementById('g').submit();</script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            p.take_navigations(),
+            [Navigation::Load {
+                url: at("/depot"),
+                replace: false,
+                post: Some(FormPost {
+                    content_type: "application/x-www-form-urlencoded".to_owned(),
+                    body: b"a=1+2".to_vec(),
+                }),
+            }]
         );
     }
 

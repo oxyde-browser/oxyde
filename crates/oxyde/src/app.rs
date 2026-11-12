@@ -136,7 +136,8 @@ impl App {
                     tab,
                     url,
                     push_history,
-                } => self.spawn_load(tab, url, push_history),
+                    post,
+                } => self.spawn_load(tab, url, push_history, post),
                 Command::Minimize => {
                     if let Some(window) = &self.window {
                         window.set_minimized(true);
@@ -164,13 +165,19 @@ impl App {
     }
 
     /// Charge `url` sur un fil dédié : l'interface reste réactive.
-    fn spawn_load(&self, tab: u64, url: Url, push_history: bool) {
+    fn spawn_load(
+        &self,
+        tab: u64,
+        url: Url,
+        push_history: bool,
+        post: Option<oxyde_content::FormPost>,
+    ) {
         let proxy = self.proxy.clone();
         let failed_url = url.clone();
         let spawned = std::thread::Builder::new()
             .name("oxyde-chargement".to_owned())
             .spawn(move || {
-                let loaded = Box::new(loader::load(url));
+                let loaded = Box::new(loader::load_with(url, post));
                 // La boucle d'événements peut s'être arrêtée entre-temps : rien à faire alors.
                 let _ = proxy.send_event(UserEvent::Loaded {
                     tab,

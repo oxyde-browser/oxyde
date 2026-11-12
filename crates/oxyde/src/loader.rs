@@ -247,6 +247,19 @@ fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
     Ok((response.url, response.body))
 }
 
+/// Demande la page `url` par `POST`, avec le corps d'un formulaire.
+fn post_http(url: &Url, form: &oxyde_content::FormPost) -> Result<(Url, Vec<u8>), LoadError> {
+    let response = http_client()?
+        .send(&oxyde_net::HttpRequest {
+            method: "POST".to_owned(),
+            url: url.clone(),
+            headers: vec![("Content-Type".to_owned(), form.content_type.clone())],
+            body: form.body.clone(),
+        })
+        .map_err(|e| network_error(url, &e))?;
+    Ok((response.url, response.body))
+}
+
 /// Exécute une requête `fetch` émise par un script, précédée de sa
 /// pré-vérification CORS si la page la demande. L'échec est décrit par un
 /// message destiné au script (`TypeError`).
@@ -334,7 +347,17 @@ pub(crate) fn decode(bytes: &[u8]) -> String {
 const MAX_MODULE_ROUNDS: usize = 64;
 
 pub(crate) fn load(url: Url) -> Loaded {
-    let (url, html) = match fetch(&url) {
+    load_with(url, None)
+}
+
+/// Comme [`load`] ; `post` : la page est demandée par `POST` avec ce corps
+/// (soumission d'un formulaire).
+pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Loaded {
+    let first = match &post {
+        Some(form) if matches!(url.scheme(), "http" | "https") => post_http(&url, form),
+        _ => fetch(&url),
+    };
+    let (url, html) = match first {
         Ok((final_url, bytes)) => (final_url, decode(&bytes)),
         Err(error) => {
             return Loaded {

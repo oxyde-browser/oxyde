@@ -34,11 +34,13 @@ const MAX_CLOSED: usize = 10;
 /// Action à exécuter par l'application.
 #[derive(Debug)]
 pub(crate) enum Command {
-    /// Charger `url` dans l'onglet `tab` (en arrière-plan).
+    /// Charger `url` dans l'onglet `tab` (en arrière-plan) ; `post` : par la
+    /// soumission d'un formulaire en `POST`.
     Load {
         tab: u64,
         url: Url,
         push_history: bool,
+        post: Option<oxyde_content::FormPost>,
     },
     /// Réduire la fenêtre.
     Minimize,
@@ -351,6 +353,16 @@ impl Browser {
     }
 
     fn load(&mut self, index: usize, url: Url, push_history: bool) -> Vec<Command> {
+        self.load_with(index, url, push_history, None)
+    }
+
+    fn load_with(
+        &mut self,
+        index: usize,
+        url: Url,
+        push_history: bool,
+        post: Option<oxyde_content::FormPost>,
+    ) -> Vec<Command> {
         let Some(tab) = self.tabs.get_mut(index) else {
             return Vec::new();
         };
@@ -359,6 +371,7 @@ impl Browser {
             tab: tab.id,
             url,
             push_history,
+            post,
         }]
     }
 
@@ -916,8 +929,8 @@ impl Browser {
                 .unwrap_or_default();
             for navigation in navigations {
                 match navigation {
-                    Navigation::Load { url, replace } => {
-                        commands.extend(self.load(index, url, !replace));
+                    Navigation::Load { url, replace, post } => {
+                        commands.extend(self.load_with(index, url, !replace, post));
                     }
                     Navigation::Reload => commands.extend(self.reload(index)),
                     Navigation::Traverse(delta) => {
@@ -1001,6 +1014,7 @@ mod tests {
                 tab,
                 url,
                 push_history,
+                ..
             } => Some((*tab, url.to_string(), *push_history)),
             _ => None,
         })

@@ -707,6 +707,7 @@
     message: "", filename: "", lineno: 0, colno: 0, error: undefined,
   });
   eventInterface("PopStateEvent", EventCtor, { state: null });
+  eventInterface("SubmitEvent", EventCtor, { submitter: null });
   eventInterface("HashChangeEvent", EventCtor, { oldURL: "", newURL: "" });
 
   // `document.createEvent(interface)` : un événement à initialiser ensuite.
