@@ -10,7 +10,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
 | Web Platform Tests (sous-ensembles DOM, CSS) | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
-| test262 | `oxyde_js` | **branchée** : 39 354 tests réussis sur 48 795 (80,7 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 39 700 tests réussis sur 48 795 (81,4 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.

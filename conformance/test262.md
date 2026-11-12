@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 39354 réussis sur 48795 (80.7 %).**
+**Total : 39700 réussis sur 48795 (81.4 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -13,25 +13,25 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 23 | 92.0 % |
 | `built-ins/Array` | 3083 | 3009 | 97.6 % |
-| `built-ins/ArrayBuffer` | 221 | 168 | 76.0 % |
+| `built-ins/ArrayBuffer` | 221 | 169 | 76.5 % |
 | `built-ins/ArrayIteratorPrototype` | 27 | 23 | 85.2 % |
 | `built-ins/AsyncDisposableStack` | 104 | 0 | 0.0 % |
 | `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 32 | 84.2 % |
 | `built-ins/AsyncFunction` | 18 | 17 | 94.4 % |
 | `built-ins/AsyncGeneratorFunction` | 23 | 21 | 91.3 % |
-| `built-ins/AsyncGeneratorPrototype` | 48 | 44 | 91.7 % |
+| `built-ins/AsyncGeneratorPrototype` | 48 | 45 | 93.8 % |
 | `built-ins/AsyncIteratorPrototype` | 13 | 0 | 0.0 % |
 | `built-ins/Atomics` | 389 | 0 | 0.0 % |
-| `built-ins/BigInt` | 77 | 74 | 96.1 % |
+| `built-ins/BigInt` | 77 | 75 | 97.4 % |
 | `built-ins/Boolean` | 51 | 50 | 98.0 % |
-| `built-ins/DataView` | 560 | 493 | 88.0 % |
+| `built-ins/DataView` | 560 | 494 | 88.2 % |
 | `built-ins/Date` | 610 | 583 | 95.6 % |
 | `built-ins/DisposableStack` | 93 | 0 | 0.0 % |
 | `built-ins/Error` | 93 | 55 | 59.1 % |
 | `built-ins/FinalizationRegistry` | 47 | 45 | 95.7 % |
 | `built-ins/Function` | 509 | 491 | 96.5 % |
 | `built-ins/GeneratorFunction` | 23 | 21 | 91.3 % |
-| `built-ins/GeneratorPrototype` | 61 | 60 | 98.4 % |
+| `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
 | `built-ins/Infinity` | 6 | 2 | 33.3 % |
 | `built-ins/Iterator` | 684 | 464 | 67.8 % |
 | `built-ins/JSON` | 166 | 101 | 60.8 % |
@@ -42,9 +42,9 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/NativeErrors` | 94 | 82 | 87.2 % |
 | `built-ins/Number` | 340 | 325 | 95.6 % |
 | `built-ins/Object` | 3411 | 3349 | 98.2 % |
-| `built-ins/Promise` | 732 | 394 | 53.8 % |
+| `built-ins/Promise` | 732 | 731 | 99.9 % |
 | `built-ins/Proxy` | 311 | 273 | 87.8 % |
-| `built-ins/Reflect` | 153 | 152 | 99.3 % |
+| `built-ins/Reflect` | 153 | 153 | 100.0 % |
 | `built-ins/RegExp` | 1879 | 1082 | 57.6 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 369 | 96.3 % |
@@ -54,7 +54,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/String` | 1223 | 1166 | 95.3 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 20 | 90.9 % |
-| `built-ins/Symbol` | 98 | 75 | 76.5 % |
+| `built-ins/Symbol` | 98 | 76 | 77.6 % |
 | `built-ins/Temporal` | 4614 | 0 | 0.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1217 | 83.8 % |
@@ -83,7 +83,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 191 | 55.0 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10563 | 94.7 % |
+| `language/expressions` | 11156 | 10565 | 94.7 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 36 | 85.7 % |

@@ -209,6 +209,9 @@ pub struct Vm {
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
+    /// Le constructeur `Promise` d'origine : ses promesses sont créées et
+    /// réglées directement, sans passer par un exécuteur.
+    pub(crate) promise_ctor: Option<ObjId>,
     /// Intégrés écrits en JavaScript : `toString` les montre comme natifs.
     pub(crate) self_hosted: Vec<ObjId>,
     /// Le constructeur `Array` d'origine : un résultat qu'il bâtirait est
@@ -346,6 +349,7 @@ impl Vm {
             constructing: false,
             native_new_target: Value::Undefined,
             has_instance_function: None,
+            promise_ctor: None,
             self_hosted: Vec::new(),
             array_ctor: None,
             eval_function: None,

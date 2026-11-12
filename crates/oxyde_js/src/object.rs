@@ -423,11 +423,16 @@ impl Vm {
     }
 
     /// Définit une propriété de données non énumérable de clé symbole.
+    /// `Symbol.toStringTag` n'est jamais inscriptible sur un intégré.
     pub fn define_hidden_symbol(&mut self, target: ObjId, symbol: &Symbol, value: Value) {
-        self.heap
-            .get_mut(target)
-            .symbols
-            .insert(symbol.clone(), Property::hidden(value));
+        let writable = *symbol != self.well_known.to_string_tag;
+        self.heap.get_mut(target).symbols.insert(
+            symbol.clone(),
+            Property {
+                writable,
+                ..Property::hidden(value)
+            },
+        );
     }
 
     /// Vrai si `key` existe sur `id` ou sa chaîne de prototypes (opérateur `in`).
@@ -536,15 +541,6 @@ impl Vm {
             }
         }
         self.set_with_receiver(id, &PropertyKey::String(Arc::from(key)), value, target)
-    }
-
-    pub(crate) fn set_element(
-        &mut self,
-        target: &Value,
-        key: &Value,
-        value: Value,
-    ) -> JsResult<()> {
-        self.put_element(target, key, value).map(|_| ())
     }
 
     /// Écrit `target[key]` et dit si l'écriture a eu lieu.

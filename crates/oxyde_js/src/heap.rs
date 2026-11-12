@@ -232,13 +232,38 @@ pub(crate) enum PromiseState {
     Rejected(Value),
 }
 
+/// Ce que devient le résultat d'une réaction de promesse.
+#[derive(Clone, Debug)]
+pub(crate) enum Derived {
+    /// Rien n'en dépend (`await`, combinateurs internes).
+    None,
+    /// Promesse ordinaire, résolue avec le résultat du gestionnaire.
+    Promise(ObjId),
+    /// Fonctions `resolve` et `reject` d'une promesse créée par un
+    /// constructeur du script (sous-classe, `Symbol.species`).
+    Functions(Box<(Value, Value)>),
+}
+
+impl Derived {
+    /// Ajoute à `out` les valeurs gardées en vie.
+    pub(crate) fn trace(&self, out: &mut Vec<Value>) {
+        match self {
+            Self::None => {}
+            Self::Promise(id) => out.push(Value::Object(*id)),
+            Self::Functions(functions) => {
+                out.push(functions.0.clone());
+                out.push(functions.1.clone());
+            }
+        }
+    }
+}
+
 /// Réaction enregistrée par `then` sur une promesse en attente.
 #[derive(Clone, Debug)]
 pub(crate) struct Reaction {
     pub(crate) on_fulfilled: Value,
     pub(crate) on_rejected: Value,
-    /// Promesse dérivée, résolue avec le résultat du gestionnaire.
-    pub(crate) target: Option<ObjId>,
+    pub(crate) target: Derived,
 }
 
 #[derive(Clone, Debug)]
@@ -695,7 +720,11 @@ impl Heap {
                     for reaction in &promise.reactions {
                         push(&reaction.on_fulfilled, &mut pending);
                         push(&reaction.on_rejected, &mut pending);
-                        pending.extend(reaction.target);
+                        let mut kept = Vec::new();
+                        reaction.target.trace(&mut kept);
+                        for value in &kept {
+                            push(value, &mut pending);
+                        }
                     }
                 }
                 Kind::Map(map) | Kind::WeakMap(map) => {
