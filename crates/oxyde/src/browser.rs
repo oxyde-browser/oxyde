@@ -6,13 +6,20 @@
 //! LIMITE : rien n'est conservé d'une session à l'autre (onglets épinglés,
 //! espaces, onglets fermés) ; la persistance vient avec le jalon 7.
 
-use oxyde_content::{Page, Url};
+use oxyde_content::{Navigation, Page, Url};
 use oxyde_css::Color;
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, PaneContent, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
+
+/// Identifiant d'un document chargé : deux entrées d'historique qui le
+/// partagent ne diffèrent que par `history.pushState` ou par leur fragment.
+fn next_document() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
 
 /// Espaces proposés par la maquette.
 const SPACES: [(&str, Color); 3] = [
@@ -74,6 +81,8 @@ pub(crate) struct Tab {
     /// Défilement vertical, en pixels CSS.
     pub(crate) scroll: f32,
     history: Vec<Url>,
+    /// Document de chaque entrée de `history` (voir [`next_document`]).
+    documents: Vec<u64>,
     /// Index de la page courante dans `history`.
     position: usize,
     loading: bool,
@@ -91,6 +100,7 @@ impl Tab {
         let mut tab = Self {
             id,
             history: vec![loaded.page.url().clone()],
+            documents: vec![next_document()],
             page: loaded.page,
             scroll: 0.0,
             position: 0,
@@ -362,7 +372,20 @@ impl Browser {
         let Some(url) = tab.history.get(target).cloned() else {
             return Vec::new();
         };
+        // Même document (entrées de `pushState`, fragments) : la page reste
+        // en place, elle change d'adresse et prévient ses scripts.
+        let same_document = tab.documents.get(target).is_some()
+            && tab.documents.get(target) == tab.documents.get(tab.position);
+        let steps = i32::try_from(delta).unwrap_or(0);
         tab.position = target;
+        if same_document {
+            tab.page.traverse(&url, steps);
+            tab.refresh_labels();
+            if index == self.active && self.editing.is_none() {
+                self.refresh_address();
+            }
+            return Vec::new();
+        }
         self.load(index, url, false)
     }
 
@@ -451,6 +474,7 @@ impl Browser {
         self.active = index;
         if let Some(tab) = self.tabs.get_mut(index) {
             tab.history = vec![closed.url.clone()];
+            tab.documents = vec![next_document()];
             tab.title = closed.title;
             tab.host = closed.host;
         }
@@ -836,11 +860,19 @@ impl Browser {
         };
         if push_history {
             tab.history.truncate(tab.position + 1);
+            tab.documents.truncate(tab.position + 1);
             tab.history.push(loaded.page.url().clone());
+            tab.documents.push(next_document());
             tab.position = tab.history.len() - 1;
-        } else if let Some(entry) = tab.history.get_mut(tab.position) {
-            // Une redirection peut avoir changé l'adresse finale.
-            entry.clone_from(loaded.page.url());
+        } else {
+            if let Some(entry) = tab.history.get_mut(tab.position) {
+                // Une redirection peut avoir changé l'adresse finale.
+                entry.clone_from(loaded.page.url());
+            }
+            // Rechargée ou atteinte par l'historique : c'est un nouveau document.
+            if let Some(document) = tab.documents.get_mut(tab.position) {
+                *document = next_document();
+            }
         }
         tab.page = loaded.page;
         tab.error = loaded.error;
@@ -851,6 +883,57 @@ impl Browser {
         if index == self.active && self.editing.is_none() {
             self.refresh_address();
         }
+    }
+
+    /// Exécute les navigations que les scripts des onglets ont demandées
+    /// (`location`, `history`) ; renvoie les chargements à lancer.
+    pub(crate) fn drain_navigations(&mut self) -> Vec<Command> {
+        let mut commands = Vec::new();
+        for index in 0..self.tabs.len() {
+            let navigations = self
+                .tabs
+                .get_mut(index)
+                .map(|tab| tab.page.take_navigations())
+                .unwrap_or_default();
+            for navigation in navigations {
+                match navigation {
+                    Navigation::Load { url, replace } => {
+                        commands.extend(self.load(index, url, !replace));
+                    }
+                    Navigation::Reload => commands.extend(self.reload(index)),
+                    Navigation::Traverse(delta) => {
+                        let delta = isize::try_from(delta).unwrap_or(0);
+                        commands.extend(self.go(index, delta));
+                    }
+                    Navigation::SameDocument { url, replace } => {
+                        let Some(tab) = self.tabs.get_mut(index) else {
+                            continue;
+                        };
+                        let document = tab
+                            .documents
+                            .get(tab.position)
+                            .copied()
+                            .unwrap_or_else(next_document);
+                        if replace {
+                            if let Some(entry) = tab.history.get_mut(tab.position) {
+                                *entry = url;
+                            }
+                        } else {
+                            tab.history.truncate(tab.position + 1);
+                            tab.documents.truncate(tab.position + 1);
+                            tab.history.push(url);
+                            tab.documents.push(document);
+                            tab.position = tab.history.len() - 1;
+                        }
+                        tab.refresh_labels();
+                        if index == self.active && self.editing.is_none() {
+                            self.refresh_address();
+                        }
+                    }
+                }
+            }
+        }
+        commands
     }
 
     /// Fin du chargement demandé par [`Command::Load`]. Sans effet si l'onglet

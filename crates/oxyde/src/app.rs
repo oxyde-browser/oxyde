@@ -427,6 +427,11 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
+        // Navigations demandées par les scripts depuis le dernier passage.
+        let navigations = self.browser.drain_navigations();
+        if !navigations.is_empty() {
+            self.execute(event_loop, navigations);
+        }
         event_loop.set_control_flow(match self.browser.next_wake() {
             // Jamais plus tôt que dans 4 ms : un minuteur en boucle ne monopolise pas le fil.
             Some(wake) => ControlFlow::WaitUntil(wake.max(now + MIN_TIMER_SLEEP)),

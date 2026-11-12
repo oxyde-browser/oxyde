@@ -64,6 +64,31 @@ pub struct FetchRequest {
     pub needs_preflight: bool,
 }
 
+/// Navigation demandée par un script, à exécuter par l'embarqueur.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Navigation {
+    /// Charger `url` (`location.assign`, `location.href = …`) ; `replace` :
+    /// la page prend la place de l'entrée courante de l'historique.
+    Load {
+        /// Adresse à charger.
+        url: Url,
+        /// Remplacer l'entrée courante au lieu d'en ajouter une.
+        replace: bool,
+    },
+    /// Recharger la page (`location.reload()`).
+    Reload,
+    /// Parcourir l'historique de ce nombre d'entrées (`history.back()`…).
+    Traverse(i32),
+    /// Le document garde sa place mais change d'adresse (`history.pushState`,
+    /// `replaceState`, changement de fragment).
+    SameDocument {
+        /// Nouvelle adresse du document.
+        url: Url,
+        /// Remplacer l'entrée courante au lieu d'en ajouter une.
+        replace: bool,
+    },
+}
+
 /// Réponse à une [`FetchRequest`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FetchResponse {
@@ -558,6 +583,40 @@ impl Page {
             .as_mut()
             .map(|e| e.take_console())
             .unwrap_or_default()
+    }
+
+    /// Navigations demandées par les scripts depuis le dernier appel. Un
+    /// changement d'adresse sans changement de document
+    /// ([`Navigation::SameDocument`]) est déjà appliqué à la page.
+    pub fn take_navigations(&mut self) -> Vec<Navigation> {
+        let navigations = self
+            .engine
+            .as_mut()
+            .map(|e| e.take_navigations())
+            .unwrap_or_default();
+        for navigation in &navigations {
+            if let Navigation::SameDocument { url, .. } = navigation {
+                self.url.clone_from(url);
+            }
+        }
+        navigations
+    }
+
+    /// L'embarqueur a parcouru l'historique de `delta` entrées jusqu'à une
+    /// entrée du même document, d'adresse `url` : la page prend cette adresse
+    /// et prévient ses scripts (`popstate`). Renvoie `true` si la page doit
+    /// être redessinée.
+    pub fn traverse(&mut self, url: &Url, delta: i32) -> bool {
+        self.url.clone_from(url);
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        engine.traverse(&mut self.doc, url, delta);
+        if engine.take_dirty() {
+            self.dom_changed();
+            return true;
+        }
+        false
     }
 
     /// Requêtes `fetch` émises par les scripts depuis le dernier appel.
@@ -1557,6 +1616,75 @@ mod tests {
                 "avant 4|TypeError|lot 2 true|",
                 "attributes root class  0 0|attributes root class z 0 0"
             )
+        );
+    }
+
+    #[test]
+    fn location_and_history_ask_the_embedder_to_navigate() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               history.pushState({ n: 1 }, '', 'page2?x=1');
+               log.push(location.pathname + location.search, history.length, history.state.n);
+               history.replaceState(null, '', '#frag');
+               location.hash = 'autre';
+               log.push(document.URL === location.href, location.hash);
+               addEventListener('popstate', e => {
+                 log.push('pop ' + JSON.stringify(e.state) + ' ' + location.hash);
+               });
+               addEventListener('hashchange', e => {
+                 log.push('fragment ' + new URL(e.newURL).hash);
+                 document.body.textContent = log.join('|');
+               });
+               try { history.pushState(null, '', 'https://ailleurs.test/'); } catch (e) { log.push(e.name); }
+               location.assign('/suite');
+               location.replace('fin');
+               location.reload();
+               history.back();
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        let at = |path: &str| Url::parse(&format!("https://exemple.test{path}")).expect("url");
+        assert_eq!(
+            p.take_navigations(),
+            [
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1"),
+                    replace: false
+                },
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1#frag"),
+                    replace: true
+                },
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1#autre"),
+                    replace: false
+                },
+                Navigation::Load {
+                    url: at("/suite"),
+                    replace: false
+                },
+                Navigation::Load {
+                    url: at("/dossier/fin"),
+                    replace: true
+                },
+                Navigation::Reload,
+                Navigation::Traverse(-1),
+            ]
+        );
+        assert_eq!(p.url(), &at("/dossier/page2?x=1#autre"));
+        assert_eq!(
+            body_text(&p),
+            "/dossier/page2?x=1|2|1|true|#autre|SecurityError"
+        );
+        // L'embarqueur revient d'une entrée, dans le même document.
+        let redraw = p.traverse(&at("/dossier/page2?x=1#frag"), -1);
+        assert!(redraw, "{:?}", p.take_console());
+        assert_eq!(p.url(), &at("/dossier/page2?x=1#frag"));
+        assert_eq!(
+            body_text(&p),
+            "/dossier/page2?x=1|2|1|true|#autre|SecurityError|pop null #frag|fragment #frag"
         );
     }
 

@@ -73,6 +73,11 @@ struct DomHost {
     listeners: Vec<Listener>,
     /// Observateurs de mutation en activité.
     observers: Vec<mutation::Observer>,
+    /// Navigations demandées par les scripts, pas encore prises en charge
+    /// par l'embarqueur.
+    navigations: Vec<crate::Navigation>,
+    /// Fonctions du prélude que le moteur appelle en retour.
+    hooks: Option<Value>,
     /// Identifiant du prochain écouteur enregistré.
     next_listener: u64,
     timers: Vec<Timer>,
@@ -1617,6 +1622,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         protos,
         listeners: Vec::new(),
         observers: Vec::new(),
+        navigations: Vec::new(),
+        hooks: None,
         next_listener: 0,
         timers: Vec::new(),
         fetch_queue: Vec::new(),
@@ -1654,6 +1661,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         ("cancelAnimationFrame", 1, clear_timer),
         ("addEventListener", 2, add_event_listener),
         ("removeEventListener", 2, remove_event_listener),
+        ("dispatchEvent", 1, events::dispatch_event),
         ("alert", 1, window_alert),
         ("confirm", 1, window_confirm),
         ("prompt", 1, window_prompt),
@@ -1679,35 +1687,6 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     vm.set(&navigator, "languages", languages)?;
     vm.define_hidden(global, "navigator", navigator);
 
-    // LIMITE : `location` est en lecture seule (l'affecter ne navigue pas).
-    let location = Value::Object(vm.new_object());
-    let origin = url.origin().ascii_serialization();
-    let fields = [
-        ("href", url.as_str().to_owned()),
-        ("protocol", format!("{}:", url.scheme())),
-        (
-            "host",
-            url.host_str().map_or(String::new(), |h| {
-                url.port().map_or(h.to_owned(), |p| format!("{h}:{p}"))
-            }),
-        ),
-        ("hostname", url.host_str().unwrap_or("").to_owned()),
-        ("pathname", url.path().to_owned()),
-        (
-            "search",
-            url.query().map_or(String::new(), |q| format!("?{q}")),
-        ),
-        (
-            "hash",
-            url.fragment().map_or(String::new(), |f| format!("#{f}")),
-        ),
-        ("origin", origin),
-    ];
-    for (key, value) in fields {
-        vm.set(&location, key, Value::string(&value))?;
-    }
-    vm.define_hidden(global, "location", location);
-
     // Prélude : `URL`, `Headers`, `AbortController`… écrits en JavaScript. Il
     // s'appuie sur les objets installés ci-dessus.
     let prelude = vm.eval_script(include_str!("script/prelude.js"))?;
@@ -1717,8 +1696,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("observe", 4, mutation::observe)),
         Value::Object(vm.new_function("disconnect", 1, mutation::disconnect)),
         Value::Object(vm.new_function("takeRecords", 1, mutation::take_records)),
+        Value::Object(vm.new_function("locationHref", 0, location_href)),
+        Value::Object(vm.new_function("navigate", 2, navigate)),
     ];
-    vm.call(&prelude, &Value::Undefined, &helpers)?;
+    let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
+    vm.add_root(hooks.clone());
+    if let Some(h) = host(vm) {
+        h.hooks = Some(hooks);
+    }
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
     // qui reçoit le `fetch` d'origine.
     let factory = vm.eval_script(include_str!("script/xhr.js"))?;
@@ -1871,6 +1856,31 @@ impl ScriptEngine {
                     }
                     return;
                 }
+            }
+        });
+    }
+
+    /// Navigations demandées par les scripts depuis le dernier appel.
+    pub(crate) fn take_navigations(&mut self) -> Vec<crate::Navigation> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.navigations))
+            .unwrap_or_default()
+    }
+
+    /// L'embarqueur a parcouru l'historique de `delta` entrées sans changer
+    /// de document : l'adresse devient `url`, et les scripts en sont prévenus
+    /// (`popstate`, `hashchange`).
+    pub(crate) fn traverse(&mut self, doc: &mut Document, url: &Url, delta: i32) {
+        self.run(doc, |vm| {
+            let Some(h) = host(vm) else { return };
+            let before = Value::string(h.url.as_str());
+            h.url = url.clone();
+            let Some(hooks) = h.hooks.clone() else { return };
+            let outcome = vm
+                .get(&hooks, "traverse")
+                .and_then(|f| vm.call(&f, &hooks, &[Value::Number(f64::from(delta)), before]));
+            if let Err(thrown) = outcome {
+                report(vm, &thrown);
             }
         });
     }
@@ -2317,6 +2327,62 @@ fn response_json(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
         Ok(value) => vm.promise_resolved(value),
         Err(thrown) => vm.promise_rejected(thrown),
     })
+}
+
+// ---- Navigation ------------------------------------------------------------------
+
+/// `locationHref()` : l'adresse courante du document.
+fn location_href(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    Ok(host(vm).map_or(Value::Undefined, |h| Value::string(h.url.as_str())))
+}
+
+/// `navigate(nature, valeur)` : consigne une navigation pour l'embarqueur.
+/// `pushState` et `replaceState` changent tout de suite l'adresse du
+/// document, qui doit rester dans son origine.
+fn navigate(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let kind = vm.to_string(&arg(args, 0))?;
+    let value = arg(args, 1);
+    let request = match &*kind {
+        "reload" => crate::Navigation::Reload,
+        "traverse" => {
+            let delta = vm.to_number(&value)?;
+            #[expect(clippy::cast_possible_truncation, reason = "nombre de pages, borné")]
+            let delta = delta.clamp(-1_000.0, 1_000.0) as i32;
+            crate::Navigation::Traverse(delta)
+        }
+        _ => {
+            let text = vm.to_string(&value)?;
+            let Some(h) = host(vm) else {
+                return Ok(Value::Undefined);
+            };
+            let Ok(url) = h.url.join(&text) else {
+                return Err(vm.error("SyntaxError", &format!("adresse invalide : {text}")));
+            };
+            match &*kind {
+                "pushState" | "replaceState" => {
+                    if url.origin() != h.url.origin() {
+                        return Err(vm.error(
+                            "Error",
+                            "SecurityError : l'adresse doit rester dans l'origine du document",
+                        ));
+                    }
+                    h.url = url.clone();
+                    crate::Navigation::SameDocument {
+                        url,
+                        replace: &*kind == "replaceState",
+                    }
+                }
+                _ => crate::Navigation::Load {
+                    url,
+                    replace: &*kind == "replace",
+                },
+            }
+        }
+    };
+    if let Some(h) = host(vm) {
+        h.navigations.push(request);
+    }
+    Ok(Value::Undefined)
 }
 
 // ---- URL -------------------------------------------------------------------------

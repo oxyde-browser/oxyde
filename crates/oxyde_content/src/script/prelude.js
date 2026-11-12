@@ -3,14 +3,17 @@
 // les opérations que seul le moteur sait faire :
 //   parseUrl(texte, base)        -> composants de l'adresse, ou null ;
 //   changeUrl(href, rang, valeur) -> composants après modification, ou null ;
-//   observe, disconnect, takeRecords -> observateurs de mutation.
+//   observe, disconnect, takeRecords -> observateurs de mutation ;
+//   locationHref()               -> adresse courante du document ;
+//   navigate(nature, valeur)     -> demande de navigation à l'embarqueur.
+// Elle rend les fonctions que le moteur appelle en retour (`traverse`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
 //
 // LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
-(function (parseUrl, changeUrl, observe, disconnect, takeRecords) {
+(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -894,4 +897,109 @@
       }
     },
   });
+
+  // ---- location (HTML Standard §7.2.4) ----------------------------------------------------------------------------------------------------
+  const here = () => parseUrl(locationHref());
+  const fireLater = (event) => startTimer(() => global.dispatchEvent(event), 0);
+  // Changement de fragment : même document, événement `hashchange`.
+  function setHash(value) {
+    const before = locationHref();
+    const parts = changeUrl(before, HASH, String(value));
+    if (parts === null || parts[HREF] === before) return;
+    sessionEntries.length = position + 1;
+    sessionEntries.push({ state: null, url: parts[HREF] });
+    position++;
+    navigate("pushState", parts[HREF]);
+    fireLater(new global.HashChangeEvent("hashchange", { oldURL: before, newURL: parts[HREF] }));
+  }
+  const locationObject = {
+    assign(url) { navigate("assign", String(url)); },
+    replace(url) { navigate("replace", String(url)); },
+    reload() { navigate("reload"); },
+    toString() { return locationHref(); },
+  };
+  for (const [name, rank] of [["href", HREF], ["protocol", PROTOCOL], ["host", HOST],
+    ["hostname", HOSTNAME], ["port", PORT], ["pathname", PATHNAME], ["search", SEARCH],
+    ["hash", HASH], ["origin", ORIGIN]]) {
+    define(locationObject, name, {
+      get() { return here()[rank]; },
+      set(value) {
+        if (rank === ORIGIN) return;
+        if (rank === HASH) {
+          setHash(value);
+        } else if (rank === HREF) {
+          navigate("assign", String(value));
+        } else {
+          const parts = changeUrl(locationHref(), rank, String(value));
+          if (parts !== null) navigate("assign", parts[HREF]);
+        }
+      },
+      enumerable: true,
+      configurable: false,
+    });
+  }
+  expose("location", locationObject);
+  define(Document.prototype, "location", {
+    get() { return locationObject; },
+    set(value) { navigate("assign", String(value)); },
+    enumerable: true,
+    configurable: true,
+  });
+
+  // ---- history (HTML Standard §7.2.5) -------------------------------------------------------------------------------------------------------
+  // Entrées de ce document : celle du chargement, puis celles de `pushState`.
+  const sessionEntries = [{ state: null, url: locationHref() }];
+  let position = 0;
+  function changeState(state, url, replace) {
+    const current = locationHref();
+    let next = current;
+    if (url !== undefined && url !== null) {
+      const parts = parseUrl(String(url), current);
+      if (parts === null || parts[ORIGIN] !== here()[ORIGIN]) {
+        throw new DOMException(
+          "history : l'adresse doit rester dans l'origine du document",
+          "SecurityError",
+        );
+      }
+      next = parts[HREF];
+    }
+    const entry = { state: cloneValue(state, new Map()), url: next };
+    if (replace) {
+      sessionEntries[position] = entry;
+    } else {
+      sessionEntries.length = position + 1;
+      sessionEntries.push(entry);
+      position++;
+    }
+    navigate(replace ? "replaceState" : "pushState", next);
+  }
+  const historyObject = {
+    get length() { return sessionEntries.length; },
+    get state() { return sessionEntries[position].state; },
+    scrollRestoration: "auto",
+    pushState(state, unused, url) { changeState(state, url, false); },
+    replaceState(state, unused, url) { changeState(state, url, true); },
+    back() { navigate("traverse", -1); },
+    forward() { navigate("traverse", 1); },
+    go(delta = 0) {
+      const steps = Math.trunc(Number(delta)) || 0;
+      if (steps === 0) navigate("reload");
+      else navigate("traverse", steps);
+    },
+  };
+  expose("history", historyObject);
+
+  return {
+    // L'embarqueur a parcouru l'historique de `delta` entrées sans quitter
+    // ce document : `popstate`, et `hashchange` si seul le fragment change.
+    traverse(delta, before) {
+      position = Math.min(Math.max(position + delta, 0), sessionEntries.length - 1);
+      const after = locationHref();
+      global.dispatchEvent(new global.PopStateEvent("popstate", { state: sessionEntries[position].state }));
+      const strip = (href) => href.replace(/#.*$/, "");
+      if (before !== after && strip(before) === strip(after)) {
+        global.dispatchEvent(new global.HashChangeEvent("hashchange", { oldURL: before, newURL: after }));
+      }
+    },
+  };
 })
