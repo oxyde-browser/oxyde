@@ -12,7 +12,7 @@ use oxyde_js::{JsResult, Value, Vm};
 use super::{arg, dom_exception, host, node_arg, node_of, this_node};
 
 /// Refus d'une mutation : nom de la `DOMException` et message.
-type Refusal = (&'static str, &'static str);
+pub(super) type Refusal = (&'static str, &'static str);
 
 const HIERARCHY: &str = "HierarchyRequestError";
 
@@ -35,7 +35,7 @@ fn is_fragment(doc: &Document, node: NodeId) -> bool {
 /// « Ensure pre-insertion validity » de `node` dans `parent` avant `child`.
 /// Avec `replacing`, `child` est le nœud que `node` remplace (algorithme
 /// « replace », dont les règles pour un document diffèrent un peu).
-fn validity(
+pub(super) fn validity(
     doc: &Document,
     node: NodeId,
     parent: NodeId,
@@ -134,7 +134,7 @@ fn ensure(vm: &mut Vm, check: impl FnOnce(&Document) -> Result<(), Refusal>) -> 
 
 /// Insère `node` dans `parent` avant `reference`, sans contrôle. Les enfants
 /// d'un fragment arrivent ensemble : un seul enregistrement de mutation.
-fn insert(doc: &mut Document, node: NodeId, parent: NodeId, reference: Option<NodeId>) {
+pub(super) fn insert(doc: &mut Document, node: NodeId, parent: NodeId, reference: Option<NodeId>) {
     if is_fragment(doc, node) {
         let opened = doc.begin_group();
         doc.insert_before(parent, node, reference);

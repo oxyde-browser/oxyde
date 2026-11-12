@@ -72,6 +72,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes, modules, expressions rationnelles | V8 (Ignition, Irregexp) | 83,3 % de test262 ; voir limites |
 | `oxyde_bindings` | générateur de liaisons Web IDL : analyse des fichiers `.webidl`, table des interfaces du DOM | bindings de Blink | interfaces générées ; corps des opérations encore écrits à la main |
 | `oxyde_test262` | lanceur de la suite de conformité ECMAScript | `test262` de V8 | fonctionne |
+| `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
 | `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
 | `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
 | `oxyde_compositor` | calques, défilement, animations | cc, Viz | **réservé — jalon 6** |
@@ -92,8 +93,10 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
   pas encore. Conformité mesurée : 83,3 % de test262
-  ([conformance/test262.md](conformance/test262.md)) ; 82,8 % des membres des interfaces du DOM
-  décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)).
+  ([conformance/test262.md](conformance/test262.md)) ; 87,2 % des membres des interfaces du DOM
+  décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
+  dossier `dom/` des Web Platform Tests, 209 fichiers de test entièrement réussis sur 693 (30,2 %)
+  ([conformance/wpt.md](conformance/wpt.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
   permanence après quelques images présentées. Le code d'Oxyde, lui, dort entre deux

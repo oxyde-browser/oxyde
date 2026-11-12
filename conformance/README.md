@@ -9,7 +9,8 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 |---|---|---|
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
-| Web Platform Tests (sous-ensembles DOM, CSS) | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
+| Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 209 fichiers de test entièrement réussis sur 693 (30,2 %) ; 37897 sous-tests sur 46501, détail dans [wpt.md](wpt.md) |
+| Web Platform Tests, CSS et mise en page | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
 | test262 | `oxyde_js` | **branchée** : 40 660 tests réussis sur 48 795 (83,3 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
@@ -17,7 +18,14 @@ les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
 
 La couverture du DOM (membres des interfaces Web IDL réellement disponibles aux scripts) est
 mesurée par `cargo run -p oxyde -- --dom-coverage` et publiée dans [dom.md](dom.md) :
-241 membres sur 291 (82,8 %). Elle dit qu'un membre existe, pas qu'il est conforme.
+285 membres sur 327 (87,2 %). Elle dit qu'un membre existe, pas qu'il est conforme.
+
+Les Web Platform Tests se lancent avec `cargo run -p oxyde_wpt --release -- --publier dom` après
+avoir cloné `web-platform-tests/wpt` dans `vendor/wpt` (non versionné ; les dossiers `resources`,
+`common` et `dom` suffisent). `--journal fichier` écrit une ligne par sous-test, pour comparer
+deux exécutions : aucun sous-test réussi ne doit être perdu. Ce qui manque le plus : les cadres
+(`<iframe>`, un objet global par document), les espaces de noms et les nœuds `Attr`, les tests
+pilotés par WebDriver (`testdriver.js`), `Observable`.
 
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus

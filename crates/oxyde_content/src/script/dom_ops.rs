@@ -350,15 +350,8 @@ fn data_units(vm: &mut Vm, node: NodeId) -> Vec<u16> {
         .unwrap_or_default()
 }
 
-fn set_data_units(vm: &mut Vm, node: NodeId, units: &[u16]) {
-    if let Some(h) = host(vm) {
-        h.doc.set_text(node, &String::from_utf16_lossy(units));
-        h.dirty = true;
-    }
-}
-
 /// Position entière d'un argument (`unsigned long`).
-fn offset_arg(vm: &mut Vm, value: &Value) -> JsResult<usize> {
+pub(super) fn offset_arg(vm: &mut Vm, value: &Value) -> JsResult<usize> {
     let n = vm.to_number(value)?;
     #[expect(
         clippy::cast_possible_truncation,
@@ -381,17 +374,19 @@ fn replace_units(
     count: usize,
     data: &str,
 ) -> JsResult<()> {
-    let mut units = data_units(vm, node);
-    if offset > units.len() {
+    let narrow = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    let done = host(vm).is_some_and(|h| {
+        h.dirty = true;
+        h.doc
+            .replace_data(node, narrow(offset), narrow(count), data)
+    });
+    if !done {
         return Err(dom_error(
             vm,
             "IndexSizeError",
             "la position dépasse la longueur des données",
         ));
     }
-    let end = offset.saturating_add(count).min(units.len());
-    units.splice(offset..end, data.encode_utf16());
-    set_data_units(vm, node, &units);
     Ok(())
 }
 
@@ -448,30 +443,19 @@ pub(super) fn replace_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResul
 
 pub(super) fn split_text(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
-    let offset = offset_arg(vm, &arg(args, 0))?;
-    let units = data_units(vm, node);
-    if offset > units.len() {
-        return Err(dom_error(
+    let offset = u32::try_from(offset_arg(vm, &arg(args, 0))?).unwrap_or(u32::MAX);
+    let new = host(vm).and_then(|h| {
+        h.dirty = true;
+        h.doc.split_text(node, offset)
+    });
+    match new {
+        Some(new) => Ok(wrap(vm, new)),
+        None => Err(dom_error(
             vm,
             "IndexSizeError",
             "la position dépasse la longueur du texte",
-        ));
+        )),
     }
-    let (head, tail) = units.split_at(offset);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Null);
-    };
-    let new = h.doc.create_text(&String::from_utf16_lossy(tail));
-    let (parent, next) = {
-        let links = h.doc.node(node);
-        (links.parent, links.next_sibling)
-    };
-    if let Some(parent) = parent {
-        h.doc.insert_before(parent, new, next);
-    }
-    h.doc.set_text(node, &String::from_utf16_lossy(head));
-    h.dirty = true;
-    Ok(wrap(vm, new))
 }
 
 /// `wholeText` : le texte de ce nœud et de ses voisins texte contigus.

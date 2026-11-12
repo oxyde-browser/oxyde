@@ -30,6 +30,10 @@ impl fmt::Debug for NodeId {
     }
 }
 
+mod ranges;
+
+pub use ranges::{Boundary, IteratorState, LiveRange};
+
 /// Espace de noms d'un élément.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Namespace {
@@ -177,6 +181,10 @@ pub struct Document {
     /// Groupe en cours (0 : aucun) et dernier numéro attribué.
     group: u32,
     last_group: u32,
+    /// Plages vivantes (`Range`) créées par les scripts.
+    ranges: Vec<LiveRange>,
+    /// Itérateurs (`NodeIterator`) créés par les scripts.
+    iterators: Vec<IteratorState>,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -243,6 +251,8 @@ impl Document {
             groups: Vec::new(),
             group: 0,
             last_group: 0,
+            ranges: Vec::new(),
+            iterators: Vec::new(),
         }
     }
 
@@ -620,6 +630,8 @@ impl Document {
             (n.parent, n.prev_sibling, n.next_sibling)
         };
         let Some(parent) = parent else { return };
+        self.ranges_before_removal(child, parent);
+        self.iterators_before_removal(child);
         self.log(|| Mutation::Children {
             parent,
             added: Vec::new(),
@@ -695,6 +707,7 @@ impl Document {
             self.node(parent).owner
         };
         self.set_owner(child, owner);
+        self.ranges_after_insertion(child, parent);
         let (previous, next) = {
             let inserted = self.node(child);
             (inserted.prev_sibling, inserted.next_sibling)

@@ -2,9 +2,9 @@
 
 Membres des interfaces décrites par les fichiers Web IDL d'Oxyde (`crates/oxyde_content/idl/`) que les scripts trouvent réellement, mesurés en interrogeant une page d'essai. Généré par `cargo run -p oxyde -- --dom-coverage`.
 
-La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : c'est le rôle des Web Platform Tests, pas encore branchés. Les interfaces que l'IDL d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) ne sont pas comptées.
+La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : c'est le rôle des Web Platform Tests (voir `wpt.md`). Les interfaces que l'IDL d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) ne sont pas comptées.
 
-**Total : 246 membres disponibles sur 296 (83.1 %).**
+**Total : 285 membres disponibles sur 327 (87.2 %).**
 
 | Interface | Hérite de | Constantes | Attributs | Opérations |
 |---|---|---:|---:|---:|
@@ -14,17 +14,19 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 | `NodeList` | — | — | 1 / 1 | 1 / 1 |
 | `HTMLCollection` | — | — | 1 / 1 | 2 / 2 |
 | `Node` | `EventTarget` | 18 / 18 | 14 / 14 | 12 / 15 |
-| `Document` | `Node` | — | 33 / 35 | 20 / 32 |
+| `Document` | `Node` | — | 33 / 35 | 23 / 32 |
 | `XMLDocument` | `Document` | — | — | — |
-| `DOMImplementation` | — | — | — | 0 / 4 |
+| `DOMImplementation` | — | — | — | 4 / 4 |
 | `DocumentType` | `Node` | — | 3 / 3 | 4 / 4 |
 | `DocumentFragment` | `Node` | — | 4 / 4 | 6 / 7 |
 | `Element` | `Node` | — | 16 / 26 | 30 / 42 |
 | `CharacterData` | `Node` | — | 4 / 4 | 9 / 9 |
 | `Text` | `CharacterData` | — | 1 / 1 | 1 / 1 |
 | `CDATASection` | `Text` | — | — | — |
-| `ProcessingInstruction` | `CharacterData` | — | 0 / 1 | — |
+| `ProcessingInstruction` | `CharacterData` | — | 1 / 1 | — |
 | `Comment` | `CharacterData` | — | — | — |
+| `AbstractRange` | — | — | 5 / 5 | — |
+| `Range` | `AbstractRange` | 4 / 4 | 1 / 1 | 21 / 21 |
 | `DOMTokenList` | — | — | 2 / 2 | 7 / 7 |
 | `HTMLElement` | `Element` | — | 17 / 17 | 3 / 3 |
 | `CSSStyleDeclaration` | — | — | 1 / 4 | 3 / 5 |
@@ -33,9 +35,7 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 ## Membres absents
 
 - `Node` : lookupPrefix, lookupNamespaceURI, isDefaultNamespace
-- `Document` : cookie, lastModified, getElementsByTagNameNS, createAttribute, createAttributeNS, createRange, createNodeIterator, createTreeWalker, open, close, write, writeln, execCommand, moveBefore
-- `DOMImplementation` : createDocumentType, createDocument, createHTMLDocument, hasFeature
+- `Document` : cookie, lastModified, getElementsByTagNameNS, createAttribute, createAttributeNS, open, close, write, writeln, execCommand, moveBefore
 - `DocumentFragment` : moveBefore
 - `Element` : attributes, shadowRoot, scrollTop, scrollLeft, scrollWidth, scrollHeight, clientTop, clientLeft, clientWidth, clientHeight, getAttributeNode, getAttributeNodeNS, setAttributeNode, setAttributeNodeNS, removeAttributeNode, attachShadow, getElementsByTagNameNS, getClientRects, scroll, scrollTo, scrollBy, moveBefore
-- `ProcessingInstruction` : target
 - `CSSStyleDeclaration` : length, parentRule, cssFloat, item, getPropertyPriority

@@ -29,7 +29,9 @@ mod documents;
 mod dom_ops;
 mod events;
 mod mutation;
+mod range;
 mod storage;
+mod traversal;
 mod tree;
 
 use events::{Listener, add_event_listener, dispatch, remove_event_listener};
@@ -39,9 +41,12 @@ const CLASS_STYLE: u32 = 2;
 const CLASS_LIST: u32 = 3;
 const CLASS_STORAGE: u32 = 4;
 const CLASS_DATASET: u32 = 5;
+const CLASS_RANGE: u32 = 6;
 
-/// Instructions accordées à une tâche (script, événement, minuteur) avant interruption.
-const TASK_BUDGET: u64 = 200_000_000;
+/// Instructions accordées à une tâche (script, événement, minuteur) avant
+/// interruption : une dizaine de secondes de calcul, comme le délai après
+/// lequel un navigateur propose d'arrêter un script.
+const TASK_BUDGET: u64 = 2_000_000_000;
 /// Nombre maximal de minuteurs exécutés par appel de [`ScriptEngine::run_timers`].
 const MAX_TIMERS_PER_TICK: usize = 500;
 /// Nombre maximal de minuteurs en attente.
@@ -877,7 +882,9 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             NodeData::Text(_)
             | NodeData::Comment(_)
             | NodeData::CData(_)
-            | NodeData::ProcessingInstruction { .. } => doc.set_text(node, &text),
+            | NodeData::ProcessingInstruction { .. } => {
+                doc.replace_data(node, 0, u32::MAX, &text);
+            }
             NodeData::Element(_) | NodeData::Fragment => {
                 let owner = doc.owner(node);
                 let content = (!text.is_empty()).then(|| {
@@ -889,7 +896,9 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             }
             _ => {}
         },
-        "nodeValue" | "data" => doc.set_text(node, &text),
+        "nodeValue" | "data" => {
+            doc.replace_data(node, 0, u32::MAX, &text);
+        }
         "innerHTML" if !is_document => set_inner_html(doc, node, &text),
         "className" => doc.set_attr(node, "class", &text),
         "title" if is_document => {
@@ -953,6 +962,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
                 _ => None,
             }
         }
+        CLASS_RANGE => range::property(vm, data, key),
         CLASS_STORAGE => {
             let area = usize::from(data != 0);
             match key {
@@ -1421,6 +1431,32 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
         documents::create_html_document,
     ),
     ("DOMImplementation", "hasFeature", documents::has_feature),
+    ("", "createRange", range::create_range),
+    ("Range", "setStart", range::set_start),
+    ("Range", "setEnd", range::set_end),
+    ("Range", "setStartBefore", range::set_start_before),
+    ("Range", "setStartAfter", range::set_start_after),
+    ("Range", "setEndBefore", range::set_end_before),
+    ("Range", "setEndAfter", range::set_end_after),
+    ("Range", "collapse", range::collapse),
+    ("Range", "selectNode", range::select_node),
+    ("Range", "selectNodeContents", range::select_node_contents),
+    (
+        "Range",
+        "compareBoundaryPoints",
+        range::compare_boundary_points,
+    ),
+    ("Range", "deleteContents", range::delete_contents),
+    ("Range", "extractContents", range::extract_contents),
+    ("Range", "cloneContents", range::clone_contents),
+    ("Range", "insertNode", range::insert_node),
+    ("Range", "surroundContents", range::surround_contents),
+    ("Range", "cloneRange", range::clone_range),
+    ("Range", "detach", range::detach),
+    ("Range", "isPointInRange", range::is_point_in_range),
+    ("Range", "comparePoint", range::compare_point),
+    ("Range", "intersectsNode", range::intersects_node),
+    ("Range", "toString", range::to_string),
     ("Storage", "getItem", storage::get_item),
     ("Storage", "setItem", storage::set_item),
     ("Storage", "removeItem", storage::remove_item),
@@ -1530,6 +1566,7 @@ const CONSTRUCTORS: &[(&str, NativeFn)] = &[
     ("DocumentFragment", documents::fragment_ctor),
     ("Text", documents::text_ctor),
     ("Comment", documents::comment_ctor),
+    ("Range", range::range_ctor),
 ];
 
 /// Les autres objets interface ne se construisent pas depuis un script.
@@ -1736,6 +1773,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(h) = host(vm) {
         h.activation = Some(activation);
     }
+    // Parcours de l'arbre et sélection.
+    let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("iterNew", 1, traversal::iter_new)),
+        Value::Object(vm.new_function("iterGet", 1, traversal::iter_get)),
+        Value::Object(vm.new_function("iterSet", 3, traversal::iter_set)),
+    ];
+    vm.call(&traversal, &Value::Undefined, &helpers)?;
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
     // qui reçoit le `fetch` d'origine.
     let factory = vm.eval_script(include_str!("script/xhr.js"))?;
@@ -2626,6 +2671,7 @@ pub(crate) fn dom_coverage_report() -> String {
            const el = document.getElementById('p'); let ev = null;
            el.addEventListener('click', e => {{ ev = e; }}); el.click();
            const kind = n => n && n.nodeType;
+           const xml = document.implementation.createDocument(null, 'racine');
            const samples = {{
              Event: ev, CustomEvent: new CustomEvent('x'), EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
              DocumentType: kind(document.firstChild) === 10 ? document.firstChild : null,
@@ -2634,6 +2680,10 @@ pub(crate) fn dom_coverage_report() -> String {
              Comment: kind(el.lastChild) === 8 ? el.lastChild : null,
              DOMTokenList: el.classList, CSSStyleDeclaration: el.style,
              NodeList: document.querySelectorAll('p'), HTMLCollection: el.children,
+             Range: document.createRange(), AbstractRange: document.createRange(),
+             DOMImplementation: document.implementation, XMLDocument: xml,
+             ProcessingInstruction: xml.createProcessingInstruction('cible', 'x'),
+             CDATASection: xml.createCDATASection('x'),
            }};
            let out = '';
            for (const [iface, nature, name, isStatic] of [{members}]) {{
@@ -2718,7 +2768,7 @@ pub(crate) fn dom_coverage_report() -> String {
          que les scripts trouvent réellement, mesurés en interrogeant une page d'essai. \
          Généré par `cargo run -p oxyde -- --dom-coverage`.\n\n\
          La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : \
-         c'est le rôle des Web Platform Tests, pas encore branchés. Les interfaces que l'IDL \
+         c'est le rôle des Web Platform Tests (voir `wpt.md`). Les interfaces que l'IDL \
          d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) \
          ne sont pas comptées.\n\n\
          **Total : {done} membres disponibles sur {total} ({rate:.1} %).**\n\n\

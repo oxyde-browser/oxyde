@@ -1367,7 +1367,7 @@ mod tests {
             .and_then(|rest| rest.split(' ').next())
             .and_then(|n| n.parse().ok())
             .expect("total lisible");
-        assert!(done >= 235, "couverture en régression : {done} membres");
+        assert!(done >= 280, "couverture en régression : {done} membres");
     }
 
     #[test]

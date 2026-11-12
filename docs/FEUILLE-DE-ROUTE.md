@@ -147,9 +147,11 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : écrire le lanceur pour mesurer le DOM comme test262 mesure le
-  langage. Sans cette mesure, « ça marche » reste une impression. Demande de télécharger la
-  suite `web-platform-tests/wpt`.
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 209 fichiers de test entièrement réussis sur 693 (30,2 %).
+  La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
+  documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker` et
+  `Selection`. Restent, par gain décroissant : les cadres (`<iframe>`), les espaces de noms
+  et les nœuds `Attr`, `DOMParser`, l'accès nommé sur `window`, puis `url/` et `encoding/`.
 - **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
   `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
   `ResizeObserver`.

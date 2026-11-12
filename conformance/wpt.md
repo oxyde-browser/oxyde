@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 7034 / 36036 (19,5 %)** — fichiers entièrement réussis : 167 / 693 (24,1 %).
+**Sous-tests réussis : 37897 / 46501 (81,5 %)** — fichiers entièrement réussis : 209 / 693 (30,2 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,21 +13,21 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `dom` | 1 / 9 | 101 / 142 (71,1 %) |
+| `dom` | 1 / 9 | 104 / 142 (73,2 %) |
 | `dom/abort` | 2 / 6 | 33 / 37 (89,2 %) |
 | `dom/collections` | 0 / 12 | 10 / 60 (16,7 %) |
 | `dom/events` | 48 / 100 | 266 / 495 (53,7 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
 | `dom/events/scrolling` | 0 / 39 | 1 / 34 (2,9 %) |
 | `dom/lists` | 0 / 5 | 155 / 189 (82,0 %) |
-| `dom/nodes` | 109 / 265 | 6446 / 9743 (66,2 %) |
+| `dom/nodes` | 111 / 265 | 6469 / 9743 (66,4 %) |
 | `dom/nodes/Document-contentType/contentType` | 2 / 16 | 2 / 16 (12,5 %) |
 | `dom/nodes/insertion-removing-steps` | 3 / 22 | 5 / 37 (13,5 %) |
 | `dom/nodes/moveBefore` | 1 / 64 | 4 / 168 (2,4 %) |
 | `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
-| `dom/ranges` | 0 / 49 | 1 / 23825 (0,0 %) |
+| `dom/ranges` | 27 / 49 | 29242 / 33528 (87,2 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
-| `dom/traversal` | 0 / 18 | 1 / 846 (0,1 %) |
+| `dom/traversal` | 13 / 18 | 1597 / 1608 (99,3 %) |
 
 ## Fichiers non entièrement réussis
 
@@ -185,7 +185,7 @@ est le plus honnête des deux.
 | `dom/historical-mutation-events.html` | 1 / 10 |  |
 | `dom/historical.html` | 78 / 80 |  |
 | `dom/idlharness.window.js` | 0 / 1 |  |
-| `dom/interface-objects.html` | 19 / 23 |  |
+| `dom/interface-objects.html` | 22 / 23 |  |
 | `dom/lists/DOMTokenList-Iterable.html` | 0 / 6 |  |
 | `dom/lists/DOMTokenList-coverage-for-attributes.html` | 155 / 175 | harnais : 35 duplicate test names: "a.classList in http://www.w3.org/1999/xhtml namespace should be DOMTokenList.", "area.classLis |
 | `dom/lists/DOMTokenList-iteration.html` | 0 / 6 |  |
@@ -232,7 +232,6 @@ est le plus honnête des deux.
 | `dom/nodes/Document-createElement.html` | 49 / 147 |  |
 | `dom/nodes/Document-createElementNS.html` | 63 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 213 / 279 |  |
-| `dom/nodes/Document-createTreeWalker.html` | 1 / 5 |  |
 | `dom/nodes/Document-getElementById.html` | 14 / 18 |  |
 | `dom/nodes/Document-getElementsByClassName.html` | 0 / 1 |  |
 | `dom/nodes/Document-getElementsByTagName.html` | 6 / 18 |  |
@@ -264,8 +263,7 @@ est le plus honnête des deux.
 | `dom/nodes/MutationObserver-callback-arguments.html` | 0 / 1 |  |
 | `dom/nodes/MutationObserver-callback-order.window.js` | 2 / 3 |  |
 | `dom/nodes/MutationObserver-callback-tricky.html` | 0 / 2 |  |
-| `dom/nodes/MutationObserver-characterData.html` | 15 / 23 |  |
-| `dom/nodes/MutationObserver-childList.html` | 22 / 40 |  |
+| `dom/nodes/MutationObserver-childList.html` | 33 / 40 |  |
 | `dom/nodes/MutationObserver-cross-realm-callback-report-exception.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/MutationObserver-disconnect.html` | 1 / 2 |  |
 | `dom/nodes/MutationObserver-document.html` | 1 / 4 |  |
@@ -295,9 +293,9 @@ est le plus honnête des deux.
 | `dom/nodes/Node-textContent.html` | 73 / 81 |  |
 | `dom/nodes/NodeList-Iterable.html` | 7 / 8 |  |
 | `dom/nodes/NodeList-live-mutations.window.js` | 0 / 4 |  |
-| `dom/nodes/NodeList-static-length-getter-tampered-1.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/NodeList-static-length-getter-tampered-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/NodeList-static-length-getter-tampered-3.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/nodes/NodeList-static-length-getter-tampered-1.html` | 0 / 1 |  |
+| `dom/nodes/NodeList-static-length-getter-tampered-2.html` | 0 / 1 |  |
+| `dom/nodes/NodeList-static-length-getter-tampered-3.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-3.html` | 0 / 1 |  |
@@ -470,53 +468,26 @@ est le plus honnête des deux.
 | `dom/observable/tentative/observable-takeUntil.any.js` | 0 / 12 |  |
 | `dom/observable/tentative/observable-takeUntil.window.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/observable/tentative/observable-toArray.any.js` | 0 / 6 |  |
-| `dom/ranges/Range-adopt-test.html` | 0 / 4 |  |
 | `dom/ranges/Range-attribute-nodes.html` | 0 / 26 |  |
-| `dom/ranges/Range-attributes.html` | 0 / 1 |  |
 | `dom/ranges/Range-cloneContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-cloneContents-around-shadow.tentative.html` | 0 / 3 |  |
 | `dom/ranges/Range-cloneContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-cloneContents.html` | 0 / 187 | harnais : délai du harnais dépassé |
-| `dom/ranges/Range-cloneRange.html` | 0 / 62 |  |
-| `dom/ranges/Range-collapse.html` | 0 / 186 |  |
-| `dom/ranges/Range-commonAncestorContainer-2.html` | 1 / 6 |  |
-| `dom/ranges/Range-commonAncestorContainer.html` | 0 / 63 |  |
-| `dom/ranges/Range-compareBoundaryPoints.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/ranges/Range-comparePoint-2.html` | 0 / 3 |  |
-| `dom/ranges/Range-comparePoint.html` | 0 / 5580 |  |
-| `dom/ranges/Range-constructor.html` | 0 / 1 |  |
+| `dom/ranges/Range-cloneContents.html` | 1 / 187 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-deleteContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-deleteContents-around-shadow.tentative.html` | 0 / 2 |  |
 | `dom/ranges/Range-deleteContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-deleteContents.html` | 0 / 125 | harnais : délai du harnais dépassé |
-| `dom/ranges/Range-detach.html` | 0 / 1 |  |
+| `dom/ranges/Range-deleteContents.html` | 1 / 125 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-expand-shadow.tentative.html` | 0 / 13 |  |
 | `dom/ranges/Range-extractContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-extractContents-around-shadow.tentative.html` | 0 / 3 |  |
 | `dom/ranges/Range-extractContents-dynamic-end.html` | 0 / 1 |  |
 | `dom/ranges/Range-extractContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-extractContents.html` | 0 / 187 | harnais : délai du harnais dépassé |
+| `dom/ranges/Range-extractContents.html` | 1 / 187 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-in-shadow-after-the-shadow-removed.html` | 0 / 2 |  |
 | `dom/ranges/Range-insertNode.html` | 0 / 1840 | harnais : délai du harnais dépassé |
-| `dom/ranges/Range-intersectsNode-2.html` | 0 / 1 |  |
-| `dom/ranges/Range-intersectsNode-binding.html` | 0 / 1 |  |
 | `dom/ranges/Range-intersectsNode-shadow.html` | 0 / 1 |  |
-| `dom/ranges/Range-intersectsNode.html` | 0 / 2356 |  |
-| `dom/ranges/Range-isPointInRange.html` | 0 / 5643 |  |
-| `dom/ranges/Range-mutations-appendChild.html` | 0 / 70 |  |
-| `dom/ranges/Range-mutations-appendData.html` | 0 / 384 |  |
-| `dom/ranges/Range-mutations-dataChange.html` | 0 / 2808 |  |
-| `dom/ranges/Range-mutations-deleteData.html` | 0 / 564 |  |
-| `dom/ranges/Range-mutations-insertBefore.html` | 0 / 76 |  |
-| `dom/ranges/Range-mutations-insertData.html` | 0 / 382 |  |
-| `dom/ranges/Range-mutations-normalize.html` | 0 / 4 |  |
-| `dom/ranges/Range-mutations-removeChild.html` | 0 / 20 |  |
-| `dom/ranges/Range-mutations-replaceChild.html` | 0 / 60 |  |
-| `dom/ranges/Range-mutations-replaceData.html` | 0 / 1146 |  |
-| `dom/ranges/Range-mutations-splitText.html` | 0 / 116 |  |
-| `dom/ranges/Range-selectNode.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/ranges/Range-mutations-normalize.html` | 1 / 4 |  |
 | `dom/ranges/Range-set.html` | 0 / 0 | le harnais n'a pas terminé |
-| `dom/ranges/Range-stringifier.html` | 0 / 1 |  |
 | `dom/ranges/Range-surroundContents.html` | 0 / 1840 | harnais : délai du harnais dépassé |
 | `dom/ranges/StaticRange-constructor.html` | 0 / 17 |  |
 | `dom/ranges/tentative/OpaqueRange-auto-disconnect.html` | 0 / 17 |  |
@@ -538,24 +509,11 @@ est le plus honnête des deux.
 | `dom/ranges/tentative/OpaqueRange-unsupported-elements.html` | 0 / 1 |  |
 | `dom/ranges/tentative/OpaqueRange-update-event-order.html` | 0 / 4 |  |
 | `dom/ranges/tentative/OpaqueRange-validation.html` | 0 / 2 |  |
-| `dom/traversal/NodeFilter-constants.html` | 0 / 0 | harnais : ReferenceError: NodeFilter n'est pas défini |
-| `dom/traversal/NodeIterator-removal-during-filtering.html` | 0 / 4 |  |
-| `dom/traversal/NodeIterator-removal.html` | 0 / 25 |  |
-| `dom/traversal/NodeIterator.html` | 0 / 766 |  |
+| `dom/traversal/NodeIterator-removal-during-filtering.html` | 2 / 4 |  |
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm.html` | 0 / 5 |  |
-| `dom/traversal/TreeWalker-acceptNode-filter.html` | 0 / 12 |  |
-| `dom/traversal/TreeWalker-basic.html` | 1 / 6 |  |
-| `dom/traversal/TreeWalker-currentNode.html` | 0 / 4 |  |
-| `dom/traversal/TreeWalker-nextNode-detached-currentNode.window.js` | 0 / 3 |  |
-| `dom/traversal/TreeWalker-previousNodeLastChildReject.html` | 0 / 1 |  |
-| `dom/traversal/TreeWalker-previousSiblingLastChildSkip.html` | 0 / 1 |  |
+| `dom/traversal/TreeWalker-nextNode-detached-currentNode.window.js` | 2 / 3 |  |
 | `dom/traversal/TreeWalker-realm.html` | 0 / 2 |  |
-| `dom/traversal/TreeWalker-traversal-reject.html` | 0 / 6 |  |
-| `dom/traversal/TreeWalker-traversal-skip-most.html` | 0 / 2 |  |
-| `dom/traversal/TreeWalker-traversal-skip.html` | 0 / 6 |  |
-| `dom/traversal/TreeWalker-walking-outside-a-tree.html` | 0 / 1 |  |
-| `dom/traversal/TreeWalker.html` | 0 / 1 |  |
 | `dom/window-extends-event-target.html` | 2 / 3 |  |
 | `dom/xpath-evaluation-detached-nodes.html` | 0 / 19 |  |
 | `dom/xpath-result-single-node-value-nullable.html` | 0 / 1 |  |
