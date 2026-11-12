@@ -6,11 +6,13 @@
 //! de page. Aucun état n'est conservé entre deux images.
 //!
 //! Écrans couverts : « Fenêtre principale · vue scindée » (`Main`), « Nouvel
-//! onglet » (`NewTab`) et « Pages d'erreur » (`Errors`).
+//! onglet » (`NewTab`), « Pages d'erreur » (`Errors`), « Historique »
+//! (`History`) et « Favoris » (`Bookmarks`).
 //!
 //! Les polices de la maquette (Inter, Space Grotesk, JetBrains Mono) sont
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
 
+mod library;
 mod panes;
 pub mod theme;
 
@@ -63,6 +65,56 @@ pub enum Hit {
     ErrorPrimary(usize),
     /// Bouton secondaire de la page d'erreur de l'onglet donné.
     ErrorSecondary(usize),
+    /// Bibliothèque : « Retour aux onglets ».
+    LibraryBack,
+    /// Bibliothèque : rubrique.
+    LibrarySection(LibrarySection),
+    /// Bibliothèque : ligne d'index donné (ouvre la page).
+    LibraryRow(usize),
+    /// Bibliothèque : bouton de retrait de la ligne d'index donné.
+    LibraryRemove(usize),
+    /// Bibliothèque : champ de recherche.
+    LibrarySearch,
+    /// Bibliothèque : effacer tout l'historique (à confirmer).
+    LibraryClear,
+}
+
+/// Rubrique de la bibliothèque.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LibrarySection {
+    /// Pages visitées.
+    History,
+    /// Pages mises en favori.
+    Bookmarks,
+}
+
+/// Ligne de la bibliothèque.
+#[derive(Clone, Copy, Debug)]
+pub struct LibraryRow<'a> {
+    /// Titre de la page.
+    pub title: &'a str,
+    /// Nom d'hôte, pour la pastille et la colonne de droite.
+    pub host: &'a str,
+    /// Heure de la visite (historique) ou adresse (favoris).
+    pub detail: &'a str,
+    /// Titre de groupe à afficher avant la ligne (« Aujourd'hui »).
+    pub heading: Option<&'a str>,
+}
+
+/// Bibliothèque telle que l'interface l'affiche. Le texte de recherche est
+/// celui de [`ChromeState::address`].
+#[derive(Clone, Copy, Debug)]
+pub struct LibraryView<'a> {
+    /// Rubrique affichée.
+    pub section: LibrarySection,
+    /// Lignes ; leur index est celui porté par [`Hit::LibraryRow`].
+    pub rows: &'a [LibraryRow<'a>],
+    /// Défilement de la liste, en pixels (borné par [`Chrome::library_scroll_max`]).
+    pub scroll: f32,
+    /// L'effacement de l'historique attend sa confirmation.
+    pub confirm_clear: bool,
+    /// D'autres lignes existent, qui ne sont pas affichées.
+    pub truncated: bool,
 }
 
 /// Nature d'une page d'erreur.
@@ -177,6 +229,8 @@ pub struct ChromeState<'a> {
     pub tab_scroll: f32,
     /// Position du curseur dans `address` pendant la saisie, en octets.
     pub caret: usize,
+    /// Bibliothèque ouverte à la place des onglets.
+    pub library: Option<LibraryView<'a>>,
 }
 
 /// Volet de page web : emplacement de la page et de son onglet.
@@ -241,6 +295,8 @@ pub struct Chrome {
     pub tab_scroll_max: f32,
     /// Éléments exposés aux technologies d'assistance, dans l'ordre de lecture.
     pub widgets: Vec<Widget>,
+    /// Défilement maximal de la bibliothèque (nul si elle tient à l'écran).
+    pub library_scroll_max: f32,
 }
 
 impl Chrome {
@@ -509,7 +565,7 @@ impl Painter<'_> {
     }
 }
 
-const ICON_BACK: &str = "M10 3 5 8l5 5";
+pub(crate) const ICON_BACK: &str = "M10 3 5 8l5 5";
 const ICON_FORWARD: &str = "M6 3l5 5-5 5";
 const ICON_RELOAD: &str = "M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5";
 const ICON_SPLIT: &str =
@@ -597,6 +653,18 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
     }
     p.hits
         .push((rect(0.0, 0.0, w - 138.0, title_h), Hit::TitleBar));
+
+    // ---- Bibliothèque : elle remplace les onglets et les volets -------------
+    if let Some(view) = &state.library {
+        let library_scroll_max = library::build(&mut p, state, view);
+        return Chrome {
+            list: p.list,
+            hits: p.hits,
+            widgets: p.widgets,
+            library_scroll_max,
+            ..Chrome::default()
+        };
+    }
 
     // ---- Barre latérale ----------------------------------------------------
     let side_x = 8.0 + 4.0;
@@ -1031,6 +1099,7 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         panes: web_panes,
         tab_scroll_max,
         widgets: p.widgets,
+        library_scroll_max: 0.0,
     }
 }
 
@@ -1083,6 +1152,7 @@ mod tests {
             closed: &[],
             tab_scroll: 0.0,
             caret: 0,
+            library: None,
         }
     }
 
@@ -1346,5 +1416,120 @@ mod tests {
         );
         assert!(find("wgpu — docs.rs").is_some_and(|w| w.role == Role::Tab && w.selected));
         assert!(find("Espace Travail").is_some_and(|w| w.selected));
+    }
+
+    fn library_rows() -> [LibraryRow<'static>; 2] {
+        [
+            LibraryRow {
+                title: "wgpu — docs.rs",
+                host: "docs.rs",
+                detail: "14:32",
+                heading: Some("Aujourd'hui"),
+            },
+            LibraryRow {
+                title: "Cartes",
+                host: "cartes.example",
+                detail: "17:41",
+                heading: Some("Hier"),
+            },
+        ]
+    }
+
+    fn find_hit(chrome: &Chrome, hit: Hit) -> Option<Rect> {
+        chrome.hits.iter().find(|(_, h)| *h == hit).map(|(r, _)| *r)
+    }
+
+    #[test]
+    fn library_replaces_tabs_and_lists_rows() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let rows = library_rows();
+        let mut s = state(&tabs, None);
+        s.address = "";
+        s.editing = true;
+        s.library = Some(LibraryView {
+            section: LibrarySection::History,
+            rows: &rows,
+            scroll: 0.0,
+            confirm_clear: false,
+            truncated: false,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        assert!(chrome.panes.is_empty(), "aucune page sous la bibliothèque");
+        assert!(find_hit(&chrome, Hit::Tab(0)).is_none());
+        assert_eq!(chrome.library_scroll_max, 0.0);
+
+        let row = find_hit(&chrome, Hit::LibraryRow(0)).expect("première ligne");
+        assert_eq!(
+            chrome.hit(row.x + 100.0, row.y + 10.0),
+            Some(Hit::LibraryRow(0))
+        );
+        assert_eq!(chrome.hit(20.0, 60.0), Some(Hit::LibraryBack));
+        for hit in [
+            Hit::LibrarySection(LibrarySection::Bookmarks),
+            Hit::LibrarySearch,
+            Hit::LibraryClear,
+            Hit::CloseWindow,
+        ] {
+            assert!(find_hit(&chrome, hit).is_some(), "{hit:?}");
+        }
+        assert!(
+            chrome
+                .widgets
+                .iter()
+                .any(|w| w.role == Role::Heading && w.label == "Historique")
+        );
+        // Le bouton de retrait n'apparaît que sur la ligne survolée, et prend le clic.
+        assert!(find_hit(&chrome, Hit::LibraryRemove(0)).is_none());
+        s.hover = Some(Hit::LibraryRow(0));
+        let chrome = build_chrome(&s, &mut text);
+        let remove = find_hit(&chrome, Hit::LibraryRemove(0)).expect("retrait");
+        assert_eq!(
+            chrome.hit(remove.x + 5.0, remove.y + 5.0),
+            Some(Hit::LibraryRemove(0))
+        );
+    }
+
+    #[test]
+    fn long_library_scrolls_inside_its_panel() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let rows: Vec<LibraryRow<'_>> = (0..100)
+            .map(|i| LibraryRow {
+                title: "Page",
+                host: "site.example",
+                detail: "site.example/page",
+                heading: (i == 0).then_some("Tous les favoris"),
+            })
+            .collect();
+        let mut s = state(&tabs, None);
+        let view = |scroll| LibraryView {
+            section: LibrarySection::Bookmarks,
+            rows: &rows,
+            scroll,
+            confirm_clear: false,
+            truncated: false,
+        };
+        s.library = Some(view(0.0));
+        let chrome = build_chrome(&s, &mut text);
+        let max = chrome.library_scroll_max;
+        assert!(max > 1000.0, "la liste dépasse la fenêtre : {max}");
+        assert!(find_hit(&chrome, Hit::LibraryRow(99)).is_none());
+        // Les zones cliquables ne débordent jamais du panneau.
+        let inside = |chrome: &Chrome| {
+            chrome
+                .hits
+                .iter()
+                .filter(|(_, hit)| matches!(hit, Hit::LibraryRow(_)))
+                .all(|(r, _)| r.y >= 40.0 && r.y + r.h <= 892.0)
+        };
+        assert!(inside(&chrome));
+        // En bas, la dernière ligne est visible et la première ne l'est plus.
+        s.library = Some(view(max));
+        let chrome = build_chrome(&s, &mut text);
+        assert!(find_hit(&chrome, Hit::LibraryRow(99)).is_some());
+        assert!(find_hit(&chrome, Hit::LibraryRow(0)).is_none());
+        assert!(inside(&chrome));
+        assert_eq!(chrome.library_scroll_max, max);
     }
 }

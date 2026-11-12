@@ -21,6 +21,8 @@ pub const HOVER: Color = Color::rgb(0x1A, 0x20, 0x28);
 pub const HOVER_STRONG: Color = Color::rgb(0x2E, 0x37, 0x43);
 /// Fond d'une pastille (espace actif, bascule activée).
 pub const PILL: Color = Color::rgb(0x1C, 0x22, 0x2B);
+/// Bordure d'un champ ou d'un panneau flottant.
+pub const BORDER: Color = Color::rgb(0x2A, 0x31, 0x3B);
 /// Bordure discrète.
 pub const BORDER_SOFT: Color = Color::rgb(0x26, 0x2D, 0x37);
 /// Bordure d'une indication de raccourci.

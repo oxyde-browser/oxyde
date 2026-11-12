@@ -13,6 +13,8 @@
 //!         que dans le profil de l'utilisateur
 //! oxyde --no-profile …
 //!         ne lit ni n'écrit aucun profil
+//! oxyde --screen historique|favoris …
+//!         ouvre la bibliothèque sur l'historique ou les favoris
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
 //! oxyde --no-sandbox …
@@ -44,7 +46,7 @@ use oxyde_css::Viewport;
 use oxyde_gpu::{Gpu, GpuScene, Transform, append_scrolled};
 use oxyde_storage::Profile;
 use oxyde_text::TextContext;
-use oxyde_ui::theme;
+use oxyde_ui::{LibrarySection, theme};
 
 use crate::browser::Browser;
 use crate::renderer::host::{PageHost, RemotePage};
@@ -67,6 +69,8 @@ struct Args {
     profile: Option<PathBuf>,
     /// Aucun profil : rien n'est lu ni conservé.
     no_profile: bool,
+    /// Rubrique de la bibliothèque à ouvrir au lancement.
+    screen: Option<LibrarySection>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -83,6 +87,7 @@ fn parse_args() -> Result<Args> {
         size: (1440, 900),
         profile: None,
         no_profile: false,
+        screen: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -102,6 +107,13 @@ fn parse_args() -> Result<Args> {
                 args.profile = Some(PathBuf::from(dir));
             }
             "--no-profile" => args.no_profile = true,
+            "--screen" => {
+                args.screen = Some(match it.next().as_deref() {
+                    Some("historique") => LibrarySection::History,
+                    Some("favoris") => LibrarySection::Bookmarks,
+                    _ => bail!("--screen attend « historique » ou « favoris »"),
+                });
+            }
             "--page-only" => args.page_only = true,
             "--dump-dom" => args.dump_dom = true,
             "--dom-coverage" => args.dom_coverage = true,
@@ -211,6 +223,9 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         {
             browser.history = profile.load_history();
             browser.bookmarks = profile.load_bookmarks();
+        }
+        if let Some(section) = args.screen {
+            browser.open_screen(section);
         }
         frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
         theme::WINDOW
@@ -355,6 +370,9 @@ fn run() -> Result<()> {
     if let Some(profile) = &profile {
         browser.history = profile.load_history();
         browser.bookmarks = profile.load_bookmarks();
+    }
+    if let Some(section) = args.screen {
+        browser.open_screen(section);
     }
     app::run(browser, multi_process, profile)
 }

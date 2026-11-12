@@ -8,9 +8,11 @@
 
 use oxyde_content::{Navigation, Url};
 use oxyde_css::Color;
+use oxyde_platform::CivilTime;
 use oxyde_storage::{Bookmarks, History, Session, SessionTab};
 use oxyde_ui::{
-    ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, PaneContent, SpaceView, TabView, theme,
+    ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, LibraryRow, LibrarySection, LibraryView,
+    PaneContent, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
@@ -32,6 +34,72 @@ const SPACES: [(&str, Color); 3] = [
 
 /// Nombre d'onglets fermés gardés en mémoire.
 const MAX_CLOSED: usize = 10;
+
+/// Nombre maximal de lignes affichées par la bibliothèque.
+const MAX_LIBRARY_ROWS: usize = 500;
+
+const MONTHS: [&str; 12] = [
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+];
+
+/// Jour d'une date, sans l'heure.
+fn day_of(time: CivilTime) -> (i32, u8, u8) {
+    (time.year, time.month, time.day)
+}
+
+/// Nom du jour `day` pour un titre de groupe de l'historique.
+fn day_label(day: (i32, u8, u8), today: (i32, u8, u8), yesterday: (i32, u8, u8)) -> String {
+    if day == today {
+        return "Aujourd'hui".to_owned();
+    }
+    if day == yesterday {
+        return "Hier".to_owned();
+    }
+    let (year, month, number) = day;
+    let name = MONTHS
+        .get(usize::from(month).wrapping_sub(1))
+        .copied()
+        .unwrap_or("");
+    let ordinal = if number == 1 { "er" } else { "" };
+    format!("{number}{ordinal} {name} {year}")
+}
+
+/// Ligne de la bibliothèque.
+struct LibraryEntry {
+    url: String,
+    title: String,
+    host: String,
+    /// Heure de la visite, ou adresse du favori.
+    detail: String,
+    /// Titre du groupe que la ligne ouvre.
+    heading: Option<String>,
+    /// Moment de la visite (nul pour un favori).
+    time: u64,
+}
+
+/// Bibliothèque ouverte à la place des onglets. Dans l'historique, le texte
+/// de recherche est celui de la saisie en cours ([`Browser::editing`]).
+struct Library {
+    section: LibrarySection,
+    /// Défilement de la liste, en pixels.
+    scroll: f32,
+    /// L'effacement de l'historique attend sa confirmation.
+    confirm_clear: bool,
+    entries: Vec<LibraryEntry>,
+    /// D'autres visites correspondent, qui ne sont pas affichées.
+    truncated: bool,
+}
 
 /// Action à exécuter par l'application.
 #[derive(Debug)]
@@ -186,6 +254,7 @@ pub(crate) struct Views<'a> {
     tabs: Vec<TabView<'a>>,
     closed: Vec<ClosedView<'a>>,
     spaces: [SpaceView<'static>; SPACES.len()],
+    library: Vec<LibraryRow<'a>>,
 }
 
 pub(crate) struct Browser {
@@ -215,6 +284,8 @@ pub(crate) struct Browser {
     pub(crate) history: History,
     /// Favoris.
     pub(crate) bookmarks: Bookmarks,
+    /// Bibliothèque (historique, favoris), quand elle est ouverte.
+    library: Option<Library>,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -254,6 +325,7 @@ impl Browser {
             tab_scroll: 0.0,
             history: History::default(),
             bookmarks: Bookmarks::default(),
+            library: None,
         };
         browser.refresh_address();
         browser
@@ -456,6 +528,17 @@ impl Browser {
                 })
                 .collect(),
             spaces: SPACES.map(|(name, color)| SpaceView { name, color }),
+            library: self
+                .library
+                .iter()
+                .flat_map(|library| &library.entries)
+                .map(|entry| LibraryRow {
+                    title: &entry.title,
+                    host: &entry.host,
+                    detail: &entry.detail,
+                    heading: entry.heading.as_deref(),
+                })
+                .collect(),
         }
     }
 
@@ -485,7 +568,260 @@ impl Browser {
             closed: &views.closed,
             tab_scroll: self.tab_scroll,
             caret: self.caret,
+            library: self.library.as_ref().map(|library| LibraryView {
+                section: library.section,
+                rows: &views.library,
+                scroll: library.scroll,
+                confirm_clear: library.confirm_clear,
+                truncated: library.truncated,
+            }),
         }
+    }
+
+    /// Vrai si la bibliothèque est ouverte à la place des onglets.
+    pub(crate) fn library_open(&self) -> bool {
+        self.library.is_some()
+    }
+
+    /// Fait défiler la bibliothèque de `dy` pixels, sans dépasser `max` ;
+    /// renvoie `true` si le défilement a changé.
+    pub(crate) fn scroll_library(&mut self, dy: f32, max: f32) -> bool {
+        let Some(library) = &mut self.library else {
+            return false;
+        };
+        let target = (library.scroll + dy).clamp(0.0, max.max(0.0));
+        let changed = (target - library.scroll).abs() > f32::EPSILON;
+        library.scroll = target;
+        changed
+    }
+
+    /// Ouvre la bibliothèque sur `section` (ligne de commande).
+    pub(crate) fn open_screen(&mut self, section: LibrarySection) {
+        self.open_library(section);
+    }
+
+    fn open_library(&mut self, section: LibrarySection) {
+        self.library = Some(Library {
+            section,
+            scroll: 0.0,
+            confirm_clear: false,
+            entries: Vec::new(),
+            truncated: false,
+        });
+        // L'historique se filtre en tapant : son champ de recherche a la saisie.
+        self.editing = (section == LibrarySection::History).then(String::new);
+        self.caret = 0;
+        self.select_all = false;
+        self.refresh_library();
+    }
+
+    fn close_library(&mut self) {
+        self.library = None;
+        self.editing = None;
+        self.refresh_address();
+    }
+
+    /// Ouvre la bibliothèque sur `section`, ou la referme si elle y est déjà.
+    fn toggle_library(&mut self, section: LibrarySection) {
+        if self.library.as_ref().is_some_and(|l| l.section == section) {
+            self.close_library();
+        } else {
+            self.open_library(section);
+        }
+    }
+
+    /// Recalcule les lignes de la bibliothèque d'après l'historique, les
+    /// favoris et le texte de recherche.
+    fn refresh_library(&mut self) {
+        let Some(library) = &mut self.library else {
+            return;
+        };
+        library.entries.clear();
+        library.truncated = false;
+        let host_of = |url: &str| {
+            Url::parse(url)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_owned))
+                .unwrap_or_default()
+        };
+        let shown =
+            |url: &str| Url::parse(url).map_or_else(|_| url.to_owned(), |u| display_url(&u));
+        match library.section {
+            LibrarySection::History => {
+                let now = now_seconds();
+                let today = day_of(oxyde_platform::local_time(now));
+                let yesterday = day_of(oxyde_platform::local_time(now.saturating_sub(86_400)));
+                let query = self.editing.as_deref().unwrap_or("");
+                let mut last_day = None;
+                for visit in self.history.search(query) {
+                    if library.entries.len() == MAX_LIBRARY_ROWS {
+                        library.truncated = true;
+                        break;
+                    }
+                    let local = oxyde_platform::local_time(visit.time);
+                    let day = day_of(local);
+                    let heading = (last_day != Some(day)).then(|| day_label(day, today, yesterday));
+                    last_day = Some(day);
+                    library.entries.push(LibraryEntry {
+                        title: if visit.title.is_empty() {
+                            shown(&visit.url)
+                        } else {
+                            visit.title.clone()
+                        },
+                        host: host_of(&visit.url),
+                        detail: format!("{:02}:{:02}", local.hour, local.minute),
+                        heading,
+                        url: visit.url.clone(),
+                        time: visit.time,
+                    });
+                }
+            }
+            LibrarySection::Bookmarks => {
+                for (index, item) in self.bookmarks.items().iter().enumerate() {
+                    library.entries.push(LibraryEntry {
+                        title: if item.title.is_empty() {
+                            shown(&item.url)
+                        } else {
+                            item.title.clone()
+                        },
+                        host: host_of(&item.url),
+                        detail: shown(&item.url),
+                        heading: (index == 0).then(|| "Tous les favoris".to_owned()),
+                        url: item.url.clone(),
+                        time: 0,
+                    });
+                }
+            }
+        }
+    }
+
+    /// Ouvre la page de la ligne `index` de la bibliothèque : dans l'onglet
+    /// actif s'il est vide, sinon dans un nouvel onglet.
+    fn open_library_row(&mut self, index: usize) -> Vec<Command> {
+        let url = self
+            .library
+            .as_ref()
+            .and_then(|library| library.entries.get(index))
+            .and_then(|entry| Url::parse(&entry.url).ok());
+        let Some(url) = url else {
+            return Vec::new();
+        };
+        self.close_library();
+        if !self.tabs.get(self.active).is_some_and(Tab::is_new_tab) {
+            self.split = None;
+            self.active = self.push_tab(blank(), self.space);
+        }
+        self.load(self.active, url, true)
+    }
+
+    /// Retire de l'historique ou des favoris la ligne `index` de la bibliothèque.
+    fn remove_library_row(&mut self, index: usize) {
+        let Some(library) = &self.library else {
+            return;
+        };
+        let Some(entry) = library.entries.get(index) else {
+            return;
+        };
+        match library.section {
+            LibrarySection::History => {
+                self.history.remove(&entry.url, entry.time);
+            }
+            LibrarySection::Bookmarks => {
+                self.bookmarks.remove(&entry.url);
+            }
+        }
+        self.refresh_library();
+    }
+
+    /// Clic dans la bibliothèque.
+    fn library_click(&mut self, hit: Hit) -> Vec<Command> {
+        let confirming = self
+            .library
+            .as_mut()
+            .is_some_and(|library| std::mem::take(&mut library.confirm_clear));
+        match hit {
+            Hit::LibraryBack => self.close_library(),
+            Hit::LibrarySection(section) => {
+                if self.library.as_ref().is_some_and(|l| l.section != section) {
+                    self.open_library(section);
+                }
+            }
+            Hit::LibraryRow(index) => return self.open_library_row(index),
+            Hit::LibraryRemove(index) => self.remove_library_row(index),
+            Hit::LibraryClear => {
+                if confirming {
+                    self.history.clear();
+                    self.refresh_library();
+                } else if let Some(library) = &mut self.library {
+                    library.confirm_clear = true;
+                }
+            }
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// Touche pendant que la bibliothèque est ouverte ; `None` : la touche
+    /// suit son cours habituel.
+    fn library_key(&mut self, key: &KeyPress) -> Option<Vec<Command>> {
+        if let Some(library) = &mut self.library {
+            library.confirm_clear = false;
+        }
+        match key {
+            KeyPress::Escape => {
+                if self
+                    .editing
+                    .as_deref()
+                    .is_some_and(|query| !query.is_empty())
+                {
+                    self.editing = Some(String::new());
+                    self.caret = 0;
+                    self.select_all = false;
+                    self.refresh_library();
+                } else {
+                    self.close_library();
+                }
+            }
+            KeyPress::Ctrl('h') => self.toggle_library(LibrarySection::History),
+            KeyPress::CtrlShift('o') => self.toggle_library(LibrarySection::Bookmarks),
+            KeyPress::Ctrl('w') => self.close_library(),
+            KeyPress::Enter => return Some(self.open_library_row(0)),
+            KeyPress::Ctrl('a') => {
+                if self.editing.is_some() {
+                    self.select_all = true;
+                }
+            }
+            KeyPress::Text(typed) | KeyPress::Paste(typed) if self.editing.is_some() => {
+                self.insert_text(typed);
+                self.requery_library();
+            }
+            KeyPress::Backspace
+            | KeyPress::Delete
+            | KeyPress::Left
+            | KeyPress::Right
+            | KeyPress::Home
+            | KeyPress::End
+                if self.editing.is_some() =>
+            {
+                self.edit_key(key);
+                self.requery_library();
+            }
+            // Ces raccourcis quittent la bibliothèque puis font leur office.
+            KeyPress::Ctrl('l' | 'k' | 't') | KeyPress::CtrlShift('t') => {
+                self.close_library();
+                return None;
+            }
+            _ => {}
+        }
+        Some(Vec::new())
+    }
+
+    /// Le texte de recherche a peut-être changé : la liste repart du haut.
+    fn requery_library(&mut self) {
+        if let Some(library) = &mut self.library {
+            library.scroll = 0.0;
+        }
+        self.refresh_library();
     }
 
     pub(crate) fn is_editing(&self) -> bool {
@@ -765,7 +1101,16 @@ impl Browser {
     /// Clic sur un élément de l'interface. `page_point` : position dans la
     /// page (pixels CSS, défilement compris) quand le clic vise un volet.
     pub(crate) fn click(&mut self, hit: Hit, page_point: Option<(f32, f32)>) -> Vec<Command> {
-        if hit != Hit::Address {
+        if self.library.is_some() {
+            // Seuls les boutons de la fenêtre gardent leur rôle habituel.
+            let window = matches!(
+                hit,
+                Hit::Minimize | Hit::Maximize | Hit::CloseWindow | Hit::TitleBar
+            );
+            if !window {
+                return self.library_click(hit);
+            }
+        } else if hit != Hit::Address {
             self.editing = None;
         }
         match hit {
@@ -829,6 +1174,13 @@ impl Browser {
             Hit::CloseWindow => vec![Command::CloseWindow],
             // Paramètres : écran prévu au jalon 7. Barre de titre : gérée par la fenêtre.
             Hit::Settings | Hit::TitleBar => Vec::new(),
+            // La bibliothèque est fermée : ses éléments ne sont pas à l'écran.
+            Hit::LibraryBack
+            | Hit::LibrarySection(_)
+            | Hit::LibraryRow(_)
+            | Hit::LibraryRemove(_)
+            | Hit::LibrarySearch
+            | Hit::LibraryClear => Vec::new(),
         }
     }
 
@@ -904,7 +1256,14 @@ impl Browser {
 
     /// Touche du clavier.
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
+        if self.library.is_some()
+            && let Some(commands) = self.library_key(&key)
+        {
+            return commands;
+        }
         match key {
+            KeyPress::Ctrl('h') => self.open_library(LibrarySection::History),
+            KeyPress::CtrlShift('o') => self.open_library(LibrarySection::Bookmarks),
             KeyPress::Ctrl('l' | 'k') => self.start_editing(),
             KeyPress::Ctrl('t') => self.new_tab(),
             KeyPress::Ctrl('w') => return self.close_tab(self.active),
@@ -1192,7 +1551,7 @@ impl Browser {
         down: bool,
         input: &oxyde_content::KeyInput<'_>,
     ) -> (bool, bool) {
-        if self.editing.is_some() {
+        if self.editing.is_some() || self.library.is_some() {
             return (false, false);
         }
         let Some(tab) = self.tabs.get_mut(self.active) else {
@@ -1577,5 +1936,116 @@ mod tests {
         );
         b.key(KeyPress::Ctrl('d'));
         assert!(b.bookmarks.items().is_empty());
+    }
+
+    fn library_titles(b: &Browser) -> Vec<String> {
+        let views = b.views();
+        let state = b.chrome_state(&views, 1440.0, 900.0);
+        state
+            .library
+            .map(|library| {
+                library
+                    .rows
+                    .iter()
+                    .map(|row| row.title.to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn library_lists_searches_and_opens_history() {
+        let mut b = browser();
+        b.history
+            .record("https://docs.test/rust", "Le langage Rust", 100);
+        b.history.record("https://news.test/", "Actualités", 200);
+        b.key(KeyPress::Ctrl('h'));
+        assert!(b.library_open());
+        assert_eq!(library_titles(&b), ["Actualités", "Le langage Rust"]);
+
+        // Taper filtre ; Échap vide la recherche avant de fermer.
+        b.key(KeyPress::Text("rust".into()));
+        assert_eq!(library_titles(&b), ["Le langage Rust"]);
+        b.key(KeyPress::Escape);
+        assert!(b.library_open());
+        assert_eq!(library_titles(&b).len(), 2);
+
+        b.click(Hit::LibraryRemove(0), None);
+        assert_eq!(library_titles(&b), ["Le langage Rust"]);
+        assert_eq!(b.history.visits().len(), 1);
+
+        // La page s'ouvre dans un nouvel onglet : l'onglet actif garde la sienne.
+        let commands = b.click(Hit::LibraryRow(0), None);
+        assert_eq!(
+            load_target(&commands).map(|(_, url, push)| (url, push)),
+            Some(("https://docs.test/rust".into(), true))
+        );
+        assert!(!b.library_open());
+        assert_eq!(b.tabs.len(), 2);
+
+        // Effacer demande une confirmation ; un autre clic l'annule.
+        b.key(KeyPress::Ctrl('h'));
+        b.click(Hit::LibraryClear, None);
+        b.click(Hit::LibrarySearch, None);
+        b.click(Hit::LibraryClear, None);
+        assert_eq!(b.history.visits().len(), 1);
+        b.click(Hit::LibraryClear, None);
+        assert!(b.history.visits().is_empty());
+        b.key(KeyPress::Escape);
+        assert!(!b.library_open());
+    }
+
+    #[test]
+    fn library_bookmarks_and_shortcuts() {
+        let mut b = browser();
+        b.key(KeyPress::Ctrl('d'));
+        b.key(KeyPress::CtrlShift('o'));
+        assert_eq!(library_titles(&b), ["A"]);
+        // Pas de champ de recherche dans les favoris : le texte est ignoré,
+        // et la page cachée ne reçoit pas les touches.
+        b.key(KeyPress::Text("x".into()));
+        assert!(!b.is_editing());
+        let input = oxyde_content::KeyInput {
+            key: "a",
+            code: "KeyA",
+            ctrl: false,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        assert_eq!(b.page_key(true, &input), (false, false));
+
+        b.click(Hit::LibrarySection(LibrarySection::History), None);
+        assert!(b.is_editing(), "le champ de recherche a la saisie");
+        b.click(Hit::LibrarySection(LibrarySection::Bookmarks), None);
+        b.click(Hit::LibraryRemove(0), None);
+        assert!(b.bookmarks.items().is_empty());
+        assert!(library_titles(&b).is_empty());
+
+        // Ctrl T quitte la bibliothèque et ouvre un onglet.
+        b.key(KeyPress::Ctrl('t'));
+        assert!(!b.library_open());
+        assert_eq!(b.tabs.len(), 2);
+        // Un clic sur un élément d'onglet pendant que la bibliothèque est
+        // ouverte ne fait rien.
+        b.key(KeyPress::CtrlShift('o'));
+        assert!(b.click(Hit::CloseTab(0), None).is_empty());
+        assert_eq!(b.tabs.len(), 2);
+    }
+
+    #[test]
+    fn history_days_are_named() {
+        let today = (2026, 11, 12);
+        let yesterday = (2026, 11, 11);
+        assert_eq!(day_label(today, today, yesterday), "Aujourd'hui");
+        assert_eq!(day_label(yesterday, today, yesterday), "Hier");
+        assert_eq!(
+            day_label((2026, 11, 3), today, yesterday),
+            "3 novembre 2026"
+        );
+        assert_eq!(day_label((2025, 8, 1), today, yesterday), "1er août 2025");
+        // Un mois hors bornes ne fait rien paniquer.
+        assert_eq!(day_label((2025, 0, 5), today, yesterday), "5  2025");
     }
 }

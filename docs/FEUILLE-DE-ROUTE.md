@@ -404,8 +404,12 @@ Fait :
 - **Historique** : chaque nouvelle navigation réussie y est notée, avec son titre (les retours
   en arrière et les rechargements n'en sont pas). 20 000 visites au plus.
 - **Favoris** : Ctrl D ajoute ou retire la page.
+- **Écrans Historique et Favoris** (bibliothèque, Ctrl H et Ctrl Maj O) : visites groupées par
+  jour à l'heure locale, recherche au fil de la frappe, retrait d'une ligne, effacement de
+  l'historique après confirmation ; une page s'ouvre dans un nouvel onglet. L'heure locale vient
+  d'`oxyde_platform` (API Win32 ; UTC ailleurs).
 
-Reste : les écrans (historique, favoris, paramètres, téléchargements, infos du site,
+Reste : les dossiers de favoris et l'import ; les écrans (paramètres, téléchargements, infos du site,
 autorisations, recherche dans la page, navigation privée, palette de commandes, mots de passe,
 premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.

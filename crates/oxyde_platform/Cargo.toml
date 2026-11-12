@@ -7,5 +7,26 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-[lints]
-workspace = true
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Time",
+] }
+
+# Ce crate appelle l'API Win32 : il ne peut pas hériter de l'interdiction du
+# code `unsafe` posée par le workspace. Il la remplace par un refus par
+# défaut, levé pour le seul module `windows`, et par l'obligation de
+# justifier chaque bloc.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+undocumented_unsafe_blocks = "deny"
+multiple_unsafe_ops_per_block = "warn"

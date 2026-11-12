@@ -20,6 +20,7 @@ oxyde_net.workspace = true
 oxyde_compositor.workspace = true
 oxyde_ipc.workspace = true
 oxyde_paint.workspace = true
+oxyde_platform.workspace = true
 oxyde_sandbox.workspace = true
 oxyde_storage.workspace = true
 oxyde_text.workspace = true

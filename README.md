@@ -39,6 +39,7 @@ cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 | Ctrl Maj T | rouvrir le dernier onglet fermé |
 | Ctrl Maj P | épingler ou désépingler l'onglet |
 | Ctrl D | ajouter la page aux favoris, ou l'en retirer |
+| Ctrl H / Ctrl Maj O | ouvrir l'historique / les favoris |
 | Ctrl Tab | onglet suivant |
 | Ctrl R, F5 | actualiser |
 | Alt ← / Alt → | page précédente / suivante |
@@ -60,7 +61,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | Crate | Rôle | Équivalent Chromium | État |
 |---|---|---|---|
 | `oxyde` | exécutable : fenêtre, onglets, espaces, chargements, accessibilité | `chrome/` | fonctionne, mono-processus |
-| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur |
+| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur, Historique, Favoris |
 | `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images, DOM exposé aux scripts | `content/renderer` | fonctionne |
 | `oxyde_net` | HTTP/1.1, HTTP/2, TLS | `//net`, BoringSSL | GET, redirections ; voir limites |
 | `oxyde_html` | tokenizer + construction d'arbre WHATWG | analyseur HTML de Blink | l'essentiel du standard |
@@ -79,7 +80,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_storage` | profil sur disque : session, historique, favoris, réglages | `//components/sessions`, `history`, `bookmarks`, `prefs` | fonctionne — fichiers texte, sans verrou ni chiffrement |
 | `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
-| `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |
+| `oxyde_platform` | abstraction du système : heure locale | `//ui/base`, `//base` | heure locale sous Windows ; le reste au jalon 10 |
 
 ## Avertissements
 
@@ -106,8 +107,8 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 - **Profil** : les onglets (épinglés, espaces, onglets fermés), l'historique et les favoris sont
   conservés dans `%LOCALAPPDATA%\Oxyde\Profil` (`--profile DOSSIER` pour un autre dossier,
   `--no-profile` pour ne rien conserver). Au retour, seul l'onglet affiché est rechargé ; les
-  autres attendent d'être ouverts. L'historique et les favoris n'ont pas encore d'écran ; les
-  cookies, eux, vivent toujours en mémoire. Deux fenêtres sur le même profil s'écrasent l'une
+  autres attendent d'être ouverts. Les favoris n'ont ni dossiers ni import ; les cookies, eux,
+  vivent toujours en mémoire. Deux fenêtres sur le même profil s'écrasent l'une
   l'autre.
 
 Les écarts connus par rapport aux standards sont listés dans [conformance/README.md](conformance/README.md)
