@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 821 tests de test262 sur 48 795 (85,7 %)** ; il en reste 6 974.
+- `oxyde_js` réussit **42 176 tests de test262 sur 48 795 (86,4 %)** ; il en reste 6 619.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -109,8 +109,12 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
 
 ### E — Expressions rationnelles (855 tests)
 
-- **Propriétés Unicode** `\p{…}` (464) : il faut les tables Unicode (catégories, écritures,
-  propriétés binaires). Elles sont déjà prévues au plan par ICU4X, qui est en Rust pur.
+- **Propriétés Unicode** `\p{…}` (464) : faites, sur les tables d'ICU4X (catégories
+  générales, écritures et leurs extensions, propriétés binaires). 357 tests de plus. Les
+  tables sont en Unicode 18 et la suite vise Unicode 17 : 91 tests échouent sur des
+  caractères dont les propriétés ont changé. Les propriétés de chaînes (`RGI_Emoji`…)
+  viennent avec le drapeau `v`. Au passage, la répétition d'un atome d'un seul caractère
+  (`a*`, `\p{L}+`) ne coûte plus de place de pile par tour.
 - **Drapeau `v`** et **modificateurs** `(?i:…)` (221).
 - **Reste** (170) : `RegExp.prototype.compile`, propriétés statiques héritées (`RegExp.$1`),
   drapeau `d` (indices), groupes nommés en double.

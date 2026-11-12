@@ -12,7 +12,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 286 fichiers de test entièrement réussis sur 693 (41,3 %) ; 42936 sous-tests sur 49891, détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 538 fichiers entièrement réussis sur 2 267 (23,7 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 50 fichiers entièrement réussis sur 363 (13,8 %) ; détail dans [wpt-animations.md](wpt-animations.md). L'API Web Animations (`getAnimations`, `Element.animate`), dont dépendent la plupart de ces tests, reste à faire |
-| test262 | `oxyde_js` | **branchée** : 41 821 tests réussis sur 48 795 (85,7 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 42 176 tests réussis sur 48 795 (86,4 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
@@ -31,7 +31,7 @@ pilotés par WebDriver (`testdriver.js`), `Observable`.
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus
 gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul), les expressions
-rationnelles (780), les méthodes d'`Iterator` (220), la gestion explicite des ressources
+rationnelles (470), les méthodes d'`Iterator` (220), la gestion explicite des ressources
 (`using`, `DisposableStack` : 200), les attributs d'importation, `ShadowRealm`.
 
 ## Écarts connus
@@ -109,8 +109,9 @@ rationnelles (780), les méthodes d'`Iterator` (220), la gestion explicite des r
   soixantaine de niveaux lèvent `RangeError`.
 - Expressions rationnelles : moteur à retour sur trace écrit pour Oxyde (groupes nommés,
   références, assertions avant et arrière, drapeaux `g i m s u y`). Le texte est parcouru par
-  points de code même sans `u` ; `\p{…}` ne connaît que quelques propriétés ; pas de drapeau
-  `v` ; `d` est accepté sans effet ; un motif littéral invalide n'est signalé qu'à
+  points de code même sans `u` ; `\p{…}` s'appuie sur les tables d'ICU4X, en Unicode 18,
+  alors que la suite test262 utilisée vise Unicode 17 : 91 de ses tests échouent sur des
+  caractères dont les propriétés ont changé entre les deux versions ; pas de drapeau `v` ; `d` est accepté sans effet ; un motif littéral invalide n'est signalé qu'à
   l'exécution ; les méthodes de `String` ne passent pas par `Symbol.match`, `Symbol.replace`…
   Une recherche trop coûteuse (motif à coût exponentiel) lève `RangeError`.
 - Générateurs async et `for await` : mêmes limites que les générateurs pour `return()` et

@@ -213,7 +213,9 @@ fn from_code_point(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             reason = "validé par la garde"
         )]
         let c = if n >= 0.0 && n.fract() == 0.0 && n <= 1_114_111.0 {
-            char::from_u32(n as u32)
+            // LIMITE : un demi-substitut isolé n'est pas représentable ; il
+            // devient U+FFFD, comme dans `fromCharCode`.
+            Some(char::from_u32(n as u32).unwrap_or('\u{fffd}'))
         } else {
             None
         };

@@ -10,9 +10,16 @@
 //! le drapeau `u` (un caractère hors du plan de base compte pour un seul
 //! « . ») ; un demi-substitut isolé (`\uD83D` seul) n'est pas représentable ;
 //! la comparaison insensible à la casse suit les correspondances simples
-//! d'Unicode ; `\p{…}` ne connaît que quelques propriétés (`L`, `Lu`, `Ll`,
-//! `N`, `Nd`, `Alphabetic`, `Uppercase`, `Lowercase`, `White_Space`, `ASCII`,
-//! `Any`) ; le drapeau `v` n'existe pas et `d` est accepté sans effet.
+//! d'Unicode ; le drapeau `v` n'existe pas et `d` est accepté sans effet.
+//!
+//! Les propriétés Unicode de `\p{…}` (catégories générales, écritures,
+//! propriétés binaires) viennent des tables d'ICU4X.
+
+use icu_properties::props::{GeneralCategory, GeneralCategoryGroup, Script};
+use icu_properties::script::ScriptWithExtensions;
+use icu_properties::{
+    CodePointMapData, CodePointSetData, CodePointSetDataBorrowed, PropertyParser,
+};
 
 /// Nombre maximal de pas d'exécution pour une recherche.
 const STEP_LIMIT: u64 = 20_000_000;
@@ -84,18 +91,66 @@ pub(crate) type Captures = Vec<Option<(usize, usize)>>;
 
 // ---- Classes de caractères -------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Propriété Unicode désignée par `\p{…}`.
+#[derive(Clone, Copy, Debug)]
 enum Property {
-    Letter,
-    Uppercase,
-    Lowercase,
-    Number,
-    WhiteSpace,
-    Ascii,
+    /// Tous les points de code.
     Any,
+    Ascii,
+    /// Tout sauf la catégorie « non assigné ».
+    Assigned,
+    /// Une catégorie générale, ou un groupe de catégories (`L`, `Letter`).
+    Category(GeneralCategoryGroup),
+    Script(Script),
+    ScriptExtensions(Script),
+    /// Propriété binaire (`Alphabetic`, `Emoji`…).
+    Binary(CodePointSetDataBorrowed<'static>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Property {
+    /// Propriété nommée par le contenu de `\p{…}` : `Nom` ou `Nom=Valeur`,
+    /// à la lettre près (ECMA-262 §22.2.2.9). `None` si elle n'existe pas.
+    fn parse(text: &str) -> Option<Self> {
+        let category = |value: &str| {
+            PropertyParser::<GeneralCategoryGroup>::new()
+                .get_strict(value)
+                .map(Self::Category)
+        };
+        let script = |value: &str| PropertyParser::<Script>::new().get_strict(value);
+        match text.split_once('=') {
+            Some(("General_Category" | "gc", value)) => category(value),
+            Some(("Script" | "sc", value)) => script(value).map(Self::Script),
+            Some(("Script_Extensions" | "scx", value)) => script(value).map(Self::ScriptExtensions),
+            Some(_) => None,
+            None => match text {
+                "Any" => Some(Self::Any),
+                "ASCII" => Some(Self::Ascii),
+                "Assigned" => Some(Self::Assigned),
+                // Alias que la table d'ICU4X ne connaît pas.
+                "space" => CodePointSetData::new_for_ecma262(b"White_Space").map(Self::Binary),
+                // Une valeur de catégorie générale s'écrit aussi seule.
+                _ => category(text).or_else(|| {
+                    CodePointSetData::new_for_ecma262(text.as_bytes()).map(Self::Binary)
+                }),
+            },
+        }
+    }
+
+    fn matches(self, c: char) -> bool {
+        let category = || CodePointMapData::<GeneralCategory>::new().get(c);
+        match self {
+            Self::Any => true,
+            Self::Ascii => c.is_ascii(),
+            Self::Assigned => category() != GeneralCategory::Unassigned,
+            Self::Category(group) => group.contains(category()),
+            Self::Script(script) => CodePointMapData::<Script>::new().get(c) == script,
+            Self::ScriptExtensions(script) => ScriptWithExtensions::new().has_script(c, script),
+            Self::Binary(set) => set.contains(c),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 enum Builtin {
     Digit,
     Word,
@@ -131,20 +186,12 @@ impl Builtin {
             Self::Digit => c.is_ascii_digit(),
             Self::Word => is_word(c),
             Self::Space => is_space(c),
-            Self::Property(property) => match property {
-                Property::Letter => c.is_alphabetic(),
-                Property::Uppercase => c.is_uppercase(),
-                Property::Lowercase => c.is_lowercase(),
-                Property::Number => c.is_numeric(),
-                Property::WhiteSpace => c.is_whitespace(),
-                Property::Ascii => c.is_ascii(),
-                Property::Any => true,
-            },
+            Self::Property(property) => property.matches(c),
         }
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 struct ClassSet {
     negated: bool,
     ranges: Vec<(char, char)>,
@@ -575,19 +622,8 @@ impl Parser {
                 None => return Err("propriété Unicode invalide".to_owned()),
             }
         }
-        let value = name
-            .strip_prefix("General_Category=")
-            .or_else(|| name.strip_prefix("gc="))
-            .unwrap_or(&name);
-        let property = match value {
-            "L" | "Letter" | "Alphabetic" | "Alpha" => Property::Letter,
-            "Lu" | "Uppercase_Letter" | "Uppercase" => Property::Uppercase,
-            "Ll" | "Lowercase_Letter" | "Lowercase" => Property::Lowercase,
-            "N" | "Number" | "Nd" | "Decimal_Number" => Property::Number,
-            "White_Space" | "space" => Property::WhiteSpace,
-            "ASCII" => Property::Ascii,
-            "Any" => Property::Any,
-            _ => return Err(format!("propriété Unicode « {name} » non prise en charge")),
+        let Some(property) = Property::parse(&name) else {
+            return Err(format!("propriété Unicode « {name} » inconnue"));
         };
         Ok(ClassSet::single(Builtin::Property(property), negated))
     }
@@ -731,6 +767,13 @@ impl Parser {
             let low = match self.class_atom()? {
                 Ok(c) => c,
                 Err(inner) => {
+                    // Une classe prédéfinie ne borne pas un intervalle.
+                    if self.unicode
+                        && self.peek() == Some('-')
+                        && !matches!(self.peek_at(1), Some(']') | None)
+                    {
+                        return Err("intervalle de classe invalide".to_owned());
+                    }
                     set.builtins.extend(inner.builtins);
                     continue;
                 }
@@ -793,6 +836,15 @@ enum Inst {
     SetReg {
         reg: usize,
         value: usize,
+    },
+    /// Répétition d'un atome d'un seul caractère (`a*`, `.+`, `\d{2,}`) :
+    /// l'atome est l'instruction suivante, la suite du motif vient après.
+    /// Les tours ne s'empilent pas : un seul point de choix les représente.
+    Span {
+        min: u32,
+        max: Option<u32>,
+        greedy: bool,
+        back: bool,
     },
     /// Tête de boucle : décide, d'après le compteur `reg`, de refaire un tour
     /// (instruction suivante) ou de sortir (`exit`).
@@ -940,6 +992,15 @@ impl Compiler {
                 greedy,
                 groups,
             } => {
+                if matches!(**node, Node::Char(_) | Node::Any | Node::Class(_)) {
+                    self.emit(Inst::Span {
+                        min: *min,
+                        max: *max,
+                        greedy: *greedy,
+                        back,
+                    })?;
+                    return self.node(node, back);
+                }
                 let count = self.register();
                 let mark = self.register();
                 self.emit(Inst::SetReg {
@@ -1069,6 +1130,21 @@ enum Undo {
     },
     /// Captures d'avant une assertion réussie.
     Caps(Vec<Option<usize>>),
+    /// Répétition gourmande : reprendre à `pc` avec un caractère de moins,
+    /// tant que `pos` n'a pas rejoint `limit`.
+    Shorter {
+        pc: usize,
+        pos: usize,
+        limit: usize,
+        back: bool,
+    },
+    /// Répétition paresseuse d'instruction `span` : essayer un caractère de
+    /// plus à partir de `pos`, `count` étant déjà pris.
+    Longer {
+        span: usize,
+        pos: usize,
+        count: u32,
+    },
 }
 
 struct Machine<'a> {
@@ -1091,6 +1167,27 @@ impl Machine<'_> {
             Some((*self.input.get(before)?, before))
         } else {
             Some((*self.input.get(pos)?, pos + 1))
+        }
+    }
+
+    /// Vrai si l'atome d'un seul caractère `inst` accepte `c`.
+    fn unit_matches(&self, inst: Option<&Inst>, c: char) -> bool {
+        match inst {
+            Some(Inst::Char { c: wanted, .. }) => {
+                let found = if self.regex.flags.ignore_case {
+                    canonical(c)
+                } else {
+                    c
+                };
+                found == *wanted
+            }
+            Some(Inst::Any { .. }) => self.regex.flags.dot_all || !is_line_terminator(c),
+            Some(Inst::Class { set, .. }) => self
+                .regex
+                .sets
+                .get(*set)
+                .is_some_and(|s| s.matches(c, self.regex.flags.ignore_case)),
+            _ => false,
         }
     }
 
@@ -1226,6 +1323,54 @@ impl Machine<'_> {
                     }
                     true
                 }
+                Inst::Span {
+                    min,
+                    max,
+                    greedy,
+                    back,
+                } => {
+                    let (min, max, back) = (*min, *max, *back);
+                    let unit = self.regex.insts.get(pc + 1);
+                    // Gourmande : tout ce qui se présente ; paresseuse : le minimum.
+                    let wanted = if *greedy { max } else { Some(min) };
+                    let mut count = 0u32;
+                    let mut end = pos;
+                    let mut least = pos;
+                    while wanted.is_none_or(|wanted| count < wanted) {
+                        match self.next_char(end, back) {
+                            Some((c, next)) if self.unit_matches(unit, c) => {
+                                end = next;
+                                count += 1;
+                                if count == min {
+                                    least = end;
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                    self.steps += u64::from(count);
+                    if count < min {
+                        false
+                    } else {
+                        if *greedy && end != least {
+                            stack.push(Undo::Shorter {
+                                pc: pc + 2,
+                                pos: end,
+                                limit: least,
+                                back,
+                            });
+                        } else if !*greedy && max.is_none_or(|max| count < max) {
+                            stack.push(Undo::Longer {
+                                span: pc,
+                                pos: end,
+                                count,
+                            });
+                        }
+                        pos = end;
+                        pc += 2;
+                        continue;
+                    }
+                }
                 Inst::LoopHead {
                     reg,
                     min,
@@ -1328,6 +1473,58 @@ impl Machine<'_> {
                         }
                     }
                     Some(Undo::Caps(old)) => self.caps = old,
+                    Some(Undo::Shorter {
+                        pc: target,
+                        pos: longest,
+                        limit,
+                        back,
+                    }) => {
+                        // Un caractère de moins ; `longest` diffère de `limit`.
+                        let shorter = if back {
+                            longest.saturating_add(1)
+                        } else {
+                            longest.saturating_sub(1)
+                        };
+                        if shorter != limit {
+                            stack.push(Undo::Shorter {
+                                pc: target,
+                                pos: shorter,
+                                limit,
+                                back,
+                            });
+                        }
+                        self.steps += 1;
+                        pc = target;
+                        pos = shorter;
+                        break;
+                    }
+                    Some(Undo::Longer {
+                        span,
+                        pos: shortest,
+                        count,
+                    }) => {
+                        let Some(Inst::Span { max, back, .. }) = self.regex.insts.get(span) else {
+                            continue;
+                        };
+                        let unit = self.regex.insts.get(span + 1);
+                        self.steps += 1;
+                        // Un caractère de plus, s'il convient ; sinon l'échec continue.
+                        if let Some((c, next)) = self.next_char(shortest, *back)
+                            && self.unit_matches(unit, c)
+                        {
+                            let count = count.saturating_add(1);
+                            if max.is_none_or(|max| count < max) {
+                                stack.push(Undo::Longer {
+                                    span,
+                                    pos: next,
+                                    count,
+                                });
+                            }
+                            pc = span + 2;
+                            pos = next;
+                            break;
+                        }
+                    }
                     None => return Ok(false),
                 }
             }
@@ -1498,6 +1695,79 @@ mod tests {
         assert_eq!(find(r"\p{Lu}\p{Ll}+", "u", "x Été").as_deref(), Some("Été"));
         assert_eq!(find(r"\P{L}+", "u", "ab12cd").as_deref(), Some("12"));
         assert_eq!(find(r"[\p{N}_]+", "u", "a_1٣b").as_deref(), Some("_1٣"));
+    }
+
+    #[test]
+    fn unicode_properties() {
+        // Catégories générales, seules ou nommées, et groupes de catégories.
+        assert_eq!(find(r"\p{Lu}+", "u", "abcDÉFghi").as_deref(), Some("DÉF"));
+        assert_eq!(
+            find(r"\p{General_Category=Letter}+", "u", "12abc34").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(find(r"\P{L}+", "u", "ab12cd").as_deref(), Some("12"));
+        // Écritures, avec et sans extensions.
+        assert_eq!(
+            find(r"\p{Script=Greek}+", "u", "abc αβγ").as_deref(),
+            Some("αβγ")
+        );
+        assert_eq!(
+            find(r"\p{sc=Han}+", "u", "ab漢字cd").as_deref(),
+            Some("漢字")
+        );
+        assert_eq!(
+            find(r"\p{scx=Hira}+", "u", "ab ーあ").as_deref(),
+            Some("ーあ")
+        );
+        assert_eq!(find(r"\p{sc=Hira}+", "u", "ab ーあ").as_deref(), Some("あ"));
+        // Propriétés binaires et pseudo-propriétés.
+        assert_eq!(
+            find(r"\p{Emoji_Presentation}", "u", "a😀b").as_deref(),
+            Some("😀")
+        );
+        assert_eq!(
+            find(r"\p{White_Space}+", "u", "a \t\u{a0}b").as_deref(),
+            Some(" \t\u{a0}")
+        );
+        assert_eq!(find(r"\p{space}", "u", "a b").as_deref(), Some(" "));
+        assert_eq!(find(r"[\p{ASCII}-]+", "u", "é-a-é").as_deref(), Some("-a-"));
+        assert_eq!(
+            find(r"\P{Assigned}", "u", "a\u{378}b").as_deref(),
+            Some("\u{378}")
+        );
+        assert_eq!(find(r"\p{Any}+", "u", "a\n😀").as_deref(), Some("a\n😀"));
+        // Les noms se lisent à la lettre : ni casse libre, ni valeur inconnue.
+        for pattern in [
+            r"\p{lu}",
+            r"\p{letter}",
+            r"\p{Script=greek}",
+            r"\p{Script}",
+            r"\p{Latin}",
+            r"\p{General_Category=Greek}",
+            r"\p{Nope=Lu}",
+            r"\p{}",
+            r"[\p{Lu}-z]",
+        ] {
+            assert!(compile(pattern, "u").is_err(), "{pattern}");
+        }
+    }
+
+    #[test]
+    fn single_character_loops_do_not_stack() {
+        // Un tour par caractère ne coûte ni pas ni place de pile en proportion.
+        let text: Vec<char> = "a".repeat(3_000_000).chars().collect();
+        let regex = compile(r"^\p{L}+$", "u").expect("motif valide");
+        let (result, steps) = regex.find(&text, 0, false);
+        assert_eq!(result, Ok(Some(vec![Some((0, 3_000_000))])));
+        assert!(steps < STEP_LIMIT);
+        // Le retour sur trace rend les caractères un à un.
+        assert_eq!(find("a*ab", "", "aaab").as_deref(), Some("aaab"));
+        assert_eq!(find("a{2,}?b|a+", "", "aaa").as_deref(), Some("aaa"));
+        assert_eq!(find(".*?b", "", "aabab").as_deref(), Some("aab"));
+        assert_eq!(find("x[ab]{1,2}?a", "", "xbaa").as_deref(), Some("xba"));
+        assert_eq!(find("(?<=a+)b", "", "caab").as_deref(), Some("b"));
+        assert_eq!(find("(?<=(a+?))b", "", "caab").as_deref(), Some("b|a"));
+        assert_eq!(find("a{2}", "", "a"), None);
     }
 
     #[test]
