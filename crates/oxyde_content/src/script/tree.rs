@@ -309,6 +309,53 @@ pub(super) fn remove_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResul
     Ok(arg(args, 0))
 }
 
+/// `moveBefore(node, child)` (DOM Standard, « move ») : déplace `node` dans
+/// ce parent sans le faire quitter le document.
+pub(super) fn move_before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let parent = this_node(vm, this)?;
+    let node = node_arg(vm, &arg(args, 0))?;
+    let child = nullable_node(vm, args, 1)?;
+    ensure(vm, |doc| {
+        let root = |n: NodeId| doc.ancestors(n).last().unwrap_or(n);
+        // « Ensure pre-move validity ».
+        if !matches!(
+            doc.node(parent).data,
+            NodeData::Document | NodeData::Fragment | NodeData::Element(_)
+        ) || root(parent) != root(node)
+            || doc.contains(node, parent)
+        {
+            return Err((HIERARCHY, "ce nœud ne peut pas être déplacé ici"));
+        }
+        if let Some(c) = child
+            && doc.node(c).parent != Some(parent)
+        {
+            return Err((
+                "NotFoundError",
+                "le nœud de référence n'est pas un enfant de ce parent",
+            ));
+        }
+        let movable = matches!(doc.node(node).data, NodeData::Element(_))
+            || (doc.character_data(node).is_some() && !doc.is_document(parent));
+        if !movable || (is_text(doc, node) && doc.is_document(parent)) {
+            return Err((HIERARCHY, "seuls un élément ou un texte se déplacent"));
+        }
+        if doc.is_document(parent) && doc.node(node).parent != Some(parent) {
+            return validity(doc, node, parent, child, false);
+        }
+        Ok(())
+    })?;
+    if let Some(h) = host(vm) {
+        let reference = if child == Some(node) {
+            h.doc.node(node).next_sibling
+        } else {
+            child
+        };
+        h.doc.insert_before(parent, node, reference);
+        h.dirty = true;
+    }
+    Ok(Value::Undefined)
+}
+
 // ---- ChildNode et ParentNode -----------------------------------------------------------
 
 pub(super) fn remove(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {

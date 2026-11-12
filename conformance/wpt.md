@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 39445 / 46506 (84,8 %)** — fichiers entièrement réussis : 257 / 693 (37,1 %).
+**Sous-tests réussis : 39548 / 46508 (85,0 %)** — fichiers entièrement réussis : 269 / 693 (38,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -16,14 +16,14 @@ est le plus honnête des deux.
 | `dom` | 5 / 9 | 120 / 142 (84,5 %) |
 | `dom/abort` | 2 / 6 | 33 / 37 (89,2 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
-| `dom/events` | 48 / 100 | 266 / 495 (53,7 %) |
+| `dom/events` | 50 / 100 | 327 / 495 (66,1 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
-| `dom/events/scrolling` | 0 / 39 | 1 / 34 (2,9 %) |
+| `dom/events/scrolling` | 0 / 39 | 1 / 36 (2,8 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 147 / 265 | 7925 / 9748 (81,3 %) |
+| `dom/nodes` | 149 / 265 | 7927 / 9748 (81,3 %) |
 | `dom/nodes/Document-contentType/contentType` | 2 / 16 | 2 / 16 (12,5 %) |
 | `dom/nodes/insertion-removing-steps` | 3 / 22 | 5 / 37 (13,5 %) |
-| `dom/nodes/moveBefore` | 1 / 64 | 4 / 168 (2,4 %) |
+| `dom/nodes/moveBefore` | 9 / 64 | 44 / 168 (26,2 %) |
 | `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
 | `dom/ranges` | 28 / 49 | 29268 / 33528 (87,3 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -45,7 +45,6 @@ est le plus honnête des deux.
 | `dom/collections/HTMLCollection-supported-property-names.html` | 3 / 6 |  |
 | `dom/collections/domstringmap-supported-property-names.html` | 0 / 5 |  |
 | `dom/collections/namednodemap-supported-property-names.html` | 0 / 3 |  |
-| `dom/events/AddEventListenerOptions-passive.any.js` | 1 / 5 |  |
 | `dom/events/AddEventListenerOptions-signal.any.js` | 4 / 11 |  |
 | `dom/events/Body-FrameSet-Event-Handlers.html` | 0 / 5 |  |
 | `dom/events/Event-dispatch-click.html` | 11 / 33 | harnais : délai du harnais dépassé |
@@ -128,7 +127,6 @@ est le plus honnête des deux.
 | `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/non-cancelable-when-passive/synthetic-events-cancelable.html` | 8 / 12 |  |
 | `dom/events/passive-by-default-non-node.html` | 1 / 2 |  |
-| `dom/events/passive-by-default.html` | 43 / 100 |  |
 | `dom/events/pointer-event-document-move.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/preventDefault-during-activation-behavior.html` | 0 / 1 |  |
 | `dom/events/relatedTarget.window.js` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -138,9 +136,9 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scroll-cross-origin-iframes.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-event-fired-to-element.html` | 1 / 4 |  |
 | `dom/events/scrolling/scroll-event-fired-to-iframe.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html` | 0 / 1 |  |
+| `dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html` | 0 / 2 |  |
-| `dom/events/scrolling/scrollIntoView-in-onscroll-to-sticky.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollIntoView-in-onscroll-to-sticky.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-instant-scroll-in-microtask.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -158,9 +156,9 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 |  |
+| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 | harnais : Test named 'No scroll via wheel on div shouldn't fire scrollend.' specified 1 'cleanup' function, and 1 failed. |
 | `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : Timeout while running cleanup for test named "scrolled input field should receive scrollend when setting scrollLeft.". |
-| `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
 | `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 |  |
 | `dom/events/scrolling/wheel-event-composed.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/wheel-event-no-scroll-after-prevent-default.html` | 0 / 1 |  |
@@ -314,7 +312,7 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-script.window.js` | 0 / 1 |  |
 | `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
-| `dom/nodes/moveBefore/Node-moveBefore.html` | 3 / 32 |  |
+| `dom/nodes/moveBefore/Node-moveBefore.html` | 27 / 32 |  |
 | `dom/nodes/moveBefore/child-style-preserve.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -326,10 +324,8 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/css-transition-cross-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-cross-shadow.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-to-disconnected-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/css-transition-trigger.html` | 0 / 1 |  |
+| `dom/nodes/moveBefore/css-transition-trigger.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/custom-element-move-reactions.html` | 0 / 7 |  |
-| `dom/nodes/moveBefore/fieldset-child-blur-event.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/fieldset-child-date-input-blur-event.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/fire-focusin-focusout.html` | 0 / 5 |  |
 | `dom/nodes/moveBefore/focus-preserve.html` | 0 / 5 |  |
 | `dom/nodes/moveBefore/focus-within.html` | 0 / 5 |  |
@@ -338,21 +334,17 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/hover-style-update.html` | 0 / 2 |  |
 | `dom/nodes/moveBefore/iframe-document-preserve.window.js` | 0 / 7 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/listed-form-element-reset.html` | 0 / 6 |  |
-| `dom/nodes/moveBefore/live-range-updates.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-child-list-selector-invalidation.html` | 0 / 9 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-dir.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 0 / 4 |  |
+| `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 1 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-from-light-to-shadow.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-id-map.html` | 0 / 4 |  |
+| `dom/nodes/moveBefore/moveBefore-id-map.html` | 1 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-into-display-none.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-lang.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 0 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-nodeiterator.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-optgroup.html` | 0 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-option-recalc-style.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 0 / 8 |  |
 | `dom/nodes/moveBefore/moveBefore-selector-matching.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -363,14 +355,12 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/mutation-observer-moved-subtree.window.js` | 0 / 1 |  |
 | `dom/nodes/moveBefore/mutation-observer.html` | 0 / 2 |  |
 | `dom/nodes/moveBefore/nonce.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/object-crash-regression.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/pointer-events.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/popover-preserve.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/preserve-render-blocking-style.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/relevant-mutations.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/role-updates-after-move.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/script-move-before.html` | 0 / 2 |  |
-| `dom/nodes/moveBefore/select-option-optgroup.html` | 0 / 2 |  |
+| `dom/nodes/moveBefore/select-option-optgroup.html` | 1 / 2 |  |
 | `dom/nodes/moveBefore/selection-preserve.html` | 0 / 6 |  |
 | `dom/nodes/moveBefore/slotchange-events.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/style-applies.html` | 0 / 1 |  |
@@ -386,8 +376,6 @@ est le plus honnête des deux.
 | `dom/nodes/post-connection-steps-shadow-tree.html` | 0 / 1 |  |
 | `dom/nodes/processing-instruction-attributes.html` | 0 / 140 |  |
 | `dom/nodes/query-target-in-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/querySelector-empty-id.html` | 0 / 1 |  |
-| `dom/nodes/querySelector-id-nth-child.html` | 1 / 2 |  |
 | `dom/nodes/querySelector-mixed-case.html` | 0 / 1 |  |
 | `dom/nodes/remove-and-adopt-thcrash.html` | 0 / 1 |  |
 | `dom/nodes/remove-next-sibling-during-replace-with.html` | 0 / 1 |  |

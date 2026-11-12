@@ -147,7 +147,7 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 257 fichiers de test entièrement réussis sur 693 (37,1 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 269 fichiers de test entièrement réussis sur 693 (38,8 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
   documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker` et
   `Selection`. Restent, par gain décroissant : les cadres (`<iframe>`), les espaces de noms

@@ -936,6 +936,27 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
     }
 }
 
+/// Accès nommé sur `window` (HTML Standard §7.2.2.3) : une variable globale
+/// inconnue désigne l'élément du document qui porte cet identifiant, ou
+/// l'élément `embed`, `form`, `img` ou `object` qui porte ce nom.
+fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
+    if name.is_empty() {
+        return None;
+    }
+    let h = host(vm)?;
+    let doc = &h.doc;
+    let found = doc.descendants(doc.root()).find(|n| {
+        doc.element(*n).is_some_and(|e| {
+            e.id() == Some(name)
+                || (e.attr("name") == Some(name)
+                    && ["embed", "form", "img", "object"]
+                        .iter()
+                        .any(|tag| e.is_html(tag)))
+        })
+    })?;
+    Some(wrap(vm, found))
+}
+
 /// Clés propres que l'objet hôte ajoute aux siennes.
 fn host_keys(vm: &mut Vm, class: u32, data: u64) -> Vec<String> {
     match class {
@@ -1323,6 +1344,7 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ),
     ("DOMImplementation", "hasFeature", documents::has_feature),
     ("", "createRange", range::create_range),
+    ("", "moveBefore", tree::move_before),
     (
         "",
         "getElementsByTagNameNS",
@@ -1608,6 +1630,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         get: host_get,
         set: host_set,
         keys: host_keys,
+        global: named_global,
     });
     events::install_attributes(vm)?;
     if let Some(proto) = storage_proto {

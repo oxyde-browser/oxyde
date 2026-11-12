@@ -36,6 +36,8 @@ pub(super) struct Listener {
     callback: Value,
     capture: bool,
     once: bool,
+    /// Écouteur passif : son `preventDefault()` est sans effet.
+    passive: bool,
 }
 
 const NONE: f64 = 0.0;
@@ -53,6 +55,7 @@ const CANCELABLE: &str = "événement.annulable";
 const COMPOSED: &str = "événement.composé";
 const CANCELED: &str = "événement.annulé";
 const STOP: &str = "événement.arrêt";
+const IN_PASSIVE: &str = "événement.écouteur passif";
 const STOP_NOW: &str = "événement.arrêt immédiat";
 const DISPATCHING: &str = "événement.en distribution";
 const TRUSTED: &str = "événement.de confiance";
@@ -98,10 +101,36 @@ pub(super) fn add_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> J
     let options = arg(args, 2);
     let capture = listen_option(vm, &options, "capture")?;
     let once = listen_option(vm, &options, "once")?;
+    let passive = match &options {
+        Value::Object(_) => match vm.get(&options, "passive")? {
+            Value::Undefined => None,
+            other => Some(other.truthy()),
+        },
+        _ => None,
+    };
     if callback.as_object().is_none() {
         return Ok(Value::Undefined);
     }
     let target = target_of(vm, this);
+    // Par défaut, les écouteurs de défilement tactile posés sur la fenêtre,
+    // le document, son élément racine ou son corps sont passifs.
+    let passive = passive.unwrap_or_else(|| {
+        matches!(
+            kind.as_str(),
+            "touchstart" | "touchmove" | "wheel" | "mousewheel"
+        ) && match target {
+            Target::Window => true,
+            Target::Node(index) => host(vm).is_some_and(|h| {
+                let doc = &h.doc;
+                doc.id_from_index(index as usize).is_some_and(|node| {
+                    node == doc.root()
+                        || doc.node(node).parent == Some(doc.root())
+                        || doc.element(node).is_some_and(|e| e.is_html("body"))
+                })
+            }),
+            Target::Object(_) => false,
+        }
+    });
     let Some(h) = host(vm) else {
         return Ok(Value::Undefined);
     };
@@ -118,6 +147,7 @@ pub(super) fn add_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> J
             callback: callback.clone(),
             capture,
             once,
+            passive,
         });
         vm.add_root(callback);
     }
@@ -306,7 +336,7 @@ fn get_return_value(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 
 /// Annule l'événement, s'il est annulable.
 fn cancel(vm: &mut Vm, event: ObjId) {
-    if flag(vm, event, CANCELABLE) {
+    if flag(vm, event, CANCELABLE) && !flag(vm, event, IN_PASSIVE) {
         set_flag(vm, event, CANCELED, true);
     }
 }
@@ -466,12 +496,12 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
     vm.set_slot(event, CURRENT, current.clone());
     vm.set_slot(event, PHASE, Value::Number(phase));
     // Copie de la liste : un écouteur peut en ajouter ou en retirer.
-    let mut calls: Vec<(Option<u64>, Value, bool)> = host(vm)
+    let mut calls: Vec<(Option<u64>, Value, bool, bool)> = host(vm)
         .map(|h| {
             h.listeners
                 .iter()
                 .filter(|l| l.target == item && l.kind == kind && l.capture == capture)
-                .map(|l| (Some(l.id), l.callback.clone(), l.once))
+                .map(|l| (Some(l.id), l.callback.clone(), l.once, l.passive))
                 .collect()
         })
         .unwrap_or_default();
@@ -480,10 +510,10 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
         && let Ok(handler) = vm.get(&current, &format!("on{kind}"))
         && handler.as_object().is_some()
     {
-        calls.push((None, handler, false));
+        calls.push((None, handler, false, false));
     }
     let event_value = Value::Object(event);
-    for (id, callback, once) in calls {
+    for (id, callback, once, passive) in calls {
         if let Some(id) = id {
             // Retiré par un écouteur précédent : il n'est plus appelé.
             let still_there = host(vm).is_some_and(|h| h.listeners.iter().any(|l| l.id == id));
@@ -497,6 +527,7 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
                 vm.remove_root(&callback);
             }
         }
+        set_flag(vm, event, IN_PASSIVE, passive);
         // Une fonction, ou un objet muni d'une méthode `handleEvent`.
         let outcome = match vm.get(&callback, "handleEvent") {
             Ok(method) if vm.type_of(&callback) != "function" => {
@@ -505,6 +536,7 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
             Ok(_) => vm.call(&callback, &current, std::slice::from_ref(&event_value)),
             Err(thrown) => Err(thrown),
         };
+        set_flag(vm, event, IN_PASSIVE, false);
         if let Err(thrown) = outcome {
             report(vm, &thrown);
         }

@@ -151,6 +151,10 @@ pub struct HostHooks {
     /// Clés propres qu'un objet hôte ajoute aux siennes (les rangs d'une
     /// collection, par exemple), dans l'ordre.
     pub keys: fn(&mut Vm, u32, u64) -> Vec<String>,
+    /// Valeur d'une variable globale que ni les scripts ni l'objet global ne
+    /// définissent (accès nommé aux éléments d'une page) ; `None` : la
+    /// variable n'existe pas.
+    pub global: fn(&mut Vm, &str) -> Option<Value>,
 }
 
 /// Machine virtuelle JavaScript : un tas, un objet global, une pile.
@@ -1570,7 +1574,16 @@ impl Vm {
                     return Ok(None);
                 }
                 if !self.has_property(scope, &name) {
-                    return Err(self.error("ReferenceError", &format!("{name} n'est pas défini")));
+                    let named = self
+                        .host_hooks
+                        .and_then(|hooks| (hooks.global)(self, &name));
+                    let Some(value) = named else {
+                        return Err(
+                            self.error("ReferenceError", &format!("{name} n'est pas défini"))
+                        );
+                    };
+                    self.set_reg(dst, value);
+                    return Ok(None);
                 }
                 let value = self.get(&Value::Object(scope), &name)?;
                 self.set_reg(dst, value);
