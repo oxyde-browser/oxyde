@@ -38,6 +38,7 @@ cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 | Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
 | Ctrl Maj T | rouvrir le dernier onglet fermé |
 | Ctrl Maj P | épingler ou désépingler l'onglet |
+| Ctrl D | ajouter la page aux favoris, ou l'en retirer |
 | Ctrl Tab | onglet suivant |
 | Ctrl R, F5 | actualiser |
 | Alt ← / Alt → | page précédente / suivante |
@@ -75,6 +76,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
 | `oxyde_ipc` | messages typés entre processus : codec binaire, trames, canal vers un processus enfant | Mojo | fonctionne — pas encore de mémoire partagée |
 | `oxyde_sandbox` | bac à sable Windows des processus de rendu : jeton restreint, intégrité basse, objet de travail | `//sandbox/win` | fonctionne — pas encore d'`AppContainer` |
+| `oxyde_storage` | profil sur disque : session, historique, favoris, réglages | `//components/sessions`, `history`, `bookmarks`, `prefs` | fonctionne — fichiers texte, sans verrou ni chiffrement |
 | `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
 | `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |
@@ -101,8 +103,12 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
   permanence après quelques images présentées. Le code d'Oxyde, lui, dort entre deux
   événements ; cause exacte non élucidée.
-- **Rien n'est conservé d'une session à l'autre** : onglets épinglés, espaces et onglets fermés
-  sont perdus à la fermeture (persistance prévue au jalon 7).
+- **Profil** : les onglets (épinglés, espaces, onglets fermés), l'historique et les favoris sont
+  conservés dans `%LOCALAPPDATA%\Oxyde\Profil` (`--profile DOSSIER` pour un autre dossier,
+  `--no-profile` pour ne rien conserver). Au retour, seul l'onglet affiché est rechargé ; les
+  autres attendent d'être ouverts. L'historique et les favoris n'ont pas encore d'écran ; les
+  cookies, eux, vivent toujours en mémoire. Deux fenêtres sur le même profil s'écrasent l'une
+  l'autre.
 
 Les écarts connus par rapport aux standards sont listés dans [conformance/README.md](conformance/README.md)
 et en tête de chaque crate (« LIMITES CONNUES »).

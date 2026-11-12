@@ -3,11 +3,12 @@
 //! Ce module ne touche ni à la fenêtre ni au réseau : il transforme les
 //! actions de l'utilisateur en [`Command`] que l'application exécute.
 //!
-//! LIMITE : rien n'est conservé d'une session à l'autre (onglets épinglés,
-//! espaces, onglets fermés) ; la persistance vient avec le jalon 7.
+//! Le modèle porte l'historique et les favoris, et sait se résumer en une
+//! [`Session`] ou en renaître ; c'est l'application qui les écrit sur disque.
 
 use oxyde_content::{Navigation, Url};
 use oxyde_css::Color;
+use oxyde_storage::{Bookmarks, History, Session, SessionTab};
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, PaneContent, SpaceView, TabView, theme,
 };
@@ -97,6 +98,9 @@ pub(crate) struct Tab {
     error: Option<LoadError>,
     /// Détail technique de l'erreur affiché.
     show_details: bool,
+    /// Onglet repris d'une session, pas encore chargé : il le sera quand
+    /// il deviendra visible.
+    asleep: bool,
 }
 
 impl Tab {
@@ -115,6 +119,7 @@ impl Tab {
             space,
             error: loaded.error,
             show_details: false,
+            asleep: false,
         };
         tab.refresh_labels();
         tab
@@ -206,6 +211,22 @@ pub(crate) struct Browser {
     space_active: [Option<u64>; SPACES.len()],
     /// Onglets fermés, du plus récent au plus ancien.
     closed: Vec<Closed>,
+    /// Historique de navigation.
+    pub(crate) history: History,
+    /// Favoris.
+    pub(crate) bookmarks: Bookmarks,
+}
+
+/// Secondes écoulées depuis l'époque Unix.
+fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+/// Vrai si les visites de `url` vont dans l'historique.
+fn is_recorded(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https" | "file")
 }
 
 fn blank() -> Loaded {
@@ -231,9 +252,139 @@ impl Browser {
             closed: Vec::new(),
             caret: 0,
             tab_scroll: 0.0,
+            history: History::default(),
+            bookmarks: Bookmarks::default(),
         };
         browser.refresh_address();
         browser
+    }
+
+    /// Navigateur repris de `session` ; `None` si elle n'a aucun onglet.
+    /// Les pages du web ne sont pas chargées : chaque onglet attend d'être
+    /// visible (voir [`Browser::wake_visible`]).
+    pub(crate) fn from_session(session: &Session) -> Option<Self> {
+        let mut tabs = session.tabs.iter();
+        let mut browser = Self::new(loader::placeholder(&tabs.next()?.url));
+        for tab in tabs {
+            browser.push_tab(loader::placeholder(&tab.url), 0);
+        }
+        for (tab, saved) in browser.tabs.iter_mut().zip(&session.tabs) {
+            tab.pinned = saved.pinned;
+            tab.space = saved.space.min(SPACES.len() - 1);
+            tab.asleep = tab.error.is_none() && crate::renderer::host::is_remote(tab.page.url());
+            if tab.asleep && !saved.title.is_empty() {
+                tab.title.clone_from(&saved.title);
+            }
+        }
+        browser.active = session.active.min(browser.tabs.len() - 1);
+        browser.split = session
+            .split
+            .filter(|&split| split < browser.tabs.len() && split != browser.active);
+        // L'espace courant est celui de l'onglet actif, sauf s'il est épinglé.
+        browser.space = match browser.tabs.get(browser.active) {
+            Some(tab) if !tab.pinned => tab.space,
+            _ => session.space.min(SPACES.len() - 1),
+        };
+        for saved in session.closed.iter().take(MAX_CLOSED) {
+            if let Ok(url) = Url::parse(&saved.url) {
+                browser.closed.push(Closed {
+                    host: url.host_str().unwrap_or("").to_owned(),
+                    url,
+                    title: saved.title.clone(),
+                    space: saved.space.min(SPACES.len() - 1),
+                });
+            }
+        }
+        browser.refresh_address();
+        Some(browser)
+    }
+
+    /// Ouvre `loaded` dans un nouvel onglet de l'espace courant et l'active.
+    pub(crate) fn open_active(&mut self, loaded: Loaded) {
+        self.split = None;
+        self.active = self.push_tab(loaded, self.space);
+        self.refresh_address();
+    }
+
+    /// Résumé des onglets, à écrire sur disque. Les onglets sans adresse
+    /// durable (nouvel onglet, page d'erreur sans adresse, `data:`) n'y
+    /// figurent pas.
+    pub(crate) fn session(&self) -> Session {
+        let durable = |url: &Url| is_recorded(url);
+        let mut session = Session {
+            space: self.space,
+            ..Session::default()
+        };
+        for (index, tab) in self.tabs.iter().enumerate() {
+            let url = tab
+                .history
+                .get(tab.position)
+                .unwrap_or_else(|| tab.page.url());
+            if !durable(url) {
+                continue;
+            }
+            if index == self.active {
+                session.active = session.tabs.len();
+            }
+            if self.split == Some(index) {
+                session.split = Some(session.tabs.len());
+            }
+            session.tabs.push(SessionTab {
+                url: url.to_string(),
+                title: tab.title.clone(),
+                pinned: tab.pinned,
+                space: tab.space,
+            });
+        }
+        for closed in &self.closed {
+            if durable(&closed.url) {
+                session.closed.push(SessionTab {
+                    url: closed.url.to_string(),
+                    title: closed.title.clone(),
+                    pinned: false,
+                    space: closed.space,
+                });
+            }
+        }
+        session
+    }
+
+    /// Chargements des onglets repris d'une session qui viennent de devenir
+    /// visibles (onglet actif, second volet).
+    pub(crate) fn wake_visible(&mut self) -> Vec<Command> {
+        let mut commands = Vec::new();
+        for index in [Some(self.active), self.split].into_iter().flatten() {
+            let Some(tab) = self.tabs.get_mut(index) else {
+                continue;
+            };
+            if std::mem::take(&mut tab.asleep) {
+                let url = tab.page.url().clone();
+                commands.extend(self.load(index, url, false));
+            }
+        }
+        commands
+    }
+
+    /// Note dans l'historique la page que l'onglet `index` vient d'ouvrir.
+    fn record_visit(&mut self, index: usize) {
+        let Some(tab) = self.tabs.get(index) else {
+            return;
+        };
+        if tab.error.is_none() && is_recorded(tab.page.url()) {
+            self.history
+                .record(tab.page.url().as_str(), &tab.page.title(), now_seconds());
+        }
+    }
+
+    /// Ajoute la page de l'onglet actif aux favoris, ou l'en retire.
+    fn toggle_bookmark(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.error.is_none() && is_recorded(tab.page.url()) {
+            self.bookmarks
+                .toggle(tab.page.url().as_str(), &tab.title, now_seconds());
+        }
     }
 
     fn refresh_address(&mut self) {
@@ -765,6 +916,7 @@ impl Browser {
             }
             KeyPress::CtrlShift('t') => return self.reopen(0),
             KeyPress::CtrlShift('p') => self.toggle_pin(),
+            KeyPress::Ctrl('d') => self.toggle_bookmark(),
             KeyPress::CtrlTab => {
                 // Onglet suivant parmi ceux de la barre latérale (épinglés et espace courant).
                 let count = self.tabs.len();
@@ -843,6 +995,14 @@ impl Browser {
             if changed {
                 // Une image peut apporter un nouveau titre.
                 tab.refresh_labels();
+                let title = tab.page.title();
+                if !title.is_empty()
+                    && tab.error.is_none()
+                    && !tab.asleep
+                    && is_recorded(tab.page.url())
+                {
+                    self.history.set_title(tab.page.url().as_str(), &title);
+                }
             }
         }
         for (index, commit) in commits {
@@ -920,7 +1080,11 @@ impl Browser {
         tab.error = commit.error;
         tab.show_details = false;
         tab.loading = false;
+        tab.asleep = false;
         tab.refresh_labels();
+        if push_history {
+            self.record_visit(index);
+        }
         if index == self.active && self.editing.is_none() {
             self.refresh_address();
         }
@@ -933,7 +1097,8 @@ impl Browser {
         for index in 0..self.tabs.len() {
             let pending = self.tabs.get(index).and_then(|tab| {
                 let url = tab.page.url();
-                (tab.error.is_none() && crate::renderer::host::is_remote(url)).then(|| url.clone())
+                (tab.error.is_none() && !tab.asleep && crate::renderer::host::is_remote(url))
+                    .then(|| url.clone())
             });
             if let Some(url) = pending {
                 commands.extend(self.load(index, url, false));
@@ -1009,7 +1174,11 @@ impl Browser {
         tab.error = loaded.error;
         tab.show_details = false;
         tab.loading = false;
+        tab.asleep = false;
         tab.refresh_labels();
+        if push_history {
+            self.record_visit(index);
+        }
         if index == self.active && self.editing.is_none() {
             self.refresh_address();
         }
@@ -1335,5 +1504,78 @@ mod tests {
         let mut b = browser();
         b.finish_load(99, page("https://x.test/", ""), true);
         assert_eq!(b.address, "a.test");
+    }
+
+    #[test]
+    fn session_survives_a_restart() {
+        let mut b = browser();
+        b.key(KeyPress::Ctrl('t'));
+        b.key(KeyPress::Text("b.test".into()));
+        let (tab, ..) = load_target(&b.key(KeyPress::Enter)).expect("chargement");
+        b.finish_load(tab, page("https://b.test/", "<title>B</title>"), true);
+        b.key(KeyPress::CtrlShift('p'));
+        // Un nouvel onglet vide n'a rien à retrouver : il n'est pas conservé.
+        b.key(KeyPress::Ctrl('t'));
+        let session = b.session();
+        assert_eq!(
+            session
+                .tabs
+                .iter()
+                .map(|t| (t.url.as_str(), t.title.as_str(), t.pinned))
+                .collect::<Vec<_>>(),
+            [
+                ("https://a.test/", "A", false),
+                ("https://b.test/", "B", true)
+            ]
+        );
+
+        // Au retour, les titres sont là avant les pages, et seul l'onglet
+        // visible se charge.
+        let mut restored = Browser::from_session(&session).expect("session");
+        assert_eq!(restored.session().tabs, session.tabs);
+        assert!(restored.initial_loads().is_empty());
+        assert_eq!(
+            load_target(&restored.wake_visible()).map(|(_, url, push)| (url, push)),
+            Some(("https://a.test/".into(), false))
+        );
+        assert!(restored.wake_visible().is_empty(), "une seule fois");
+        // L'onglet épinglé dort jusqu'à ce qu'on l'affiche.
+        restored.click(Hit::Tab(1), None);
+        assert_eq!(
+            load_target(&restored.wake_visible()).map(|(_, url, _)| url),
+            Some("https://b.test/".into())
+        );
+        assert!(Browser::from_session(&Session::default()).is_none());
+    }
+
+    #[test]
+    fn visits_and_bookmarks_are_recorded() {
+        let mut b = browser();
+        b.key(KeyPress::Ctrl('l'));
+        b.key(KeyPress::Text("b.test".into()));
+        b.key(KeyPress::Enter);
+        b.finish_load(1, page("https://b.test/", "<title>B</title>"), true);
+        // Revenir en arrière n'est pas une nouvelle visite ; un échec non plus.
+        b.click(Hit::Back, None);
+        b.finish_load(1, page("https://a.test/", "<title>A</title>"), false);
+        b.finish_load(1, failed("https://c.test/", ErrorKind::Network), true);
+        assert_eq!(
+            b.history
+                .visits()
+                .iter()
+                .map(|v| (v.url.as_str(), v.title.as_str()))
+                .collect::<Vec<_>>(),
+            [("https://b.test/", "B")]
+        );
+
+        b.finish_load(1, page("https://d.test/", "<title>D</title>"), true);
+        b.key(KeyPress::Ctrl('d'));
+        assert!(b.bookmarks.contains("https://d.test/"));
+        assert_eq!(
+            b.bookmarks.items().first().map(|i| i.title.as_str()),
+            Some("D")
+        );
+        b.key(KeyPress::Ctrl('d'));
+        assert!(b.bookmarks.items().is_empty());
     }
 }

@@ -390,7 +390,25 @@ base dans les tableaux, les modes d'écriture verticaux.
 Les écrans restants de la maquette : paramètres, historique, favoris, téléchargements, infos du
 site, autorisations, recherche dans la page, navigation privée, palette de commandes, mots de
 passe, premier lancement, onglets horizontaux, menus contextuels, impression. S'y ajoute la
-persistance : rien n'est aujourd'hui conservé d'une session à l'autre.
+persistance.
+
+Branche `jalon-7-fonctions`, empilée sur `jalon-5-multi-processus`.
+
+Fait :
+
+- **Profil** (`oxyde_storage`) : un dossier (`%LOCALAPPDATA%\Oxyde\Profil`, ou `--profile`),
+  un fichier texte par sorte de donnée, remplacé d'un coup ; l'historique est un journal
+  allongé sur place. La lecture tolère un fichier tronqué ou abîmé et borne ce qu'elle accepte.
+- **Session** : onglets, onglets épinglés, espaces, vue scindée et onglets fermés reviennent au
+  lancement suivant ; seul l'onglet affiché est rechargé, les autres le sont quand on les ouvre.
+- **Historique** : chaque nouvelle navigation réussie y est notée, avec son titre (les retours
+  en arrière et les rechargements n'en sont pas). 20 000 visites au plus.
+- **Favoris** : Ctrl D ajoute ou retire la page.
+
+Reste : les écrans (historique, favoris, paramètres, téléchargements, infos du site,
+autorisations, recherche dans la page, navigation privée, palette de commandes, mots de passe,
+premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
+cookies ; un verrou sur le profil.
 
 ### Jalon 8 — Performances de JavaScript
 

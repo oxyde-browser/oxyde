@@ -8,6 +8,11 @@
 //!         rend la fenêtre (ou la page seule) dans un fichier
 //! oxyde --dump-dom ADRESSE
 //!         affiche l'arbre DOM (format html5lib)
+//! oxyde --profile DOSSIER …
+//!         range la session, l'historique et les favoris dans DOSSIER plutôt
+//!         que dans le profil de l'utilisateur
+//! oxyde --no-profile …
+//!         ne lit ni n'écrit aucun profil
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
 //! oxyde --no-sandbox …
@@ -37,6 +42,7 @@ use anyhow::{Context, Result, bail};
 use oxyde_content::Url;
 use oxyde_css::Viewport;
 use oxyde_gpu::{Gpu, GpuScene, Transform, append_scrolled};
+use oxyde_storage::Profile;
 use oxyde_text::TextContext;
 use oxyde_ui::theme;
 
@@ -57,6 +63,10 @@ struct Args {
     /// Capture : rend la page dans un processus de rendu.
     multi_process: bool,
     size: (u32, u32),
+    /// Dossier du profil, s'il est imposé.
+    profile: Option<PathBuf>,
+    /// Aucun profil : rien n'est lu ni conservé.
+    no_profile: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -71,6 +81,8 @@ fn parse_args() -> Result<Args> {
         single_process: false,
         multi_process: false,
         size: (1440, 900),
+        profile: None,
+        no_profile: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -85,6 +97,11 @@ fn parse_args() -> Result<Args> {
             "--pin" => args
                 .pinned
                 .push(it.next().context("--pin attend une adresse")?),
+            "--profile" => {
+                let dir = it.next().context("--profile attend un dossier")?;
+                args.profile = Some(PathBuf::from(dir));
+            }
+            "--no-profile" => args.no_profile = true,
             "--page-only" => args.page_only = true,
             "--dump-dom" => args.dump_dom = true,
             "--dom-coverage" => args.dom_coverage = true,
@@ -187,6 +204,14 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         page.background()
     } else {
         let mut browser = open_browser(args, false);
+        // Avec `--profile`, la capture montre l'historique et les favoris du
+        // profil ; elle n'y écrit rien.
+        if let Some(dir) = &args.profile
+            && let Ok(profile) = Profile::open(dir)
+        {
+            browser.history = profile.load_history();
+            browser.bookmarks = profile.load_bookmarks();
+        }
         frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
         theme::WINDOW
     };
@@ -246,6 +271,23 @@ fn remote_page(url: Url, text: &mut TextContext, viewport: (f32, f32)) -> Result
     }
 }
 
+/// Profil de la fenêtre : celui de `--profile`, sinon celui de
+/// l'utilisateur ; aucun avec `--no-profile` ou si son dossier ne peut pas
+/// être créé.
+fn open_profile(args: &Args) -> Option<Profile> {
+    if args.no_profile {
+        return None;
+    }
+    let dir = args.profile.clone().or_else(Profile::default_dir)?;
+    match Profile::open(&dir) {
+        Ok(profile) => Some(profile),
+        Err(error) => {
+            eprintln!("profil indisponible ({}) : {error}", dir.display());
+            None
+        }
+    }
+}
+
 fn main() -> Result<ExitCode> {
     // Processus de rendu ou processus réseau : lancé par le navigateur, il
     // ne lit rien d'autre de sa ligne de commande.
@@ -282,5 +324,37 @@ fn run() -> Result<()> {
     if multi_process {
         network::use_process();
     }
-    app::run(open_browser(&args, multi_process), multi_process)
+    let profile = open_profile(&args);
+    let mut browser = match profile
+        .as_ref()
+        .and_then(|p| Browser::from_session(&p.load_session()))
+    {
+        // Une session attend : elle revient, et les adresses de la ligne de
+        // commande s'y ajoutent.
+        Some(mut browser) => {
+            let open = |input: &str| {
+                if multi_process {
+                    loader::placeholder(input)
+                } else {
+                    loader::load_input(input)
+                }
+            };
+            for address in &args.pinned {
+                browser.open_pinned(open(address));
+            }
+            if let Some(target) = &args.target {
+                browser.open_active(open(target));
+            }
+            if let Some(second) = &args.split {
+                browser.open_in_split(open(second));
+            }
+            browser
+        }
+        None => open_browser(&args, multi_process),
+    };
+    if let Some(profile) = &profile {
+        browser.history = profile.load_history();
+        browser.bookmarks = profile.load_bookmarks();
+    }
+    app::run(browser, multi_process, profile)
 }

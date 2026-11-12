@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use oxyde_content::Url;
 use oxyde_gpu::{Gpu, GpuScene, Surface};
+use oxyde_storage::{Profile, Session};
 use oxyde_text::TextContext;
 use oxyde_ui::{Chrome, Hit, theme};
 use winit::application::ApplicationHandler;
@@ -79,7 +80,17 @@ struct App {
     last_title_click: Option<Instant>,
     /// Première erreur fatale rencontrée dans la boucle d'événements.
     error: Option<anyhow::Error>,
+    /// Profil où le navigateur range sa session, son historique et ses
+    /// favoris ; `None` : rien n'est conservé.
+    profile: Option<Profile>,
+    /// Dernière session écrite sur disque.
+    saved_session: Session,
+    /// Dernier passage de [`App::persist`].
+    last_persist: Instant,
 }
+
+/// Intervalle minimal entre deux écritures du profil.
+const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Texte du presse-papiers, borné ; `None` s'il est vide ou inaccessible.
 fn clipboard_text() -> Option<String> {
@@ -90,6 +101,34 @@ fn clipboard_text() -> Option<String> {
 }
 
 impl App {
+    /// Écrit dans le profil ce qui a changé depuis la dernière fois.
+    /// `force` : sans attendre l'intervalle (à la fermeture).
+    fn persist(&mut self, force: bool) {
+        let Some(profile) = &self.profile else {
+            return;
+        };
+        let now = Instant::now();
+        if !force && now.duration_since(self.last_persist) < PERSIST_INTERVAL {
+            return;
+        }
+        self.last_persist = now;
+        let session = self.browser.session();
+        let mut result = Ok(());
+        if session != self.saved_session {
+            result = profile.save_session(&session);
+            self.saved_session = session;
+        }
+        let result = result
+            .and_then(|()| profile.save_history(&mut self.browser.history))
+            .and_then(|()| profile.save_bookmarks(&mut self.browser.bookmarks));
+        if let Err(error) = result {
+            eprintln!(
+                "profil non enregistré ({}) : {error}",
+                profile.dir().display()
+            );
+        }
+    }
+
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -459,16 +498,23 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
-        // Navigations demandées par les scripts depuis le dernier passage.
-        let navigations = self.browser.drain_navigations();
+        // Navigations demandées par les scripts depuis le dernier passage, et
+        // onglets d'une session reprise qui viennent d'apparaître.
+        let mut navigations = self.browser.drain_navigations();
+        navigations.extend(self.browser.wake_visible());
         if !navigations.is_empty() {
             self.execute(event_loop, navigations);
         }
+        self.persist(false);
         event_loop.set_control_flow(match self.browser.next_wake() {
             // Jamais plus tôt que dans 4 ms : un minuteur en boucle ne monopolise pas le fil.
             Some(wake) => ControlFlow::WaitUntil(wake.max(now + MIN_TIMER_SLEEP)),
             None => ControlFlow::Wait,
         });
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.persist(true);
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
@@ -615,9 +661,10 @@ impl ApplicationHandler<UserEvent> for App {
 }
 
 /// Ouvre la fenêtre sur `browser` et fait tourner la boucle d'événements.
-/// Ouvre la fenêtre du navigateur. `multi_process` : les pages du web sont
-/// chargées chacune dans un processus de rendu.
-pub(crate) fn run(browser: Browser, multi_process: bool) -> Result<()> {
+/// `multi_process` : les pages du web sont chargées chacune dans un
+/// processus de rendu. `profile` : où conserver la session, l'historique et
+/// les favoris.
+pub(crate) fn run(browser: Browser, multi_process: bool, profile: Option<Profile>) -> Result<()> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let mut app = App {
         gpu: Gpu::new(),
@@ -635,6 +682,11 @@ pub(crate) fn run(browser: Browser, multi_process: bool) -> Result<()> {
         last_title_click: None,
         error: None,
         multi_process,
+        // La session du disque est celle dont le navigateur vient de renaître,
+        // ou une autre : dans le doute, la première comparaison l'écrira.
+        saved_session: Session::default(),
+        last_persist: Instant::now(),
+        profile,
     };
     event_loop.run_app(&mut app)?;
     app.error.map_or(Ok(()), Err)
