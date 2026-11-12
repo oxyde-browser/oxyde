@@ -4,11 +4,11 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 42176 réussis sur 48795 (86.4 %).**
+**Total : 42269 réussis sur 48795 (86.6 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
-| `annexB/built-ins` | 241 | 183 | 75.9 % |
+| `annexB/built-ins` | 241 | 231 | 95.9 % |
 | `annexB/language` | 845 | 815 | 96.4 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 25 | 100.0 % |
@@ -45,7 +45,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Promise` | 732 | 732 | 100.0 % |
 | `built-ins/Proxy` | 311 | 310 | 99.7 % |
 | `built-ins/Reflect` | 153 | 153 | 100.0 % |
-| `built-ins/RegExp` | 1879 | 1454 | 77.4 % |
+| `built-ins/RegExp` | 1879 | 1499 | 79.8 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 378 | 98.7 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |

@@ -193,6 +193,8 @@ pub struct Vm {
     template_objects: std::collections::HashMap<(usize, u32), (Arc<FunctionProto>, ObjId)>,
     /// Dernier texte préparé pour une recherche.
     pub(crate) regex_input: Option<(JsStr, Arc<crate::builtins::regexp::RegexInput>)>,
+    /// Trace de la dernière recherche réussie, pour `RegExp.$1`, `lastMatch`…
+    pub(crate) regexp_legacy: crate::builtins::regexp::LegacyStatics,
     /// Prototypes des tableaux typés, dans l'ordre de leurs types d'éléments.
     pub(crate) typed_protos: Vec<ObjId>,
     /// Modules chargés, par identifiant.
@@ -453,6 +455,7 @@ impl Vm {
             global_vars: std::collections::HashSet::new(),
             template_objects: std::collections::HashMap::new(),
             regex_input: None,
+            regexp_legacy: crate::builtins::regexp::LegacyStatics::default(),
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
             module_loader: None,

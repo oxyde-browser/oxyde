@@ -721,6 +721,9 @@ pub(crate) enum Kind {
     RegExp {
         regex: Arc<crate::regexp::Regex>,
         source: JsStr,
+        /// Créée par le constructeur `RegExp` lui-même, et non par une
+        /// sous-classe : elle alimente `RegExp.$1` et accepte `compile`.
+        legacy: bool,
     },
     Bound {
         target: ObjId,

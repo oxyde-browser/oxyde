@@ -2720,3 +2720,67 @@ fn atomics_wait_async_settles_between_tasks() {
         "ok,timed-out 0"
     );
 }
+
+#[test]
+fn regexp_escape_compile_indices_and_legacy_statics() {
+    // `RegExp.escape` : le texte se lit littéralement, où qu'on l'insère.
+    assert_eq!(eval(r#"RegExp.escape("a.b*c")"#), r"\x61\.b\*c");
+    assert_eq!(
+        eval(r#"RegExp.escape("1 + 1, ok-_")"#),
+        r"\x31\x20\+\x201\x2c\x20ok\x2d_"
+    );
+    assert_eq!(
+        eval(r#"new RegExp(RegExp.escape("(a|b)?")).test("x(a|b)?y")"#),
+        "true"
+    );
+    assert!(eval("RegExp.escape(1)").contains("TypeError"));
+    // Drapeau `d` : bornes de la correspondance et des groupes.
+    assert_eq!(
+        eval(
+            r#"var m = /a(?<mid>b+)?(c)/d.exec("xxabbc");
+               [m.indices[0], m.indices[1], m.indices.groups.mid, m.indices.length].join(" ")"#
+        ),
+        "2,6 3,5 3,5 3"
+    );
+    assert_eq!(eval(r#"/a(b)?/d.exec("a").indices[1]"#), "undefined");
+    // `compile` recompile sur place et remet `lastIndex` à zéro.
+    assert_eq!(
+        eval(
+            r#"var r = /a/g; r.lastIndex = 3; var same = r.compile("b+", "i") === r;
+               [same, r.source, r.flags, r.lastIndex, r.test("ABB")].join()"#
+        ),
+        "true,b+,i,0,true"
+    );
+    assert!(eval("class R extends RegExp {} new R('a').compile('b')").contains("TypeError"));
+    // Propriétés statiques héritées.
+    assert_eq!(
+        eval(
+            r#"/(b)(c)?/.exec("abd");
+               [RegExp.$1, RegExp.$2, RegExp.lastMatch, RegExp["$&"], RegExp.lastParen,
+                RegExp.leftContext, RegExp.rightContext, RegExp.input, RegExp.$_].join("|")"#
+        ),
+        "b||b|b||a|d|abd|abd"
+    );
+    assert_eq!(
+        eval(r#"RegExp.input = 12; RegExp.input + typeof RegExp.input"#),
+        "12string"
+    );
+    assert!(eval("class R extends RegExp {} R.$1").contains("TypeError"));
+    assert!(
+        eval(r#"class R extends RegExp {} new R("a").exec("a"); RegExp.lastMatch"#)
+            .contains("TypeError")
+    );
+    assert_eq!(
+        eval(r#"class R extends RegExp {} new R("a").exec("a"); /b/.exec("b"); RegExp.lastMatch"#),
+        "b"
+    );
+    // Le constructeur lit `source` et `flags` d'un objet qui se dit expression.
+    assert_eq!(
+        eval(
+            r#"var like = { source: "a+", flags: "g", [Symbol.match]: true };
+               var r = new RegExp(like); [r.source, r.flags, RegExp(/x/) === RegExp(/x/)].join()"#
+        ),
+        "a+,g,false"
+    );
+    assert_eq!(eval("var r = /x/; RegExp(r) === r"), "true");
+}

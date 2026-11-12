@@ -490,7 +490,7 @@ fn symbol_method(vm: &mut Vm, value: &Value, symbol: &Symbol) -> JsResult<Option
 }
 
 /// `IsRegExp` (ECMA-262 §7.2.8).
-fn is_regexp(vm: &mut Vm, value: &Value) -> JsResult<bool> {
+pub(super) fn is_regexp(vm: &mut Vm, value: &Value) -> JsResult<bool> {
     if value.as_object().is_none() {
         return Ok(false);
     }
