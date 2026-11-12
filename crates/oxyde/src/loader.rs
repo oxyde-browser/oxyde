@@ -24,7 +24,15 @@ pub(crate) enum ErrorKind {
     Certificate,
     /// Autre échec (fichier introuvable, adresse invalide…).
     Other,
+    /// Le processus de rendu de l'onglet s'est arrêté.
+    Crashed,
 }
+oxyde_ipc::ipc_enum!(ErrorKind {
+    0 => Network,
+    1 => Certificate,
+    2 => Other,
+    3 => Crashed,
+});
 
 /// Erreur de chargement, présentée à l'utilisateur dans une page d'erreur.
 #[derive(Clone, Debug)]
@@ -33,19 +41,38 @@ pub(crate) struct LoadError {
     pub(crate) title: String,
     pub(crate) message: String,
     /// Code au format de Chromium, affiché au bas de la page.
-    pub(crate) code: &'static str,
+    pub(crate) code: String,
     /// Détail technique, affiché sur demande.
     pub(crate) detail: String,
 }
+oxyde_ipc::ipc_struct!(LoadError {
+    kind,
+    title,
+    message,
+    code,
+    detail
+});
 
 impl LoadError {
-    pub(crate) fn other(title: &str, message: String, code: &'static str) -> Self {
+    pub(crate) fn other(title: &str, message: String, code: &str) -> Self {
         Self {
             kind: ErrorKind::Other,
             title: title.to_owned(),
             detail: message.clone(),
             message,
-            code,
+            code: code.to_owned(),
+        }
+    }
+
+    /// Erreur affichée quand le processus de rendu d'un onglet a disparu.
+    pub(crate) fn crashed(url: &Url) -> Self {
+        Self {
+            kind: ErrorKind::Crashed,
+            title: "Cet onglet a planté".to_owned(),
+            message: "Le processus qui affichait cette page s'est arrêté. Les autres onglets                       ne sont pas touchés : rechargez la page pour la retrouver."
+                .to_owned(),
+            code: "ERR_RENDERER_CRASHED".to_owned(),
+            detail: url.to_string(),
         }
     }
 }
@@ -173,6 +200,7 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
     let host = url.host_str().unwrap_or("ce site");
     let code = error.code();
     let detail = format!("{url} — {error}");
+    let owned_code = code.to_owned();
     if error.is_certificate_error() {
         let reason = match code {
             "NET::ERR_CERT_DATE_INVALID" => "a expiré ou n'est pas encore valable",
@@ -188,7 +216,7 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
                 "Le certificat de {host} {reason}. Quelqu'un pourrait intercepter ce que vous \
                  envoyez à ce site : mots de passe, messages, coordonnées bancaires."
             ),
-            code,
+            code: owned_code,
             detail,
         };
     }
@@ -225,7 +253,7 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
         kind,
         title: title.to_owned(),
         message,
-        code,
+        code: owned_code,
         detail,
     }
 }
@@ -251,7 +279,14 @@ fn fetch_http(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), Load
 }
 
 /// Demande la page `url` par `POST`, avec le corps d'un formulaire.
-fn post_http(url: &Url, form: &oxyde_content::FormPost) -> Result<(Url, Vec<u8>), LoadError> {
+pub(crate) fn post_http(
+    url: &Url,
+    form: &oxyde_content::FormPost,
+) -> Result<(Url, Vec<u8>), LoadError> {
+    // Un processus de rendu n'ouvre pas de connexion : il demande au navigateur.
+    if let Some(link) = crate::renderer::child::link() {
+        return link.post_form(url, form);
+    }
     let response = http_client()?
         .send(&oxyde_net::HttpRequest {
             method: "POST".to_owned(),
@@ -330,7 +365,14 @@ pub(crate) fn fetch(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
 /// Comme [`fetch`], pour une ressource demandée par le document
 /// `initiator` (feuille de style, image, script) : les cookies d'un autre
 /// site ne l'accompagnent pas.
-fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
+pub(crate) fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
+    // Un processus de rendu n'ouvre ni fichier ni connexion : il demande au
+    // navigateur. Les adresses `data:` et `about:` ne sortent pas du processus.
+    if let Some(link) = crate::renderer::child::link()
+        && !matches!(url.scheme(), "data" | "about")
+    {
+        return link.get(url, initiator);
+    }
     match url.scheme() {
         "file" => read_file(url).map(|bytes| (url.clone(), bytes)),
         // Les pages internes (nouvel onglet) sont dessinées par l'interface.
@@ -377,6 +419,27 @@ pub(crate) fn set_viewport_hint(width: f32, height: f32) {
     }
 }
 
+/// Taille notée par [`set_viewport_hint`] ; nulle si elle n'est pas connue.
+pub(crate) fn viewport_size() -> (f32, f32) {
+    viewport_hint().map_or((0.0, 0.0), |v| (v.width, v.height))
+}
+
+/// Onglet qui attend son chargement : une page vide à l'adresse demandée.
+/// Les pages internes sont chargées sur le champ.
+pub(crate) fn placeholder(input: &str) -> Loaded {
+    match resolve_input(input) {
+        Ok(url) if crate::renderer::host::is_remote(&url) => Loaded {
+            page: Page::from_html(url, ""),
+            error: None,
+        },
+        Ok(url) => load(url),
+        Err(error) => Loaded {
+            page: blank_page(),
+            error: Some(error),
+        },
+    }
+}
+
 fn viewport_hint() -> Option<oxyde_css::Viewport> {
     let (width, height) = (*VIEWPORT_HINT
         .lock()
@@ -403,8 +466,8 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     let mut page = Page::from_html(url, &html);
     let document = page.url().clone();
     let fetch = |resource: &Url| fetch_from(resource, Some(&document));
-    if let Ok(client) = http_client() {
-        page.set_cookies(&client.cookies_for_script(&document));
+    if let Some(cookies) = read_cookies(&document) {
+        page.set_cookies(&cookies);
     }
     for sheet_url in page.pending_stylesheets() {
         // Une feuille indisponible est remplacée par une feuille vide : la page reste lisible.
@@ -458,17 +521,44 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
 /// page, puis rend à la page la vue à jour de `document.cookie`.
 fn sync_cookies(page: &mut Page) {
     let writes = page.take_cookie_writes();
-    let Ok(client) = http_client() else {
-        return;
-    };
     let document = page.url().clone();
     if !matches!(document.scheme(), "http" | "https") {
         return;
     }
-    for text in &writes {
-        client.set_cookie_from_script(&document, text);
+    // Dans un processus de rendu, chaque lecture est un aller-retour avec le
+    // navigateur : la vue de `document.cookie` n'est rafraîchie qu'après une
+    // écriture.
+    //
+    // LIMITE : un cookie posé entre-temps par une réponse HTTP n'y apparaît
+    // qu'au chargement suivant ou après la prochaine écriture.
+    if writes.is_empty() && crate::renderer::child::link().is_some() {
+        return;
     }
-    page.set_cookies(&client.cookies_for_script(&document));
+    for text in &writes {
+        write_cookie(&document, text);
+    }
+    if let Some(cookies) = read_cookies(&document) {
+        page.set_cookies(&cookies);
+    }
+}
+
+/// Valeur de `document.cookie` pour `document`.
+pub(crate) fn read_cookies(document: &Url) -> Option<String> {
+    if let Some(link) = crate::renderer::child::link() {
+        return link.cookies(document);
+    }
+    http_client()
+        .ok()
+        .map(|client| client.cookies_for_script(document))
+}
+
+/// Soumet au pot de cookies un cookie écrit par un script de `document`.
+pub(crate) fn write_cookie(document: &Url, text: &str) {
+    if let Some(link) = crate::renderer::child::link() {
+        link.set_cookie(document, text);
+    } else if let Ok(client) = http_client() {
+        client.set_cookie_from_script(document, text);
+    }
 }
 
 /// Écrit sur la sortie d'erreur les messages de console de la page.

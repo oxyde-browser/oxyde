@@ -191,11 +191,27 @@ Fait :
   message reçu est tenu pour hostile : le décodage vérifie chaque longueur avant d'allouer
   et ne panique pas.
 
-Ordre prévu : sérialisation de la liste d'affichage ; processus de rendu par onglet, qui
-charge, met en page et peint la page, le processus navigateur gardant la fenêtre, le réseau
-et la composition ; écran « Onglet planté » ; bac à sable Windows du processus de rendu ;
-processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers (étape D
-de test262).
+- **Liste d'affichage sur le fil** (`oxyde_paint::wire`) : polices et images ne voyagent
+  qu'une fois ; le destinataire rejette toute liste incohérente.
+- **Processus de rendu par onglet** (`oxyde --type=renderer`) : chaque page du web ou
+  fichier local est chargée, scriptée, mise en page et peinte dans son propre processus,
+  qui n'ouvre ni fichier ni connexion — il demande ses ressources au navigateur, lequel ne
+  lit un fichier que pour un document local. Le navigateur garde la fenêtre, le réseau, les
+  cookies et la composition : la molette fait défiler sans attendre le processus de rendu.
+  Si ce processus disparaît, seul son onglet affiche « Cet onglet a planté » ; si le
+  navigateur disparaît, ses processus de rendu s'arrêtent. `--single-process` garde tout
+  dans le navigateur ; `about:crash` fait planter le processus de rendu, pour vérifier.
+  Une capture `--screenshot --page-only --multi-process` passe par un processus de rendu :
+  les tests d'intégration la comparent, pixel pour pixel, au rendu dans le navigateur.
+
+Limites à ce stade : un processus par onglet et non par site ; les cadres vivent dans le
+processus de leur page ; l'accessibilité ne voit pas le contenu d'une page distante ; pas
+encore de bac à sable — le processus de rendu n'a pas besoin de droits, mais le système ne
+les lui retire pas encore.
+
+Ordre prévu : écran « Onglet planté » de la maquette ; bac à sable Windows du processus de
+rendu ; processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers
+(étape D de test262).
 
 ### Jalon 6 — Mise en page complète et compositeur
 

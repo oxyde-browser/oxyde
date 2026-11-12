@@ -127,6 +127,25 @@ impl ScrollTree {
         self.store(id, clamp(x, max.0), clamp(y, max.1))
     }
 
+    /// Fait défiler la zone `id` jusqu'à (`x`, `y`), dans les bornes
+    /// relevées à la dernière peinture ; sans effet si elle n'y figurait
+    /// pas. Renvoie `true` si le décalage a changé.
+    pub fn scroll_within_limit(&mut self, id: u32, x: f32, y: f32) -> bool {
+        match self.limit(id) {
+            Some(max) => self.scroll_to(id, x, y, max),
+            None => false,
+        }
+    }
+
+    /// Décalages non nuls : (identifiant, x, y).
+    #[must_use]
+    pub fn offsets(&self) -> Vec<(u32, f32, f32)> {
+        self.offsets
+            .iter()
+            .map(|(id, (x, y))| (*id, *x, *y))
+            .collect()
+    }
+
     /// Rang de la zone la plus profonde située sous le point (`x`, `y`) de
     /// la page (défilement de la fenêtre compris).
     fn scroller_at(&self, x: f32, y: f32) -> Option<usize> {

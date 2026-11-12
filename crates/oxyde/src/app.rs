@@ -40,6 +40,9 @@ pub(crate) enum UserEvent {
         loaded: Box<Loaded>,
         push_history: bool,
     },
+    /// Un processus de rendu a quelque chose à dire : la boucle se réveille
+    /// et le lit avant de se rendormir.
+    Renderer,
     /// Réponse à une requête `fetch` d'un script.
     Fetched {
         tab: u64,
@@ -60,6 +63,8 @@ struct App {
     text: TextContext,
     browser: Browser,
     proxy: EventLoopProxy<UserEvent>,
+    /// Vrai si les pages du web vont chacune dans un processus de rendu.
+    multi_process: bool,
     window: Option<Arc<Window>>,
     surface: Option<Surface>,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -164,14 +169,28 @@ impl App {
         self.request_redraw();
     }
 
-    /// Charge `url` sur un fil dédié : l'interface reste réactive.
+    /// Charge `url` : dans un processus de rendu pour une page du web, sinon
+    /// sur un fil dédié. Dans les deux cas l'interface reste réactive.
     fn spawn_load(
-        &self,
+        &mut self,
         tab: u64,
         url: Url,
         push_history: bool,
         post: Option<oxyde_content::FormPost>,
     ) {
+        if self.multi_process && crate::renderer::host::is_remote(&url) {
+            let proxy = self.proxy.clone();
+            let wake = move || {
+                // La boucle d'événements peut s'être arrêtée entre-temps.
+                let _ = proxy.send_event(UserEvent::Renderer);
+            };
+            if self
+                .browser
+                .load_remote(tab, &url, post.as_ref(), push_history, wake)
+            {
+                return;
+            }
+        }
         let proxy = self.proxy.clone();
         let failed_url = url.clone();
         let spawned = std::thread::Builder::new()
@@ -272,10 +291,11 @@ impl App {
         } else {
             match hit {
                 Some(Hit::Pane(tab)) => {
-                    let over_link = self
-                        .page_point(tab)
-                        .and_then(|(x, y)| self.browser.tab(tab)?.page.link_at(x, y))
-                        .is_some();
+                    let over_link = self.page_point(tab).is_some_and(|(x, y)| {
+                        self.browser
+                            .tab(tab)
+                            .is_some_and(|tab| tab.page.over_link(x, y))
+                    });
                     if over_link {
                         CursorIcon::Pointer
                     } else {
@@ -421,6 +441,11 @@ impl ApplicationHandler<UserEvent> for App {
             Err(e) => return self.fail(event_loop, e.into()),
         }
         self.window = Some(window);
+        // Les onglets ouverts au démarrage attendent leur page.
+        let commands = self.browser.initial_loads();
+        if !commands.is_empty() {
+            self.execute(event_loop, commands);
+        }
     }
 
     /// Avant de s'endormir : exécute les minuteurs des pages et programme le
@@ -456,6 +481,9 @@ impl ApplicationHandler<UserEvent> for App {
                 self.browser.finish_load(tab, *loaded, push_history);
                 self.execute(event_loop, Vec::new());
             }
+            // Rien à faire ici : `about_to_wait` lit les messages des
+            // processus de rendu avant que la boucle ne se rendorme.
+            UserEvent::Renderer => {}
             UserEvent::Fetched { tab, id, result } => {
                 if self.browser.complete_fetch(tab, id, *result) {
                     if let Some(window) = &self.window {
@@ -587,7 +615,9 @@ impl ApplicationHandler<UserEvent> for App {
 }
 
 /// Ouvre la fenêtre sur `browser` et fait tourner la boucle d'événements.
-pub(crate) fn run(browser: Browser) -> Result<()> {
+/// Ouvre la fenêtre du navigateur. `multi_process` : les pages du web sont
+/// chargées chacune dans un processus de rendu.
+pub(crate) fn run(browser: Browser, multi_process: bool) -> Result<()> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let mut app = App {
         gpu: Gpu::new(),
@@ -604,6 +634,7 @@ pub(crate) fn run(browser: Browser) -> Result<()> {
         pressed: None,
         last_title_click: None,
         error: None,
+        multi_process,
     };
     event_loop.run_app(&mut app)?;
     app.error.map_or(Ok(()), Err)
