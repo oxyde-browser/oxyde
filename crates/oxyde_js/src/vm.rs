@@ -209,6 +209,8 @@ pub struct Vm {
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
+    /// Clés des emplacements internes posés par l'hôte, par nom.
+    slot_keys: std::collections::HashMap<&'static str, Symbol>,
     /// Le constructeur `Promise` d'origine : ses promesses sont créées et
     /// réglées directement, sans passer par un exécuteur.
     pub(crate) promise_ctor: Option<ObjId>,
@@ -349,6 +351,7 @@ impl Vm {
             constructing: false,
             native_new_target: Value::Undefined,
             has_instance_function: None,
+            slot_keys: std::collections::HashMap::new(),
             promise_ctor: None,
             self_hosted: Vec::new(),
             array_ctor: None,
@@ -543,6 +546,51 @@ impl Vm {
     /// Nouvelle fonction native.
     pub fn new_function(&mut self, name: &str, arity: u32, func: NativeFn) -> ObjId {
         self.new_native(name, arity, func, false)
+    }
+
+    /// Nouvelle fonction native que `new` peut appeler. L'instance qu'elle
+    /// rend reçoit ensuite le prototype de la classe dérivée, s'il y en a une.
+    pub fn new_constructor(&mut self, name: &str, arity: u32, func: NativeFn) -> ObjId {
+        self.new_native(name, arity, func, true)
+    }
+
+    /// Vrai pendant l'appel d'un constructeur natif par `new`.
+    #[must_use]
+    pub fn is_constructing(&self) -> bool {
+        self.constructing
+    }
+
+    /// Clé de l'emplacement interne `name`, créée à la première demande.
+    fn slot_key(&mut self, name: &'static str) -> Symbol {
+        if let Some(key) = self.slot_keys.get(name) {
+            return key.clone();
+        }
+        let id = self.next_symbol;
+        self.next_symbol = self.next_symbol.saturating_add(1);
+        let key = Symbol::new_private(id, Arc::from(name));
+        self.slot_keys.insert(name, key.clone());
+        key
+    }
+
+    /// Range `value` dans l'emplacement interne `name` de `object` : un état
+    /// que l'hôte attache à un objet et que les scripts ne peuvent ni lire ni
+    /// énumérer.
+    pub fn set_slot(&mut self, object: ObjId, name: &'static str, value: Value) {
+        let key = self.slot_key(name);
+        self.heap
+            .get_mut(object)
+            .symbols
+            .insert(key, Property::hidden(value));
+    }
+
+    /// Valeur de l'emplacement interne `name` de `object`, s'il existe.
+    #[must_use]
+    pub fn slot(&self, object: ObjId, name: &'static str) -> Option<Value> {
+        let key = self.slot_keys.get(name)?;
+        match &self.heap.get(object).symbols.get(key)?.slot {
+            Slot::Data(value) => Some(value.clone()),
+            Slot::Accessor { .. } => None,
+        }
     }
 
     pub(crate) fn new_native(

@@ -1239,7 +1239,7 @@ mod tests {
             .and_then(|rest| rest.split(' ').next())
             .and_then(|n| n.parse().ok())
             .expect("total lisible");
-        assert!(done >= 125, "couverture en régression : {done} membres");
+        assert!(done >= 215, "couverture en régression : {done} membres");
     }
 
     #[test]
@@ -1262,5 +1262,71 @@ mod tests {
         assert!(console[0].text.contains("TypeError"));
         assert!(console[1].text.contains("SyntaxError"));
         assert!(console[2].text.contains("temps d'exécution dépassé"));
+    }
+
+    #[test]
+    fn events_follow_capture_target_and_bubble_phases() {
+        let mut p = page(
+            "<div id=outer><p id=inner>x</p></div>
+             <script>
+               const log = [];
+               const outer = document.getElementById('outer');
+               const inner = document.getElementById('inner');
+               outer.addEventListener('ping', e => log.push('capture ' + e.eventPhase), true);
+               outer.addEventListener('ping', e => log.push('bulle ' + e.eventPhase));
+               inner.addEventListener('ping', e => {
+                 log.push('cible ' + e.eventPhase + ' ' + (e.target === inner));
+               });
+               inner.addEventListener('ping', { handleEvent(e) { log.push('objet ' + e.detail.n); } });
+               inner.addEventListener('ping', () => log.push('une fois'), { once: true });
+               inner.addEventListener('ping', e => e.preventDefault());
+               const event = new CustomEvent('ping', {
+                 bubbles: true, cancelable: true, detail: { n: 7 },
+               });
+               log.push('retour ' + inner.dispatchEvent(event));
+               inner.dispatchEvent(new CustomEvent('ping', { detail: { n: 8 } }));
+               log.push(event instanceof Event, event.isTrusted, event.eventPhase);
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "capture 1|cible 2 true|objet 7|une fois|bulle 3|retour false|",
+                "capture 1|cible 2 true|objet 8|true|false|0"
+            )
+        );
+    }
+
+    #[test]
+    fn dom_tree_operations() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const d = document.createElement('div');
+               d.innerHTML = '<b>a</b>c';
+               d.firstChild.after('x', document.createElement('i'));
+               d.lastChild.before(document.createComment('k'));
+               d.querySelector('i').replaceWith('y');
+               d.normalize();
+               const text = d.childNodes[1];
+               text.insertData(1, '-');
+               const tail = text.splitText(2);
+               log.push(d.innerHTML, d.childNodes.length, tail.wholeText);
+               log.push(d.firstChild.toggleAttribute('hidden'), d.firstChild.getAttributeNames());
+               d.insertAdjacentHTML('afterbegin', '<u>z</u>');
+               log.push(d.firstChild.outerHTML, d.compareDocumentPosition(d.firstChild));
+               log.push(d.firstChild.isEqualNode(d.firstChild.cloneNode(true)));
+               d.replaceChildren('fin');
+               log.push(d.textContent);
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "<b>a</b>x-y<!--k-->c|5|x-y|true|hidden|<u>z</u>|20|true|fin"
+        );
     }
 }

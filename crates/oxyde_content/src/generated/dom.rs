@@ -40,6 +40,19 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "CustomEvent",
+        parent: Some("Event"),
+        constructor: Some(1),
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "detail", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "initCustomEvent", length: 1, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
         name: "EventTarget",
         parent: None,
         constructor: Some(0),

@@ -4,12 +4,13 @@ Membres des interfaces décrites par les fichiers Web IDL d'Oxyde (`crates/oxyde
 
 La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : c'est le rôle des Web Platform Tests, pas encore branchés. Les interfaces que l'IDL d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) ne sont pas comptées.
 
-**Total : 209 membres disponibles sur 283 (73.9 %).**
+**Total : 220 membres disponibles sur 285 (77.2 %).**
 
 | Interface | Hérite de | Constantes | Attributs | Opérations |
 |---|---|---:|---:|---:|
-| `Event` | — | 4 / 4 | 7 / 13 | 3 / 5 |
-| `EventTarget` | — | — | — | 2 / 3 |
+| `Event` | — | 4 / 4 | 13 / 13 | 5 / 5 |
+| `CustomEvent` | `Event` | — | 1 / 1 | 1 / 1 |
+| `EventTarget` | — | — | — | 3 / 3 |
 | `NodeList` | — | — | 1 / 1 | 0 / 1 |
 | `HTMLCollection` | — | — | 1 / 1 | 0 / 2 |
 | `Node` | `EventTarget` | 18 / 18 | 14 / 14 | 12 / 15 |
@@ -26,8 +27,6 @@ La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exi
 
 ## Membres absents
 
-- `Event` : srcElement, eventPhase, returnValue, composed, isTrusted, timeStamp, composedPath, initEvent
-- `EventTarget` : dispatchEvent
 - `NodeList` : item
 - `HTMLCollection` : item, namedItem
 - `Node` : lookupPrefix, lookupNamespaceURI, isDefaultNamespace

@@ -26,13 +26,13 @@ use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
 mod dom_ops;
+mod events;
+
+use events::{Listener, add_event_listener, dispatch, remove_event_listener};
 
 const CLASS_NODE: u32 = 1;
 const CLASS_STYLE: u32 = 2;
 const CLASS_LIST: u32 = 3;
-
-/// Cible « fenêtre » dans la table des écouteurs.
-const WINDOW: u32 = u32::MAX;
 
 /// Instructions accordées à une tâche (script, événement, minuteur) avant interruption.
 const TASK_BUDGET: u64 = 200_000_000;
@@ -42,12 +42,6 @@ const MAX_TIMERS_PER_TICK: usize = 500;
 const MAX_TIMERS: usize = 10_000;
 /// Délai minimal d'un minuteur répété, pour ne pas monopoliser le fil.
 const MIN_INTERVAL: Duration = Duration::from_millis(4);
-
-struct Listener {
-    target: u32,
-    kind: String,
-    callback: Value,
-}
 
 struct Timer {
     id: u32,
@@ -68,6 +62,8 @@ struct DomHost {
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
+    /// Identifiant du prochain écouteur enregistré.
+    next_listener: u64,
     timers: Vec<Timer>,
     next_timer: u32,
     /// Vrai si le DOM a changé depuis la dernière mise en page.
@@ -1139,136 +1135,6 @@ fn get_bounding_client_rect(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsRe
 
 // ---- Événements ----------------------------------------------------------------------
 
-fn listener_target(vm: &mut Vm, this: &Value) -> u32 {
-    match node_of(vm, this) {
-        Some(node) => u32::try_from(node.index()).unwrap_or(WINDOW),
-        None => WINDOW,
-    }
-}
-
-fn add_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = vm.to_string(&arg(args, 0))?.to_string();
-    let callback = arg(args, 1);
-    if callback.as_object().is_none() {
-        return Ok(Value::Undefined);
-    }
-    let target = listener_target(vm, this);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let exists = h
-        .listeners
-        .iter()
-        .any(|l| l.target == target && l.kind == kind && l.callback == callback);
-    if !exists {
-        h.listeners.push(Listener {
-            target,
-            kind,
-            callback: callback.clone(),
-        });
-        vm.add_root(callback);
-    }
-    Ok(Value::Undefined)
-}
-
-fn remove_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = vm.to_string(&arg(args, 0))?.to_string();
-    let callback = arg(args, 1);
-    let target = listener_target(vm, this);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let before = h.listeners.len();
-    h.listeners
-        .retain(|l| !(l.target == target && l.kind == kind && l.callback == callback));
-    if h.listeners.len() != before {
-        vm.remove_root(&callback);
-    }
-    Ok(Value::Undefined)
-}
-
-fn event_prevent_default(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    vm.set(this, "defaultPrevented", Value::Bool(true))?;
-    Ok(Value::Undefined)
-}
-
-fn event_stop_propagation(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    vm.set(this, "cancelBubble", Value::Bool(true))?;
-    Ok(Value::Undefined)
-}
-
-/// Distribue un événement `kind` sur `target` puis ses ancêtres et la fenêtre
-/// (phase de bouillonnement). Renvoie `true` si `preventDefault()` a été appelé.
-fn dispatch(vm: &mut Vm, target: Option<NodeId>, kind: &str) -> bool {
-    let event = Value::Object(vm.new_object());
-    let target_value = match target {
-        Some(node) => wrap(vm, node),
-        None => Value::Object(vm.global()),
-    };
-    let prevent = Value::Object(vm.new_function("preventDefault", 0, event_prevent_default));
-    let stop = Value::Object(vm.new_function("stopPropagation", 0, event_stop_propagation));
-    for (key, value) in [
-        ("type", Value::string(kind)),
-        ("target", target_value),
-        ("bubbles", Value::Bool(true)),
-        ("cancelable", Value::Bool(true)),
-        ("defaultPrevented", Value::Bool(false)),
-        ("cancelBubble", Value::Bool(false)),
-        ("preventDefault", prevent),
-        ("stopPropagation", stop.clone()),
-        ("stopImmediatePropagation", stop),
-    ] {
-        // Écriture sur un objet ordinaire tout juste créé : ne peut pas échouer.
-        let _ = vm.set(&event, key, value);
-    }
-    // Chemin de propagation : la cible, ses ancêtres, puis la fenêtre.
-    let mut path: Vec<u32> = Vec::new();
-    if let (Some(node), Some(h)) = (target, host(vm)) {
-        path.extend(
-            std::iter::once(node)
-                .chain(h.doc.ancestors(node))
-                .map(|n| u32::try_from(n.index()).unwrap_or(WINDOW)),
-        );
-    }
-    path.push(WINDOW);
-    let handler_name = format!("on{kind}");
-    for current in path {
-        let current_value = match host(vm).and_then(|h| h.doc.id_from_index(current as usize)) {
-            Some(node) if current != WINDOW => wrap(vm, node),
-            _ => Value::Object(vm.global()),
-        };
-        let _ = vm.set(&event, "currentTarget", current_value.clone());
-        // Copie de la liste : un écouteur peut en ajouter ou en retirer.
-        let mut callbacks: Vec<Value> = host(vm)
-            .map(|h| {
-                h.listeners
-                    .iter()
-                    .filter(|l| l.target == current && l.kind == kind)
-                    .map(|l| l.callback.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Gestionnaire posé par affectation : `element.onclick = …`.
-        if let Ok(handler) = vm.get(&current_value, &handler_name)
-            && handler.as_object().is_some()
-        {
-            callbacks.push(handler);
-        }
-        for callback in callbacks {
-            if let Err(thrown) = vm.call(&callback, &current_value, std::slice::from_ref(&event)) {
-                report(vm, &thrown);
-            }
-            if vm.was_interrupted() {
-                return false;
-            }
-        }
-        if vm.get(&event, "cancelBubble").is_ok_and(|v| v.truthy()) {
-            break;
-        }
-    }
-    vm.get(&event, "defaultPrevented").is_ok_and(|v| v.truthy())
-}
-
 /// Signale une exception non rattrapée dans la console de la page.
 fn report(vm: &mut Vm, thrown: &Value) {
     let message = vm.display(thrown);
@@ -1451,6 +1317,17 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "blur", no_op),
     ("", "scrollIntoView", no_op),
     ("", "getBoundingClientRect", get_bounding_client_rect),
+    ("", "dispatchEvent", events::dispatch_event),
+    ("Event", "preventDefault", events::prevent_default),
+    ("Event", "stopPropagation", events::stop_propagation),
+    (
+        "Event",
+        "stopImmediatePropagation",
+        events::stop_immediate_propagation,
+    ),
+    ("Event", "composedPath", events::composed_path),
+    ("Event", "initEvent", events::init_event),
+    ("CustomEvent", "initCustomEvent", events::init_custom_event),
     ("", "hasChildNodes", dom_ops::has_child_nodes),
     ("", "isSameNode", dom_ops::is_same_node),
     ("", "getRootNode", dom_ops::get_root_node),
@@ -1543,7 +1420,14 @@ fn implementation(interface: &str, name: &str) -> Option<NativeFn> {
     find(interface).or_else(|| is_node_interface(interface).then(|| find("")).flatten())
 }
 
-/// Les objets interface ne se construisent pas depuis un script.
+/// Constructeurs des interfaces qu'un script peut instancier.
+const CONSTRUCTORS: &[(&str, NativeFn)] = &[
+    ("Event", events::event_ctor),
+    ("CustomEvent", events::custom_event_ctor),
+    ("EventTarget", events::event_target_ctor),
+];
+
+/// Les autres objets interface ne se construisent pas depuis un script.
 fn illegal_constructor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Err(vm.error("TypeError", "constructeur illégal"))
 }
@@ -1559,11 +1443,14 @@ fn install_interfaces(vm: &mut Vm) -> JsResult<HashMap<&'static str, ObjId>> {
     let mut constructors = HashMap::new();
     for interface in crate::dom_idl::INTERFACES {
         let proto = vm.new_object();
-        let constructor = vm.new_function(
-            interface.name,
-            interface.constructor.unwrap_or(0),
-            illegal_constructor,
-        );
+        let arity = interface.constructor.unwrap_or(0);
+        let constructor = match CONSTRUCTORS
+            .iter()
+            .find(|(name, _)| *name == interface.name)
+        {
+            Some((_, func)) => vm.new_constructor(interface.name, arity, *func),
+            None => vm.new_function(interface.name, arity, illegal_constructor),
+        };
         vm.define_hidden(constructor, "prototype", Value::Object(proto));
         vm.define_hidden(proto, "constructor", Value::Object(constructor));
         if let Value::Symbol(tag) = &tag {
@@ -1630,6 +1517,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         class_list_proto,
         protos,
         listeners: Vec::new(),
+        next_listener: 0,
         timers: Vec::new(),
         fetch_queue: Vec::new(),
         fetches: HashMap::new(),
@@ -1643,6 +1531,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         get: host_get,
         set: host_set,
     });
+    events::install_attributes(vm)?;
 
     let global = vm.global();
     let window = Value::Object(global);
@@ -2188,7 +2077,7 @@ pub(crate) fn dom_coverage_report() -> String {
            el.addEventListener('click', e => {{ ev = e; }}); el.click();
            const kind = n => n && n.nodeType;
            const samples = {{
-             Event: ev, EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
+             Event: ev, CustomEvent: new CustomEvent('x'), EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
              DocumentType: kind(document.firstChild) === 10 ? document.firstChild : null,
              DocumentFragment: null,
              CharacterData: el.firstChild, Text: el.firstChild,

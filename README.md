@@ -92,7 +92,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
   pas encore. Conformité mesurée : 83,3 % de test262
-  ([conformance/test262.md](conformance/test262.md)) ; 73,9 % des membres des interfaces du DOM
+  ([conformance/test262.md](conformance/test262.md)) ; 77,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
