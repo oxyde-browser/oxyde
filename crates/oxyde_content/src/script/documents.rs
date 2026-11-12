@@ -51,6 +51,9 @@ fn new_document(vm: &mut Vm, kind: DocumentKind) -> Option<NodeId> {
     let h = host(vm)?;
     let document = h.doc.create_document();
     h.kinds.insert(index(document), kind);
+    if h.realm != 0 {
+        h.doc_realms.insert(index(document), h.realm);
+    }
     Some(document)
 }
 
@@ -83,7 +86,17 @@ pub(super) fn document_ctor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsRe
 pub(super) fn fragment_ctor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     require_new(vm, "DocumentFragment")?;
     let node = host(vm).map(|h| h.doc.create_fragment());
+    let node = in_window_document(vm, node);
     Ok(wrap_opt(vm, node))
+}
+
+/// Rattache un nœud construit par `new` au document de la fenêtre courante.
+fn in_window_document(vm: &mut Vm, node: Option<NodeId>) -> Option<NodeId> {
+    if let (Some(node), Some(h)) = (node, host(vm)) {
+        let document = h.document;
+        h.doc.set_owner(node, document);
+    }
+    node
 }
 
 /// Texte passé à un constructeur : chaîne vide si l'argument manque.
@@ -98,6 +111,7 @@ pub(super) fn text_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult 
     require_new(vm, "Text")?;
     let data = data_arg(vm, args)?;
     let node = host(vm).map(|h| h.doc.create_text(&data));
+    let node = in_window_document(vm, node);
     Ok(wrap_opt(vm, node))
 }
 
@@ -105,6 +119,7 @@ pub(super) fn comment_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResu
     require_new(vm, "Comment")?;
     let data = data_arg(vm, args)?;
     let node = host(vm).map(|h| h.doc.create_comment(&data));
+    let node = in_window_document(vm, node);
     Ok(wrap_opt(vm, node))
 }
 

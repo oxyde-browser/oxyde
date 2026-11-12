@@ -67,15 +67,22 @@ fn target_of(vm: &mut Vm, value: &Value) -> Target {
     if let Some(node) = node_of(vm, value) {
         return Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX));
     }
-    match value {
-        Value::Object(id) if *id != vm.global() => Target::Object(*id),
-        _ => Target::Window,
+    // La fenêtre de la page est `Target::Window` ; celle d'un cadre est
+    // désignée par son objet global.
+    let object = match value {
+        Value::Object(id) => *id,
+        _ => vm.global(),
+    };
+    if vm.realm_global(0) == Some(object) {
+        Target::Window
+    } else {
+        Target::Object(object)
     }
 }
 
 fn target_value(vm: &mut Vm, target: Target) -> Value {
     match target {
-        Target::Window => Value::Object(vm.global()),
+        Target::Window => vm.realm_global(0).map_or(Value::Null, Value::Object),
         Target::Object(id) => Value::Object(id),
         Target::Node(index) => match host(vm).and_then(|h| h.doc.id_from_index(index as usize)) {
             Some(node) => wrap(vm, node),
@@ -484,6 +491,64 @@ pub(super) fn install_attributes(vm: &mut Vm) -> JsResult<()> {
     Ok(())
 }
 
+/// Gestionnaire écrit dans un attribut (`<p onclick="…">`), compilé à la
+/// demande en fonction de paramètre `event`. Pour une fenêtre, c'est
+/// l'attribut de l'élément `<body>` de son document (`<body onload="…">`).
+fn attribute_handler(vm: &mut Vm, item: Target, kind: &str) -> Option<Value> {
+    let name = format!("on{kind}");
+    // Un objet cible n'a de gestionnaire en attribut que s'il est la
+    // fenêtre d'un cadre.
+    let frame_realm = match item {
+        Target::Object(id) => {
+            let realms: Vec<usize> = host(vm)?.frames.values().map(|f| f.realm).collect();
+            Some(
+                realms
+                    .into_iter()
+                    .find(|realm| vm.realm_global(*realm) == Some(id))?,
+            )
+        }
+        _ => None,
+    };
+    let (source, realm) = {
+        let h = host(vm)?;
+        let doc = &h.doc;
+        let node = match item {
+            Target::Node(index) => doc.id_from_index(index as usize)?,
+            Target::Window => doc.find_html_element(doc.root(), "body")?,
+            Target::Object(_) => {
+                // Fenêtre d'un cadre : le corps de son document.
+                let frame = h.frames.values().find(|f| Some(f.realm) == frame_realm)?;
+                doc.find_html_element(frame.document, "body")?
+            }
+        };
+        let source = doc.element(node)?.attr(&name)?.to_owned();
+        let owner = if doc.is_document(node) {
+            node
+        } else {
+            doc.owner(node)
+        };
+        let realm = u32::try_from(owner.index())
+            .ok()
+            .and_then(|i| h.doc_realms.get(&i))
+            .copied()
+            .unwrap_or(0);
+        (source, realm)
+    };
+    let global = Value::Object(vm.realm_global(realm)?);
+    let function = vm.get(&global, "Function").ok()?;
+    match vm.construct(
+        &function,
+        &[Value::string("event"), Value::string(&source)],
+        &function,
+    ) {
+        Ok(handler) => Some(handler),
+        Err(thrown) => {
+            report(vm, &thrown);
+            None
+        }
+    }
+}
+
 // ---- Distribution ------------------------------------------------------------------------------
 
 /// Appelle les écouteurs de `item` pour la phase en cours. Renvoie `false`
@@ -510,6 +575,8 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
         && let Ok(handler) = vm.get(&current, &format!("on{kind}"))
         && handler.as_object().is_some()
     {
+        calls.push((None, handler, false, false));
+    } else if !capture && let Some(handler) = attribute_handler(vm, item, kind) {
         calls.push((None, handler, false, false));
     }
     let event_value = Value::Object(event);
@@ -556,12 +623,19 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
     };
     // Chemin de propagation : la cible, ses ancêtres, puis la fenêtre.
     let mut path = vec![target];
+    let mut frame_realm = None;
     if let Target::Node(index) = target
         && let Some(h) = host(vm)
         && let Some(node) = h.doc.id_from_index(index as usize)
     {
         let ancestors: Vec<NodeId> = h.doc.ancestors(node).collect();
-        let connected = ancestors.last().copied().unwrap_or(node) == h.doc.root();
+        let root = ancestors.last().copied().unwrap_or(node);
+        let connected = root == h.doc.root();
+        frame_realm = h
+            .frames
+            .values()
+            .find(|frame| frame.document == root)
+            .map(|frame| frame.realm);
         path.extend(
             ancestors
                 .into_iter()
@@ -570,6 +644,10 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
         if connected {
             path.push(Target::Window);
         }
+    }
+    // Un événement né dans un cadre remonte jusqu'à la fenêtre du cadre.
+    if let Some(window) = frame_realm.and_then(|realm| vm.realm_global(realm)) {
+        path.push(Target::Object(window));
     }
     let target_object = target_value(vm, target);
     vm.set_slot(event, TARGET, target_object);
@@ -641,7 +719,8 @@ pub(super) fn dispatch(vm: &mut Vm, target: Option<NodeId>, kind: &str) -> bool 
     let event = new_event(vm, "Event", kind, true, true, true);
     let target = match target {
         Some(node) => Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX)),
-        None => Target::Window,
+        // La fenêtre du royaume courant.
+        None => target_of(vm, &Value::Undefined),
     };
     fire(vm, target, event)
 }

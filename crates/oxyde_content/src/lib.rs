@@ -197,6 +197,96 @@ enum ScriptSlot {
     },
 }
 
+/// Cadre (`<iframe>`) du document, dans l'ordre du source.
+#[derive(Debug)]
+struct FrameSlot {
+    /// L'élément `<iframe>`.
+    element: NodeId,
+    /// Adresse du document du cadre.
+    url: Url,
+    /// Vrai une fois la ressource fournie (ou déclarée indisponible).
+    resolved: bool,
+    /// Document analysé ; `None` tant qu'il n'est pas reçu ou s'il est
+    /// indisponible.
+    document: Option<Document>,
+    /// Scripts classiques du document du cadre.
+    scripts: Vec<ScriptSlot>,
+    /// Vrai une fois le document remis au cadre (ou abandonné).
+    loaded: bool,
+}
+
+impl FrameSlot {
+    /// Analyse `html` comme document du cadre et relève ses scripts.
+    fn fill(&mut self, html: &str) {
+        let document = oxyde_html::parse_document(html);
+        self.scripts = frame_scripts(&document, &self.url);
+        self.document = Some(document);
+        self.resolved = true;
+    }
+}
+
+/// Scripts classiques du document `doc` d'un cadre, dans l'ordre du source.
+fn frame_scripts(doc: &Document, base: &Url) -> Vec<ScriptSlot> {
+    let mut scripts = Vec::new();
+    for node in doc.descendants(doc.root()) {
+        let Some(el) = doc.element(node) else {
+            continue;
+        };
+        if !el.is_html("script")
+            || !is_classic_script(el.attr("type"))
+            || scripts.len() >= MAX_SCRIPTS
+        {
+            continue;
+        }
+        match el.attr("src").filter(|s| !s.trim().is_empty()) {
+            Some(src) => {
+                if let Ok(target) = base.join(src.trim()) {
+                    scripts.push(ScriptSlot::External {
+                        url: target,
+                        resolved: false,
+                        source: None,
+                        module: false,
+                    });
+                }
+            }
+            None => {
+                let source = doc.text_content(node);
+                if !source.trim().is_empty() {
+                    scripts.push(ScriptSlot::Inline(source));
+                }
+            }
+        }
+    }
+    scripts
+}
+
+/// Textes des scripts classiques disponibles parmi `scripts`.
+fn frame_sources(scripts: &[ScriptSlot]) -> Vec<String> {
+    scripts
+        .iter()
+        .filter_map(|slot| match slot {
+            ScriptSlot::Inline(source)
+            | ScriptSlot::External {
+                source: Some(source),
+                module: false,
+                ..
+            } => Some(source.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Vrai si `a` et `b` ont la même origine (deux fichiers locaux comptent
+/// pour une même origine). Tant que les cadres partagent le processus et la
+/// mémoire de la page, seul un cadre de même origine est chargé : un
+/// document d'une autre origine pourrait lire celui qui l'accueille.
+pub(crate) fn same_origin(a: &Url, b: &Url) -> bool {
+    (a.scheme() == "file" && b.scheme() == "file") || a.origin() == b.origin()
+}
+
+/// Nombre maximal de cadres chargés par page.
+const MAX_FRAMES: usize = 50;
+
 /// Une page chargée.
 #[derive(Debug)]
 pub struct Page {
@@ -210,6 +300,8 @@ pub struct Page {
     /// Modules importés par les scripts de type module, par adresse ; `None` :
     /// module indisponible.
     modules: HashMap<Url, Option<String>>,
+    /// Cadres du document dont le contenu vient d'une adresse ou de `srcdoc`.
+    frames: Vec<FrameSlot>,
     engine: Option<Box<ScriptEngine>>,
     /// Instructions accordées à chaque tâche de script ; `None` : la valeur
     /// par défaut du moteur.
@@ -311,11 +403,34 @@ impl Page {
         let sheets = collect_sheets(&doc, &base, Vec::new());
         let mut images = HashMap::new();
         let mut scripts = Vec::new();
+        let mut frames: Vec<FrameSlot> = Vec::new();
         for node in doc.descendants(doc.root()) {
             let Some(el) = doc.element(node) else {
                 continue;
             };
-            if el.is_html("img")
+            if el.is_html("iframe") && frames.len() < MAX_FRAMES {
+                let mut slot = FrameSlot {
+                    element: node,
+                    url: base.clone(),
+                    resolved: false,
+                    document: None,
+                    scripts: Vec::new(),
+                    loaded: false,
+                };
+                if let Some(srcdoc) = el.attr("srcdoc") {
+                    slot.fill(srcdoc);
+                    frames.push(slot);
+                } else if let Some(target) = el
+                    .attr("src")
+                    .filter(|s| !s.trim().is_empty())
+                    .and_then(|s| base.join(s.trim()).ok())
+                    .filter(|u| matches!(u.scheme(), "http" | "https" | "file"))
+                    .filter(|u| same_origin(u, &url))
+                {
+                    slot.url = target;
+                    frames.push(slot);
+                }
+            } else if el.is_html("img")
                 && images.len() < MAX_IMAGES
                 && let Some(target) = el
                     .attr("src")
@@ -367,6 +482,7 @@ impl Page {
             images,
             scripts,
             modules: HashMap::new(),
+            frames,
             engine: None,
             task_budget: None,
             styles: StyleMap::default(),
@@ -458,11 +574,98 @@ impl Page {
         found
     }
 
+    /// Adresses des documents de cadres (`<iframe src>`) qu'il reste à
+    /// fournir par [`Page::set_frame`].
+    ///
+    /// Les cadres créés ou redirigés par les scripts s'y ajoutent au fil de
+    /// l'exécution : à rappeler après chaque tâche, puis
+    /// [`Page::load_ready_frames`] une fois les ressources fournies.
+    pub fn pending_frames(&mut self) -> Vec<Url> {
+        let requests = self
+            .engine
+            .as_mut()
+            .map(|engine| engine.take_frame_requests())
+            .unwrap_or_default();
+        for (element, url) in requests {
+            if self.frames.len() < MAX_FRAMES * 4 {
+                self.frames.push(FrameSlot {
+                    element,
+                    url,
+                    resolved: false,
+                    document: None,
+                    scripts: Vec::new(),
+                    loaded: false,
+                });
+            }
+        }
+        self.frames
+            .iter()
+            .filter(|frame| !frame.resolved)
+            .map(|frame| frame.url.clone())
+            .collect()
+    }
+
+    /// Fournit le HTML d'un document de cadre demandé par
+    /// [`Page::pending_frames`] ; `None` s'il est indisponible (le cadre
+    /// reste vide). Ses scripts externes s'ajoutent à
+    /// [`Page::pending_scripts`]. Renvoie `false` si `url` n'était pas
+    /// attendue.
+    pub fn set_frame(&mut self, url: &Url, html: Option<&str>) -> bool {
+        let mut found = false;
+        for frame in &mut self.frames {
+            if frame.url == *url && !frame.resolved {
+                match html {
+                    Some(html) => frame.fill(html),
+                    None => {
+                        frame.resolved = true;
+                        frame.loaded = true;
+                    }
+                }
+                found = true;
+            }
+        }
+        found
+    }
+
+    /// Remet aux cadres les documents reçus depuis [`Page::run_scripts`] dont
+    /// tous les scripts sont fournis, et exécute ces scripts. Renvoie `true`
+    /// si au moins un cadre a été chargé.
+    pub fn load_ready_frames(&mut self) -> bool {
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        let mut any = false;
+        for frame in &mut self.frames {
+            let ready = !frame.loaded
+                && frame.scripts.iter().all(|slot| {
+                    !matches!(
+                        slot,
+                        ScriptSlot::External {
+                            resolved: false,
+                            ..
+                        }
+                    )
+                });
+            let (true, Some(document)) = (ready, &frame.document) else {
+                continue;
+            };
+            let sources = frame_sources(&frame.scripts);
+            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+            frame.loaded = true;
+            any = true;
+        }
+        if any && engine.take_dirty() {
+            self.dom_changed();
+        }
+        any
+    }
+
     /// Adresses des scripts externes pas encore chargés, dans l'ordre du document.
     #[must_use]
     pub fn pending_scripts(&self) -> Vec<Url> {
         self.scripts
             .iter()
+            .chain(self.frames.iter().flat_map(|frame| frame.scripts.iter()))
             .filter_map(|s| match s {
                 ScriptSlot::External {
                     url,
@@ -479,7 +682,11 @@ impl Page {
     /// sauté). Renvoie `false` si `url` n'était pas attendue.
     pub fn set_script(&mut self, url: &Url, source: Option<String>) -> bool {
         let mut found = false;
-        for slot in &mut self.scripts {
+        let frame_scripts = self
+            .frames
+            .iter_mut()
+            .flat_map(|frame| frame.scripts.iter_mut());
+        for slot in self.scripts.iter_mut().chain(frame_scripts) {
             if let ScriptSlot::External {
                 url: u,
                 resolved,
@@ -574,6 +781,19 @@ impl Page {
         let modules = std::mem::take(&mut self.modules);
         let scripts = std::mem::take(&mut self.scripts);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
+        // Les cadres relevés à l'analyse sont chargés ici, pas à la demande.
+        let noted: Vec<(NodeId, String)> = self
+            .frames
+            .iter()
+            .filter_map(|frame| {
+                let element = self.doc.element(frame.element)?;
+                Some((
+                    frame.element,
+                    script::frame_fingerprint(element.attr("srcdoc"), element.attr("src")),
+                ))
+            })
+            .collect();
+        engine.note_static_frames(&noted);
         if let Some(budget) = self.task_budget {
             engine.set_task_budget(budget);
         }
@@ -601,6 +821,15 @@ impl Page {
         }
         let root = self.doc.root();
         engine.dispatch(&mut self.doc, Some(root), "DOMContentLoaded");
+        // Les cadres se chargent avant l'événement `load` de la page.
+        for frame in &mut self.frames {
+            frame.loaded = true;
+            let Some(document) = &frame.document else {
+                continue;
+            };
+            let sources = frame_sources(&frame.scripts);
+            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+        }
         engine.dispatch(&mut self.doc, None, "load");
         engine.take_dirty();
         self.engine = Some(engine);

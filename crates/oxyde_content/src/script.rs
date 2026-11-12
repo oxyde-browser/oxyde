@@ -29,6 +29,7 @@ mod attrs;
 mod documents;
 mod dom_ops;
 mod events;
+mod frames;
 mod lists;
 mod mutation;
 mod range;
@@ -98,6 +99,24 @@ struct DomHost {
     activation: Option<Value>,
     /// Prototype des éléments HTML de chaque balise.
     tag_protos: HashMap<String, ObjId>,
+    /// Document de la fenêtre du royaume courant (`window.document`).
+    document: NodeId,
+    /// Royaume dont l'état occupe les champs propres à un royaume (`url`,
+    /// `document`, prototypes, fonctions du prélude).
+    realm: usize,
+    /// État des autres royaumes, par numéro.
+    parked: HashMap<usize, RealmHost>,
+    /// Royaume des documents qui ne sont pas ceux du royaume 0.
+    doc_realms: HashMap<u32, usize>,
+    /// Contexte de chaque cadre, par index de son élément `<iframe>`.
+    frames: HashMap<u32, frames::FrameContext>,
+    /// Source déjà prise en compte pour chaque `<iframe>` (voir
+    /// [`frames::fingerprint`]) : un changement relance un chargement.
+    frame_sources: HashMap<u32, String>,
+    /// Documents de cadres à charger par l'embarqueur : élément et adresse.
+    frame_requests: Vec<(NodeId, Url)>,
+    /// Version du document au dernier relevé des cadres.
+    frames_scanned: Option<u64>,
     /// Identifiant du prochain écouteur enregistré.
     next_listener: u64,
     timers: Vec<Timer>,
@@ -114,8 +133,62 @@ struct DomHost {
     modules: HashMap<String, String>,
 }
 
+/// État du DOM propre à un royaume : un cadre a sa fenêtre, donc ses
+/// prototypes d'interfaces, son adresse et son document.
+struct RealmHost {
+    url: Url,
+    document: NodeId,
+    node_proto: ObjId,
+    style_proto: ObjId,
+    class_list_proto: ObjId,
+    dataset_proto: ObjId,
+    protos: HashMap<&'static str, ObjId>,
+    hooks: Option<Value>,
+    activation: Option<Value>,
+    tag_protos: HashMap<String, ObjId>,
+}
+
+impl DomHost {
+    /// Échange l'état du royaume courant avec `other`.
+    fn swap_realm(&mut self, other: &mut RealmHost) {
+        std::mem::swap(&mut self.url, &mut other.url);
+        std::mem::swap(&mut self.document, &mut other.document);
+        std::mem::swap(&mut self.node_proto, &mut other.node_proto);
+        std::mem::swap(&mut self.style_proto, &mut other.style_proto);
+        std::mem::swap(&mut self.class_list_proto, &mut other.class_list_proto);
+        std::mem::swap(&mut self.dataset_proto, &mut other.dataset_proto);
+        std::mem::swap(&mut self.protos, &mut other.protos);
+        std::mem::swap(&mut self.hooks, &mut other.hooks);
+        std::mem::swap(&mut self.activation, &mut other.activation);
+        std::mem::swap(&mut self.tag_protos, &mut other.tag_protos);
+    }
+
+    /// Passe dans le royaume `realm`, s'il est connu.
+    fn enter(&mut self, realm: usize) {
+        if let Some(mut incoming) = self.parked.remove(&realm) {
+            self.swap_realm(&mut incoming);
+            self.parked.insert(self.realm, incoming);
+            self.realm = realm;
+        }
+    }
+
+    /// Enregistre l'état `fresh` d'un royaume neuf et y passe.
+    fn adopt(&mut self, realm: usize, mut fresh: RealmHost) {
+        self.swap_realm(&mut fresh);
+        self.parked.insert(self.realm, fresh);
+        self.realm = realm;
+    }
+}
+
+/// État de l'hôte, réglé sur le royaume courant de la machine : une fonction
+/// native s'exécute dans son royaume, et y trouve ses prototypes.
 fn host(vm: &mut Vm) -> Option<&mut DomHost> {
-    vm.host.as_mut()?.downcast_mut::<DomHost>()
+    let realm = vm.realm();
+    let h = vm.host.as_mut()?.downcast_mut::<DomHost>()?;
+    if h.realm != realm {
+        h.enter(realm);
+    }
+    Some(h)
 }
 
 /// `DOMException` de nom `name` (`HierarchyRequestError`, `NotFoundError`…).
@@ -191,15 +264,30 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
         NodeData::Fragment => "DocumentFragment",
     };
     // Un élément HTML prend le prototype de l'interface de sa balise.
+    // … dans le royaume de son document.
+    let owner = if h.doc.is_document(node) {
+        node
+    } else {
+        h.doc.owner(node)
+    };
+    let realm = u32::try_from(owner.index())
+        .ok()
+        .and_then(|i| h.doc_realms.get(&i))
+        .copied()
+        .unwrap_or(0);
+    let (protos, tag_protos, node_proto) = match h.parked.get(&realm) {
+        Some(parked) if realm != h.realm => (&parked.protos, &parked.tag_protos, parked.node_proto),
+        _ => (&h.protos, &h.tag_protos, h.node_proto),
+    };
     let by_tag = match &h.doc.node(node).data {
         NodeData::Element(element) if element.ns == Namespace::Html => {
-            h.tag_protos.get(element.name.as_str()).copied()
+            tag_protos.get(element.name.as_str()).copied()
         }
         _ => None,
     };
     let proto = by_tag
-        .or_else(|| h.protos.get(interface).copied())
-        .unwrap_or(h.node_proto);
+        .or_else(|| protos.get(interface).copied())
+        .unwrap_or(node_proto);
     let id = vm.new_host_object(proto, CLASS_NODE, u64::from(index));
     vm.add_root(Value::Object(id));
     if let Some(h) = host(vm) {
@@ -680,11 +768,28 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             return Some(Ok(wrap_opt(vm, found)));
         }
         "title" if is_document => string(&document_title(doc, node)),
-        "URL" | "documentURI" if is_document => string(if data == 0 {
-            h.url.as_str()
-        } else {
-            "about:blank"
-        }),
+        "URL" | "documentURI" if is_document => {
+            // Le document d'une fenêtre porte son adresse ; les autres sont vides.
+            let realm = u32::try_from(data)
+                .ok()
+                .and_then(|i| h.doc_realms.get(&i))
+                .copied()
+                .unwrap_or(0);
+            let (document, url) = match h.parked.get(&realm) {
+                Some(parked) if realm != h.realm => (parked.document, &parked.url),
+                _ => (h.document, &h.url),
+            };
+            string(if document == node {
+                url.as_str()
+            } else {
+                "about:blank"
+            })
+        }
+        "contentWindow" | "contentDocument"
+            if doc.element(node).is_some_and(|e| e.is_html("iframe")) =>
+        {
+            return Some(frames::property(vm, node, key));
+        }
         "readyState" if is_document => string("complete"),
         "baseURI" => string(h.url.as_str()),
         "length" if doc.character_data(node).is_some() => Ok(number(
@@ -945,7 +1050,7 @@ fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
     }
     let h = host(vm)?;
     let doc = &h.doc;
-    let found = doc.descendants(doc.root()).find(|n| {
+    let found = doc.descendants(h.document).find(|n| {
         doc.element(*n).is_some_and(|e| {
             e.id() == Some(name)
                 || (e.attr("name") == Some(name)
@@ -1597,35 +1702,63 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         }
     }
     let dataset_proto = vm.new_object();
+    vm.add_root(Value::Object(dataset_proto));
     let storage_proto = proto_of("Storage");
-    vm.host = Some(Box::new(DomHost {
-        doc: Document::new(),
+    let blank = Document::new();
+    let fresh = RealmHost {
         url: url.clone(),
-        wrappers: HashMap::new(),
-        kinds: HashMap::new(),
-        lists: Vec::new(),
+        document: blank.root(),
         node_proto,
         style_proto,
         class_list_proto,
         dataset_proto,
-        storage: [Vec::new(), Vec::new()],
         protos,
-        listeners: Vec::new(),
-        observers: Vec::new(),
-        navigations: Vec::new(),
         hooks: None,
         activation: None,
         tag_protos: HashMap::new(),
-        next_listener: 0,
-        timers: Vec::new(),
-        fetch_queue: Vec::new(),
-        fetches: HashMap::new(),
-        modules: HashMap::new(),
-        next_timer: 0,
-        dirty: false,
-        viewport: (0.0, 0.0),
-        started: Instant::now(),
-    }));
+    };
+    let realm = vm.realm();
+    if let Some(h) = vm.host.as_mut().and_then(|h| h.downcast_mut::<DomHost>()) {
+        // Royaume d'un cadre : l'hôte existe, il gagne un état de plus.
+        h.adopt(realm, fresh);
+    } else {
+        vm.host = Some(Box::new(DomHost {
+            doc: blank,
+            url: fresh.url,
+            wrappers: HashMap::new(),
+            kinds: HashMap::new(),
+            lists: Vec::new(),
+            node_proto: fresh.node_proto,
+            style_proto: fresh.style_proto,
+            class_list_proto: fresh.class_list_proto,
+            dataset_proto: fresh.dataset_proto,
+            storage: [Vec::new(), Vec::new()],
+            protos: fresh.protos,
+            listeners: Vec::new(),
+            observers: Vec::new(),
+            navigations: Vec::new(),
+            hooks: None,
+            activation: None,
+            tag_protos: HashMap::new(),
+            document: fresh.document,
+            realm,
+            parked: HashMap::new(),
+            doc_realms: HashMap::new(),
+            frames: HashMap::new(),
+            frame_sources: HashMap::new(),
+            frame_requests: Vec::new(),
+            frames_scanned: None,
+            next_listener: 0,
+            timers: Vec::new(),
+            fetch_queue: Vec::new(),
+            fetches: HashMap::new(),
+            modules: HashMap::new(),
+            next_timer: 0,
+            dirty: false,
+            viewport: (0.0, 0.0),
+            started: Instant::now(),
+        }));
+    }
     vm.set_host_hooks(HostHooks {
         get: host_get,
         set: host_set,
@@ -1729,6 +1862,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     Ok(())
 }
 
+pub(crate) use frames::fingerprint as frame_fingerprint;
+
 /// Moteur de script d'une page : la machine JavaScript et ses liaisons au DOM.
 pub(crate) struct ScriptEngine {
     vm: Vm,
@@ -1758,6 +1893,37 @@ impl ScriptEngine {
 
     /// Exécute `task` avec le document `doc` prêté à la machine, sur un fil à
     /// grande pile et avec un budget d'instructions.
+    /// Charge dans le cadre `element` le document `source`, d'adresse
+    /// `url`, et exécute ses scripts classiques dans le royaume du cadre.
+    pub(crate) fn load_frame(
+        &mut self,
+        doc: &mut Document,
+        element: NodeId,
+        url: &Url,
+        source: &Document,
+        scripts: &[String],
+    ) {
+        self.run(doc, |vm| frames::load(vm, element, url, source, scripts));
+    }
+
+    /// Signale les cadres que l'embarqueur charge lui-même avec la page :
+    /// élément et empreinte de sa source. Ils ne sont pas redemandés.
+    pub(crate) fn note_static_frames(&mut self, frames: &[(NodeId, String)]) {
+        if let Some(h) = host(&mut self.vm) {
+            for (element, print) in frames {
+                let key = u32::try_from(element.index()).unwrap_or(u32::MAX);
+                h.frame_sources.insert(key, print.clone());
+            }
+        }
+    }
+
+    /// Documents de cadres demandés par les scripts depuis le dernier appel.
+    pub(crate) fn take_frame_requests(&mut self) -> Vec<(NodeId, Url)> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.frame_requests))
+            .unwrap_or_default()
+    }
+
     /// Change le nombre d'instructions accordées à chaque tâche.
     pub(crate) fn set_task_budget(&mut self, budget: u64) {
         self.task_budget = budget;
@@ -1766,6 +1932,8 @@ impl ScriptEngine {
     fn run<T: Send>(&mut self, doc: &mut Document, task: impl FnOnce(&mut Vm) -> T + Send) -> T {
         let budget = self.task_budget;
         let vm = &mut self.vm;
+        // Une tâche commence dans le royaume de la page.
+        vm.set_realm(0);
         if let Some(h) = host(vm) {
             std::mem::swap(&mut h.doc, doc);
         }
@@ -1783,6 +1951,11 @@ impl ScriptEngine {
             // s'exécutent, puis les observateurs de mutation sont prévenus.
             vm.run_microtasks();
             mutation::deliver(vm);
+            // Les cadres apparus pendant la tâche prennent leur contenu.
+            if frames::scan(vm) {
+                vm.run_microtasks();
+                mutation::deliver(vm);
+            }
             result
         });
         if let Some(h) = host(vm) {

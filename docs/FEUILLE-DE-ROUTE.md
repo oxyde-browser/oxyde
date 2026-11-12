@@ -147,11 +147,21 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 269 fichiers de test entièrement réussis sur 693 (38,8 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 282 fichiers de test entièrement réussis sur 693 (40,7 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
-  documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker` et
-  `Selection`. Restent, par gain décroissant : les cadres (`<iframe>`), les espaces de noms
-  et les nœuds `Attr`, `DOMParser`, l'accès nommé sur `window`, puis `url/` et `encoding/`.
+  documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
+  `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
+  les écouteurs passifs, l'accès nommé sur `window`, `moveBefore`, puis les cadres. Restent,
+  par gain décroissant : un analyseur XML (documents XML des cadres, `DOMParser`), les tests
+  pilotés par WebDriver (`testdriver.js`), `Observable`, `customElements`, puis `url/` et
+  `encoding/`.
+- **Cadres (`<iframe>`)** : chaque cadre a son royaume JavaScript (objet global et
+  interfaces du DOM à lui) et son document, dans la même arène que la page ;
+  `contentWindow`, `contentDocument`, `parent`, `top`, `frameElement`, chargement de `src`
+  et de `srcdoc`, gestionnaires en attribut (`onload="…"`). Limites : un cadre n'est pas
+  dessiné (jalon 6) ; faute d'isolation entre processus (jalon 5), seul un cadre de même
+  origine que la page est chargé ; dans le navigateur, seuls les cadres présents dans le
+  HTML reçu sont chargés, pas ceux qu'un script crée ensuite.
 - **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
   `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
   `ResizeObserver`.

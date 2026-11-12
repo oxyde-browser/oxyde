@@ -9,7 +9,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 |---|---|---|
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
-| Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 269 fichiers de test entièrement réussis sur 693 (38,8 %) ; 39548 sous-tests sur 46508, détail dans [wpt.md](wpt.md) |
+| Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 282 fichiers de test entièrement réussis sur 693 (40,7 %) ; 42909 sous-tests sur 49886, détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, CSS et mise en page | `oxyde_css`, `oxyde_layout` | pas encore branchée — `--screenshot --page-only` servira aux tests de référence |
 | test262 | `oxyde_js` | **branchée** : 40 768 tests réussis sur 48 795 (83,5 %), détail par dossier dans [test262.md](test262.md) |
 

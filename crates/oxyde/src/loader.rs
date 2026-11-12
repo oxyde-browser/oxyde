@@ -381,6 +381,11 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             .and_then(|(_, bytes)| decode_image(&bytes));
         page.set_image(&image_url, image);
     }
+    for frame_url in page.pending_frames() {
+        // Un cadre indisponible reste vide.
+        let html = fetch(&frame_url).ok().map(|(_, bytes)| decode(&bytes));
+        page.set_frame(&frame_url, html.as_deref());
+    }
     for script_url in page.pending_scripts() {
         // Un script indisponible est sauté ; les suivants s'exécutent quand même.
         let source = fetch(&script_url).ok().map(|(_, bytes)| decode(&bytes));

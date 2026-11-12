@@ -173,7 +173,7 @@ pub(super) fn range_ctor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResul
     if !vm.is_constructing() {
         return Err(vm.error("TypeError", "Range doit être appelé avec « new »"));
     }
-    let document = host(vm).map_or_else(|| Document::new().root(), |h| h.doc.root());
+    let document = host(vm).map_or_else(|| Document::new().root(), |h| h.document);
     new_range(vm, (document, 0), (document, 0))
 }
 

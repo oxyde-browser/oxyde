@@ -208,6 +208,10 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
     for url in page.pending_images() {
         page.set_image(&url, None);
     }
+    for url in page.pending_frames() {
+        let html = read_url(suite, &url);
+        page.set_frame(&url, html.as_deref());
+    }
     for url in page.pending_scripts() {
         let source = read_url(suite, &url);
         page.set_script(&url, source);
@@ -248,6 +252,16 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
             };
             page.complete_fetch(request.id, result);
         }
+        // Cadres créés par les scripts : documents et scripts servis de même.
+        for url in page.pending_frames() {
+            let html = read_url(suite, &url);
+            page.set_frame(&url, html.as_deref());
+        }
+        for url in page.pending_scripts() {
+            let source = read_url(suite, &url);
+            page.set_script(&url, source);
+        }
+        let loaded = page.load_ready_frames();
         for message in page.take_console() {
             if message.text.starts_with("WPT-") {
                 println!("{}", message.text);
@@ -258,10 +272,14 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
             break;
         }
         // Temps virtuel : on saute directement à l'échéance suivante.
-        let Some(due) = page.next_wake() else {
-            break;
-        };
-        page.tick(due);
+        match page.next_wake() {
+            Some(due) => {
+                page.tick(due);
+            }
+            // Un cadre vient d'être chargé : ses scripts ont pu en demander d'autres.
+            None if loaded => {}
+            None => break,
+        }
     }
     if finished {
         ExitCode::SUCCESS
