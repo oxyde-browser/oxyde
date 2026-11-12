@@ -440,6 +440,16 @@ pub fn append_display_list(scene: &mut Scene, list: &DisplayList, transform: Aff
                 scene.push_clip_layer(Fill::NonZero, transform, &shape_of(*rect, *radius));
                 clip_depth += 1;
             }
+            DisplayItem::PushOpacity { rect, alpha } => {
+                scene.push_layer(
+                    Fill::NonZero,
+                    vello::peniko::Mix::Normal,
+                    *alpha,
+                    transform,
+                    &shape_of(*rect, 0.0),
+                );
+                clip_depth += 1;
+            }
             DisplayItem::Image { rect, image } => {
                 let (w, h) = (f64::from(image.width()), f64::from(image.height()));
                 if w > 0.0 && h > 0.0 {

@@ -6,12 +6,14 @@
 //! qui donne un seul chemin de rendu vers le GPU.
 //!
 //! LIMITES CONNUES : bordures pointillées ou tiretées peintes pleines, pas
-//! d'images, d'ombres ni de dégradés, pas d'ordre d'empilement (`z-index`).
+//! d'ombres ni de dégradés ; l'ordre d'empilement (`z-index`) est établi
+//! entre les enfants directs d'une boîte ; une boîte à `overflow` autre que
+//! `visible` découpe son contenu mais ne défile pas.
 
 pub use kurbo::BezPath;
 pub use oxyde_layout::Rect;
 
-use oxyde_css::{Color, Side, Size, Viewport};
+use oxyde_css::{Color, Overflow, Side, Size, Viewport, Visibility};
 use oxyde_dom::NodeId;
 use oxyde_layout::{BoxFragment, Fragment, LayoutTree, TextFragment};
 use oxyde_text::TextLayout;
@@ -90,7 +92,15 @@ pub enum DisplayItem {
         /// Rayon des coins.
         radius: f32,
     },
-    /// Fin de la zone de découpe la plus récente.
+    /// Début d'un calque translucide : tout ce qui suit, jusqu'au
+    /// [`DisplayItem::PopClip`] correspondant, est composé avec `alpha`.
+    PushOpacity {
+        /// Zone couverte par le calque.
+        rect: Rect,
+        /// Opacité, de 0 à 1.
+        alpha: f32,
+    },
+    /// Fin de la zone de découpe ou du calque le plus récent.
     PopClip,
     /// Image matricielle étirée dans `rect`.
     Image {
@@ -296,7 +306,58 @@ fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSour
     }
 }
 
+/// Peint une boîte : son fond et ses bordures si elle est visible, puis ses
+/// enfants dans l'ordre d'empilement, découpés si elle ne laisse pas
+/// déborder son contenu ; le tout dans un calque si elle est translucide.
 fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
+    let style = &b.style;
+    if style.opacity <= 0.0 {
+        return;
+    }
+    let translucent = style.opacity < 1.0;
+    if translucent {
+        // Le calque couvre largement la boîte : son contenu peut en déborder.
+        let margin = 100_000.0;
+        list.items.push(DisplayItem::PushOpacity {
+            rect: Rect {
+                x: b.border_box.x - margin,
+                y: b.border_box.y - margin,
+                w: b.border_box.w + 2.0 * margin,
+                h: b.border_box.h + 2.0 * margin,
+            },
+            alpha: style.opacity,
+        });
+    }
+    if style.visibility == Visibility::Visible {
+        paint_decorations(list, b, images);
+    }
+    let clips = style.overflow_x != Overflow::Visible || style.overflow_y != Overflow::Visible;
+    if clips {
+        // Découpe à la boîte de marge intérieure.
+        let bw = style.border_widths();
+        list.items.push(DisplayItem::PushClip {
+            rect: Rect {
+                x: b.border_box.x + bw.left,
+                y: b.border_box.y + bw.top,
+                w: (b.border_box.w - bw.left - bw.right).max(0.0),
+                h: (b.border_box.h - bw.top - bw.bottom).max(0.0),
+            },
+            radius: (style.border_radius - bw.top).max(0.0),
+        });
+    }
+    for child in oxyde_layout::paint_order(&b.children) {
+        paint_fragment(list, child, images);
+    }
+    if clips {
+        list.items.push(DisplayItem::PopClip);
+    }
+    if translucent {
+        list.items.push(DisplayItem::PopClip);
+    }
+}
+
+/// Fond, bordures et image d'une boîte.
+fn paint_decorations(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
     let r = b.border_box;
     let style = &b.style;
     list.rect(r, style.background_color, style.border_radius);
@@ -390,9 +451,6 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
             }
         }
     }
-    for child in &b.children {
-        paint_fragment(list, child, images);
-    }
 }
 
 fn paint_text(list: &mut DisplayList, t: &TextFragment, images: ImageSource<'_>) {
@@ -417,6 +475,46 @@ mod tests {
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
         paint(&tree, viewport, &|_| None)
+    }
+
+    #[test]
+    fn stacking_order_clipping_and_opacity() {
+        let list = paint_html(
+            "<style>body{margin:0}
+               #c{position:relative; overflow:hidden; width:50px; height:50px; opacity:0.5}
+               #c div{width:10px; height:10px}
+               #front{position:absolute; z-index:2; background:#030303}
+               #back{position:absolute; z-index:-1; background:#010101}
+               #flow{background:#020202}
+               #hidden{visibility:hidden; background:#040404}
+             </style>
+             <div id=c><div id=front></div><div id=back></div><div id=flow></div>\
+             <div id=hidden></div></div>",
+        );
+        // Les petits carrés, dans l'ordre de peinture : dessous, flux, dessus ;
+        // le carré invisible n'est pas peint.
+        let squares: Vec<u8> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::Rect { rect, color, .. } if rect.w == 10.0 => Some(color.r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(squares, [1, 2, 3]);
+        let layers: Vec<&str> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::PushOpacity { alpha, .. } if (*alpha - 0.5).abs() < 1.0e-6 => {
+                    Some("calque")
+                }
+                DisplayItem::PushClip { rect, .. } if rect.w == 50.0 => Some("découpe"),
+                DisplayItem::PopClip => Some("fin"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(layers, ["calque", "découpe", "fin", "fin"]);
     }
 
     #[test]

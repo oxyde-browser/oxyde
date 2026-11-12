@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Mise en page : flex, grille, positionnement</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .boite { background: #4cc9a8; color: #0e1116; padding: 8px; border-radius: 6px; }
+  .barre { display: flex; gap: 10px; align-items: center; background: #171c23; padding: 10px; border-radius: 8px; }
+  .barre .logo { width: 40px; height: 40px; background: #e0a458; border-radius: 8px; flex: none; }
+  .barre .titre { flex: 1; color: #e6e9ed; }
+  .barre .bouton { background: #8fb4f2; padding: 6px 12px; border-radius: 6px; }
+  .cartes { display: flex; flex-wrap: wrap; gap: 10px; }
+  .cartes div { flex: 1 1 120px; height: 50px; }
+  .grille { display: grid; grid-template-columns: 120px 1fr 1fr; grid-template-rows: 40px 60px;
+            grid-template-areas: "tete tete tete" "menu corps cote"; gap: 8px; }
+  .grille .tete { grid-area: tete; background: #e0a458; }
+  .grille .menu { grid-area: menu; background: #8fb4f2; }
+  .grille .corps { grid-area: corps; }
+  .grille .cote { grid-area: cote; background: #c9a4e8; }
+  .scene { position: relative; height: 90px; background: #dfe3e8; border-radius: 8px; overflow: hidden; }
+  .scene .coin { position: absolute; right: 10px; bottom: 10px; width: 80px; height: 30px; background: #e0a458; }
+  .scene .centre { position: absolute; inset: 20px 120px; background: #4cc9a8; opacity: 0.6; }
+  .scene .dessous { position: absolute; left: 30px; top: 10px; width: 120px; height: 60px; background: #8fb4f2; z-index: -1; }
+  .scene .deborde { position: absolute; left: -20px; top: 60px; width: 60px; height: 60px; background: #c9a4e8; }
+</style>
+<h2>Barre flexible</h2>
+<div class="barre">
+  <div class="logo"></div>
+  <div class="titre">Le titre prend la place qui reste</div>
+  <div class="bouton">Un</div>
+  <div class="bouton">Deux</div>
+</div>
+<h2>Cartes qui passent à la ligne</h2>
+<div class="cartes">
+  <div class="boite">1</div><div class="boite">2</div><div class="boite">3</div>
+  <div class="boite">4</div><div class="boite">5</div><div class="boite">6</div><div class="boite">7</div>
+</div>
+<h2>Grille à zones nommées</h2>
+<div class="grille">
+  <div class="boite tete">En-tête</div>
+  <div class="boite menu">Menu</div>
+  <div class="boite corps">Corps</div>
+  <div class="boite cote">Côté</div>
+</div>
+<h2>Positionnement, empilement, découpe, opacité</h2>
+<div class="scene">
+  <div class="dessous"></div>
+  <div class="centre"></div>
+  <div class="coin"></div>
+  <div class="deborde"></div>
+</div>

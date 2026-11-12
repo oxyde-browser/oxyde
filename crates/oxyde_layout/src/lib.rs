@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use oxyde_css::{
     ComputedStyle, Display, Edges, LineHeight, ListStyle, Position, Size, StyleMap, TextAlign,
-    Viewport, WhiteSpace,
+    Viewport, Visibility, WhiteSpace,
 };
 use oxyde_dom::{Document, NodeData, NodeId};
 use oxyde_text::parley::{
@@ -229,14 +229,46 @@ pub fn layout_document(
     }
 }
 
+/// Enfants d'une boîte dans l'ordre où ils se peignent (CSS 2, annexe E,
+/// en version simplifiée) : les boîtes positionnées d'indice `z-index`
+/// négatif, puis le contenu ordinaire, puis les boîtes positionnées d'indice
+/// nul ou positif ; à indice égal, l'ordre du document.
+///
+/// LIMITE : l'ordre est établi entre les enfants directs d'une boîte, pas à
+/// l'échelle de tout un contexte d'empilement.
+#[must_use]
+pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
+    let layer = |fragment: &Fragment| match fragment {
+        Fragment::Box(b) if b.style.is_positioned() => Some(b.style.z_index.unwrap_or(0)),
+        _ => None,
+    };
+    let mut below: Vec<(i32, &Fragment)> = Vec::new();
+    let mut above: Vec<(i32, &Fragment)> = Vec::new();
+    let mut ordered: Vec<&Fragment> = Vec::with_capacity(children.len());
+    for child in children {
+        match layer(child) {
+            Some(z) if z < 0 => below.push((z, child)),
+            Some(z) => above.push((z, child)),
+            None => ordered.push(child),
+        }
+    }
+    // Tris stables : l'ordre du document départage les indices égaux.
+    below.sort_by_key(|(z, _)| *z);
+    above.sort_by_key(|(z, _)| *z);
+    let mut out: Vec<&Fragment> = below.into_iter().map(|(_, f)| f).collect();
+    out.append(&mut ordered);
+    out.extend(above.into_iter().map(|(_, f)| f));
+    out
+}
+
 /// Nœud du document situé au point (`x`, `y`) de la page, le plus profond.
 #[must_use]
 pub fn hit_test(doc: &Document, fragment: &Fragment, x: f32, y: f32) -> Option<NodeId> {
     match fragment {
         Fragment::Box(b) => {
             // Les enfants peuvent déborder de leur parent : on les teste toujours.
-            b.children
-                .iter()
+            paint_order(&b.children)
+                .into_iter()
                 .rev()
                 .find_map(|c| hit_test(doc, c, x, y))
                 .or_else(|| b.border_box.contains(x, y).then_some(b.node).flatten())
@@ -417,9 +449,11 @@ fn collapsible_ws(c: char) -> bool {
 fn brush(style: &ComputedStyle, node: NodeId, with_background: bool) -> TextBrush {
     let c = style.color;
     let b = style.background_color;
+    // `visibility: hidden` : le texte garde sa place mais ne se peint pas.
+    let visible = style.visibility == Visibility::Visible;
     TextBrush {
-        color: [c.r, c.g, c.b, c.a],
-        background: if with_background {
+        color: [c.r, c.g, c.b, if visible { c.a } else { 0 }],
+        background: if with_background && visible {
             [b.r, b.g, b.b, b.a]
         } else {
             [0; 4]
