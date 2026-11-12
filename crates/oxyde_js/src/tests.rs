@@ -3222,3 +3222,58 @@ fn import_defer() {
         .contains("SyntaxError")
     );
 }
+
+#[test]
+fn temporal_basics() {
+    // `Temporal` se construit au premier usage et reste le même objet.
+    assert_eq!(
+        eval("[typeof Temporal, Temporal === globalThis.Temporal].join()"),
+        "object,true"
+    );
+    assert_eq!(
+        eval(
+            "[new Temporal.PlainDate(2024, 2, 29).add({ years: 1 }), \
+              Temporal.PlainDate.from('2024-01-31').until('2024-03-01', { largestUnit: 'months' }), \
+              Temporal.PlainTime.from('23:59:59.5').round('second'), \
+              Temporal.PlainYearMonth.from('2024-02').daysInMonth, \
+              Temporal.PlainMonthDay.from('02-29').toPlainDate({ year: 2023 })].join()"
+        ),
+        "2025-02-28,P1M1D,00:00:00,29,2023-02-28"
+    );
+    // Durées : arrondi relatif à une date, total exact, comparaison.
+    assert_eq!(
+        eval(
+            "var d = Temporal.Duration.from('P1Y2M3DT4H5.5S'); \
+             [d.round({ largestUnit: 'hours', relativeTo: '2020-01-01' }), \
+              Temporal.Duration.from({ months: 1, hours: 10 }).total({ unit: 'months', relativeTo: '2020-01-31' }), \
+              Temporal.Duration.compare('PT36H', 'P1D')].join()"
+        ),
+        "PT10276H5.5S,1.0134408602150538,1"
+    );
+    // Instants et dates avec fuseau (décalage fixe).
+    assert_eq!(
+        eval(
+            "var z = Temporal.ZonedDateTime.from('2020-03-08T01:30+02:00[+02:00]'); \
+             [z.add({ hours: 25 }), z.toInstant(), z.epochNanoseconds, \
+              new Date(0).toTemporalInstant(), Temporal.Instant.from('1970-01-01T00:00Z').epochMilliseconds].join()"
+        ),
+        "2020-03-09T02:30:00+02:00[+02:00],2020-03-07T23:30:00Z,1583623800000000000,1970-01-01T00:00:00Z,0"
+    );
+    // Erreurs : hors limites, marque interne, conversion en primitive.
+    assert!(eval("new Temporal.PlainDate(275760, 9, 14)").contains("RangeError"));
+    assert!(eval("Temporal.PlainDate.prototype.toString.call({})").contains("TypeError"));
+    assert!(eval("+Temporal.Now.instant()").contains("TypeError"));
+    assert!(
+        eval("Temporal.ZonedDateTime.from('2020-01-01T00:00[Europe/Paris]')")
+            .contains("RangeError")
+    );
+    // Un membre privé ne passe par aucune trappe de Proxy.
+    assert_eq!(
+        eval(
+            "var seen = []; class A { #x = 1; static has(o) { return #x in o; } } \
+             var p = new Proxy({}, { has(t, k) { seen.push(k); return true; } }); \
+             [A.has(p), seen.length].join()"
+        ),
+        "false,0"
+    );
+}

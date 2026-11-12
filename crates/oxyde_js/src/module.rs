@@ -840,6 +840,13 @@ impl Vm {
     /// `TypeError` si le module est en cours d'évaluation ; ce que lève le
     /// module.
     pub(crate) fn touch_deferred(&mut self, object: ObjId, key: Option<&str>) -> JsResult<()> {
+        // `Temporal` se construit au premier usage de la propriété globale.
+        if !self.lazy_temporal.is_empty()
+            && matches!(key, None | Some("Temporal"))
+            && self.lazy_temporal.contains(&object)
+        {
+            self.materialize_temporal(object)?;
+        }
         if self.deferred_namespaces.is_empty() || key == Some("then") {
             return Ok(());
         }

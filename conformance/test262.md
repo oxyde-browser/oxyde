@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 43506 réussis sur 48795 (89.2 %).**
+**Total : 48128 réussis sur 48795 (98.6 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -25,7 +25,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/BigInt` | 77 | 76 | 98.7 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
 | `built-ins/DataView` | 560 | 560 | 100.0 % |
-| `built-ins/Date` | 610 | 587 | 96.2 % |
+| `built-ins/Date` | 610 | 595 | 97.5 % |
 | `built-ins/DisposableStack` | 93 | 93 | 100.0 % |
 | `built-ins/Error` | 93 | 93 | 100.0 % |
 | `built-ins/FinalizationRegistry` | 47 | 47 | 100.0 % |
@@ -55,7 +55,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 97 | 99.0 % |
-| `built-ins/Temporal` | 4614 | 0 | 0.0 % |
+| `built-ins/Temporal` | 4614 | 4614 | 100.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1453 | 100.0 % |
 | `built-ins/TypedArrayConstructors` | 738 | 738 | 100.0 % |

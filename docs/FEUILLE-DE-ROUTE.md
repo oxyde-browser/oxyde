@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **43 506 tests de test262 sur 48 795 (89,2 %)** ; il en reste 5 289.
+- `oxyde_js` réussit **48 128 tests de test262 sur 48 795 (98,6 %)** ; il en reste 667.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -16,10 +16,10 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 |---|---:|---:|---|
 | A et B — langage, `eval` direct | 1 839 | 352 | presque terminées |
 | C — intégrés courants | 1 743 | 217 | presque terminée |
-| D — tampons partagés, tableaux typés | 1 024 | 298 | en cours |
-| E — expressions rationnelles | 855 | 859 | à faire |
-| F — propositions récentes | 938 | 928 | à faire |
-| G — Temporal | 4 614 | 4 622 | à faire |
+| D — tampons partagés, tableaux typés | 1 024 | — | terminée |
+| E — expressions rationnelles | 855 | — | terminée |
+| F — propositions récentes | 938 | — | terminée |
+| G — Temporal | 4 614 | 0 | terminée |
 | Royaumes (`$262.createRealm`) | — | 33 | fait pour l'essentiel (108 tests gagnés) |
 
 Ce qui reste dans A, B et C tient à quelques limites de fond :
@@ -171,12 +171,17 @@ aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isol
 ### G — Temporal (4 614 tests)
 
 Sept types (`Instant`, `PlainDate`, `PlainTime`, `PlainDateTime`, `PlainYearMonth`,
-`PlainMonthDay`, `ZonedDateTime`), `Duration` et `Temporal.Now`. Deux dépendances :
+`PlainMonthDay`, `ZonedDateTime`), `Duration`, `Temporal.Now` et
+`Date.prototype.toTemporalInstant`. **Fait** : les 4 614 tests passent. L'objet est écrit en
+JavaScript embarqué (`crates/oxyde_js/src/builtins/temporal/`) et n'est construit qu'à son
+premier usage dans un royaume.
 
-- la **base de fuseaux horaires IANA** pour `ZonedDateTime` ;
-- les **calendriers** non grégoriens, fournis par ICU4X.
+Limites, hors du périmètre de ces tests (elles relèvent d'`intl402`) :
 
-C'est le plus gros chantier isolé du moteur ; il ne bloque aucun site courant aujourd'hui.
+- pas de **base de fuseaux horaires IANA** : seuls `UTC` et les décalages fixes (`+01:00`)
+  existent, et `Temporal.Now.timeZoneId()` vaut `UTC` ;
+- seul le **calendrier** `iso8601` existe ;
+- `toLocaleString` rend la forme ISO, faute d'`Intl`.
 
 ### Règles tenues à chaque étape
 

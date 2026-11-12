@@ -24,6 +24,7 @@ mod regexp_symbols;
 mod shadow_realm;
 mod string;
 pub(crate) mod symbol;
+mod temporal;
 mod typed_array;
 pub use typed_array::SharedStorage;
 mod weak;
@@ -156,6 +157,7 @@ pub(crate) fn install(vm: &mut Vm) {
     array::install_from_async(vm);
     disposable::install(vm);
     shadow_realm::install(vm);
+    temporal::install(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
     let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
     let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");

@@ -201,6 +201,8 @@ pub struct Vm {
     pub(crate) typed_protos: Vec<ObjId>,
     /// Modules chargés, par identifiant.
     pub(crate) modules: IndexMap<JsStr, crate::module::ModuleRecord>,
+    /// Objets globaux dont `Temporal` n'est pas encore construit.
+    pub(crate) lazy_temporal: Vec<ObjId>,
     /// Espaces de noms différés dont le module n'est pas encore évalué.
     pub(crate) deferred_namespaces: std::collections::HashMap<ObjId, JsStr>,
     /// Fonction de l'hôte qui fournit le texte des modules importés.
@@ -462,6 +464,7 @@ impl Vm {
             template_objects: std::collections::HashMap::new(),
             regex_input: None,
             deferred_namespaces: std::collections::HashMap::new(),
+            lazy_temporal: Vec::new(),
             regexp_legacy: crate::builtins::regexp::LegacyStatics::default(),
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
@@ -1932,6 +1935,9 @@ impl Vm {
             }
             Op::GetGlobal { dst, name } => {
                 let (name, scope) = (self.name(name), self.scope());
+                if &*name == "Temporal" {
+                    self.touch_deferred(self.global, Some("Temporal"))?;
+                }
                 if let Some(value) = self.global_lexical(scope, &name)? {
                     self.set_reg(dst, value);
                     return Ok(None);
@@ -2081,6 +2087,9 @@ impl Vm {
             }
             Op::TypeofGlobal { dst, name } => {
                 let (name, scope) = (self.name(name), self.scope());
+                if &*name == "Temporal" {
+                    self.touch_deferred(self.global, Some("Temporal"))?;
+                }
                 let value = if let Some(value) = self.global_lexical(scope, &name)? {
                     value
                 } else if self.has_property(scope, &name) {

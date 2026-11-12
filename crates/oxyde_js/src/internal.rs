@@ -693,6 +693,13 @@ impl Vm {
 
     /// `[[HasProperty]]` : propriété propre ou héritée.
     pub(crate) fn has_property_op(&mut self, id: ObjId, key: &PropertyKey) -> JsResult<bool> {
+        if let PropertyKey::Symbol(symbol) = key
+            && symbol.is_private()
+        {
+            // Un membre privé appartient à l'objet lui-même et ne passe par
+            // aucune trappe.
+            return Ok(self.heap.get(id).symbols.contains_key(symbol));
+        }
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
