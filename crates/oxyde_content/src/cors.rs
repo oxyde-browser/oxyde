@@ -197,6 +197,7 @@ mod tests {
     fn request(method: &str, headers: &[(&str, &str)]) -> FetchRequest {
         FetchRequest {
             id: 1,
+            initiator: Url::parse("https://page.test/").expect("url"),
             url: Url::parse("https://api.test/v1").expect("url"),
             method: method.to_owned(),
             headers: headers

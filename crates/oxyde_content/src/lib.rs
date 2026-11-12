@@ -57,6 +57,8 @@ pub struct FetchRequest {
     pub body: Vec<u8>,
     /// Valeur de l'en-tête `Origin` à envoyer, s'il en faut un.
     pub origin: Option<String>,
+    /// Adresse du document qui émet la requête (pour le choix des cookies).
+    pub initiator: Url,
     /// La requête vise une autre origine et sort des requêtes « simples » :
     /// l'embarqueur doit d'abord envoyer une requête `OPTIONS` munie de
     /// [`FetchRequest::preflight_headers`] et soumettre la réponse à
@@ -306,6 +308,8 @@ pub struct Page {
     /// Instructions accordées à chaque tâche de script ; `None` : la valeur
     /// par défaut du moteur.
     task_budget: Option<u64>,
+    /// Texte de `document.cookie`, tel que l'embarqueur l'a fourni.
+    cookies: String,
     styles: StyleMap,
     tree: Option<LayoutTree>,
     list: DisplayList,
@@ -485,6 +489,7 @@ impl Page {
             frames,
             engine: None,
             task_budget: None,
+            cookies: String::new(),
             styles: StyleMap::default(),
             tree: None,
             list: DisplayList::default(),
@@ -797,6 +802,7 @@ impl Page {
         if let Some(budget) = self.task_budget {
             engine.set_task_budget(budget);
         }
+        engine.set_cookies(&self.cookies);
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
@@ -852,6 +858,26 @@ impl Page {
         if let Some(engine) = self.engine.as_mut() {
             engine.set_task_budget(budget);
         }
+    }
+
+    /// Fixe le texte que `document.cookie` rend aux scripts : les cookies du
+    /// pot de l'embarqueur qu'un script a le droit de lire, sous la forme
+    /// `nom=valeur; autre=valeur`. À rappeler quand le pot change.
+    pub fn set_cookies(&mut self, cookies: &str) {
+        cookies.clone_into(&mut self.cookies);
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_cookies(cookies);
+        }
+    }
+
+    /// Textes affectés à `document.cookie` par les scripts depuis le dernier
+    /// appel, dans l'ordre : l'embarqueur les soumet à son pot, qui décide de
+    /// les accepter, puis rend la vue à jour par [`Page::set_cookies`].
+    pub fn take_cookie_writes(&mut self) -> Vec<String> {
+        self.engine
+            .as_mut()
+            .map(|engine| engine.take_cookie_writes())
+            .unwrap_or_default()
     }
 
     /// Messages écrits dans la console par les scripts depuis le dernier appel.
@@ -1722,6 +1748,29 @@ mod tests {
                 pair("Origin", "https://exemple.test"),
             ]
         );
+    }
+
+    #[test]
+    fn document_cookie_goes_through_the_embedder() {
+        let mut p = page(
+            "<script>
+               document.cookie = 'a=1; Path=/';
+               document.cookie = 'b=2';
+               document.cookie = 'a=; Max-Age=0';
+               document.cookie = 'secret=1; HttpOnly';
+               document.body.textContent = document.cookie;
+             </script>",
+        );
+        p.set_cookies("z=9");
+        p.run_scripts();
+        // La page voit aussitôt ses propres écritures…
+        assert_eq!(body_text(&p), "z=9; b=2");
+        // … que l'embarqueur soumet à son pot, dans l'ordre.
+        assert_eq!(
+            p.take_cookie_writes(),
+            ["a=1; Path=/", "b=2", "a=; Max-Age=0", "secret=1; HttpOnly"]
+        );
+        assert!(p.take_cookie_writes().is_empty());
     }
 
     #[test]

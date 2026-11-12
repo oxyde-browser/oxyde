@@ -230,10 +230,13 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
     }
 }
 
-fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
-    let response = http_client()?
-        .get(url)
-        .map_err(|e| network_error(url, &e))?;
+fn fetch_http(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
+    let client = http_client()?;
+    let response = match initiator {
+        Some(document) => client.get_from(url, document),
+        None => client.get(url),
+    }
+    .map_err(|e| network_error(url, &e))?;
     if response.status >= 400 && response.body.is_empty() {
         return Err(LoadError::other(
             "La page n'a pas pu être chargée",
@@ -255,6 +258,7 @@ fn post_http(url: &Url, form: &oxyde_content::FormPost) -> Result<(Url, Vec<u8>)
             url: url.clone(),
             headers: vec![("Content-Type".to_owned(), form.content_type.clone())],
             body: form.body.clone(),
+            initiator: None,
         })
         .map_err(|e| network_error(url, &e))?;
     Ok((response.url, response.body))
@@ -278,6 +282,7 @@ pub(crate) fn fetch_for_script(
                 url: request.url.clone(),
                 headers,
                 body,
+                initiator: Some(request.initiator.clone()),
             })
             .map(|response| oxyde_content::FetchResponse {
                 url: response.url,
@@ -319,12 +324,19 @@ pub(crate) fn settle_fetches(page: &mut Page) {
 /// Récupère la ressource `url` ; renvoie son adresse finale (après
 /// redirections) et ses octets.
 pub(crate) fn fetch(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
+    fetch_from(url, None)
+}
+
+/// Comme [`fetch`], pour une ressource demandée par le document
+/// `initiator` (feuille de style, image, script) : les cookies d'un autre
+/// site ne l'accompagnent pas.
+fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
     match url.scheme() {
         "file" => read_file(url).map(|bytes| (url.clone(), bytes)),
         // Les pages internes (nouvel onglet) sont dessinées par l'interface.
         "about" => Ok((url.clone(), Vec::new())),
         "data" => read_data_url(url).map(|bytes| (url.clone(), bytes)),
-        "http" | "https" => fetch_http(url),
+        "http" | "https" => fetch_http(url, initiator),
         other => Err(LoadError::other(
             "Protocole non pris en charge",
             format!("Le chargement en « {other}: » n'est pas disponible ({url})."),
@@ -367,6 +379,11 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
         }
     };
     let mut page = Page::from_html(url, &html);
+    let document = page.url().clone();
+    let fetch = |resource: &Url| fetch_from(resource, Some(&document));
+    if let Ok(client) = http_client() {
+        page.set_cookies(&client.cookies_for_script(&document));
+    }
     for sheet_url in page.pending_stylesheets() {
         // Une feuille indisponible est remplacée par une feuille vide : la page reste lisible.
         let css = fetch(&sheet_url)
@@ -407,11 +424,32 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     Loaded { page, error: None }
 }
 
+/// Soumet au pot du client HTTP les cookies écrits par les scripts de la
+/// page, puis rend à la page la vue à jour de `document.cookie`.
+fn sync_cookies(page: &mut Page) {
+    let writes = page.take_cookie_writes();
+    let Ok(client) = http_client() else {
+        return;
+    };
+    let document = page.url().clone();
+    if !matches!(document.scheme(), "http" | "https") {
+        return;
+    }
+    for text in &writes {
+        client.set_cookie_from_script(&document, text);
+    }
+    page.set_cookies(&client.cookies_for_script(&document));
+}
+
 /// Écrit sur la sortie d'erreur les messages de console de la page.
+///
+/// C'est aussi le point où les cookies de la page et ceux du client HTTP
+/// sont accordés : il est appelé après chaque tâche de script.
 ///
 /// LIMITE : en attendant les outils de développement (jalon 9), la console
 /// des pages n'est visible que depuis le terminal qui a lancé Oxyde.
 pub(crate) fn report_console(page: &mut Page) {
+    sync_cookies(page);
     for message in page.take_console() {
         eprintln!("[console.{}] {}", message.level, message.text);
     }

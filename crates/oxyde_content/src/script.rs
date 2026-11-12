@@ -117,6 +117,10 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// Texte de `document.cookie`, fourni par l'embarqueur.
+    cookies: String,
+    /// Écritures dans `document.cookie` à remettre à l'embarqueur.
+    cookie_writes: Vec<String>,
     /// Identifiant du prochain écouteur enregistré.
     next_listener: u64,
     timers: Vec<Timer>,
@@ -808,6 +812,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 .map_or("text/html", |kind| kind.content_type),
         ),
         "referrer" | "dir" if is_document => string(""),
+        "cookie" if is_document => string(&h.cookies),
         "designMode" if is_document => string("off"),
         "visibilityState" if is_document => string("visible"),
         "hidden" if is_document => Ok(Value::Bool(false)),
@@ -914,6 +919,19 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             .is_some_and(|e| e.is_html("select") || e.is_html("textarea"))
     {
         return None;
+    }
+    // `document.cookie = "nom=valeur; …"` : l'embarqueur tient le pot.
+    if key == "cookie" && host(vm)?.doc.is_document(node) {
+        let text = match vm.to_string(value) {
+            Ok(text) => text.to_string(),
+            Err(thrown) => return Some(Err(thrown)),
+        };
+        let h = host(vm)?;
+        note_cookie_write(&mut h.cookies, &text);
+        if h.cookie_writes.len() < MAX_COOKIE_WRITES {
+            h.cookie_writes.push(text);
+        }
+        return Some(Ok(()));
     }
     let is_text_key = matches!(
         key,
@@ -1060,6 +1078,51 @@ fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
         })
     })?;
     Some(wrap(vm, found))
+}
+
+/// Nombre maximal d'écritures de cookies gardées entre deux relevés.
+const MAX_COOKIE_WRITES: usize = 1000;
+
+/// Reporte dans `view` (le texte de `document.cookie`) l'écriture `text`,
+/// en attendant que l'embarqueur rende la vue exacte de son pot : le nom
+/// prend sa nouvelle valeur, ou disparaît si l'écriture le périme.
+fn note_cookie_write(view: &mut String, text: &str) {
+    let mut parts = text.split(';');
+    let pair = parts.next().unwrap_or("").trim();
+    let (name, value) = match pair.split_once('=') {
+        Some((name, value)) => (name.trim(), value.trim()),
+        None => ("", pair),
+    };
+    let mut expired = false;
+    for attribute in parts {
+        let (key, setting) = match attribute.split_once('=') {
+            Some((key, setting)) => (key.trim().to_ascii_lowercase(), setting.trim()),
+            None => (attribute.trim().to_ascii_lowercase(), ""),
+        };
+        match key.as_str() {
+            // Un script ne pose pas de cookie `HttpOnly`.
+            "httponly" => return,
+            "max-age" => expired = setting.parse::<i64>().is_ok_and(|seconds| seconds <= 0),
+            _ => {}
+        }
+    }
+    if name.is_empty() && value.is_empty() {
+        return;
+    }
+    let mut kept: Vec<String> = view
+        .split("; ")
+        .filter(|entry| !entry.is_empty())
+        .filter(|entry| entry.split_once('=').map_or("", |(n, _)| n) != name)
+        .map(str::to_owned)
+        .collect();
+    if !expired {
+        kept.push(if name.is_empty() {
+            value.to_owned()
+        } else {
+            format!("{name}={value}")
+        });
+    }
+    *view = kept.join("; ");
 }
 
 /// Clés propres que l'objet hôte ajoute aux siennes.
@@ -1748,6 +1811,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            cookies: String::new(),
+            cookie_writes: Vec::new(),
             next_listener: 0,
             timers: Vec::new(),
             fetch_queue: Vec::new(),
@@ -1930,6 +1995,20 @@ impl ScriptEngine {
     pub(crate) fn take_frame_requests(&mut self) -> Vec<(NodeId, Url)> {
         host(&mut self.vm)
             .map(|h| std::mem::take(&mut h.frame_requests))
+            .unwrap_or_default()
+    }
+
+    /// Fixe le texte que `document.cookie` rend aux scripts.
+    pub(crate) fn set_cookies(&mut self, cookies: &str) {
+        if let Some(h) = host(&mut self.vm) {
+            cookies.clone_into(&mut h.cookies);
+        }
+    }
+
+    /// Écritures dans `document.cookie` depuis le dernier appel.
+    pub(crate) fn take_cookie_writes(&mut self) -> Vec<String> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.cookie_writes))
             .unwrap_or_default()
     }
 
@@ -2424,6 +2503,7 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                 cross_origin && crate::cors::needs_preflight(&request.method, &request.headers);
             h.fetch_queue.push(crate::FetchRequest {
                 id,
+                initiator: h.url.clone(),
                 url: url.clone(),
                 method: request.method,
                 headers: request.headers,

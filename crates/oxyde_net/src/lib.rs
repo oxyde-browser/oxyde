@@ -9,7 +9,8 @@
 //! « 100 % Rust » de la maquette ; elle doit être réévaluée avant toute
 //! diffusion du navigateur.
 //!
-//! LIMITES CONNUES : pas de HTTP/3, pas de cache, pas de cookies, pas de
+//! LIMITES CONNUES : pas de HTTP/3, pas de cache, cookies en mémoire
+//! seulement (voir [`cookies`]), pas de
 //! réutilisation des connexions, pas de décompression (`Accept-Encoding:
 //! identity`), résolution DNS par le système, pas de proxy ; le corps d'une
 //! requête est envoyé d'un bloc.
@@ -17,7 +18,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod cookies;
+
 use bytes::Bytes;
+pub use cookies::{Access, CookieJar, same_site};
 use http_body_util::{BodyExt, Full};
 use hyper::header::{self, HeaderValue};
 use hyper::{Method, Request, StatusCode};
@@ -170,6 +174,11 @@ pub struct HttpRequest {
     pub headers: Vec<(String, String)>,
     /// Corps ; vide s'il n'y en a pas.
     pub body: Vec<u8>,
+    /// Document qui émet la requête ; `None` pour une navigation demandée
+    /// par l'utilisateur. Décide des cookies joints : une requête vers un
+    /// autre site que celui du document ne reçoit que les cookies
+    /// `SameSite=None`.
+    pub initiator: Option<Url>,
 }
 
 impl HttpRequest {
@@ -181,6 +190,7 @@ impl HttpRequest {
             url: url.clone(),
             headers: Vec::new(),
             body: Vec::new(),
+            initiator: None,
         }
     }
 }
@@ -189,6 +199,8 @@ impl HttpRequest {
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     tls: TlsConnector,
+    /// Cookies reçus, joints aux requêtes suivantes.
+    jar: std::sync::Mutex<CookieJar>,
 }
 
 impl std::fmt::Debug for Client {
@@ -222,6 +234,38 @@ impl Client {
         Ok(Self {
             runtime,
             tls: TlsConnector::from(Arc::new(config)),
+            jar: std::sync::Mutex::new(CookieJar::new()),
+        })
+    }
+
+    /// Texte de `document.cookie` pour un document d'adresse `url` : les
+    /// cookies qu'un script a le droit de lire.
+    #[must_use]
+    pub fn cookies_for_script(&self, url: &Url) -> String {
+        self.jar
+            .lock()
+            .ok()
+            .and_then(|mut jar| jar.header_for(url, Access::Script, false))
+            .unwrap_or_default()
+    }
+
+    /// Enregistre le cookie qu'un script du document `url` écrit dans
+    /// `document.cookie`. Renvoie `false` s'il est refusé.
+    pub fn set_cookie_from_script(&self, url: &Url, text: &str) -> bool {
+        self.jar
+            .lock()
+            .is_ok_and(|mut jar| jar.store(url, text, Access::Script, false))
+    }
+
+    /// Récupère `url` par une requête GET émise par le document `initiator`
+    /// (une feuille de style, une image, un script de la page).
+    ///
+    /// # Errors
+    /// Voir [`Client::send`].
+    pub fn get_from(&self, url: &Url, initiator: &Url) -> Result<Response, NetError> {
+        self.send(&HttpRequest {
+            initiator: Some(initiator.clone()),
+            ..HttpRequest::get(url)
         })
     }
 
@@ -336,6 +380,19 @@ impl Client {
                 .iter()
                 .any(|(name, _)| name.eq_ignore_ascii_case(wanted))
         };
+        // Cookies du pot, sauf si l'appelant a fixé l'en-tête lui-même.
+        let cross_site = request
+            .initiator
+            .as_ref()
+            .is_some_and(|initiator| !same_site(initiator, url));
+        let cookie = if has("cookie") {
+            None
+        } else {
+            self.jar
+                .lock()
+                .ok()
+                .and_then(|mut jar| jar.header_for(url, Access::Http, cross_site))
+        };
         let build = |target: &str| {
             let mut builder = Request::builder()
                 .method(method.clone())
@@ -355,6 +412,9 @@ impl Client {
                 if !reserved(name) {
                     builder = builder.header(name.as_str(), value.as_str());
                 }
+            }
+            if let Some(cookie) = &cookie {
+                builder = builder.header(header::COOKIE, cookie.as_str());
             }
             builder
                 .body(Full::new(Bytes::from(request.body.clone())))
@@ -395,6 +455,14 @@ impl Client {
         };
 
         let status = response.status();
+        // Les cookies posés par la réponse, y compris celle d'une redirection.
+        if let Ok(mut jar) = self.jar.lock() {
+            for value in response.headers().get_all(header::SET_COOKIE) {
+                if let Ok(text) = value.to_str() {
+                    jar.store(url, text, Access::Http, cross_site);
+                }
+            }
+        }
         if matches!(
             status,
             StatusCode::MOVED_PERMANENTLY
@@ -424,6 +492,8 @@ impl Client {
         let headers = response
             .headers()
             .iter()
+            // `Set-Cookie` s'arrête ici : il ne remonte ni aux pages ni aux scripts.
+            .filter(|(name, _)| *name != header::SET_COOKIE)
             .filter_map(|(name, value)| {
                 Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
             })
@@ -546,6 +616,7 @@ mod tests {
                 ("Host".to_owned(), "ailleurs.test".to_owned()),
             ],
             body: b"bonjour".to_vec(),
+            initiator: None,
         };
         let response = client.send(&request).expect("réponse");
         let text = String::from_utf8_lossy(&response.body).into_owned();
@@ -568,6 +639,7 @@ mod tests {
             url: Url::parse(&format!("http://127.0.0.1:{port}/redirige")).expect("url"),
             headers: vec![("Content-Type".to_owned(), "text/plain".to_owned())],
             body: b"corps".to_vec(),
+            initiator: None,
         };
         let response = client.send(&request).expect("réponse");
         let text = String::from_utf8_lossy(&response.body).into_owned();

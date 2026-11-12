@@ -165,8 +165,11 @@ Reste :
 - **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
   `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
   `ResizeObserver`.
-- **Liés au stockage et au réseau** : cookies (`document.cookie`), persistance de
-  `localStorage` entre deux pages, `Request` et `Response` constructibles, `Blob`.
+- **Stockage et réseau** : faits — `Blob`, `File`, `FileReader`, `Request` et `Response`
+  constructibles ; cookies (pot RFC 6265 dans `oxyde_net`, `Secure`, `HttpOnly`,
+  `SameSite`, préfixes `__Host-` et `__Secure-`, pas de cookies tiers implicites,
+  `document.cookie`). Restent : l'écriture du pot et de `localStorage` sur disque (jalon 7,
+  avec l'historique et les favoris) et la liste des suffixes publics.
 - **Royaumes** : faits dans `oxyde_js` (108 tests de test262 gagnés) et utilisés par les
   cadres ; restent `ShadowRealm` et les quelques tests qui lisent le royaume d'une fonction
   liée ou d'un `Proxy`.
