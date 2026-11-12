@@ -16,6 +16,7 @@
 
 mod find;
 mod library;
+mod onboarding;
 mod palette;
 mod panes;
 mod settings;
@@ -90,6 +91,14 @@ pub enum Hit {
     FindNext,
     /// Recherche dans la page : fermer la barre.
     FindClose,
+    /// Premier lancement : navigateur d'où importer, d'index donné.
+    OnboardingSource(usize),
+    /// Premier lancement : couleur d'accent d'index donné.
+    OnboardingAccent(usize),
+    /// Premier lancement : passer l'étape.
+    OnboardingSkip,
+    /// Premier lancement : valider l'étape.
+    OnboardingNext,
     /// Palette : ligne d'index donné.
     PaletteRow(usize),
     /// Palette : filtre d'index donné.
@@ -121,6 +130,25 @@ pub struct FindView<'a> {
     pub count: usize,
     /// Rang de l'occurrence courante, à partir de 1.
     pub current: usize,
+}
+
+/// Premier lancement tel que l'interface l'affiche.
+#[derive(Clone, Copy, Debug)]
+pub struct OnboardingView<'a> {
+    /// Étape en cours : 0, l'import ; 1, la couleur d'accent.
+    pub step: usize,
+    /// Navigateurs d'où importer ; le dernier choix est de ne rien importer.
+    pub sources: &'a [&'a str],
+    /// Index du choix retenu dans `sources`.
+    pub selected: usize,
+    /// Nombre de favoris importés à l'étape précédente, s'il y a eu import.
+    pub imported: Option<usize>,
+    /// Couleurs d'accent proposées.
+    pub accents: &'a [Color],
+    /// Nom accessible de chaque couleur.
+    pub accent_names: &'a [&'a str],
+    /// Index de la couleur retenue.
+    pub accent: usize,
 }
 
 /// Dessin placé en tête d'une ligne de la palette.
@@ -402,6 +430,8 @@ pub struct ChromeState<'a> {
     pub palette: Option<PaletteView<'a>>,
     /// Barre de recherche dans la page active.
     pub find: Option<FindView<'a>>,
+    /// Premier lancement, affiché à la place des onglets.
+    pub onboarding: Option<OnboardingView<'a>>,
     /// Couleur d'accent.
     pub accent: Color,
     /// Fenêtre de navigation privée.
@@ -763,7 +793,7 @@ const ICON_WIN_MIN: &str = "M1.5 6h9";
 const ICON_WIN_MAX: &str =
     "M2.5 1.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z";
 const ICON_WIN_CLOSE: &str = "M1.5 1.5l9 9M10.5 1.5l-9 9";
-const ICON_LOGO: &str = "M9 2.5a6.5 6.5 0 1 0 6.5 6.5";
+pub(crate) const ICON_LOGO: &str = "M9 2.5a6.5 6.5 0 1 0 6.5 6.5";
 
 /// Couleur stable pour un hôte donné, prise dans `palette`.
 fn host_color(host: &str, palette: &[Color; 4]) -> Color {
@@ -873,6 +903,15 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
             hits: p.hits,
             widgets: p.widgets,
             library_scroll_max,
+            ..Chrome::default()
+        };
+    }
+    if let Some(view) = &state.onboarding {
+        onboarding::build(&mut p, state, view);
+        return Chrome {
+            list: p.list,
+            hits: p.hits,
+            widgets: p.widgets,
             ..Chrome::default()
         };
     }
@@ -1424,6 +1463,7 @@ mod tests {
             settings: None,
             palette: None,
             find: None,
+            onboarding: None,
             accent: theme::ACCENT,
             private: false,
         }
@@ -2064,5 +2104,66 @@ mod tests {
             .find(|w| w.label == "Adresse")
             .expect("barre d'adresse");
         assert_eq!(address.value.as_deref(), Some("docs.rs/wgpu"));
+    }
+
+    #[test]
+    fn onboarding_walks_through_its_two_steps() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let sources = ["Chrome", "Edge", "Ne rien importer"];
+        let colors = [theme::ACCENT, theme::AMBER];
+        let names = ["Vert-de-gris", "Ambre"];
+        let view = |step, selected, imported| OnboardingView {
+            step,
+            sources: &sources,
+            selected,
+            imported,
+            accents: &colors,
+            accent_names: &names,
+            accent: 1,
+        };
+        let labels = |chrome: &Chrome| -> Vec<String> {
+            chrome.widgets.iter().map(|w| w.label.clone()).collect()
+        };
+        let mut s = state(&tabs, None);
+        s.onboarding = Some(view(0, 1, None));
+        let chrome = build_chrome(&s, &mut text);
+        assert!(chrome.panes.is_empty() && find_hit(&chrome, Hit::Tab(0)).is_none());
+        for hit in [
+            Hit::OnboardingSource(0),
+            Hit::OnboardingSource(2),
+            Hit::OnboardingSkip,
+            Hit::OnboardingNext,
+            Hit::CloseWindow,
+        ] {
+            assert!(find_hit(&chrome, hit).is_some(), "{hit:?}");
+        }
+        let found = labels(&chrome);
+        assert!(found.iter().any(|l| l == "Bienvenue dans Oxyde"));
+        assert!(found.iter().any(|l| l == "Importer et continuer"));
+        // « Ne rien importer » : le bouton ne promet plus d'import.
+        s.onboarding = Some(view(0, 2, None));
+        assert!(
+            labels(&build_chrome(&s, &mut text))
+                .iter()
+                .any(|l| l == "Continuer")
+        );
+
+        // Seconde étape : le compte des favoris importés, puis les couleurs.
+        s.onboarding = Some(view(1, 0, Some(12)));
+        let chrome = build_chrome(&s, &mut text);
+        let found = labels(&chrome);
+        assert!(
+            found.iter().any(|l| l == "12 favoris importés."),
+            "{found:?}"
+        );
+        assert!(found.iter().any(|l| l == "Terminer"));
+        assert!(find_hit(&chrome, Hit::OnboardingAccent(1)).is_some());
+        assert!(find_hit(&chrome, Hit::OnboardingSkip).is_none());
+        // Fenêtre étroite : la carte seule, toujours utilisable.
+        s.width = 700.0;
+        let chrome = build_chrome(&s, &mut text);
+        assert!(find_hit(&chrome, Hit::OnboardingNext).is_some());
+        assert!(!labels(&chrome).iter().any(|l| l == "Bienvenue dans Oxyde"));
     }
 }

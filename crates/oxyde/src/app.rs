@@ -227,6 +227,10 @@ impl App {
                         eprintln!("fenêtre privée non ouverte : {error}");
                     }
                 }
+                Command::ImportBookmarks(file) => {
+                    let found = crate::import_bookmarks(&file);
+                    self.browser.finish_import(&found);
+                }
                 Command::NetworkDiagnostics => {
                     // Ouvre le dépannage réseau des Paramètres de Windows. Un
                     // échec de lancement est sans conséquence pour le navigateur.

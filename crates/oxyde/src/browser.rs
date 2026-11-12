@@ -12,8 +12,8 @@ use oxyde_platform::CivilTime;
 use oxyde_storage::{Bookmarks, History, Session, SessionTab, Settings};
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, FindView, Hit, LibraryRow, LibrarySection,
-    LibraryView, PaletteGlyph, PaletteRow, PaletteView, PaneContent, SettingControl, SettingRow,
-    SettingsGroup, SettingsView, SpaceView, TabView, theme,
+    LibraryView, OnboardingView, PaletteGlyph, PaletteRow, PaletteView, PaneContent,
+    SettingControl, SettingRow, SettingsGroup, SettingsView, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
@@ -155,6 +155,24 @@ struct Palette {
     items: Vec<PaletteItem>,
 }
 
+/// Réglage : le premier lancement a été vu.
+pub(crate) const KEY_WELCOME: &str = "accueil.fait";
+
+/// Dernier choix de l'import, au premier lancement.
+const NO_IMPORT: &str = "Ne rien importer";
+
+/// Premier lancement, affiché à la place des onglets.
+struct Onboarding {
+    /// Étape en cours : 0, l'import ; 1, la couleur d'accent.
+    step: usize,
+    /// Navigateurs d'où importer : nom, fichier de favoris.
+    sources: Vec<(String, std::path::PathBuf)>,
+    /// Choix retenu ; `sources.len()` : ne rien importer.
+    selected: usize,
+    /// Nombre de favoris importés.
+    imported: Option<usize>,
+}
+
 /// Barre de recherche dans la page d'un onglet.
 struct FindBar {
     /// Identifiant de l'onglet où l'on cherche.
@@ -264,6 +282,9 @@ pub(crate) enum Command {
     NetworkDiagnostics,
     /// Ouvrir une fenêtre de navigation privée.
     PrivateWindow,
+    /// Lire les favoris de ce fichier d'un autre navigateur, puis les
+    /// remettre par [`Browser::finish_import`].
+    ImportBookmarks(std::path::PathBuf),
 }
 
 /// Touche reconnue par le navigateur, indépendante de la bibliothèque de fenêtrage.
@@ -405,6 +426,7 @@ pub(crate) struct Views<'a> {
     closed: Vec<ClosedView<'a>>,
     spaces: [SpaceView<'static>; SPACES.len()],
     library: Vec<LibraryRow<'a>>,
+    onboarding: Vec<&'a str>,
     settings: Vec<SettingsGroup<'a>>,
     palette: Vec<PaletteRow<'a>>,
 }
@@ -448,6 +470,8 @@ pub(crate) struct Browser {
     private: bool,
     /// Barre de recherche dans la page, quand elle est ouverte.
     find: Option<FindBar>,
+    /// Premier lancement, tant qu'il n'est pas terminé.
+    onboarding: Option<Onboarding>,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -493,6 +517,7 @@ impl Browser {
             palette: None,
             private: false,
             find: None,
+            onboarding: None,
         };
         browser.refresh_address();
         browser
@@ -724,6 +749,13 @@ impl Browser {
                     detail: &entry.detail,
                     heading: entry.heading.as_deref(),
                 })
+                .collect(),
+            onboarding: self
+                .onboarding
+                .iter()
+                .flat_map(|onboarding| &onboarding.sources)
+                .map(|(name, _)| name.as_str())
+                .chain(self.onboarding.iter().map(|_| NO_IMPORT))
                 .collect(),
             settings: if self.settings_screen.is_some() {
                 self.settings_groups()
@@ -1481,6 +1513,15 @@ impl Browser {
                     current: status.current,
                 }
             }),
+            onboarding: self.onboarding.as_ref().map(|onboarding| OnboardingView {
+                step: onboarding.step,
+                sources: &views.onboarding,
+                selected: onboarding.selected,
+                imported: onboarding.imported,
+                accents: &ACCENT_COLORS,
+                accent_names: &ACCENT_NAMES,
+                accent: self.accent_index(),
+            }),
             palette: self.palette.as_ref().map(|palette| PaletteView {
                 rows: &views.palette,
                 selected: palette.selected,
@@ -1504,7 +1545,94 @@ impl Browser {
     /// Vrai si la bibliothèque ou les paramètres sont ouverts à la place des
     /// onglets.
     pub(crate) fn library_open(&self) -> bool {
-        self.library.is_some() || self.settings_screen.is_some()
+        self.library.is_some() || self.settings_screen.is_some() || self.onboarding.is_some()
+    }
+
+    /// Affiche le premier lancement ; `sources` : les navigateurs d'où des
+    /// favoris peuvent être importés (nom, fichier).
+    pub(crate) fn start_onboarding(&mut self, sources: Vec<(String, std::path::PathBuf)>) {
+        self.library = None;
+        self.settings_screen = None;
+        self.palette = None;
+        self.editing = None;
+        self.onboarding = Some(Onboarding {
+            step: 0,
+            sources,
+            selected: 0,
+            imported: None,
+        });
+    }
+
+    /// Favoris lus dans le fichier d'un autre navigateur (adresse, titre) :
+    /// ceux qui manquent sont ajoutés.
+    pub(crate) fn finish_import(&mut self, found: &[(String, String)]) {
+        let now = now_seconds();
+        let added = found
+            .iter()
+            .filter(|(url, title)| self.bookmarks.add(url, title, now))
+            .count();
+        if let Some(onboarding) = &mut self.onboarding {
+            onboarding.imported = Some(added);
+        }
+    }
+
+    /// Valide (`next`) ou passe l'étape en cours du premier lancement.
+    fn advance_onboarding(&mut self, next: bool) -> Vec<Command> {
+        let Some(onboarding) = &mut self.onboarding else {
+            return Vec::new();
+        };
+        if onboarding.step == 0 {
+            onboarding.step = 1;
+            let source = onboarding.sources.get(onboarding.selected);
+            return match source {
+                Some((_, file)) if next => vec![Command::ImportBookmarks(file.clone())],
+                _ => Vec::new(),
+            };
+        }
+        // Terminé : il ne reviendra pas au prochain lancement.
+        self.onboarding = None;
+        self.settings.set_flag(KEY_WELCOME, true);
+        self.refresh_address();
+        Vec::new()
+    }
+
+    /// Clic pendant le premier lancement.
+    fn onboarding_click(&mut self, hit: Hit) -> Vec<Command> {
+        match hit {
+            Hit::OnboardingSource(index) => {
+                if let Some(onboarding) = &mut self.onboarding {
+                    onboarding.selected = index.min(onboarding.sources.len());
+                }
+            }
+            Hit::OnboardingAccent(index) => {
+                if let Some(key) = ACCENT_KEYS.get(index) {
+                    self.settings.set(KEY_ACCENT, key);
+                }
+            }
+            Hit::OnboardingNext => return self.advance_onboarding(true),
+            Hit::OnboardingSkip => return self.advance_onboarding(false),
+            _ => {}
+        }
+        Vec::new()
+    }
+
+    /// Touche pendant le premier lancement.
+    fn onboarding_key(&mut self, key: &KeyPress) -> Vec<Command> {
+        match key {
+            KeyPress::Enter => return self.advance_onboarding(true),
+            KeyPress::Escape => return self.advance_onboarding(false),
+            KeyPress::Up | KeyPress::Down => {
+                if let Some(onboarding) = &mut self.onboarding
+                    && onboarding.step == 0
+                {
+                    let count = onboarding.sources.len() + 1;
+                    let step = if *key == KeyPress::Down { 1 } else { count - 1 };
+                    onboarding.selected = (onboarding.selected + step) % count;
+                }
+            }
+            _ => {}
+        }
+        Vec::new()
     }
 
     /// Fait défiler la bibliothèque ou les paramètres de `dy` pixels, sans
@@ -2024,6 +2152,14 @@ impl Browser {
     /// Clic sur un élément de l'interface. `page_point` : position dans la
     /// page (pixels CSS, défilement compris) quand le clic vise un volet.
     pub(crate) fn click(&mut self, hit: Hit, page_point: Option<(f32, f32)>) -> Vec<Command> {
+        if self.onboarding.is_some()
+            && !matches!(
+                hit,
+                Hit::Minimize | Hit::Maximize | Hit::CloseWindow | Hit::TitleBar
+            )
+        {
+            return self.onboarding_click(hit);
+        }
         if self.palette.is_some() {
             return self.palette_click(hit);
         }
@@ -2122,6 +2258,11 @@ impl Browser {
             | Hit::PaletteFilter(_)
             | Hit::PaletteInput
             | Hit::PaletteDismiss => Vec::new(),
+            // Le premier lancement est terminé.
+            Hit::OnboardingSource(_)
+            | Hit::OnboardingAccent(_)
+            | Hit::OnboardingSkip
+            | Hit::OnboardingNext => Vec::new(),
             // La barre de recherche est fermée.
             Hit::FindInput | Hit::FindPrevious | Hit::FindNext | Hit::FindClose => Vec::new(),
             Hit::LibraryBack
@@ -2205,6 +2346,9 @@ impl Browser {
 
     /// Touche du clavier.
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
+        if self.onboarding.is_some() {
+            return self.onboarding_key(&key);
+        }
         // Ouvrir la palette, la bibliothèque ou les paramètres ferme la
         // barre de recherche : sa page n'est plus affichée.
         if self.find.is_some() && self.palette.is_none() && !self.library_open() {
@@ -3311,5 +3455,52 @@ mod tests {
         b.key(KeyPress::Escape);
         b.key(KeyPress::Ctrl('f'));
         assert_eq!(find_view(&b), None);
+    }
+
+    #[test]
+    fn onboarding_imports_then_never_returns() {
+        let mut b = browser();
+        let file = std::path::PathBuf::from("ailleurs/Bookmarks");
+        b.start_onboarding(vec![("Chrome".to_owned(), file.clone())]);
+        assert!(b.library_open());
+        // Rien d'autre ne répond pendant l'accueil.
+        assert!(b.click(Hit::Tab(0), None).is_empty());
+        b.key(KeyPress::Ctrl('t'));
+        assert_eq!(b.tabs.len(), 1);
+
+        // « Ne rien importer », puis retour au navigateur trouvé.
+        b.click(Hit::OnboardingSource(1), None);
+        b.key(KeyPress::Down);
+        let commands = b.click(Hit::OnboardingNext, None);
+        assert!(
+            matches!(commands.as_slice(), [Command::ImportBookmarks(path)] if *path == file),
+            "{commands:?}"
+        );
+        // L'application lit le fichier et remet ce qu'elle a trouvé.
+        b.bookmarks.add("https://deja.test/", "Déjà là", 1);
+        b.finish_import(&[
+            ("https://deja.test/".to_owned(), "Doublon".to_owned()),
+            ("https://neuf.test/".to_owned(), "Neuf".to_owned()),
+        ]);
+        {
+            let views = b.views();
+            let state = b.chrome_state(&views, 1440.0, 900.0);
+            let view = state.onboarding.expect("accueil");
+            assert_eq!((view.step, view.imported), (1, Some(1)));
+        }
+        assert_eq!(b.bookmarks.items().len(), 2);
+
+        // Couleur d'accent, puis terminé : l'accueil ne reviendra pas.
+        b.click(Hit::OnboardingAccent(1), None);
+        assert!(b.key(KeyPress::Enter).is_empty());
+        assert!(!b.library_open());
+        assert!(b.settings.flag(KEY_WELCOME, false));
+        assert_eq!(b.settings.get(KEY_ACCENT), Some("ambre"));
+
+        // Passer la première étape n'importe rien.
+        b.start_onboarding(vec![("Chrome".to_owned(), file)]);
+        assert!(b.click(Hit::OnboardingSkip, None).is_empty());
+        assert!(b.key(KeyPress::Escape).is_empty());
+        assert!(!b.library_open());
     }
 }

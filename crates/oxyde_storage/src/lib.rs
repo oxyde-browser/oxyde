@@ -15,6 +15,7 @@
 
 mod bookmarks;
 mod history;
+mod import;
 mod record;
 mod session;
 mod settings;
@@ -25,6 +26,7 @@ use std::path::{Path, PathBuf};
 
 pub use bookmarks::{Bookmark, Bookmarks};
 pub use history::{History, Visit};
+pub use import::chromium_bookmarks;
 pub use session::{Session, SessionTab};
 pub use settings::Settings;
 

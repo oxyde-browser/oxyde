@@ -434,9 +434,15 @@ Fait :
   par deux messages de plus. Limites : une occurrence ne traverse pas deux blocs ; les zones
   défilantes internes ne défilent pas jusqu'à l'occurrence ; les accents comptent.
 
-Reste : les dossiers de favoris et l'import ; les écrans (téléchargements, infos du site,
+- **Premier lancement** : sur un profil neuf, un accueil en deux étapes — reprendre les favoris
+  de Chrome ou d'Edge s'ils sont installés (leur fichier `Bookmarks`, lu comme une entrée non
+  fiable, dossiers aplatis), puis choisir la couleur d'accent. La maquette propose aussi
+  l'historique, les mots de passe, les onglets, la disposition et le navigateur par défaut :
+  rien de cela n'existe encore, donc rien de cela n'est proposé.
+
+Reste : les dossiers de favoris ; l'import depuis Firefox ; les écrans (téléchargements, infos du site,
 autorisations, mots de passe,
-premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
+onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.
 
 ### Jalon 8 — Performances de JavaScript

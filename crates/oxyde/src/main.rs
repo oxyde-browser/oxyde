@@ -84,6 +84,8 @@ struct Args {
     private: bool,
     /// Texte à chercher dans la page au lancement.
     find: Option<String>,
+    /// Afficher le premier lancement.
+    welcome: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -105,6 +107,7 @@ fn parse_args() -> Result<Args> {
         palette: false,
         private: false,
         find: None,
+        welcome: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -131,8 +134,9 @@ fn parse_args() -> Result<Args> {
                 Some("favoris") => args.screen = Some(LibrarySection::Bookmarks),
                 Some("parametres") => args.settings = true,
                 Some("palette") => args.palette = true,
+                Some("accueil") => args.welcome = true,
                 _ => bail!(
-                    "--screen attend « historique », « favoris », « parametres » ou « palette »"
+                    "--screen attend « historique », « favoris », « parametres » , « palette » ou « accueil »"
                 ),
             },
             "--page-only" => args.page_only = true,
@@ -252,6 +256,9 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         if args.private {
             browser.set_private();
         }
+        if args.welcome {
+            browser.start_onboarding(import_sources());
+        }
         if let Some(section) = args.screen {
             browser.open_screen(section);
         }
@@ -338,6 +345,37 @@ fn remote_page(
             );
         }
     }
+}
+
+/// Taille maximale d'un fichier de favoris à importer.
+const MAX_IMPORT: u64 = 32 * 1024 * 1024;
+
+/// Navigateurs installés dont les favoris peuvent être importés : nom,
+/// fichier de favoris du profil par défaut.
+fn import_sources() -> Vec<(String, PathBuf)> {
+    let Some(local) = std::env::var_os("LOCALAPPDATA").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    [
+        ("Chrome", "Google/Chrome/User Data/Default/Bookmarks"),
+        ("Edge", "Microsoft/Edge/User Data/Default/Bookmarks"),
+    ]
+    .into_iter()
+    .map(|(name, path)| (name.to_owned(), local.join(path)))
+    .filter(|(_, file)| file.is_file())
+    .collect()
+}
+
+/// Favoris (adresse, titre) du fichier `file` de Chrome ou d'Edge ; aucun
+/// s'il est illisible ou démesuré.
+pub(crate) fn import_bookmarks(file: &Path) -> Vec<(String, String)> {
+    let small = std::fs::metadata(file).is_ok_and(|metadata| metadata.len() <= MAX_IMPORT);
+    if !small {
+        return Vec::new();
+    }
+    std::fs::read_to_string(file)
+        .map(|json| oxyde_storage::chromium_bookmarks(&json))
+        .unwrap_or_default()
 }
 
 /// Profil de la fenêtre : celui de `--profile`, sinon celui de
@@ -433,9 +471,15 @@ fn run() -> Result<()> {
         }
         browser.bookmarks = profile.load_bookmarks();
     }
+    // Premier lancement sur ce profil : l'accueil, une seule fois.
+    let welcome = args.welcome
+        || (profile.is_some() && !args.private && !settings.flag(browser::KEY_WELCOME, false));
     browser.settings = settings;
     if args.private {
         browser.set_private();
+    }
+    if welcome {
+        browser.start_onboarding(import_sources());
     }
     if let Some(section) = args.screen {
         browser.open_screen(section);
