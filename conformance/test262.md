@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 41466 réussis sur 48795 (85.0 %).**
+**Total : 41526 réussis sur 48795 (85.1 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -59,7 +59,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1418 | 97.6 % |
 | `built-ins/TypedArrayConstructors` | 738 | 711 | 96.3 % |
-| `built-ins/Uint8Array` | 70 | 8 | 11.4 % |
+| `built-ins/Uint8Array` | 70 | 68 | 97.1 % |
 | `built-ins/WeakMap` | 141 | 140 | 99.3 % |
 | `built-ins/WeakRef` | 29 | 27 | 93.1 % |
 | `built-ins/WeakSet` | 85 | 84 | 98.8 % |

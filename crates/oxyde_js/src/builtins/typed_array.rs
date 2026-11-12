@@ -291,6 +291,13 @@ impl Vm {
         self.typed_protos.get(KINDS.len()).copied()
     }
 
+    /// Constructeur `Uint8Array` d'origine du royaume courant.
+    pub(super) fn uint8_array_constructor(&self) -> Option<Value> {
+        self.typed_protos
+            .get(KINDS.len() + 1 + ElementKind::Uint8.index())
+            .map(|id| Value::Object(*id))
+    }
+
     /// Nouveau tampon partagé de `len` octets nuls.
     fn new_shared_buffer(&mut self, len: usize, max_len: Option<usize>) -> JsResult<ObjId> {
         if len > MAX_BUFFER || max_len.is_some_and(|max| max > MAX_BUFFER) {
@@ -1696,6 +1703,9 @@ pub(super) fn install(vm: &mut Vm) {
                     configurable: false,
                 },
             );
+        }
+        if *kind == ElementKind::Uint8 {
+            super::base64::install(vm, ctor, proto);
         }
         protos.push(proto);
         ctors.push(ctor);
