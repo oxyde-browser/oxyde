@@ -167,8 +167,9 @@ Reste :
   `ResizeObserver`.
 - **Liés au stockage et au réseau** : cookies (`document.cookie`), persistance de
   `localStorage` entre deux pages, `Request` et `Response` constructibles, `Blob`.
-- **Royaumes** : un objet global par cadre (`<iframe>`), ce qui débloque aussi 141 tests de
-  test262.
+- **Royaumes** : faits dans `oxyde_js` (108 tests de test262 gagnés) et utilisés par les
+  cadres ; restent `ShadowRealm` et les quelques tests qui lisent le royaume d'une fonction
+  liée ou d'un `Proxy`.
 
 ### Jalon 5 — Multi-processus
 
