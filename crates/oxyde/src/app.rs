@@ -695,7 +695,7 @@ impl ApplicationHandler<UserEvent> for App {
                     return;
                 }
                 // Au-dessus de la barre latérale, la molette fait défiler la liste d'onglets.
-                if x < theme::SIDEBAR + 8.0 && y > theme::TITLE_BAR {
+                if !self.browser.horizontal() && x < theme::SIDEBAR + 8.0 && y > theme::TITLE_BAR {
                     let max = self.chrome.tab_scroll_max;
                     let target = (self.browser.tab_scroll - dy).clamp(0.0, max);
                     if (target - self.browser.tab_scroll).abs() > f32::EPSILON {

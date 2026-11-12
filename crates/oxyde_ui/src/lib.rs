@@ -15,6 +15,7 @@
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
 
 mod find;
+mod horizontal;
 mod library;
 mod onboarding;
 mod palette;
@@ -436,6 +437,8 @@ pub struct ChromeState<'a> {
     pub accent: Color,
     /// Fenêtre de navigation privée.
     pub private: bool,
+    /// Onglets horizontaux, dans la barre de titre, plutôt que la barre latérale.
+    pub horizontal: bool,
 }
 
 /// Volet de page web : emplacement de la page et de son onglet.
@@ -738,7 +741,7 @@ impl Painter<'_> {
         clippy::too_many_arguments,
         reason = "description complète d'un bouton"
     )]
-    fn icon_button(
+    pub(crate) fn icon_button(
         &mut self,
         r: Rect,
         hit: Hit,
@@ -779,20 +782,20 @@ impl Painter<'_> {
 }
 
 pub(crate) const ICON_BACK: &str = "M10 3 5 8l5 5";
-const ICON_FORWARD: &str = "M6 3l5 5-5 5";
-const ICON_RELOAD: &str = "M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5";
-const ICON_SPLIT: &str =
+pub(crate) const ICON_FORWARD: &str = "M6 3l5 5-5 5";
+pub(crate) const ICON_RELOAD: &str = "M13 8a5 5 0 1 1-1.5-3.5M13 3v2.5h-2.5";
+pub(crate) const ICON_SPLIT: &str =
     "M4 3h8a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM8 3v10";
-const ICON_LOCK: &str = "M5 7h6a1.5 1.5 0 0 1 1.5 1.5v3.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5V8.5A1.5 1.5 0 0 1 5 7zM5.5 7V5a2.5 2.5 0 0 1 5 0v2";
-const ICON_GLOBE: &str =
+pub(crate) const ICON_LOCK: &str = "M5 7h6a1.5 1.5 0 0 1 1.5 1.5v3.5a1.5 1.5 0 0 1-1.5 1.5H5a1.5 1.5 0 0 1-1.5-1.5V8.5A1.5 1.5 0 0 1 5 7zM5.5 7V5a2.5 2.5 0 0 1 5 0v2";
+pub(crate) const ICON_GLOBE: &str =
     "M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM2.5 8h11M8 2.5c-2 2-2 9 0 11M8 2.5c2 2 2 9 0 11";
 pub(crate) const ICON_CLOSE: &str = "M4 4l8 8M12 4l-8 8";
-const ICON_PLUS: &str = "M8 3v10M3 8h10";
-const ICON_SETTINGS: &str = "M3 5h5.5M12.5 5h.5M3 11h1M7.5 11H13M12.25 5a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0zM7.25 11a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z";
-const ICON_WIN_MIN: &str = "M1.5 6h9";
-const ICON_WIN_MAX: &str =
+pub(crate) const ICON_PLUS: &str = "M8 3v10M3 8h10";
+pub(crate) const ICON_SETTINGS: &str = "M3 5h5.5M12.5 5h.5M3 11h1M7.5 11H13M12.25 5a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0zM7.25 11a1.75 1.75 0 1 1-3.5 0 1.75 1.75 0 0 1 3.5 0z";
+pub(crate) const ICON_WIN_MIN: &str = "M1.5 6h9";
+pub(crate) const ICON_WIN_MAX: &str =
     "M2.5 1.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z";
-const ICON_WIN_CLOSE: &str = "M1.5 1.5l9 9M10.5 1.5l-9 9";
+pub(crate) const ICON_WIN_CLOSE: &str = "M1.5 1.5l9 9M10.5 1.5l-9 9";
 pub(crate) const ICON_LOGO: &str = "M9 2.5a6.5 6.5 0 1 0 6.5 6.5";
 
 /// Couleur stable pour un hôte donné, prise dans `palette`.
@@ -853,47 +856,57 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
     p.fill(rect(0.0, 0.0, w, h), theme::WINDOW, 0.0);
 
     // ---- Barre de titre ----------------------------------------------------
+    // Les onglets horizontaux vivent dans la barre de titre ; les écrans qui
+    // remplacent les onglets gardent la barre ordinaire.
+    let horizontal = state.horizontal
+        && state.library.is_none()
+        && state.settings.is_none()
+        && state.onboarding.is_none();
     let title_h = theme::TITLE_BAR;
-    p.stroke_path(ICON_LOGO, 16.0, (title_h - 18.0) / 2.0, p.accent, 2.5);
-    p.dot(16.0 + 13.6, (title_h - 18.0) / 2.0 + 4.4, 1.6, theme::AMBER);
-    let name = Label::new("Oxyde", 13.0, theme::TEXT)
-        .weight(600.0)
-        .family(DISPLAY_FONT);
-    let name_w = p.label(&name, 44.0, 0.0, title_h, 120.0);
-    if state.private {
-        let text = "Navigation privée";
-        let label = Label::new(text, 12.0, theme::PRIVATE_CHIP_TEXT);
-        let chip = rect(
-            44.0 + name_w + 10.0,
-            (title_h - 22.0) / 2.0,
-            p.measure(&label) + 20.0,
-            22.0,
-        );
-        p.fill(chip, theme::PRIVATE_BORDER, 10.0);
-        p.label_centered(&label, chip);
-        p.describe(chip, Role::Text, text);
-    }
-    let buttons = [
-        (Hit::Minimize, ICON_WIN_MIN, "Réduire"),
-        (Hit::Maximize, ICON_WIN_MAX, "Agrandir"),
-        (Hit::CloseWindow, ICON_WIN_CLOSE, "Fermer"),
-    ];
-    for (i, (hit, icon, label)) in buttons.into_iter().enumerate() {
-        #[expect(clippy::cast_precision_loss, reason = "trois boutons")]
-        let r = rect(w - 46.0 * (3 - i) as f32, 0.0, 46.0, title_h);
-        if p.hover == Some(hit) {
-            let color = if hit == Hit::CloseWindow {
-                theme::DANGER
-            } else {
-                theme::HOVER
-            };
-            p.fill(r, color, 0.0);
+    if horizontal {
+        horizontal::header(&mut p, state);
+    } else {
+        p.stroke_path(ICON_LOGO, 16.0, (title_h - 18.0) / 2.0, p.accent, 2.5);
+        p.dot(16.0 + 13.6, (title_h - 18.0) / 2.0 + 4.4, 1.6, theme::AMBER);
+        let name = Label::new("Oxyde", 13.0, theme::TEXT)
+            .weight(600.0)
+            .family(DISPLAY_FONT);
+        let name_w = p.label(&name, 44.0, 0.0, title_h, 120.0);
+        if state.private {
+            let text = "Navigation privée";
+            let label = Label::new(text, 12.0, theme::PRIVATE_CHIP_TEXT);
+            let chip = rect(
+                44.0 + name_w + 10.0,
+                (title_h - 22.0) / 2.0,
+                p.measure(&label) + 20.0,
+                22.0,
+            );
+            p.fill(chip, theme::PRIVATE_BORDER, 10.0);
+            p.label_centered(&label, chip);
+            p.describe(chip, Role::Text, text);
         }
-        p.stroke_path(icon, r.x + 17.0, r.y + 14.0, theme::ICON, 1.0);
-        p.target(r, hit, Role::Button, label);
+        let buttons = [
+            (Hit::Minimize, ICON_WIN_MIN, "Réduire"),
+            (Hit::Maximize, ICON_WIN_MAX, "Agrandir"),
+            (Hit::CloseWindow, ICON_WIN_CLOSE, "Fermer"),
+        ];
+        for (i, (hit, icon, label)) in buttons.into_iter().enumerate() {
+            #[expect(clippy::cast_precision_loss, reason = "trois boutons")]
+            let r = rect(w - 46.0 * (3 - i) as f32, 0.0, 46.0, title_h);
+            if p.hover == Some(hit) {
+                let color = if hit == Hit::CloseWindow {
+                    theme::DANGER
+                } else {
+                    theme::HOVER
+                };
+                p.fill(r, color, 0.0);
+            }
+            p.stroke_path(icon, r.x + 17.0, r.y + 14.0, theme::ICON, 1.0);
+            p.target(r, hit, Role::Button, label);
+        }
+        p.hits
+            .push((rect(0.0, 0.0, w - 138.0, title_h), Hit::TitleBar));
     }
-    p.hits
-        .push((rect(0.0, 0.0, w - 138.0, title_h), Hit::TitleBar));
 
     // ---- Bibliothèque : elle remplace les onglets et les volets -------------
     if let Some(view) = &state.library {
@@ -928,336 +941,347 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
     }
 
     // ---- Barre latérale ----------------------------------------------------
-    let side_x = 8.0 + 4.0;
-    let side_w = theme::SIDEBAR - 8.0;
-    let side_right = side_x + side_w;
-    let mut y = title_h + 4.0;
-
-    let nav = [
-        (Hit::Back, ICON_BACK, state.can_back, "Page précédente"),
-        (
-            Hit::Forward,
-            ICON_FORWARD,
-            state.can_forward,
-            "Page suivante",
-        ),
-        (Hit::Reload, ICON_RELOAD, true, "Actualiser"),
-    ];
-    for (i, (hit, icon, enabled, label)) in nav.into_iter().enumerate() {
-        #[expect(clippy::cast_precision_loss, reason = "trois boutons")]
-        let r = rect(side_x + 38.0 * i as f32, y, 36.0, 36.0);
-        if enabled {
-            p.icon_button(r, hit, label, icon, 16.0, theme::ICON, 1.5);
-        } else {
-            p.stroke_path(icon, r.x + 10.0, r.y + 10.0, theme::ICON_DISABLED, 1.5);
-            p.describe(r, Role::Button, label);
-            p.last_widget(|w| w.disabled = true);
-        }
-    }
-    let split_r = rect(side_right - 36.0, y, 36.0, 36.0);
-    if state.split.is_some() {
-        p.fill(split_r, theme::PILL, 8.0);
-    }
-    let split_color = if state.split.is_some() {
-        p.accent
+    let tab_scroll_max = if horizontal {
+        horizontal::toolbar(&mut p, state);
+        0.0
     } else {
-        theme::ICON
-    };
-    p.icon_button(
-        split_r,
-        Hit::SplitToggle,
-        "Vue scindée",
-        ICON_SPLIT,
-        16.0,
-        split_color,
-        1.5,
-    );
-    p.last_widget(|w| w.selected = state.split.is_some());
-    y += 36.0 + 16.0;
+        let side_x = 8.0 + 4.0;
+        let side_w = theme::SIDEBAR - 8.0;
+        let side_right = side_x + side_w;
+        let mut y = title_h + 4.0;
 
-    // Barre d'adresse. Sur la page « Nouvel onglet », la saisie se fait dans
-    // le champ de recherche de la page : la barre n'affiche pas le curseur.
-    let active_is_new_tab = matches!(
-        state.tabs.get(state.active).map(|t| t.content),
-        Some(PaneContent::NewTab)
-    );
-    let editing_here = state.editing && !active_is_new_tab;
-    let addr = rect(side_x, y, side_w, 40.0);
-    p.fill(addr, theme::SURFACE, 10.0);
-    p.outline(
-        addr,
-        if editing_here {
+        let nav = [
+            (Hit::Back, ICON_BACK, state.can_back, "Page précédente"),
+            (
+                Hit::Forward,
+                ICON_FORWARD,
+                state.can_forward,
+                "Page suivante",
+            ),
+            (Hit::Reload, ICON_RELOAD, true, "Actualiser"),
+        ];
+        for (i, (hit, icon, enabled, label)) in nav.into_iter().enumerate() {
+            #[expect(clippy::cast_precision_loss, reason = "trois boutons")]
+            let r = rect(side_x + 38.0 * i as f32, y, 36.0, 36.0);
+            if enabled {
+                p.icon_button(r, hit, label, icon, 16.0, theme::ICON, 1.5);
+            } else {
+                p.stroke_path(icon, r.x + 10.0, r.y + 10.0, theme::ICON_DISABLED, 1.5);
+                p.describe(r, Role::Button, label);
+                p.last_widget(|w| w.disabled = true);
+            }
+        }
+        let split_r = rect(side_right - 36.0, y, 36.0, 36.0);
+        if state.split.is_some() {
+            p.fill(split_r, theme::PILL, 8.0);
+        }
+        let split_color = if state.split.is_some() {
             p.accent
         } else {
-            theme::BORDER_SOFT
-        },
-        10.0,
-        1.0,
-    );
-    p.target(addr, Hit::Address, Role::TextInput, "Adresse");
-    p.last_widget(|w| w.value = Some(state.address.to_owned()));
-    let icon = if state.secure { ICON_LOCK } else { ICON_GLOBE };
-    p.stroke_path(icon, addr.x + 12.0, addr.y + 12.0, theme::TEXT_MUTED, 1.3);
-    let text_x = addr.x + 12.0 + 16.0 + 8.0;
-    if editing_here {
-        let max_w = addr.x + addr.w - 12.0 - text_x;
-        panes::edit_field(&mut p, state, text_x, addr.y, addr.h, max_w, 14.0, "");
-    } else {
-        let max_w = addr.x + addr.w - 10.0 - 52.0 - text_x;
-        let shown = if state.editing { "" } else { state.address };
-        p.label(
-            &Label::new(shown, 14.0, theme::TEXT),
-            text_x,
-            addr.y,
-            addr.h,
-            max_w,
+            theme::ICON
+        };
+        p.icon_button(
+            split_r,
+            Hit::SplitToggle,
+            "Vue scindée",
+            ICON_SPLIT,
+            16.0,
+            split_color,
+            1.5,
         );
-        p.key_hint("Ctrl L", addr.x + addr.w - 10.0, addr.y, addr.h);
-    }
-    y += 40.0 + 16.0;
+        p.last_widget(|w| w.selected = state.split.is_some());
+        y += 36.0 + 16.0;
 
-    // Onglets épinglés : grille de quatre tuiles par rangée.
-    let pinned: Vec<usize> = (0..state.tabs.len())
-        .filter(|i| state.tabs[*i].pinned)
-        .collect();
-    if !pinned.is_empty() {
-        let tile_w = (side_w - 3.0 * 8.0) / 4.0;
-        for (n, &i) in pinned.iter().enumerate() {
-            let tab = &state.tabs[i];
-            #[expect(clippy::cast_precision_loss, reason = "peu d'onglets épinglés")]
-            let r = rect(
-                side_x + (tile_w + 8.0) * (n % 4) as f32,
-                y + 52.0 * (n / 4) as f32,
-                tile_w,
-                44.0,
-            );
-            let shown = i == state.active || Some(i) == state.split;
-            let background = if shown {
-                theme::ACTIVE
-            } else if p.hover == Some(Hit::Tab(i)) {
-                theme::HOVER_STRONG
+        // Barre d'adresse. Sur la page « Nouvel onglet », la saisie se fait dans
+        // le champ de recherche de la page : la barre n'affiche pas le curseur.
+        let active_is_new_tab = matches!(
+            state.tabs.get(state.active).map(|t| t.content),
+            Some(PaneContent::NewTab)
+        );
+        let editing_here = state.editing && !active_is_new_tab;
+        let addr = rect(side_x, y, side_w, 40.0);
+        p.fill(addr, theme::SURFACE, 10.0);
+        p.outline(
+            addr,
+            if editing_here {
+                p.accent
             } else {
-                theme::SURFACE
+                theme::BORDER_SOFT
+            },
+            10.0,
+            1.0,
+        );
+        p.target(addr, Hit::Address, Role::TextInput, "Adresse");
+        p.last_widget(|w| w.value = Some(state.address.to_owned()));
+        let icon = if state.secure { ICON_LOCK } else { ICON_GLOBE };
+        p.stroke_path(icon, addr.x + 12.0, addr.y + 12.0, theme::TEXT_MUTED, 1.3);
+        let text_x = addr.x + 12.0 + 16.0 + 8.0;
+        if editing_here {
+            let max_w = addr.x + addr.w - 12.0 - text_x;
+            panes::edit_field(&mut p, state, text_x, addr.y, addr.h, max_w, 14.0, "");
+        } else {
+            let max_w = addr.x + addr.w - 10.0 - 52.0 - text_x;
+            let shown = if state.editing { "" } else { state.address };
+            p.label(
+                &Label::new(shown, 14.0, theme::TEXT),
+                text_x,
+                addr.y,
+                addr.h,
+                max_w,
+            );
+            p.key_hint("Ctrl L", addr.x + addr.w - 10.0, addr.y, addr.h);
+        }
+        y += 40.0 + 16.0;
+
+        // Onglets épinglés : grille de quatre tuiles par rangée.
+        let pinned: Vec<usize> = (0..state.tabs.len())
+            .filter(|i| state.tabs[*i].pinned)
+            .collect();
+        if !pinned.is_empty() {
+            let tile_w = (side_w - 3.0 * 8.0) / 4.0;
+            for (n, &i) in pinned.iter().enumerate() {
+                let tab = &state.tabs[i];
+                #[expect(clippy::cast_precision_loss, reason = "peu d'onglets épinglés")]
+                let r = rect(
+                    side_x + (tile_w + 8.0) * (n % 4) as f32,
+                    y + 52.0 * (n / 4) as f32,
+                    tile_w,
+                    44.0,
+                );
+                let shown = i == state.active || Some(i) == state.split;
+                let background = if shown {
+                    theme::ACTIVE
+                } else if p.hover == Some(Hit::Tab(i)) {
+                    theme::HOVER_STRONG
+                } else {
+                    theme::SURFACE
+                };
+                p.fill(r, background, 10.0);
+                let letter = initial(tab.host, tab.title);
+                let color = host_color(tab.host, &theme::PINNED_LETTERS);
+                p.label_centered(&Label::new(&letter, 14.0, color).weight(600.0), r);
+                p.target(
+                    r,
+                    Hit::Tab(i),
+                    Role::Tab,
+                    &format!("{}, épinglé", tab_title(tab)),
+                );
+                p.last_widget(|w| w.selected = i == state.active);
+            }
+            #[expect(clippy::cast_precision_loss, reason = "peu d'onglets épinglés")]
+            let rows = pinned.len().div_ceil(4) as f32;
+            y += rows * 52.0 - 8.0 + 16.0;
+        }
+
+        // Titre de l'espace.
+        let space_name = state.spaces.get(state.space).map_or("", |s| s.name);
+        let caption = if state.private {
+            "ONGLETS PRIVÉS".to_owned()
+        } else {
+            format!("ESPACE · {}", space_name.to_uppercase())
+        };
+        p.label(
+            &Label::new(&caption, 11.0, theme::TEXT_MUTED),
+            side_x + 8.0,
+            y,
+            16.0,
+            side_w - 16.0,
+        );
+        y += 16.0 + 6.0;
+
+        // Onglets de l'espace courant. Ceux de la vue scindée sont regroupés dans
+        // un cadre quand ils se suivent dans la liste.
+        let visible: Vec<usize> = (0..state.tabs.len())
+            .filter(|i| !state.tabs[*i].pinned && state.tabs[*i].space == state.space)
+            .collect();
+        let list_bottom = h - 8.0 - 48.0 - 42.0;
+        let group = state.split.and_then(|s| {
+            let a = visible.iter().position(|i| *i == state.active)?;
+            let b = visible.iter().position(|i| *i == s)?;
+            (a.abs_diff(b) == 1).then_some((a.min(b), a.max(b)))
+        });
+        // Quand la liste dépasse la place disponible, elle défile dans une zone
+        // découpée et la rangée « Nouvel onglet » reste ancrée dessous.
+        let list_top = y;
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "nombre d'onglets petit devant 2^24"
+        )]
+        let content_h = visible.len() as f32 * 42.0 + if group.is_some() { 36.0 } else { 0.0 };
+        let list_h = (list_bottom - list_top).max(0.0);
+        let tab_scroll_max = (content_h - list_h).max(0.0);
+        let scrolling = tab_scroll_max > 0.0;
+        let list_clip = rect(side_x - 4.0, list_top, side_w + 8.0, list_h);
+        let first_list_hit = p.hits.len();
+        if scrolling {
+            p.list.items.push(DisplayItem::PushClip {
+                rect: list_clip,
+                radius: 0.0,
+            });
+            y -= state.tab_scroll.clamp(0.0, tab_scroll_max);
+        }
+        for (n, &i) in visible.iter().enumerate() {
+            let tab = &state.tabs[i];
+            let grouped = group.is_some_and(|(first, last)| n == first || n == last);
+            if group.is_some_and(|(first, _)| n == first) {
+                let frame = rect(side_x, y, side_w, 4.0 + 40.0 + 2.0 + 40.0 + 22.0 + 4.0);
+                p.fill(frame, theme::GROUP, 12.0);
+                p.outline(frame, theme::BORDER_SOFT, 12.0, 1.0);
+                y += 4.0;
+            }
+            let inset = if grouped { 4.0 } else { 0.0 };
+            let row = rect(side_x + inset, y, side_w - 2.0 * inset, 40.0);
+            let is_active = i == state.active;
+            let hovered = p.hover == Some(Hit::Tab(i)) || p.hover == Some(Hit::CloseTab(i));
+            if is_active {
+                p.fill(row, theme::ACTIVE, 8.0);
+            } else if hovered {
+                p.fill(row, theme::HOVER, 8.0);
+            }
+            let pad_left = if grouped { 10.0 } else { 14.0 };
+            let badge = rect(row.x + pad_left, row.y + 11.0, 18.0, 18.0);
+            if matches!(tab.content, PaneContent::NewTab) {
+                p.stroke_path(ICON_PLUS, badge.x + 1.0, badge.y + 1.0, theme::ICON, 1.5);
+            } else {
+                p.badge(badge, 5.0, tab.host, tab.title, 11.0);
+            }
+
+            let show_close = is_active || hovered;
+            let close = rect(row.x + row.w - 8.0 - 22.0, row.y + 9.0, 22.0, 22.0);
+            let title_x = badge.x + 18.0 + 10.0;
+            let title_max = if show_close {
+                close.x - 6.0 - title_x
+            } else {
+                row.x + row.w - 8.0 - title_x
             };
-            p.fill(r, background, 10.0);
-            let letter = initial(tab.host, tab.title);
-            let color = host_color(tab.host, &theme::PINNED_LETTERS);
-            p.label_centered(&Label::new(&letter, 14.0, color).weight(600.0), r);
+            let title_text = tab_title(tab);
+            let color = if is_active {
+                theme::WHITE
+            } else {
+                theme::TEXT_TAB
+            };
+            let title =
+                Label::new(title_text, 14.0, color).weight(if is_active { 500.0 } else { 400.0 });
+            p.label(&title, title_x, row.y, row.h, title_max);
+            if show_close {
+                if p.hover == Some(Hit::CloseTab(i)) {
+                    p.fill(close, theme::HOVER_STRONG, 6.0);
+                }
+                p.stroke_path(ICON_CLOSE, close.x + 4.0, close.y + 4.0, theme::ICON, 1.5);
+                p.target(
+                    close,
+                    Hit::CloseTab(i),
+                    Role::Button,
+                    &format!("Fermer {title_text}"),
+                );
+            }
+            p.target(row, Hit::Tab(i), Role::Tab, title_text);
+            p.last_widget(|w| w.selected = is_active);
+            y += 40.0 + 2.0;
+
+            if group.is_some_and(|(_, last)| n == last) {
+                p.label(
+                    &Label::new("Vue scindée · 2 pages", 11.0, theme::TEXT_MUTED),
+                    side_x + 14.0,
+                    y,
+                    18.0,
+                    side_w - 28.0,
+                );
+                y += 22.0 + 4.0 + 6.0;
+            }
+        }
+        if scrolling {
+            p.list.items.push(DisplayItem::PopClip);
+            // Les rangées sorties de la zone visible ne doivent plus être cliquables.
+            for (r, _) in p.hits.iter_mut().skip(first_list_hit) {
+                let top = r.y.max(list_clip.y);
+                let bottom = (r.y + r.h).min(list_clip.y + list_clip.h);
+                r.y = top;
+                r.h = (bottom - top).max(0.0);
+            }
+            y = list_bottom + 2.0;
+        }
+
+        // « Nouvel onglet ».
+        let new_tab = rect(side_x, y, side_w, 40.0);
+        if p.hover == Some(Hit::NewTab) {
+            p.fill(new_tab, theme::HOVER, 8.0);
+        }
+        p.stroke_path(
+            ICON_PLUS,
+            new_tab.x + 14.0,
+            new_tab.y + 12.0,
+            theme::TEXT_MUTED,
+            1.5,
+        );
+        p.label(
+            &Label::new("Nouvel onglet", 14.0, theme::TEXT_MUTED),
+            new_tab.x + 40.0,
+            new_tab.y,
+            40.0,
+            140.0,
+        );
+        p.key_hint("Ctrl T", new_tab.x + new_tab.w - 8.0, new_tab.y, 40.0);
+        p.target(new_tab, Hit::NewTab, Role::Button, "Nouvel onglet");
+
+        // Bas de la barre : espaces et paramètres.
+        let bottom_y = h - 8.0 - 4.0 - 36.0;
+        let mut space_x = side_x;
+        for (i, space) in state.spaces.iter().enumerate() {
+            let current = i == state.space;
+            let label = Label::new(space.name, 13.0, theme::TEXT);
+            let r = if current {
+                let sw = p.measure(&label).min(120.0);
+                rect(space_x, bottom_y, 12.0 + 8.0 + 8.0 + sw + 12.0, 36.0)
+            } else {
+                rect(space_x, bottom_y, 36.0, 36.0)
+            };
+            if current {
+                p.fill(r, theme::PILL, 18.0);
+                p.dot(r.x + 16.0, r.y + 18.0, 4.0, space.color);
+                p.label(&label, r.x + 28.0, r.y, 36.0, 120.0);
+            } else {
+                if p.hover == Some(Hit::Space(i)) {
+                    p.fill(r, theme::HOVER, 18.0);
+                }
+                p.dot(r.x + 18.0, r.y + 18.0, 4.0, space.color);
+            }
             p.target(
                 r,
-                Hit::Tab(i),
-                Role::Tab,
-                &format!("{}, épinglé", tab_title(tab)),
-            );
-            p.last_widget(|w| w.selected = i == state.active);
-        }
-        #[expect(clippy::cast_precision_loss, reason = "peu d'onglets épinglés")]
-        let rows = pinned.len().div_ceil(4) as f32;
-        y += rows * 52.0 - 8.0 + 16.0;
-    }
-
-    // Titre de l'espace.
-    let space_name = state.spaces.get(state.space).map_or("", |s| s.name);
-    let caption = if state.private {
-        "ONGLETS PRIVÉS".to_owned()
-    } else {
-        format!("ESPACE · {}", space_name.to_uppercase())
-    };
-    p.label(
-        &Label::new(&caption, 11.0, theme::TEXT_MUTED),
-        side_x + 8.0,
-        y,
-        16.0,
-        side_w - 16.0,
-    );
-    y += 16.0 + 6.0;
-
-    // Onglets de l'espace courant. Ceux de la vue scindée sont regroupés dans
-    // un cadre quand ils se suivent dans la liste.
-    let visible: Vec<usize> = (0..state.tabs.len())
-        .filter(|i| !state.tabs[*i].pinned && state.tabs[*i].space == state.space)
-        .collect();
-    let list_bottom = h - 8.0 - 48.0 - 42.0;
-    let group = state.split.and_then(|s| {
-        let a = visible.iter().position(|i| *i == state.active)?;
-        let b = visible.iter().position(|i| *i == s)?;
-        (a.abs_diff(b) == 1).then_some((a.min(b), a.max(b)))
-    });
-    // Quand la liste dépasse la place disponible, elle défile dans une zone
-    // découpée et la rangée « Nouvel onglet » reste ancrée dessous.
-    let list_top = y;
-    #[expect(
-        clippy::cast_precision_loss,
-        reason = "nombre d'onglets petit devant 2^24"
-    )]
-    let content_h = visible.len() as f32 * 42.0 + if group.is_some() { 36.0 } else { 0.0 };
-    let list_h = (list_bottom - list_top).max(0.0);
-    let tab_scroll_max = (content_h - list_h).max(0.0);
-    let scrolling = tab_scroll_max > 0.0;
-    let list_clip = rect(side_x - 4.0, list_top, side_w + 8.0, list_h);
-    let first_list_hit = p.hits.len();
-    if scrolling {
-        p.list.items.push(DisplayItem::PushClip {
-            rect: list_clip,
-            radius: 0.0,
-        });
-        y -= state.tab_scroll.clamp(0.0, tab_scroll_max);
-    }
-    for (n, &i) in visible.iter().enumerate() {
-        let tab = &state.tabs[i];
-        let grouped = group.is_some_and(|(first, last)| n == first || n == last);
-        if group.is_some_and(|(first, _)| n == first) {
-            let frame = rect(side_x, y, side_w, 4.0 + 40.0 + 2.0 + 40.0 + 22.0 + 4.0);
-            p.fill(frame, theme::GROUP, 12.0);
-            p.outline(frame, theme::BORDER_SOFT, 12.0, 1.0);
-            y += 4.0;
-        }
-        let inset = if grouped { 4.0 } else { 0.0 };
-        let row = rect(side_x + inset, y, side_w - 2.0 * inset, 40.0);
-        let is_active = i == state.active;
-        let hovered = p.hover == Some(Hit::Tab(i)) || p.hover == Some(Hit::CloseTab(i));
-        if is_active {
-            p.fill(row, theme::ACTIVE, 8.0);
-        } else if hovered {
-            p.fill(row, theme::HOVER, 8.0);
-        }
-        let pad_left = if grouped { 10.0 } else { 14.0 };
-        let badge = rect(row.x + pad_left, row.y + 11.0, 18.0, 18.0);
-        if matches!(tab.content, PaneContent::NewTab) {
-            p.stroke_path(ICON_PLUS, badge.x + 1.0, badge.y + 1.0, theme::ICON, 1.5);
-        } else {
-            p.badge(badge, 5.0, tab.host, tab.title, 11.0);
-        }
-
-        let show_close = is_active || hovered;
-        let close = rect(row.x + row.w - 8.0 - 22.0, row.y + 9.0, 22.0, 22.0);
-        let title_x = badge.x + 18.0 + 10.0;
-        let title_max = if show_close {
-            close.x - 6.0 - title_x
-        } else {
-            row.x + row.w - 8.0 - title_x
-        };
-        let title_text = tab_title(tab);
-        let color = if is_active {
-            theme::WHITE
-        } else {
-            theme::TEXT_TAB
-        };
-        let title =
-            Label::new(title_text, 14.0, color).weight(if is_active { 500.0 } else { 400.0 });
-        p.label(&title, title_x, row.y, row.h, title_max);
-        if show_close {
-            if p.hover == Some(Hit::CloseTab(i)) {
-                p.fill(close, theme::HOVER_STRONG, 6.0);
-            }
-            p.stroke_path(ICON_CLOSE, close.x + 4.0, close.y + 4.0, theme::ICON, 1.5);
-            p.target(
-                close,
-                Hit::CloseTab(i),
+                Hit::Space(i),
                 Role::Button,
-                &format!("Fermer {title_text}"),
+                &format!("Espace {}", space.name),
             );
+            p.last_widget(|w| w.selected = current);
+            space_x += r.w + 4.0;
         }
-        p.target(row, Hit::Tab(i), Role::Tab, title_text);
-        p.last_widget(|w| w.selected = is_active);
-        y += 40.0 + 2.0;
-
-        if group.is_some_and(|(_, last)| n == last) {
-            p.label(
-                &Label::new("Vue scindée · 2 pages", 11.0, theme::TEXT_MUTED),
-                side_x + 14.0,
-                y,
-                18.0,
-                side_w - 28.0,
-            );
-            y += 22.0 + 4.0 + 6.0;
-        }
-    }
-    if scrolling {
-        p.list.items.push(DisplayItem::PopClip);
-        // Les rangées sorties de la zone visible ne doivent plus être cliquables.
-        for (r, _) in p.hits.iter_mut().skip(first_list_hit) {
-            let top = r.y.max(list_clip.y);
-            let bottom = (r.y + r.h).min(list_clip.y + list_clip.h);
-            r.y = top;
-            r.h = (bottom - top).max(0.0);
-        }
-        y = list_bottom + 2.0;
-    }
-
-    // « Nouvel onglet ».
-    let new_tab = rect(side_x, y, side_w, 40.0);
-    if p.hover == Some(Hit::NewTab) {
-        p.fill(new_tab, theme::HOVER, 8.0);
-    }
-    p.stroke_path(
-        ICON_PLUS,
-        new_tab.x + 14.0,
-        new_tab.y + 12.0,
-        theme::TEXT_MUTED,
-        1.5,
-    );
-    p.label(
-        &Label::new("Nouvel onglet", 14.0, theme::TEXT_MUTED),
-        new_tab.x + 40.0,
-        new_tab.y,
-        40.0,
-        140.0,
-    );
-    p.key_hint("Ctrl T", new_tab.x + new_tab.w - 8.0, new_tab.y, 40.0);
-    p.target(new_tab, Hit::NewTab, Role::Button, "Nouvel onglet");
-
-    // Bas de la barre : espaces et paramètres.
-    let bottom_y = h - 8.0 - 4.0 - 36.0;
-    let mut space_x = side_x;
-    for (i, space) in state.spaces.iter().enumerate() {
-        let current = i == state.space;
-        let label = Label::new(space.name, 13.0, theme::TEXT);
-        let r = if current {
-            let sw = p.measure(&label).min(120.0);
-            rect(space_x, bottom_y, 12.0 + 8.0 + 8.0 + sw + 12.0, 36.0)
-        } else {
-            rect(space_x, bottom_y, 36.0, 36.0)
-        };
-        if current {
-            p.fill(r, theme::PILL, 18.0);
-            p.dot(r.x + 16.0, r.y + 18.0, 4.0, space.color);
-            p.label(&label, r.x + 28.0, r.y, 36.0, 120.0);
-        } else {
-            if p.hover == Some(Hit::Space(i)) {
-                p.fill(r, theme::HOVER, 18.0);
-            }
-            p.dot(r.x + 18.0, r.y + 18.0, 4.0, space.color);
-        }
-        p.target(
-            r,
-            Hit::Space(i),
-            Role::Button,
-            &format!("Espace {}", space.name),
+        let settings = rect(side_right - 36.0, bottom_y, 36.0, 36.0);
+        p.icon_button(
+            settings,
+            Hit::Settings,
+            "Paramètres",
+            ICON_SETTINGS,
+            16.0,
+            theme::ICON,
+            1.5,
         );
-        p.last_widget(|w| w.selected = current);
-        space_x += r.w + 4.0;
-    }
-    let settings = rect(side_right - 36.0, bottom_y, 36.0, 36.0);
-    p.icon_button(
-        settings,
-        Hit::Settings,
-        "Paramètres",
-        ICON_SETTINGS,
-        16.0,
-        theme::ICON,
-        1.5,
-    );
+        tab_scroll_max
+    };
 
     // ---- Volets de contenu -------------------------------------------------
     let mut overlay = DisplayList::default();
     let mut web_panes = Vec::new();
-    let area = rect(
-        8.0 + theme::SIDEBAR + 8.0,
-        title_h,
-        (w - theme::SIDEBAR - 24.0).max(0.0),
-        (h - title_h - 8.0).max(0.0),
-    );
+    let area = if horizontal {
+        let top = horizontal::HEADER + horizontal::TOOLBAR + 8.0;
+        rect(8.0, top, (w - 16.0).max(0.0), (h - top - 8.0).max(0.0))
+    } else {
+        rect(
+            8.0 + theme::SIDEBAR + 8.0,
+            title_h,
+            (w - theme::SIDEBAR - 24.0).max(0.0),
+            (h - title_h - 8.0).max(0.0),
+        )
+    };
     let shown: Vec<usize> = match state.split {
         Some(second) if second != state.active && second < state.tabs.len() => {
             vec![state.active.min(second), state.active.max(second)]
@@ -1466,6 +1490,7 @@ mod tests {
             onboarding: None,
             accent: theme::ACCENT,
             private: false,
+            horizontal: false,
         }
     }
 
@@ -2165,5 +2190,59 @@ mod tests {
         let chrome = build_chrome(&s, &mut text);
         assert!(find_hit(&chrome, Hit::OnboardingNext).is_some());
         assert!(!labels(&chrome).iter().any(|l| l == "Bienvenue dans Oxyde"));
+    }
+
+    #[test]
+    fn horizontal_tabs_live_in_the_title_bar() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let mut s = state(&tabs, None);
+        s.horizontal = true;
+        let chrome = build_chrome(&s, &mut text);
+        // Les onglets sont dans la barre de titre, et leur clic passe avant
+        // le déplacement de la fenêtre.
+        let tab = find_hit(&chrome, Hit::Tab(0)).expect("onglet");
+        assert!(tab.y + tab.h <= horizontal::HEADER + 0.5);
+        assert_eq!(chrome.hit(tab.x + 60.0, tab.y + 20.0), Some(Hit::Tab(0)));
+        assert_eq!(chrome.hit(20.0, 20.0), Some(Hit::TitleBar));
+        for hit in [
+            Hit::NewTab,
+            Hit::Back,
+            Hit::Reload,
+            Hit::Address,
+            Hit::Settings,
+            Hit::Space(1),
+            Hit::CloseWindow,
+        ] {
+            assert!(find_hit(&chrome, hit).is_some(), "{hit:?}");
+        }
+        // La vue scindée est au bout de la pilule d'adresse, et prend son clic.
+        let split = find_hit(&chrome, Hit::SplitToggle).expect("vue scindée");
+        assert_eq!(
+            chrome.hit(split.x + 10.0, split.y + 10.0),
+            Some(Hit::SplitToggle)
+        );
+        let address = find_hit(&chrome, Hit::Address).expect("adresse");
+        assert_eq!(
+            chrome.hit(address.x + 60.0, address.y + 10.0),
+            Some(Hit::Address)
+        );
+        // La page prend toute la largeur, sous les deux barres.
+        let pane = chrome.panes[0].rect;
+        assert_eq!((pane.x, pane.w), (8.0, 1424.0));
+        assert_eq!(pane.y, horizontal::HEADER + horizontal::TOOLBAR + 8.0);
+        assert_eq!(chrome.tab_scroll_max, 0.0);
+
+        // Les écrans qui remplacent les onglets gardent la barre de titre ordinaire.
+        s.library = Some(LibraryView {
+            section: LibrarySection::Bookmarks,
+            rows: &[],
+            scroll: 0.0,
+            confirm_clear: false,
+            truncated: false,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        assert!(find_hit(&chrome, Hit::Tab(0)).is_none());
+        assert!(find_hit(&chrome, Hit::LibraryBack).is_some());
     }
 }

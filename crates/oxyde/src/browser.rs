@@ -52,10 +52,16 @@ const ACCENT_COLORS: [Color; 3] = [theme::ACCENT, theme::AMBER, theme::BLUE];
 
 /// Index des réglages dans l'écran Paramètres (voir [`Browser::settings_groups`]).
 const ROW_ACCENT: usize = 0;
-const ROW_RESTORE: usize = 1;
-const ROW_ENGINE: usize = 2;
-const ROW_HISTORY: usize = 3;
-const ROW_CLEAR: usize = 4;
+const ROW_LAYOUT: usize = 1;
+const ROW_RESTORE: usize = 2;
+const ROW_ENGINE: usize = 3;
+const ROW_HISTORY: usize = 4;
+const ROW_CLEAR: usize = 5;
+
+/// Réglage : disposition des onglets (`lateraux` ou `horizontaux`).
+const KEY_LAYOUT: &str = "apparence.onglets";
+const LAYOUT_KEYS: [&str; 2] = ["lateraux", "horizontaux"];
+const LAYOUT_NAMES: [&str; 2] = ["Barre latérale", "Onglets horizontaux"];
 
 /// Filtres de la palette de commandes.
 const PALETTE_FILTERS: [&str; 5] = ["Tout", "Onglets", "Historique", "Favoris", "Commandes"];
@@ -1267,6 +1273,12 @@ impl Browser {
         self.refresh_palette();
     }
 
+    /// Vrai si les onglets sont dans la barre de titre plutôt que dans la
+    /// barre latérale.
+    pub(crate) fn horizontal(&self) -> bool {
+        self.settings.get(KEY_LAYOUT) == Some("horizontaux")
+    }
+
     /// Index de la couleur d'accent choisie dans [`ACCENT_COLORS`].
     fn accent_index(&self) -> usize {
         let chosen = self.settings.get(KEY_ACCENT);
@@ -1300,15 +1312,25 @@ impl Browser {
         vec![
             SettingsGroup {
                 title: "Apparence",
-                rows: vec![row(
-                    "Couleur d'accent",
-                    "",
-                    SettingControl::Swatches {
-                        colors: &ACCENT_COLORS,
-                        names: &ACCENT_NAMES,
-                        selected: self.accent_index(),
-                    },
-                )],
+                rows: vec![
+                    row(
+                        "Couleur d'accent",
+                        "",
+                        SettingControl::Swatches {
+                            colors: &ACCENT_COLORS,
+                            names: &ACCENT_NAMES,
+                            selected: self.accent_index(),
+                        },
+                    ),
+                    row(
+                        "Disposition des onglets",
+                        "",
+                        SettingControl::Choice {
+                            options: &LAYOUT_NAMES,
+                            selected: usize::from(self.horizontal()),
+                        },
+                    ),
+                ],
             },
             SettingsGroup {
                 title: "Démarrage",
@@ -1414,6 +1436,14 @@ impl Browser {
             } => {
                 if let Some(key) = ACCENT_KEYS.get(option) {
                     self.settings.set(KEY_ACCENT, key);
+                }
+            }
+            Hit::Setting {
+                row: ROW_LAYOUT,
+                option,
+            } => {
+                if let Some(key) = LAYOUT_KEYS.get(option) {
+                    self.settings.set(KEY_LAYOUT, key);
                 }
             }
             Hit::Setting {
@@ -1539,6 +1569,7 @@ impl Browser {
                 .copied()
                 .unwrap_or(theme::ACCENT),
             private: self.private,
+            horizontal: self.horizontal(),
         }
     }
 
@@ -3502,5 +3533,33 @@ mod tests {
         assert!(b.click(Hit::OnboardingSkip, None).is_empty());
         assert!(b.key(KeyPress::Escape).is_empty());
         assert!(!b.library_open());
+    }
+
+    #[test]
+    fn tab_layout_is_a_setting() {
+        let mut b = browser();
+        assert!(!b.horizontal());
+        b.click(Hit::Settings, None);
+        b.click(
+            Hit::Setting {
+                row: ROW_LAYOUT,
+                option: 1,
+            },
+            None,
+        );
+        assert!(b.horizontal());
+        {
+            let views = b.views();
+            assert!(b.chrome_state(&views, 1440.0, 900.0).horizontal);
+        }
+        assert!(Settings::decode(&b.settings.encode()).get(KEY_LAYOUT) == Some("horizontaux"));
+        b.click(
+            Hit::Setting {
+                row: ROW_LAYOUT,
+                option: 0,
+            },
+            None,
+        );
+        assert!(!b.horizontal());
     }
 }

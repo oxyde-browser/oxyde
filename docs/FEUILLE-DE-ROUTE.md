@@ -440,9 +440,15 @@ Fait :
   l'historique, les mots de passe, les onglets, la disposition et le navigateur par défaut :
   rien de cela n'existe encore, donc rien de cela n'est proposé.
 
+- **Onglets horizontaux** : réglage « Disposition des onglets » des paramètres. Les onglets
+  passent dans la barre de titre ; une barre d'outils porte la navigation, l'adresse, la vue
+  scindée, les espaces et les paramètres. La bande d'onglets ne défile pas et les onglets
+  fermés récemment n'y sont pas listés ; la page garde ses marges et ses coins arrondis, là
+  où la maquette la colle aux bords.
+
 Reste : les dossiers de favoris ; l'import depuis Firefox ; les écrans (téléchargements, infos du site,
 autorisations, mots de passe,
-onglets horizontaux, menus contextuels, impression) ; la persistance des
+menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.
 
 ### Jalon 8 — Performances de JavaScript
