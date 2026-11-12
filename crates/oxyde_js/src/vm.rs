@@ -215,6 +215,9 @@ pub struct Vm {
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
     pub(crate) native_new_target: Value,
+    /// Prototype que le constructeur natif en cours a déjà lu sur
+    /// `new.target` ; `None` : il sera lu après la construction.
+    native_proto: Option<ObjId>,
     /// Vrai si cet agent a le droit de s'endormir dans `Atomics.wait` : pas
     /// le fil principal d'une page, qui doit rester réactif.
     pub(crate) can_block: bool,
@@ -454,6 +457,7 @@ impl Vm {
             rejections: Vec::new(),
             constructing: false,
             native_new_target: Value::Undefined,
+            native_proto: None,
             can_block: false,
             has_instance_function: None,
             slot_keys: std::collections::HashMap::new(),
@@ -1529,6 +1533,19 @@ impl Vm {
         (self.heap.get(twin).realm == realm && same_kind).then_some(twin)
     }
 
+    /// Lit dès maintenant le prototype que `new.target` destine à l'instance
+    /// du constructeur natif en cours (`default` : son prototype habituel).
+    /// Pour les constructeurs dont l'algorithme fait cette lecture, visible
+    /// du script, avant ses dernières vérifications.
+    pub(crate) fn fetch_new_target_proto(&mut self, default: ObjId) -> JsResult<()> {
+        let new_target = self.native_new_target.clone();
+        if new_target.as_object().is_some() {
+            let proto = self.instance_proto(&new_target, Some(default))?;
+            self.native_proto = Some(proto);
+        }
+        Ok(())
+    }
+
     /// `Object.prototype` du royaume `realm`.
     fn object_proto_of(&self, realm: u16) -> ObjId {
         if realm == self.realm {
@@ -1577,11 +1594,13 @@ impl Vm {
                 let saved = std::mem::replace(&mut self.constructing, true);
                 let saved_target =
                     std::mem::replace(&mut self.native_new_target, new_target.clone());
+                let saved_proto = self.native_proto.take();
                 let caller = self.realm;
                 self.switch_realm(self.heap.get(id).realm);
                 let result = func(self, &Value::Undefined, args);
                 self.switch_realm(caller);
                 self.native_new_target = saved_target;
+                let fetched = std::mem::replace(&mut self.native_proto, saved_proto);
                 self.constructing = saved;
                 self.native_depth -= 1;
                 let result = result?;
@@ -1590,8 +1609,13 @@ impl Vm {
                 if new_target != callee
                     && let Some(instance) = result.as_object()
                 {
-                    let default = self.heap.get(instance).proto;
-                    let proto = self.instance_proto(new_target, default)?;
+                    let proto = match fetched {
+                        Some(proto) => proto,
+                        None => {
+                            let default = self.heap.get(instance).proto;
+                            self.instance_proto(new_target, default)?
+                        }
+                    };
                     self.heap.get_mut(instance).proto = Some(proto);
                 }
                 Ok(result)

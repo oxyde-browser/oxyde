@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 674 tests de test262 sur 48 795 (85,4 %)** ; il en reste 7 121.
+- `oxyde_js` réussit **41 720 tests de test262 sur 48 795 (85,5 %)** ; il en reste 7 075.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -103,6 +103,8 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   dédiés sur 66 ; les 5 autres demandent les attributs d'importation). Quand `new.target`
   n'a pas de `prototype` objet, le prototype par défaut est pris dans son royaume, pour
   tous les constructeurs natifs (80 tests, dont une cinquantaine hors de cette étape).
+  Tableaux typés, `ArrayBuffer`, `DataView` et `SharedArrayBuffer` passent désormais tous
+  leurs tests. Dans cette étape, il ne reste que `Atomics.waitAsync`.
 
 ### E — Expressions rationnelles (855 tests)
 

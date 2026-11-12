@@ -279,9 +279,17 @@ fn atomics_notify(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             }
         }
     };
+    // Personne ne dort sur un tampon qu'un seul agent voit, même si la
+    // conversion de l'index vient de le détacher ou de le rétrécir.
+    let is_shared = vm
+        .typed_array(id)
+        .and_then(|view| vm.buffer(view.buffer))
+        .is_some_and(|b| b.shared.is_some());
+    if !is_shared {
+        return Ok(number(0));
+    }
     let (buffer, start) = element_offset(vm, id, index)?;
     let shared = vm.buffer(buffer).and_then(|b| b.shared.clone());
-    // Personne ne dort sur un tampon qu'un seul agent voit.
     Ok(number(
         shared.map_or(0, |shared| shared.notify(start, count)),
     ))

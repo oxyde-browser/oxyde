@@ -491,6 +491,9 @@ fn array_buffer_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     if max_len.is_some_and(|max| len > max) {
         return Err(vm_range(vm, "byteLength dépasse maxByteLength"));
     }
+    // Le prototype est lu avant l'allocation, qui peut échouer.
+    let proto = vm.intrinsics.array_buffer_proto;
+    vm.fetch_new_target_proto(proto)?;
     Ok(Value::Object(vm.new_buffer(len, max_len)?))
 }
 
@@ -543,6 +546,9 @@ fn shared_buffer_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let max_len = max_byte_length(vm, &arg(args, 1))?;
     if max_len.is_some_and(|max| len > max) {
         return Err(vm_range(vm, "byteLength dépasse maxByteLength"));
+    }
+    if let Some(proto) = vm.shared_buffer_proto() {
+        vm.fetch_new_target_proto(proto)?;
     }
     Ok(Value::Object(vm.new_shared_buffer(len, max_len)?))
 }
@@ -962,10 +968,18 @@ fn construct(vm: &mut Vm, kind: ElementKind, args: &[Value]) -> JsResult {
     } else {
         let key = PropertyKey::Symbol(vm.well_known.iterator.clone());
         if vm.get_key(&source, &key)?.is_nullish() {
-            super::array_like_to_vec(vm, &source)?
-        } else {
-            vm.iterate_to_vec(&source)?
+            // Objet de type tableau : le tableau est créé d'abord, puis
+            // rempli élément par élément.
+            let len = super::array::length_of(vm, &source)?;
+            let id = vm.new_typed(kind, len)?;
+            for index in 0..len {
+                vm.tick(1)?;
+                let value = vm.get(&source, &index.to_string())?;
+                vm.typed_store(id, Some(index), &value)?;
+            }
+            return Ok(Value::Object(id));
         }
+        vm.iterate_to_vec(&source)?
     };
     let id = vm.new_typed(kind, values.len())?;
     for (index, value) in values.iter().enumerate() {
@@ -1124,8 +1138,23 @@ fn typed_reverse(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn typed_copy_within(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    validate_write(vm, this)?;
-    array::copy_within(vm, this, args)
+    let (id, len) = validate_write(vm, this)?;
+    let to = super::relative_index(vm, &arg(args, 0), len, 0)?;
+    let from = super::relative_index(vm, &arg(args, 1), len, 0)?;
+    let end = super::relative_index(vm, &arg(args, 2), len, len)?;
+    let count = end.saturating_sub(from).min(len - to);
+    if count > 0 {
+        // Les conversions ont pu détacher ou rétrécir le tableau : seuls les
+        // éléments encore là sont copiés.
+        validate(vm, this)?;
+        let moved: Vec<Option<Value>> = (0..count).map(|i| vm.typed_get(id, from + i)).collect();
+        for (i, value) in moved.iter().enumerate() {
+            if let Some(value) = value {
+                vm.typed_set(id, to + i, value);
+            }
+        }
+    }
+    Ok(this.clone())
 }
 
 /// Parcourt les `len` éléments que le tableau avait à l'appel, dans l'ordre
@@ -1335,12 +1364,27 @@ fn typed_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         // Même type : les octets sont copiés tels quels, sans conversion.
         let size = source.kind.size();
         let available = vm.typed_length(out).unwrap_or(0).min(count);
-        let bytes = vm
-            .buffer(source.buffer)
-            .map(|b| b.copy_range(source.offset + start * size, available * size))
-            .unwrap_or_default();
-        if let Some(buffer) = vm.buffer_mut(target.buffer) {
-            buffer.write(target.offset, &bytes);
+        let from = source.offset + start * size;
+        if source.buffer == target.buffer {
+            // Même tampon : la copie avance octet par octet, et relit donc
+            // ce qu'elle vient d'écrire si les plages se chevauchent.
+            for index in 0..available * size {
+                let byte = vm
+                    .buffer(source.buffer)
+                    .map(|b| b.copy_range(from + index, 1))
+                    .unwrap_or_default();
+                if let Some(buffer) = vm.buffer_mut(target.buffer) {
+                    buffer.write(target.offset + index, &byte);
+                }
+            }
+        } else {
+            let bytes = vm
+                .buffer(source.buffer)
+                .map(|b| b.copy_range(from, available * size))
+                .unwrap_or_default();
+            if let Some(buffer) = vm.buffer_mut(target.buffer) {
+                buffer.write(target.offset, &bytes);
+            }
         }
     } else {
         for offset in 0..count {
@@ -1384,16 +1428,29 @@ fn typed_set_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     }
     let (_, len) = validate(vm, this)?;
     let source = arg(args, 0);
-    let values: Vec<Value> = match source.as_object().filter(|s| vm.typed_array(*s).is_some()) {
-        Some(source_id) => {
-            validate(vm, &source)?;
-            elements(vm, source_id)
+    let Some(source_id) = source.as_object().filter(|s| vm.typed_array(*s).is_some()) else {
+        // Source ordinaire : chaque élément est lu juste avant d'être écrit.
+        let object = vm.to_object(&source)?;
+        let count = super::array::length_of(vm, &object)?;
+        #[expect(clippy::cast_precision_loss, reason = "longueurs petites devant 2^53")]
+        if offset + count as f64 > len as f64 {
+            return Err(vm_range(vm, "la source dépasse la fin du tableau typé"));
         }
-        None => {
-            let object = vm.to_object(&source)?;
-            super::array_like_to_vec(vm, &object)?
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "décalage vérifié dans [0, len]"
+        )]
+        let offset = offset as usize;
+        for index in 0..count {
+            vm.tick(1)?;
+            let value = vm.get(&object, &index.to_string())?;
+            vm.typed_store(id, Some(offset + index), &value)?;
         }
+        return Ok(Value::Undefined);
     };
+    validate(vm, &source)?;
+    let values = elements(vm, source_id);
     #[expect(clippy::cast_precision_loss, reason = "longueurs petites devant 2^53")]
     if offset + values.len() as f64 > len as f64 {
         return Err(vm_range(vm, "la source dépasse la fin du tableau typé"));
@@ -1505,16 +1562,23 @@ fn typed_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     if index < 0.0 || index >= current as f64 {
         return Err(vm_range(vm, "index hors du tableau typé"));
     }
-    let out = vm.new_typed(kind_of(vm, id), len)?;
-    for (i, element) in elements(vm, id).into_iter().enumerate() {
-        vm.typed_set(out, i, &element);
-    }
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss,
         reason = "index vérifié dans [0, len)"
     )]
-    vm.typed_set(out, index as usize, &value);
+    let index = index as usize;
+    let out = vm.new_typed(kind_of(vm, id), len)?;
+    // La copie garde la longueur d'origine : un élément disparu entre-temps
+    // se lit `undefined`, converti comme toute autre valeur.
+    for i in 0..len {
+        let element = if i == index {
+            value.clone()
+        } else {
+            vm.typed_get(id, i).unwrap_or(Value::Undefined)
+        };
+        vm.typed_store(out, Some(i), &element)?;
+    }
     Ok(Value::Object(out))
 }
 
@@ -1552,7 +1616,10 @@ fn data_view_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             Some(length)
         }
     };
-    // Les conversions ont pu détacher ou rétrécir le tampon.
+    // La lecture du prototype, comme les conversions, a pu détacher ou
+    // rétrécir le tampon.
+    let proto = vm.intrinsics.data_view_proto;
+    vm.fetch_new_target_proto(proto)?;
     live_buffer(vm, buffer)?;
     let current = vm.buffer(buffer).map_or(0, BufferData::len);
     if offset > current || length.is_some_and(|l| offset + l > current) {
@@ -1598,17 +1665,14 @@ fn data_view_buffer(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 }
 
 fn data_view_byte_length(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    match data_view(vm, this)? {
-        (_, _, Some(length)) => Ok(number(length)),
-        _ => Err(vm.type_error("le DataView est détaché ou hors des bornes de son tampon")),
-    }
+    // Détachée ou hors des bornes de son tampon, la vue est vide.
+    let (_, _, length) = data_view(vm, this)?;
+    Ok(number(length.unwrap_or(0)))
 }
 
 fn data_view_byte_offset(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    match data_view(vm, this)? {
-        (_, offset, Some(_)) => Ok(number(offset)),
-        _ => Err(vm.type_error("le DataView est détaché ou hors des bornes de son tampon")),
-    }
+    let (_, offset, length) = data_view(vm, this)?;
+    Ok(number(if length.is_some() { offset } else { 0 }))
 }
 
 fn view_get(vm: &mut Vm, this: &Value, args: &[Value], kind: ElementKind) -> JsResult {
@@ -1739,7 +1803,15 @@ pub(super) fn install(vm: &mut Vm) {
     // %TypedArray% : constructeur abstrait commun à tous les types.
     let typed_proto = vm.new_object();
     let typed_ctor = vm.new_native("TypedArray", 0, typed_array_abstract, true);
-    vm.define_hidden(typed_ctor, "prototype", Value::Object(typed_proto));
+    vm.heap.get_mut(typed_ctor).props.insert(
+        Arc::from("prototype"),
+        crate::heap::Property {
+            slot: crate::heap::Slot::Data(Value::Object(typed_proto)),
+            writable: false,
+            enumerable: false,
+            configurable: false,
+        },
+    );
     vm.define_hidden(typed_proto, "constructor", Value::Object(typed_ctor));
     vm.define_method(typed_ctor, "from", 1, typed_from);
     vm.define_method(typed_ctor, "of", 0, typed_of);

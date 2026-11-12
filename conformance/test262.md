@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 41674 réussis sur 48795 (85.4 %).**
+**Total : 41720 réussis sur 48795 (85.5 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -12,19 +12,19 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `annexB/language` | 845 | 815 | 96.4 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 25 | 100.0 % |
-| `built-ins/Array` | 3083 | 3028 | 98.2 % |
-| `built-ins/ArrayBuffer` | 221 | 220 | 99.5 % |
-| `built-ins/ArrayIteratorPrototype` | 27 | 23 | 85.2 % |
+| `built-ins/Array` | 3083 | 3033 | 98.4 % |
+| `built-ins/ArrayBuffer` | 221 | 221 | 100.0 % |
+| `built-ins/ArrayIteratorPrototype` | 27 | 24 | 88.9 % |
 | `built-ins/AsyncDisposableStack` | 104 | 0 | 0.0 % |
 | `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 32 | 84.2 % |
 | `built-ins/AsyncFunction` | 18 | 18 | 100.0 % |
 | `built-ins/AsyncGeneratorFunction` | 23 | 22 | 95.7 % |
 | `built-ins/AsyncGeneratorPrototype` | 48 | 45 | 93.8 % |
 | `built-ins/AsyncIteratorPrototype` | 13 | 0 | 0.0 % |
-| `built-ins/Atomics` | 389 | 284 | 73.0 % |
+| `built-ins/Atomics` | 389 | 288 | 74.0 % |
 | `built-ins/BigInt` | 77 | 76 | 98.7 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
-| `built-ins/DataView` | 560 | 551 | 98.4 % |
+| `built-ins/DataView` | 560 | 560 | 100.0 % |
 | `built-ins/Date` | 610 | 587 | 96.2 % |
 | `built-ins/DisposableStack` | 93 | 0 | 0.0 % |
 | `built-ins/Error` | 93 | 93 | 100.0 % |
@@ -50,15 +50,15 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Set` | 383 | 378 | 98.7 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
-| `built-ins/SharedArrayBuffer` | 104 | 103 | 99.0 % |
+| `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
 | `built-ins/String` | 1223 | 1180 | 96.5 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 93 | 94.9 % |
 | `built-ins/Temporal` | 4614 | 0 | 0.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
-| `built-ins/TypedArray` | 1453 | 1434 | 98.7 % |
-| `built-ins/TypedArrayConstructors` | 738 | 734 | 99.5 % |
+| `built-ins/TypedArray` | 1453 | 1453 | 100.0 % |
+| `built-ins/TypedArrayConstructors` | 738 | 738 | 100.0 % |
 | `built-ins/Uint8Array` | 70 | 70 | 100.0 % |
 | `built-ins/WeakMap` | 141 | 141 | 100.0 % |
 | `built-ins/WeakRef` | 29 | 29 | 100.0 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9179 | 97.7 % |
+| `language/statements` | 9399 | 9181 | 97.7 % |
 | `language/types` | 113 | 113 | 100.0 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

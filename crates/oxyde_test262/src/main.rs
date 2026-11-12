@@ -472,8 +472,9 @@ fn run_once(
 ) -> Outcome {
     let mut vm = Vm::new();
     vm.set_budget(Some(BUDGET));
-    // L'agent principal d'un lanceur de tests peut s'endormir.
-    vm.set_can_block(true);
+    // L'agent principal d'un lanceur de tests peut s'endormir, sauf pour les
+    // tests qui vérifient ce qui se passe quand il ne le peut pas.
+    vm.set_can_block(!meta.has("CanBlockIsFalse"));
     vm.host = Some(Box::new(Host::default()));
     install_host(&mut vm);
 
