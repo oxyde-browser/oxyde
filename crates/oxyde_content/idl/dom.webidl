@@ -43,6 +43,19 @@ dictionary EventInit {
 };
 
 [Exposed=*]
+interface CustomEvent : Event {
+  constructor(DOMString type, optional CustomEventInit eventInitDict = {});
+
+  readonly attribute any detail;
+
+  undefined initCustomEvent(DOMString type, optional boolean bubbles = false, optional boolean cancelable = false, optional any detail = null);
+};
+
+dictionary CustomEventInit : EventInit {
+  any detail = null;
+};
+
+[Exposed=*]
 interface EventTarget {
   constructor();
 
@@ -224,6 +237,17 @@ interface Document : Node {
 };
 
 [Exposed=Window]
+interface XMLDocument : Document {};
+
+[Exposed=Window]
+interface DOMImplementation {
+  [NewObject] DocumentType createDocumentType(DOMString qualifiedName, DOMString publicId, DOMString systemId);
+  [NewObject] XMLDocument createDocument(DOMString? namespace, DOMString qualifiedName, optional DocumentType? doctype = null);
+  [NewObject] Document createHTMLDocument(optional DOMString title);
+  boolean hasFeature();
+};
+
+[Exposed=Window]
 interface DocumentType : Node {
   readonly attribute DOMString name;
   readonly attribute DOMString publicId;
@@ -281,6 +305,31 @@ interface Element : Node {
   undefined insertAdjacentText(DOMString where, DOMString data);
 };
 
+[Exposed=Window, LegacyUnenumerableNamedProperties]
+interface NamedNodeMap {
+  readonly attribute unsigned long length;
+  getter Attr? item(unsigned long index);
+  getter Attr? getNamedItem(DOMString qualifiedName);
+  Attr? getNamedItemNS(DOMString? namespace, DOMString localName);
+  [CEReactions] Attr? setNamedItem(Attr attr);
+  [CEReactions] Attr? setNamedItemNS(Attr attr);
+  [CEReactions] Attr removeNamedItem(DOMString qualifiedName);
+  [CEReactions] Attr removeNamedItemNS(DOMString? namespace, DOMString localName);
+};
+
+[Exposed=Window]
+interface Attr : Node {
+  readonly attribute DOMString? namespaceURI;
+  readonly attribute DOMString? prefix;
+  readonly attribute DOMString localName;
+  readonly attribute DOMString name;
+  [CEReactions] attribute DOMString value;
+
+  readonly attribute Element? ownerElement;
+
+  readonly attribute boolean specified;
+};
+
 [Exposed=Window]
 interface CharacterData : Node {
   attribute [LegacyNullToEmptyString] DOMString data;
@@ -301,8 +350,65 @@ interface Text : CharacterData {
 };
 
 [Exposed=Window]
+interface CDATASection : Text {
+};
+
+[Exposed=Window]
+interface ProcessingInstruction : CharacterData {
+  readonly attribute DOMString target;
+};
+
+[Exposed=Window]
 interface Comment : CharacterData {
   constructor(optional DOMString data = "");
+};
+
+[Exposed=Window]
+interface AbstractRange {
+  readonly attribute Node startContainer;
+  readonly attribute unsigned long startOffset;
+  readonly attribute Node endContainer;
+  readonly attribute unsigned long endOffset;
+  readonly attribute boolean collapsed;
+};
+
+[Exposed=Window]
+interface Range : AbstractRange {
+  constructor();
+
+  readonly attribute Node commonAncestorContainer;
+
+  undefined setStart(Node node, unsigned long offset);
+  undefined setEnd(Node node, unsigned long offset);
+  undefined setStartBefore(Node node);
+  undefined setStartAfter(Node node);
+  undefined setEndBefore(Node node);
+  undefined setEndAfter(Node node);
+  undefined collapse(optional boolean toStart = false);
+  undefined selectNode(Node node);
+  undefined selectNodeContents(Node node);
+
+  const unsigned short START_TO_START = 0;
+  const unsigned short START_TO_END = 1;
+  const unsigned short END_TO_END = 2;
+  const unsigned short END_TO_START = 3;
+  short compareBoundaryPoints(unsigned short how, Range sourceRange);
+
+  [CEReactions] undefined deleteContents();
+  [CEReactions, NewObject] DocumentFragment extractContents();
+  [CEReactions, NewObject] DocumentFragment cloneContents();
+  [CEReactions] undefined insertNode(Node node);
+  [CEReactions] undefined surroundContents(Node newParent);
+
+  [NewObject] Range cloneRange();
+  undefined detach();
+
+  boolean isPointInRange(Node node, unsigned long offset);
+  short comparePoint(Node node, unsigned long offset);
+
+  boolean intersectsNode(Node node);
+
+  DOMString toString();
 };
 
 [Exposed=Window]

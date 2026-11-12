@@ -7,9 +7,9 @@
 //! les attributs restent écrits à la main dans ce module.
 //!
 //! LIMITES CONNUES : les modules sont chargés entièrement avant toute
-//! exécution et sans contrôle CORS ; `fetch` se limite à `GET` sans en-têtes ni corps, et la
+//! exécution et sans contrôle CORS ; le corps d'une requête `fetch` est pris pour du texte, et la
 //! réponse est lue d'un bloc (pas de flux, `text()` et `json()` seulement) ;
-//! pas de `XMLHttpRequest`, `localStorage`, `MutationObserver`
+//! pas de `MutationObserver`
 //! ni `getBoundingClientRect` réel ; `getElementsBy…` et `querySelectorAll`
 //! renvoient des tableaux figés ; `document.write` n'existe pas ; les scripts
 //! s'exécutent après l'analyse complète du document, dans l'ordre du source ;
@@ -25,14 +25,33 @@ use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
+mod attrs;
+mod documents;
+mod dom_ops;
+mod events;
+mod frames;
+mod lists;
+mod mutation;
+mod range;
+mod storage;
+mod tokens;
+mod traversal;
+mod tree;
+
+use events::{Listener, add_event_listener, dispatch, remove_event_listener};
+
 const CLASS_NODE: u32 = 1;
 const CLASS_STYLE: u32 = 2;
 const CLASS_LIST: u32 = 3;
+const CLASS_STORAGE: u32 = 4;
+const CLASS_DATASET: u32 = 5;
+const CLASS_RANGE: u32 = 6;
+const CLASS_ATTRS: u32 = 7;
+const CLASS_LIVE: u32 = 8;
 
-/// Cible « fenêtre » dans la table des écouteurs.
-const WINDOW: u32 = u32::MAX;
-
-/// Instructions accordées à une tâche (script, événement, minuteur) avant interruption.
+/// Instructions accordées par défaut à une tâche (script, événement,
+/// minuteur) avant interruption : un script emballé ne fige pas l'onglet.
+/// Réglable par [`ScriptEngine::set_task_budget`].
 const TASK_BUDGET: u64 = 200_000_000;
 /// Nombre maximal de minuteurs exécutés par appel de [`ScriptEngine::run_timers`].
 const MAX_TIMERS_PER_TICK: usize = 500;
@@ -40,12 +59,6 @@ const MAX_TIMERS_PER_TICK: usize = 500;
 const MAX_TIMERS: usize = 10_000;
 /// Délai minimal d'un minuteur répété, pour ne pas monopoliser le fil.
 const MIN_INTERVAL: Duration = Duration::from_millis(4);
-
-struct Listener {
-    target: u32,
-    kind: String,
-    callback: Value,
-}
 
 struct Timer {
     id: u32,
@@ -60,12 +73,56 @@ struct DomHost {
     doc: Document,
     url: Url,
     wrappers: HashMap<u32, ObjId>,
+    /// Nature des documents autres que celui de la page, par index de nœud.
+    kinds: HashMap<u32, documents::DocumentKind>,
+    /// Collections vivantes créées par les scripts.
+    lists: Vec<lists::LiveList>,
     node_proto: ObjId,
     style_proto: ObjId,
     class_list_proto: ObjId,
+    /// Prototype des objets `dataset`.
+    dataset_proto: ObjId,
+    /// Entrées de `localStorage` (0) et `sessionStorage` (1), dans l'ordre
+    /// de leur création.
+    storage: [Vec<(String, String)>; 2],
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
+    /// Observateurs de mutation en activité.
+    observers: Vec<mutation::Observer>,
+    /// Navigations demandées par les scripts, pas encore prises en charge
+    /// par l'embarqueur.
+    navigations: Vec<crate::Navigation>,
+    /// Fonctions du prélude que le moteur appelle en retour.
+    hooks: Option<Value>,
+    /// Fonctions d'activation au clic (`before`, `after`).
+    activation: Option<Value>,
+    /// Prototype des éléments HTML de chaque balise.
+    tag_protos: HashMap<String, ObjId>,
+    /// Document de la fenêtre du royaume courant (`window.document`).
+    document: NodeId,
+    /// Royaume dont l'état occupe les champs propres à un royaume (`url`,
+    /// `document`, prototypes, fonctions du prélude).
+    realm: usize,
+    /// État des autres royaumes, par numéro.
+    parked: HashMap<usize, RealmHost>,
+    /// Royaume des documents qui ne sont pas ceux du royaume 0.
+    doc_realms: HashMap<u32, usize>,
+    /// Contexte de chaque cadre, par index de son élément `<iframe>`.
+    frames: HashMap<u32, frames::FrameContext>,
+    /// Source déjà prise en compte pour chaque `<iframe>` (voir
+    /// [`frames::fingerprint`]) : un changement relance un chargement.
+    frame_sources: HashMap<u32, String>,
+    /// Documents de cadres à charger par l'embarqueur : élément et adresse.
+    frame_requests: Vec<(NodeId, Url)>,
+    /// Version du document au dernier relevé des cadres.
+    frames_scanned: Option<u64>,
+    /// Texte de `document.cookie`, fourni par l'embarqueur.
+    cookies: String,
+    /// Écritures dans `document.cookie` à remettre à l'embarqueur.
+    cookie_writes: Vec<String>,
+    /// Identifiant du prochain écouteur enregistré.
+    next_listener: u64,
     timers: Vec<Timer>,
     next_timer: u32,
     /// Vrai si le DOM a changé depuis la dernière mise en page.
@@ -80,8 +137,79 @@ struct DomHost {
     modules: HashMap<String, String>,
 }
 
+/// État du DOM propre à un royaume : un cadre a sa fenêtre, donc ses
+/// prototypes d'interfaces, son adresse et son document.
+struct RealmHost {
+    url: Url,
+    document: NodeId,
+    node_proto: ObjId,
+    style_proto: ObjId,
+    class_list_proto: ObjId,
+    dataset_proto: ObjId,
+    protos: HashMap<&'static str, ObjId>,
+    hooks: Option<Value>,
+    activation: Option<Value>,
+    tag_protos: HashMap<String, ObjId>,
+}
+
+impl DomHost {
+    /// Échange l'état du royaume courant avec `other`.
+    fn swap_realm(&mut self, other: &mut RealmHost) {
+        std::mem::swap(&mut self.url, &mut other.url);
+        std::mem::swap(&mut self.document, &mut other.document);
+        std::mem::swap(&mut self.node_proto, &mut other.node_proto);
+        std::mem::swap(&mut self.style_proto, &mut other.style_proto);
+        std::mem::swap(&mut self.class_list_proto, &mut other.class_list_proto);
+        std::mem::swap(&mut self.dataset_proto, &mut other.dataset_proto);
+        std::mem::swap(&mut self.protos, &mut other.protos);
+        std::mem::swap(&mut self.hooks, &mut other.hooks);
+        std::mem::swap(&mut self.activation, &mut other.activation);
+        std::mem::swap(&mut self.tag_protos, &mut other.tag_protos);
+    }
+
+    /// Passe dans le royaume `realm`, s'il est connu.
+    fn enter(&mut self, realm: usize) {
+        if let Some(mut incoming) = self.parked.remove(&realm) {
+            self.swap_realm(&mut incoming);
+            self.parked.insert(self.realm, incoming);
+            self.realm = realm;
+        }
+    }
+
+    /// Enregistre l'état `fresh` d'un royaume neuf et y passe.
+    fn adopt(&mut self, realm: usize, mut fresh: RealmHost) {
+        self.swap_realm(&mut fresh);
+        self.parked.insert(self.realm, fresh);
+        self.realm = realm;
+    }
+}
+
+/// État de l'hôte, réglé sur le royaume courant de la machine : une fonction
+/// native s'exécute dans son royaume, et y trouve ses prototypes.
 fn host(vm: &mut Vm) -> Option<&mut DomHost> {
-    vm.host.as_mut()?.downcast_mut::<DomHost>()
+    let realm = vm.realm();
+    let h = vm.host.as_mut()?.downcast_mut::<DomHost>()?;
+    if h.realm != realm {
+        h.enter(realm);
+    }
+    Some(h)
+}
+
+/// `DOMException` de nom `name` (`HierarchyRequestError`, `NotFoundError`…).
+fn dom_exception(vm: &mut Vm, name: &str, message: &str) -> Value {
+    let hooks = host(vm).and_then(|h| h.hooks.clone());
+    if let Some(hooks) = hooks
+        && let Ok(make) = vm.get(&hooks, "domException")
+        && let Ok(exception) = vm.call(
+            &make,
+            &hooks,
+            &[Value::string(name), Value::string(message)],
+        )
+    {
+        return exception;
+    }
+    // Avant l'installation du prélude : une erreur ordinaire.
+    vm.error("Error", &format!("{name} : {message}"))
 }
 
 fn arg(args: &[Value], i: usize) -> Value {
@@ -127,14 +255,43 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
     }
     // L'enveloppe prend le prototype de l'interface du nœud.
     let interface = match &h.doc.node(node).data {
+        NodeData::Document if h.kinds.get(&index).is_some_and(|k| k.xml_interface) => "XMLDocument",
         NodeData::Document => "Document",
+        NodeData::CData(_) => "CDATASection",
+        NodeData::ProcessingInstruction { .. } => "ProcessingInstruction",
+        NodeData::Attr(_) => "Attr",
         NodeData::Doctype { .. } => "DocumentType",
         NodeData::Element(element) if element.ns == Namespace::Html => "HTMLElement",
         NodeData::Element(_) => "Element",
         NodeData::Text(_) => "Text",
         NodeData::Comment(_) => "Comment",
+        NodeData::Fragment => "DocumentFragment",
     };
-    let proto = h.protos.get(interface).copied().unwrap_or(h.node_proto);
+    // Un élément HTML prend le prototype de l'interface de sa balise.
+    // … dans le royaume de son document.
+    let owner = if h.doc.is_document(node) {
+        node
+    } else {
+        h.doc.owner(node)
+    };
+    let realm = u32::try_from(owner.index())
+        .ok()
+        .and_then(|i| h.doc_realms.get(&i))
+        .copied()
+        .unwrap_or(0);
+    let (protos, tag_protos, node_proto) = match h.parked.get(&realm) {
+        Some(parked) if realm != h.realm => (&parked.protos, &parked.tag_protos, parked.node_proto),
+        _ => (&h.protos, &h.tag_protos, h.node_proto),
+    };
+    let by_tag = match &h.doc.node(node).data {
+        NodeData::Element(element) if element.ns == Namespace::Html => {
+            tag_protos.get(element.name.as_str()).copied()
+        }
+        _ => None,
+    };
+    let proto = by_tag
+        .or_else(|| protos.get(interface).copied())
+        .unwrap_or(node_proto);
     let id = vm.new_host_object(proto, CLASS_NODE, u64::from(index));
     vm.add_root(Value::Object(id));
     if let Some(h) = host(vm) {
@@ -147,9 +304,27 @@ fn wrap_opt(vm: &mut Vm, node: Option<NodeId>) -> Value {
     node.map_or(Value::Null, |n| wrap(vm, n))
 }
 
+/// Liste de nœuds (`NodeList`) : un tableau dont le prototype porte `item`.
 fn wrap_all(vm: &mut Vm, nodes: Vec<NodeId>) -> Value {
+    wrap_list(vm, nodes, "NodeList")
+}
+
+/// Collection d'éléments (`HTMLCollection`) : `item` et `namedItem`.
+fn wrap_collection(vm: &mut Vm, nodes: Vec<NodeId>) -> Value {
+    wrap_list(vm, nodes, "HTMLCollection")
+}
+
+fn wrap_list(vm: &mut Vm, nodes: Vec<NodeId>, interface: &str) -> Value {
     let items = nodes.into_iter().map(|n| wrap(vm, n)).collect();
-    vm.new_array(items)
+    let list = vm.new_array(items);
+    if let (Some(id), Some(proto)) = (
+        list.as_object(),
+        host(vm).and_then(|h| h.protos.get(interface).copied()),
+    ) {
+        // Tableau tout juste créé : son prototype se change toujours.
+        let _ = vm.set_prototype(id, Some(proto));
+    }
+    list
 }
 
 // ---- Sérialisation et analyse de fragments -------------------------------------
@@ -204,6 +379,15 @@ fn serialize(doc: &Document, node: NodeId, out: &mut String) {
                 out.push_str(text);
                 out.push_str("-->");
             }
+            NodeData::CData(text) => escape(text, false, out),
+            NodeData::ProcessingInstruction { target, data } => {
+                out.push_str("<?");
+                out.push_str(target);
+                out.push(' ');
+                out.push_str(data);
+                out.push('>');
+            }
+            NodeData::Attr(_) => {}
             NodeData::Element(element) => {
                 out.push('<');
                 out.push_str(&element.name);
@@ -222,7 +406,7 @@ fn serialize(doc: &Document, node: NodeId, out: &mut String) {
                 let children: Vec<NodeId> = doc.children(current).collect();
                 stack.extend(children.into_iter().rev().map(Ok));
             }
-            NodeData::Document | NodeData::Doctype { .. } => {
+            NodeData::Document | NodeData::Doctype { .. } | NodeData::Fragment => {
                 let children: Vec<NodeId> = doc.children(current).collect();
                 stack.extend(children.into_iter().rev().map(Ok));
             }
@@ -346,77 +530,6 @@ fn owner_node(vm: &mut Vm, value: &Value, class: u32) -> Option<NodeId> {
     host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)
 }
 
-fn class_tokens(doc: &Document, node: NodeId) -> Vec<String> {
-    doc.element(node)
-        .map(|e| e.classes().map(str::to_owned).collect())
-        .unwrap_or_default()
-}
-
-fn class_list_op(
-    vm: &mut Vm,
-    this: &Value,
-    args: &[Value],
-    op: fn(&mut Vec<String>, &str) -> bool,
-) -> JsResult {
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Err(vm.error("TypeError", "receveur incompatible avec classList"));
-    };
-    let mut names = Vec::with_capacity(args.len());
-    for value in args {
-        names.push(vm.to_string(value)?);
-    }
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let mut tokens = class_tokens(&h.doc, node);
-    let mut result = false;
-    for name in &names {
-        result = op(&mut tokens, name);
-    }
-    h.doc.set_attr(node, "class", &tokens.join(" "));
-    h.dirty = true;
-    Ok(Value::Bool(result))
-}
-
-fn class_list_add(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args, |tokens, name| {
-        if !tokens.iter().any(|t| t == name) {
-            tokens.push(name.to_owned());
-        }
-        true
-    })?;
-    Ok(Value::Undefined)
-}
-
-fn class_list_remove(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args, |tokens, name| {
-        tokens.retain(|t| t != name);
-        false
-    })?;
-    Ok(Value::Undefined)
-}
-
-fn class_list_toggle(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    class_list_op(vm, this, args.get(..1).unwrap_or(&[]), |tokens, name| {
-        if tokens.iter().any(|t| t == name) {
-            tokens.retain(|t| t != name);
-            false
-        } else {
-            tokens.push(name.to_owned());
-            true
-        }
-    })
-}
-
-fn class_list_contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let name = vm.to_string(&arg(args, 0))?;
-    let Some(node) = owner_node(vm, this, CLASS_LIST) else {
-        return Ok(Value::Bool(false));
-    };
-    let found = host(vm).is_some_and(|h| class_tokens(&h.doc, node).iter().any(|t| **t == *name));
-    Ok(Value::Bool(found))
-}
-
 fn style_set_property(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let (name, value) = (vm.to_string(&arg(args, 0))?, vm.to_string(&arg(args, 1))?);
     if let Some(node) = owner_node(vm, this, CLASS_STYLE) {
@@ -466,19 +579,27 @@ const REFLECTED: &[&str] = &[
     "target",
 ];
 
-fn node_name(doc: &Document, node: NodeId) -> String {
+/// `nodeName` de `node` ; `html_document` : son document est un document
+/// HTML, où les noms des éléments HTML se lisent en majuscules.
+fn node_name(doc: &Document, node: NodeId, html_document: bool) -> String {
     match &doc.node(node).data {
         NodeData::Document => "#document".to_owned(),
         NodeData::Doctype { name, .. } => name.clone(),
         NodeData::Text(_) => "#text".to_owned(),
         NodeData::Comment(_) => "#comment".to_owned(),
-        NodeData::Element(e) if e.ns == Namespace::Html => e.name.to_ascii_uppercase(),
-        NodeData::Element(e) => e.name.clone(),
+        NodeData::Fragment => "#document-fragment".to_owned(),
+        NodeData::Element(e) if e.ns == Namespace::Html && html_document => {
+            e.qualified().to_ascii_uppercase()
+        }
+        NodeData::Element(e) => e.qualified().into_owned(),
+        NodeData::CData(_) => "#cdata-section".to_owned(),
+        NodeData::ProcessingInstruction { target, .. } => target.clone(),
+        NodeData::Attr(attr) => attr.qualified(),
     }
 }
 
-fn document_title(doc: &Document) -> String {
-    doc.find_html_element(doc.root(), "title")
+fn document_title(doc: &Document, document: NodeId) -> String {
+    doc.find_html_element(document, "title")
         .map(|n| {
             doc.text_content(n)
                 .split_whitespace()
@@ -492,7 +613,11 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
     let h = host(vm)?;
     let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
     let doc = &h.doc;
-    let is_document = node == doc.root();
+    let is_document = doc.is_document(node);
+    let html_document = u32::try_from(doc.owner(node).index())
+        .ok()
+        .and_then(|owner| h.kinds.get(&owner))
+        .is_none_or(|kind| kind.html);
     let links = doc.node(node);
     let (parent, first, last, next, prev) = (
         links.parent,
@@ -508,33 +633,48 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             .to_owned()
     };
     Some(match key {
+        "name" | "nodeName" | "localName" | "prefix" | "namespaceURI" | "value" | "nodeValue"
+        | "textContent" | "specified" | "ownerElement"
+            if matches!(links.data, NodeData::Attr(_)) =>
+        {
+            return attrs::property(vm, node, key);
+        }
+        "attributes" if is_element(doc, node) => {
+            return Some(Ok(attrs::named_node_map(vm, node)));
+        }
         "nodeType" => Ok(Value::Number(match &links.data {
+            NodeData::Attr(_) => 2.0,
             NodeData::Element(_) => 1.0,
             NodeData::Text(_) => 3.0,
             NodeData::Comment(_) => 8.0,
+            NodeData::CData(_) => 4.0,
+            NodeData::ProcessingInstruction { .. } => 7.0,
             NodeData::Document => 9.0,
             NodeData::Doctype { .. } => 10.0,
+            NodeData::Fragment => 11.0,
         })),
-        "nodeName" => string(&node_name(doc, node)),
-        "tagName" | "localName" if is_element(doc, node) => {
-            let name = node_name(doc, node);
-            string(&if key == "localName" {
-                name.to_ascii_lowercase()
-            } else {
-                name
-            })
+        "nodeName" => string(&node_name(doc, node, html_document)),
+        "tagName" if is_element(doc, node) => string(&node_name(doc, node, html_document)),
+        "localName" if is_element(doc, node) => {
+            string(doc.element(node).map_or("", |e| e.name.as_str()))
         }
-        "textContent" | "innerText" => {
-            if is_document {
-                Ok(Value::Null)
-            } else {
-                string(&doc.text_content(node))
-            }
-        }
-        "nodeValue" | "data" => match &links.data {
-            NodeData::Text(t) | NodeData::Comment(t) => string(t),
-            _ => Ok(Value::Null),
+        "textContent" | "innerText" => match &links.data {
+            NodeData::Document | NodeData::Doctype { .. } => Ok(Value::Null),
+            NodeData::Comment(t) | NodeData::ProcessingInstruction { data: t, .. } => string(t),
+            _ => string(&doc.text_content(node)),
         },
+        "nodeValue" | "data" => match doc.character_data(node) {
+            Some(t) => string(t),
+            None if key == "data" => return None,
+            None => Ok(Value::Null),
+        },
+        "target" => match &links.data {
+            NodeData::ProcessingInstruction { target, .. } => string(target),
+            _ => return None,
+        },
+        "implementation" if is_document => {
+            return Some(Ok(documents::implementation(vm, node)));
+        }
         "innerHTML" => string(&inner_html(doc, node)),
         "outerHTML" => {
             let mut out = String::new();
@@ -554,11 +694,21 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "hidden" if is_element(doc, node) => Ok(Value::Bool(
             doc.element(node).is_some_and(|e| e.has_attr("hidden")),
         )),
+        // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
+        "value"
+            if doc
+                .element(node)
+                .is_some_and(|e| e.is_html("select") || e.is_html("textarea")) =>
+        {
+            return None;
+        }
         name if REFLECTED.contains(&name) && is_element(doc, node) => string(&attr(name)),
         "childElementCount" => Ok(number(
             doc.children(node).filter(|c| is_element(doc, *c)).count(),
         )),
-        "isConnected" => Ok(Value::Bool(doc.contains(doc.root(), node))),
+        "isConnected" => Ok(Value::Bool(
+            doc.is_document(doc.ancestors(node).last().unwrap_or(node)),
+        )),
         "parentNode" => return Some(Ok(wrap_opt(vm, parent))),
         "parentElement" => {
             let parent = parent.filter(|p| is_element(doc, *p));
@@ -584,16 +734,18 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             let found = element_sibling(doc, node, false);
             return Some(Ok(wrap_opt(vm, found)));
         }
-        "children" => {
-            let nodes: Vec<NodeId> = doc.children(node).filter(|c| is_element(doc, *c)).collect();
-            return Some(Ok(wrap_all(vm, nodes)));
+        "children" => return Some(lists::same_object(vm, node, true)),
+        "dataset" if is_element(doc, node) => {
+            let proto = h.dataset_proto;
+            return Some(Ok(Value::Object(vm.new_host_object(
+                proto,
+                CLASS_DATASET,
+                data,
+            ))));
         }
-        "childNodes" => {
-            let nodes: Vec<NodeId> = doc.children(node).collect();
-            return Some(Ok(wrap_all(vm, nodes)));
-        }
+        "childNodes" => return Some(lists::same_object(vm, node, false)),
         "ownerDocument" => {
-            let root = doc.root();
+            let root = doc.owner(node);
             return Some(Ok(if is_document {
                 Value::Null
             } else {
@@ -609,28 +761,178 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             ))));
         }
         "classList" if is_element(doc, node) => {
-            let proto = h.class_list_proto;
-            return Some(Ok(Value::Object(
-                vm.new_host_object(proto, CLASS_LIST, data),
-            )));
+            return Some(Ok(tokens::class_list(vm, node)));
         }
         "body" | "head" if is_document => {
-            let found = doc.find_html_element(doc.root(), key);
+            let found = doc.find_html_element(node, key);
             return Some(Ok(wrap_opt(vm, found)));
         }
         "documentElement" if is_document => {
-            let found = doc.children(doc.root()).find(|c| is_element(doc, *c));
+            let found = doc.children(node).find(|c| is_element(doc, *c));
             return Some(Ok(wrap_opt(vm, found)));
         }
-        "title" if is_document => string(&document_title(doc)),
-        "URL" | "documentURI" if is_document => string(h.url.as_str()),
+        "title" if is_document => string(&document_title(doc, node)),
+        "URL" | "documentURI" if is_document => {
+            // Le document d'une fenêtre porte son adresse ; les autres sont vides.
+            let realm = u32::try_from(data)
+                .ok()
+                .and_then(|i| h.doc_realms.get(&i))
+                .copied()
+                .unwrap_or(0);
+            let (document, url) = match h.parked.get(&realm) {
+                Some(parked) if realm != h.realm => (parked.document, &parked.url),
+                _ => (h.document, &h.url),
+            };
+            string(if document == node {
+                url.as_str()
+            } else {
+                "about:blank"
+            })
+        }
+        "contentWindow" | "contentDocument"
+            if doc.element(node).is_some_and(|e| e.is_html("iframe")) =>
+        {
+            return Some(frames::property(vm, node, key));
+        }
         "readyState" if is_document => string("complete"),
+        "baseURI" => string(h.url.as_str()),
+        "length" if doc.character_data(node).is_some() => Ok(number(
+            doc.character_data(node)
+                .map_or(0, |t| t.encode_utf16().count()),
+        )),
+        "wholeText" if matches!(links.data, NodeData::Text(_)) => {
+            string(&dom_ops::whole_text(doc, node))
+        }
+        "characterSet" | "charset" | "inputEncoding" if is_document => string("UTF-8"),
+        "compatMode" if is_document => string("CSS1Compat"),
+        "contentType" if is_document => string(
+            u32::try_from(data)
+                .ok()
+                .and_then(|i| h.kinds.get(&i))
+                .map_or("text/html", |kind| kind.content_type),
+        ),
+        "referrer" | "dir" if is_document => string(""),
+        "cookie" if is_document => string(&h.cookies),
+        "designMode" if is_document => string("off"),
+        "visibilityState" if is_document => string("visible"),
+        "hidden" if is_document => Ok(Value::Bool(false)),
+        "domain" if is_document => string(h.url.host_str().unwrap_or("")),
+        "currentScript" if is_document => Ok(Value::Null),
+        "defaultView" if is_document => return Some(Ok(Value::Object(vm.global()))),
+        "doctype" if is_document => {
+            let found = doc
+                .children(node)
+                .find(|c| matches!(doc.node(*c).data, NodeData::Doctype { .. }));
+            return Some(Ok(wrap_opt(vm, found)));
+        }
+        "forms" | "images" | "links" | "scripts" | "embeds" | "plugins" if is_document => {
+            let wanted: &[&str] = match key {
+                "forms" => &["form"],
+                "images" => &["img"],
+                "links" => &["a", "area"],
+                "scripts" => &["script"],
+                _ => &["embed"],
+            };
+            let nodes: Vec<NodeId> = doc
+                .descendants(node)
+                .filter(|n| {
+                    doc.element(*n).is_some_and(|e| {
+                        wanted.iter().any(|name| e.is_html(name))
+                            // `links` ne retient que les éléments munis de `href`.
+                            && (key != "links" || e.has_attr("href"))
+                    })
+                })
+                .collect();
+            return Some(Ok(wrap_collection(vm, nodes)));
+        }
+        "name" | "publicId" | "systemId" if matches!(links.data, NodeData::Doctype { .. }) => {
+            match &links.data {
+                NodeData::Doctype {
+                    name,
+                    public_id,
+                    system_id,
+                } => string(match key {
+                    "name" => name,
+                    "publicId" => public_id,
+                    _ => system_id,
+                }),
+                _ => return None,
+            }
+        }
+        "namespaceURI" if is_element(doc, node) => Ok(doc
+            .element(node)
+            .and_then(|e| doc.namespace_uri(e.ns))
+            .map_or(Value::Null, Value::string)),
+        "prefix" if is_element(doc, node) => Ok(doc
+            .element(node)
+            .and_then(|e| e.prefix.as_deref())
+            .map_or(Value::Null, Value::string)),
+        "slot" | "dir" | "accessKey" | "nonce" if is_element(doc, node) => {
+            string(&attr(&key.to_ascii_lowercase()))
+        }
+        "draggable" | "inert" | "autofocus" if is_element(doc, node) => {
+            Ok(Value::Bool(doc.element(node).is_some_and(|e| match key {
+                "draggable" => e.attr("draggable") == Some("true"),
+                _ => e.has_attr(key),
+            })))
+        }
+        "spellcheck" | "translate" if is_element(doc, node) => {
+            Ok(Value::Bool(!doc.element(node).is_some_and(|e| {
+                matches!(e.attr(key), Some("false" | "no"))
+            })))
+        }
+        "tabIndex" if is_element(doc, node) => Ok(Value::Number(
+            doc.element(node)
+                .and_then(|e| e.attr("tabindex"))
+                .and_then(|v| v.trim().parse::<f64>().ok())
+                .unwrap_or(-1.0),
+        )),
+        "outerText" if is_element(doc, node) => string(&doc.text_content(node)),
+        "accessKeyLabel" if is_element(doc, node) => string(""),
         _ => return None,
     })
 }
 
 fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option<JsResult<()>> {
     let node = host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)?;
+    // Valeur d'un nœud d'attribut.
+    if matches!(key, "value" | "nodeValue" | "textContent")
+        && host(vm)?.doc.attr_data(node).is_some()
+    {
+        let text = match value {
+            Value::Null if key != "value" => String::new(),
+            other => match vm.to_string(other) {
+                Ok(text) => text.to_string(),
+                Err(thrown) => return Some(Err(thrown)),
+            },
+        };
+        let h = host(vm)?;
+        h.doc.set_attr_value(node, &text);
+        h.dirty = true;
+        return Some(Ok(()));
+    }
+    // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
+    if key == "value"
+        && host(vm)?
+            .doc
+            .element(node)
+            .is_some_and(|e| e.is_html("select") || e.is_html("textarea"))
+    {
+        return None;
+    }
+    // `document.cookie = "nom=valeur; …"` : l'embarqueur tient le pot.
+    if key == "cookie" && host(vm)?.doc.is_document(node) {
+        let text = match vm.to_string(value) {
+            Ok(text) => text.to_string(),
+            Err(thrown) => return Some(Err(thrown)),
+        };
+        let h = host(vm)?;
+        note_cookie_write(&mut h.cookies, &text);
+        if h.cookie_writes.len() < MAX_COOKIE_WRITES {
+            h.cookie_writes.push(text);
+        }
+        return Some(Ok(()));
+    }
     let is_text_key = matches!(
         key,
         "textContent"
@@ -649,24 +951,43 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         Ok(text) => text,
         Err(thrown) => return Some(Err(thrown)),
     };
+    // `null` vaut la chaîne vide pour le contenu textuel.
+    let text: String =
+        if matches!(value, Value::Null) && matches!(key, "textContent" | "nodeValue" | "data") {
+            String::new()
+        } else {
+            text.to_string()
+        };
     let truthy = value.truthy();
     let h = host(vm)?;
     let doc = &mut h.doc;
-    let is_document = node == doc.root();
+    let is_document = doc.is_document(node);
     match key {
         "textContent" | "innerText" => match &doc.node(node).data {
-            NodeData::Text(_) | NodeData::Comment(_) => doc.set_text(node, &text),
-            NodeData::Element(_) => {
-                doc.remove_children(node);
-                doc.insert_text(node, None, &text);
+            NodeData::Text(_)
+            | NodeData::Comment(_)
+            | NodeData::CData(_)
+            | NodeData::ProcessingInstruction { .. } => {
+                doc.replace_data(node, 0, u32::MAX, &text);
+            }
+            NodeData::Element(_) | NodeData::Fragment => {
+                let owner = doc.owner(node);
+                let content = (!text.is_empty()).then(|| {
+                    let created = doc.create_text(&text);
+                    doc.set_owner(created, owner);
+                    created
+                });
+                tree::replace_all(doc, content, node);
             }
             _ => {}
         },
-        "nodeValue" | "data" => doc.set_text(node, &text),
+        "nodeValue" | "data" => {
+            doc.replace_data(node, 0, u32::MAX, &text);
+        }
         "innerHTML" if !is_document => set_inner_html(doc, node, &text),
         "className" => doc.set_attr(node, "class", &text),
         "title" if is_document => {
-            if let Some(title) = doc.find_html_element(doc.root(), "title") {
+            if let Some(title) = doc.find_html_element(node, "title") {
                 doc.remove_children(title);
                 doc.insert_text(title, None, &text);
             }
@@ -717,16 +1038,99 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
                 .find(|(n, _)| *n == name);
             Some(string(&value.map(|(_, v)| v).unwrap_or_default()))
         }
-        CLASS_LIST => {
-            let h = host(vm)?;
-            let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
+        CLASS_LIST => tokens::property(vm, data, key),
+        CLASS_RANGE => range::property(vm, data, key),
+        CLASS_ATTRS => attrs::map_property(vm, data, key),
+        CLASS_LIVE => lists::property(vm, data, key),
+        CLASS_STORAGE => {
+            let area = usize::from(data != 0);
             match key {
-                "length" => Some(Ok(number(class_tokens(&h.doc, node).len()))),
-                "value" => Some(string(&class_tokens(&h.doc, node).join(" "))),
-                _ => None,
+                "length" => Some(Ok(storage::length(vm, area))),
+                // Les méthodes ne sont jamais masquées par une entrée.
+                "getItem" | "setItem" | "removeItem" | "clear" | "key" | "constructor" => None,
+                _ => storage::stored(vm, area, key).map(|value| string(&value)),
             }
         }
+        CLASS_DATASET => {
+            let node = storage::dataset_owner(vm, data)?;
+            storage::dataset_get(vm, node, key).map(|value| string(&value))
+        }
         _ => None,
+    }
+}
+
+/// Accès nommé sur `window` (HTML Standard §7.2.2.3) : une variable globale
+/// inconnue désigne l'élément du document qui porte cet identifiant, ou
+/// l'élément `embed`, `form`, `img` ou `object` qui porte ce nom.
+fn named_global(vm: &mut Vm, name: &str) -> Option<Value> {
+    if name.is_empty() {
+        return None;
+    }
+    let h = host(vm)?;
+    let doc = &h.doc;
+    let found = doc.descendants(h.document).find(|n| {
+        doc.element(*n).is_some_and(|e| {
+            e.id() == Some(name)
+                || (e.attr("name") == Some(name)
+                    && ["embed", "form", "img", "object"]
+                        .iter()
+                        .any(|tag| e.is_html(tag)))
+        })
+    })?;
+    Some(wrap(vm, found))
+}
+
+/// Nombre maximal d'écritures de cookies gardées entre deux relevés.
+const MAX_COOKIE_WRITES: usize = 1000;
+
+/// Reporte dans `view` (le texte de `document.cookie`) l'écriture `text`,
+/// en attendant que l'embarqueur rende la vue exacte de son pot : le nom
+/// prend sa nouvelle valeur, ou disparaît si l'écriture le périme.
+fn note_cookie_write(view: &mut String, text: &str) {
+    let mut parts = text.split(';');
+    let pair = parts.next().unwrap_or("").trim();
+    let (name, value) = match pair.split_once('=') {
+        Some((name, value)) => (name.trim(), value.trim()),
+        None => ("", pair),
+    };
+    let mut expired = false;
+    for attribute in parts {
+        let (key, setting) = match attribute.split_once('=') {
+            Some((key, setting)) => (key.trim().to_ascii_lowercase(), setting.trim()),
+            None => (attribute.trim().to_ascii_lowercase(), ""),
+        };
+        match key.as_str() {
+            // Un script ne pose pas de cookie `HttpOnly`.
+            "httponly" => return,
+            "max-age" => expired = setting.parse::<i64>().is_ok_and(|seconds| seconds <= 0),
+            _ => {}
+        }
+    }
+    if name.is_empty() && value.is_empty() {
+        return;
+    }
+    let mut kept: Vec<String> = view
+        .split("; ")
+        .filter(|entry| !entry.is_empty())
+        .filter(|entry| entry.split_once('=').map_or("", |(n, _)| n) != name)
+        .map(str::to_owned)
+        .collect();
+    if !expired {
+        kept.push(if name.is_empty() {
+            value.to_owned()
+        } else {
+            format!("{name}={value}")
+        });
+    }
+    *view = kept.join("; ");
+}
+
+/// Clés propres que l'objet hôte ajoute aux siennes.
+fn host_keys(vm: &mut Vm, class: u32, data: u64) -> Vec<String> {
+    match class {
+        CLASS_LIVE => lists::keys(vm, data),
+        CLASS_LIST => tokens::keys(vm, data),
+        _ => Vec::new(),
     }
 }
 
@@ -748,6 +1152,25 @@ fn host_set(vm: &mut Vm, class: u32, data: u64, key: &str, value: &Value) -> Opt
             }
             Some(Ok(()))
         }
+        CLASS_LIST => tokens::set_property(vm, data, key, value),
+        CLASS_STORAGE => {
+            let text = match vm.to_string(value) {
+                Ok(text) => text,
+                Err(thrown) => return Some(Err(thrown)),
+            };
+            Some(storage::store(vm, usize::from(data != 0), key, &text))
+        }
+        CLASS_DATASET => {
+            let text = match vm.to_string(value) {
+                Ok(text) => text,
+                Err(thrown) => return Some(Err(thrown)),
+            };
+            let node = storage::dataset_owner(vm, data)?;
+            let h = host(vm)?;
+            h.doc.set_attr(node, &storage::data_attribute(key), &text);
+            h.dirty = true;
+            Some(Ok(()))
+        }
         _ => None,
     }
 }
@@ -759,145 +1182,6 @@ fn node_arg(vm: &mut Vm, value: &Value) -> JsResult<NodeId> {
         Some(node) => Ok(node),
         None => Err(vm.error("TypeError", "un nœud du DOM est attendu en argument")),
     }
-}
-
-/// Refuse une insertion qui créerait un cycle (un nœud dans son propre sous-arbre).
-fn check_insertion(vm: &mut Vm, parent: NodeId, child: NodeId) -> JsResult<()> {
-    let cyclic = host(vm).is_some_and(|h| h.doc.contains(child, parent) || child == h.doc.root());
-    if cyclic {
-        return Err(vm.error(
-            "Error",
-            "HierarchyRequestError : insertion impossible à cet endroit",
-        ));
-    }
-    Ok(())
-}
-
-fn append_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    check_insertion(vm, parent, child)?;
-    if let Some(h) = host(vm) {
-        h.doc.append_child(parent, child);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn insert_before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    let reference = node_of(vm, &arg(args, 1));
-    check_insertion(vm, parent, child)?;
-    if let Some(h) = host(vm) {
-        h.doc.insert_before(parent, child, reference);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn remove_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    let is_child = host(vm).is_some_and(|h| h.doc.node(child).parent == Some(parent));
-    if !is_child {
-        return Err(vm.error(
-            "Error",
-            "NotFoundError : le nœud n'est pas un enfant de ce parent",
-        ));
-    }
-    if let Some(h) = host(vm) {
-        h.doc.detach(child);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn remove(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    if let Some(h) = host(vm) {
-        h.doc.detach(node);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-/// `append(...)` et `prepend(...)` : nœuds ou chaînes.
-fn append_many(vm: &mut Vm, this: &Value, args: &[Value], at_start: bool) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let reference = if at_start {
-        host(vm).and_then(|h| h.doc.node(parent).first_child)
-    } else {
-        None
-    };
-    for value in args {
-        let child = match node_of(vm, value) {
-            Some(node) => node,
-            None => {
-                let text = vm.to_string(value)?;
-                match host(vm) {
-                    Some(h) => h.doc.create_text(&text),
-                    None => return Ok(Value::Undefined),
-                }
-            }
-        };
-        check_insertion(vm, parent, child)?;
-        if let Some(h) = host(vm) {
-            h.doc.insert_before(parent, child, reference);
-            h.dirty = true;
-        }
-    }
-    Ok(Value::Undefined)
-}
-
-fn append(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    append_many(vm, this, args, false)
-}
-
-fn prepend(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    append_many(vm, this, args, true)
-}
-
-fn get_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let value = host(vm).and_then(|h| h.doc.element(node)?.attr(&name).map(str::to_owned));
-    Ok(value.map_or(Value::Null, |v| Value::string(&v)))
-}
-
-fn set_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let value = vm.to_string(&arg(args, 1))?;
-    // Un nom d'attribut vide ou contenant des blancs n'est pas sérialisable.
-    if name.is_empty()
-        || name.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '>' | '/' | '='))
-    {
-        return Err(vm.error("Error", "InvalidCharacterError : nom d'attribut invalide"));
-    }
-    if let Some(h) = host(vm) {
-        h.doc.set_attr(node, &name, &value);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-fn remove_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    if let Some(h) = host(vm) {
-        h.doc.remove_attr(node, &name);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-fn has_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    Ok(Value::Bool(host(vm).is_some_and(|h| {
-        h.doc.element(node).is_some_and(|e| e.has_attr(&name))
-    })))
 }
 
 fn matching(vm: &mut Vm, scope: NodeId, list: &[Selector], first_only: bool) -> Vec<NodeId> {
@@ -952,6 +1236,9 @@ fn closest(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn get_element_by_id(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let scope = this_node(vm, this)?;
     let id = vm.to_string(&arg(args, 0))?;
+    if id.is_empty() {
+        return Ok(Value::Null);
+    }
     let found = host(vm).and_then(|h| {
         let doc = &h.doc;
         doc.descendants(scope)
@@ -960,57 +1247,19 @@ fn get_element_by_id(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     Ok(wrap_opt(vm, found))
 }
 
-fn get_elements_by_tag_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n)
-                        .is_some_and(|e| name == "*" || e.name == name)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_all(vm, found))
-}
-
-fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    let names = vm.to_string(&arg(args, 0))?;
-    let wanted: Vec<&str> = names.split_ascii_whitespace().collect();
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n).is_some_and(|e| {
-                        !wanted.is_empty() && wanted.iter().all(|w| e.classes().any(|c| c == *w))
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_all(vm, found))
-}
-
-fn create_element(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
-    if !valid {
-        return Err(vm.error("Error", "InvalidCharacterError : nom d'élément invalide"));
+fn create_element(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let raw = vm.to_string(&arg(args, 0))?.to_string();
+    let html = node_of(vm, this).is_none_or(|d| documents::is_html_document(vm, d));
+    let name = if html { raw.to_ascii_lowercase() } else { raw };
+    if !documents::is_element_local_name(&name) {
+        return Err(dom_exception(
+            vm,
+            "InvalidCharacterError",
+            "nom d'élément invalide",
+        ));
     }
     let node = host(vm).map(|h| h.doc.create_element(&name, Namespace::Html, Vec::new()));
-    Ok(wrap_opt(vm, node))
-}
-
-fn create_text_node(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let text = vm.to_string(&arg(args, 0))?;
-    let node = host(vm).map(|h| h.doc.create_text(&text));
-    Ok(wrap_opt(vm, node))
+    Ok(documents::created_by(vm, this, node))
 }
 
 fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1019,20 +1268,6 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Bool(other.is_some_and(|o| {
         host(vm).is_some_and(|h| h.doc.contains(node, o))
     })))
-}
-
-fn clone_node(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let deep = arg(args, 0).truthy();
-    let copy = host(vm).map(|h| {
-        let source = h.doc.clone();
-        let copy = h.doc.import(&source, node);
-        if !deep {
-            h.doc.remove_children(copy);
-        }
-        copy
-    });
-    Ok(wrap_opt(vm, copy))
 }
 
 fn no_op(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
@@ -1051,136 +1286,6 @@ fn get_bounding_client_rect(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsRe
 }
 
 // ---- Événements ----------------------------------------------------------------------
-
-fn listener_target(vm: &mut Vm, this: &Value) -> u32 {
-    match node_of(vm, this) {
-        Some(node) => u32::try_from(node.index()).unwrap_or(WINDOW),
-        None => WINDOW,
-    }
-}
-
-fn add_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = vm.to_string(&arg(args, 0))?.to_string();
-    let callback = arg(args, 1);
-    if callback.as_object().is_none() {
-        return Ok(Value::Undefined);
-    }
-    let target = listener_target(vm, this);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let exists = h
-        .listeners
-        .iter()
-        .any(|l| l.target == target && l.kind == kind && l.callback == callback);
-    if !exists {
-        h.listeners.push(Listener {
-            target,
-            kind,
-            callback: callback.clone(),
-        });
-        vm.add_root(callback);
-    }
-    Ok(Value::Undefined)
-}
-
-fn remove_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = vm.to_string(&arg(args, 0))?.to_string();
-    let callback = arg(args, 1);
-    let target = listener_target(vm, this);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Undefined);
-    };
-    let before = h.listeners.len();
-    h.listeners
-        .retain(|l| !(l.target == target && l.kind == kind && l.callback == callback));
-    if h.listeners.len() != before {
-        vm.remove_root(&callback);
-    }
-    Ok(Value::Undefined)
-}
-
-fn event_prevent_default(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    vm.set(this, "defaultPrevented", Value::Bool(true))?;
-    Ok(Value::Undefined)
-}
-
-fn event_stop_propagation(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    vm.set(this, "cancelBubble", Value::Bool(true))?;
-    Ok(Value::Undefined)
-}
-
-/// Distribue un événement `kind` sur `target` puis ses ancêtres et la fenêtre
-/// (phase de bouillonnement). Renvoie `true` si `preventDefault()` a été appelé.
-fn dispatch(vm: &mut Vm, target: Option<NodeId>, kind: &str) -> bool {
-    let event = Value::Object(vm.new_object());
-    let target_value = match target {
-        Some(node) => wrap(vm, node),
-        None => Value::Object(vm.global()),
-    };
-    let prevent = Value::Object(vm.new_function("preventDefault", 0, event_prevent_default));
-    let stop = Value::Object(vm.new_function("stopPropagation", 0, event_stop_propagation));
-    for (key, value) in [
-        ("type", Value::string(kind)),
-        ("target", target_value),
-        ("bubbles", Value::Bool(true)),
-        ("cancelable", Value::Bool(true)),
-        ("defaultPrevented", Value::Bool(false)),
-        ("cancelBubble", Value::Bool(false)),
-        ("preventDefault", prevent),
-        ("stopPropagation", stop.clone()),
-        ("stopImmediatePropagation", stop),
-    ] {
-        // Écriture sur un objet ordinaire tout juste créé : ne peut pas échouer.
-        let _ = vm.set(&event, key, value);
-    }
-    // Chemin de propagation : la cible, ses ancêtres, puis la fenêtre.
-    let mut path: Vec<u32> = Vec::new();
-    if let (Some(node), Some(h)) = (target, host(vm)) {
-        path.extend(
-            std::iter::once(node)
-                .chain(h.doc.ancestors(node))
-                .map(|n| u32::try_from(n.index()).unwrap_or(WINDOW)),
-        );
-    }
-    path.push(WINDOW);
-    let handler_name = format!("on{kind}");
-    for current in path {
-        let current_value = match host(vm).and_then(|h| h.doc.id_from_index(current as usize)) {
-            Some(node) if current != WINDOW => wrap(vm, node),
-            _ => Value::Object(vm.global()),
-        };
-        let _ = vm.set(&event, "currentTarget", current_value.clone());
-        // Copie de la liste : un écouteur peut en ajouter ou en retirer.
-        let mut callbacks: Vec<Value> = host(vm)
-            .map(|h| {
-                h.listeners
-                    .iter()
-                    .filter(|l| l.target == current && l.kind == kind)
-                    .map(|l| l.callback.clone())
-                    .collect()
-            })
-            .unwrap_or_default();
-        // Gestionnaire posé par affectation : `element.onclick = …`.
-        if let Ok(handler) = vm.get(&current_value, &handler_name)
-            && handler.as_object().is_some()
-        {
-            callbacks.push(handler);
-        }
-        for callback in callbacks {
-            if let Err(thrown) = vm.call(&callback, &current_value, std::slice::from_ref(&event)) {
-                report(vm, &thrown);
-            }
-            if vm.was_interrupted() {
-                return false;
-            }
-        }
-        if vm.get(&event, "cancelBubble").is_ok_and(|v| v.truthy()) {
-            break;
-        }
-    }
-    vm.get(&event, "defaultPrevented").is_ok_and(|v| v.truthy())
-}
 
 /// Signale une exception non rattrapée dans la console de la page.
 fn report(vm: &mut Vm, thrown: &Value) {
@@ -1336,27 +1441,31 @@ fn define_getter(vm: &mut Vm, target: ObjId, name: &str, func: NativeFn) -> JsRe
 /// déclare l'opération ; l'IDL décide sur quels prototypes elle est installée
 /// et avec quelle arité.
 const OPERATIONS: &[(&str, &str, NativeFn)] = &[
-    ("", "appendChild", append_child),
-    ("", "insertBefore", insert_before),
-    ("", "removeChild", remove_child),
-    ("", "remove", remove),
-    ("", "append", append),
-    ("", "prepend", prepend),
-    ("", "getAttribute", get_attribute),
-    ("", "setAttribute", set_attribute),
-    ("", "removeAttribute", remove_attribute),
-    ("", "hasAttribute", has_attribute),
+    ("", "appendChild", tree::append_child),
+    ("", "insertBefore", tree::insert_before),
+    ("", "removeChild", tree::remove_child),
+    ("", "remove", tree::remove),
+    ("", "append", tree::append),
+    ("", "prepend", tree::prepend),
+    ("", "getAttribute", attrs::get_attribute),
+    ("", "setAttribute", attrs::set_attribute),
+    ("", "removeAttribute", attrs::remove_attribute),
+    ("", "hasAttribute", attrs::has_attribute),
     ("", "querySelector", query_selector),
     ("", "querySelectorAll", query_selector_all),
     ("", "matches", element_matches),
     ("", "closest", closest),
     ("", "getElementById", get_element_by_id),
-    ("", "getElementsByTagName", get_elements_by_tag_name),
-    ("", "getElementsByClassName", get_elements_by_class_name),
+    ("", "getElementsByTagName", lists::get_elements_by_tag_name),
+    (
+        "",
+        "getElementsByClassName",
+        lists::get_elements_by_class_name,
+    ),
     ("", "createElement", create_element),
-    ("", "createTextNode", create_text_node),
+    ("", "createTextNode", documents::create_text_node),
     ("", "contains", contains),
-    ("", "cloneNode", clone_node),
+    ("", "cloneNode", documents::clone_node),
     ("", "addEventListener", add_event_listener),
     ("", "removeEventListener", remove_event_listener),
     ("", "click", element_click),
@@ -1364,6 +1473,146 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "blur", no_op),
     ("", "scrollIntoView", no_op),
     ("", "getBoundingClientRect", get_bounding_client_rect),
+    ("", "dispatchEvent", events::dispatch_event),
+    ("Event", "preventDefault", events::prevent_default),
+    ("Event", "stopPropagation", events::stop_propagation),
+    (
+        "Event",
+        "stopImmediatePropagation",
+        events::stop_immediate_propagation,
+    ),
+    ("Event", "composedPath", events::composed_path),
+    ("Event", "initEvent", events::init_event),
+    ("CustomEvent", "initCustomEvent", events::init_custom_event),
+    (
+        "",
+        "createDocumentFragment",
+        documents::create_document_fragment,
+    ),
+    ("", "createCDATASection", documents::create_cdata_section),
+    (
+        "",
+        "createProcessingInstruction",
+        documents::create_processing_instruction,
+    ),
+    (
+        "DOMImplementation",
+        "createDocumentType",
+        documents::create_document_type,
+    ),
+    (
+        "DOMImplementation",
+        "createDocument",
+        documents::create_document,
+    ),
+    (
+        "DOMImplementation",
+        "createHTMLDocument",
+        documents::create_html_document,
+    ),
+    ("DOMImplementation", "hasFeature", documents::has_feature),
+    ("", "createRange", range::create_range),
+    ("", "moveBefore", tree::move_before),
+    (
+        "",
+        "getElementsByTagNameNS",
+        lists::get_elements_by_tag_name_ns,
+    ),
+    ("", "getAttributeNode", attrs::get_attribute_node),
+    ("", "getAttributeNodeNS", attrs::get_attribute_node_ns),
+    ("", "setAttributeNode", attrs::set_attribute_node),
+    ("", "setAttributeNodeNS", attrs::set_attribute_node),
+    ("", "removeAttributeNode", attrs::remove_attribute_node),
+    ("", "createAttribute", attrs::create_attribute),
+    ("", "createAttributeNS", attrs::create_attribute_ns),
+    ("", "lookupNamespaceURI", attrs::lookup_namespace_uri),
+    ("", "lookupPrefix", attrs::lookup_prefix),
+    ("", "isDefaultNamespace", attrs::is_default_namespace),
+    ("NamedNodeMap", "item", attrs::map_item),
+    ("NamedNodeMap", "getNamedItem", attrs::map_get),
+    ("NamedNodeMap", "getNamedItemNS", attrs::map_get_ns),
+    ("NamedNodeMap", "setNamedItem", attrs::map_set),
+    ("NamedNodeMap", "setNamedItemNS", attrs::map_set),
+    ("NamedNodeMap", "removeNamedItem", attrs::map_remove),
+    ("NamedNodeMap", "removeNamedItemNS", attrs::map_remove_ns),
+    ("Range", "setStart", range::set_start),
+    ("Range", "setEnd", range::set_end),
+    ("Range", "setStartBefore", range::set_start_before),
+    ("Range", "setStartAfter", range::set_start_after),
+    ("Range", "setEndBefore", range::set_end_before),
+    ("Range", "setEndAfter", range::set_end_after),
+    ("Range", "collapse", range::collapse),
+    ("Range", "selectNode", range::select_node),
+    ("Range", "selectNodeContents", range::select_node_contents),
+    (
+        "Range",
+        "compareBoundaryPoints",
+        range::compare_boundary_points,
+    ),
+    ("Range", "deleteContents", range::delete_contents),
+    ("Range", "extractContents", range::extract_contents),
+    ("Range", "cloneContents", range::clone_contents),
+    ("Range", "insertNode", range::insert_node),
+    ("Range", "surroundContents", range::surround_contents),
+    ("Range", "cloneRange", range::clone_range),
+    ("Range", "detach", range::detach),
+    ("Range", "isPointInRange", range::is_point_in_range),
+    ("Range", "comparePoint", range::compare_point),
+    ("Range", "intersectsNode", range::intersects_node),
+    ("Range", "toString", range::to_string),
+    ("Storage", "getItem", storage::get_item),
+    ("Storage", "setItem", storage::set_item),
+    ("Storage", "removeItem", storage::remove_item),
+    ("Storage", "clear", storage::clear),
+    ("Storage", "key", storage::key),
+    ("NodeList", "item", storage::list_item),
+    ("HTMLCollection", "item", storage::list_item),
+    ("HTMLCollection", "namedItem", storage::list_named_item),
+    ("", "hasChildNodes", dom_ops::has_child_nodes),
+    ("", "isSameNode", dom_ops::is_same_node),
+    ("", "getRootNode", dom_ops::get_root_node),
+    ("", "replaceChild", tree::replace_child),
+    ("", "normalize", dom_ops::normalize),
+    ("", "isEqualNode", dom_ops::is_equal_node),
+    (
+        "",
+        "compareDocumentPosition",
+        dom_ops::compare_document_position,
+    ),
+    ("", "before", tree::before),
+    ("", "after", tree::after),
+    ("", "replaceWith", tree::replace_with),
+    ("", "replaceChildren", tree::replace_children),
+    ("", "hasAttributes", attrs::has_attributes),
+    ("", "getAttributeNames", attrs::get_attribute_names),
+    ("", "toggleAttribute", attrs::toggle_attribute),
+    ("", "getAttributeNS", attrs::get_attribute_ns),
+    ("", "hasAttributeNS", attrs::has_attribute_ns),
+    ("", "setAttributeNS", attrs::set_attribute_ns),
+    ("", "removeAttributeNS", attrs::remove_attribute_ns),
+    ("", "webkitMatchesSelector", element_matches),
+    (
+        "",
+        "insertAdjacentElement",
+        dom_ops::insert_adjacent_element,
+    ),
+    ("", "insertAdjacentText", dom_ops::insert_adjacent_text),
+    ("", "insertAdjacentHTML", dom_ops::insert_adjacent_html),
+    ("", "substringData", dom_ops::substring_data),
+    ("", "appendData", dom_ops::append_data),
+    ("", "insertData", dom_ops::insert_data),
+    ("", "deleteData", dom_ops::delete_data),
+    ("", "replaceData", dom_ops::replace_data),
+    ("", "splitText", dom_ops::split_text),
+    ("", "createComment", documents::create_comment),
+    ("", "createElementNS", attrs::create_element_ns),
+    ("", "importNode", documents::import_node),
+    ("", "adoptNode", documents::adopt_node),
+    ("", "getElementsByName", dom_ops::get_elements_by_name),
+    ("", "hasFocus", dom_ops::has_focus),
+    ("DOMTokenList", "item", tokens::item),
+    ("DOMTokenList", "replace", tokens::replace),
+    ("DOMTokenList", "supports", tokens::supports),
     ("CSSStyleDeclaration", "setProperty", style_set_property),
     (
         "CSSStyleDeclaration",
@@ -1375,10 +1624,11 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
         "removeProperty",
         style_remove_property,
     ),
-    ("DOMTokenList", "add", class_list_add),
-    ("DOMTokenList", "remove", class_list_remove),
-    ("DOMTokenList", "toggle", class_list_toggle),
-    ("DOMTokenList", "contains", class_list_contains),
+    ("DOMTokenList", "add", tokens::add),
+    ("DOMTokenList", "remove", tokens::remove),
+    ("DOMTokenList", "toggle", tokens::toggle),
+    ("DOMTokenList", "contains", tokens::contains),
+    ("DOMTokenList", "toString", tokens::to_string),
 ];
 
 fn interface(name: &str) -> Option<&'static InterfaceDescriptor> {
@@ -1411,7 +1661,19 @@ fn implementation(interface: &str, name: &str) -> Option<NativeFn> {
     find(interface).or_else(|| is_node_interface(interface).then(|| find("")).flatten())
 }
 
-/// Les objets interface ne se construisent pas depuis un script.
+/// Constructeurs des interfaces qu'un script peut instancier.
+const CONSTRUCTORS: &[(&str, NativeFn)] = &[
+    ("Event", events::event_ctor),
+    ("CustomEvent", events::custom_event_ctor),
+    ("EventTarget", events::event_target_ctor),
+    ("Document", documents::document_ctor),
+    ("DocumentFragment", documents::fragment_ctor),
+    ("Text", documents::text_ctor),
+    ("Comment", documents::comment_ctor),
+    ("Range", range::range_ctor),
+];
+
+/// Les autres objets interface ne se construisent pas depuis un script.
 fn illegal_constructor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Err(vm.error("TypeError", "constructeur illégal"))
 }
@@ -1427,11 +1689,14 @@ fn install_interfaces(vm: &mut Vm) -> JsResult<HashMap<&'static str, ObjId>> {
     let mut constructors = HashMap::new();
     for interface in crate::dom_idl::INTERFACES {
         let proto = vm.new_object();
-        let constructor = vm.new_function(
-            interface.name,
-            interface.constructor.unwrap_or(0),
-            illegal_constructor,
-        );
+        let arity = interface.constructor.unwrap_or(0);
+        let constructor = match CONSTRUCTORS
+            .iter()
+            .find(|(name, _)| *name == interface.name)
+        {
+            Some((_, func)) => vm.new_constructor(interface.name, arity, *func),
+            None => vm.new_function(interface.name, arity, illegal_constructor),
+        };
         vm.define_hidden(constructor, "prototype", Value::Object(proto));
         vm.define_hidden(proto, "constructor", Value::Object(constructor));
         if let Value::Symbol(tag) = &tag {
@@ -1489,28 +1754,89 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             "interfaces du DOM absentes de la table générée",
         ));
     };
-    vm.host = Some(Box::new(DomHost {
-        doc: Document::new(),
+    // Les listes de nœuds sont des tableaux : leurs prototypes héritent de
+    // `Array.prototype`, ce qui leur garde `forEach`, `map`, l'itération…
+    let array = vm.get(&Value::Object(vm.global()), "Array")?;
+    if let Some(array_proto) = vm.get(&array, "prototype")?.as_object() {
+        for name in ["NodeList", "HTMLCollection", "DOMTokenList"] {
+            if let Some(proto) = proto_of(name) {
+                vm.set_prototype(proto, Some(array_proto))?;
+            }
+        }
+    }
+    let dataset_proto = vm.new_object();
+    vm.add_root(Value::Object(dataset_proto));
+    let storage_proto = proto_of("Storage");
+    let blank = Document::new();
+    let fresh = RealmHost {
         url: url.clone(),
-        wrappers: HashMap::new(),
+        document: blank.root(),
         node_proto,
         style_proto,
         class_list_proto,
+        dataset_proto,
         protos,
-        listeners: Vec::new(),
-        timers: Vec::new(),
-        fetch_queue: Vec::new(),
-        fetches: HashMap::new(),
-        modules: HashMap::new(),
-        next_timer: 0,
-        dirty: false,
-        viewport: (0.0, 0.0),
-        started: Instant::now(),
-    }));
+        hooks: None,
+        activation: None,
+        tag_protos: HashMap::new(),
+    };
+    let realm = vm.realm();
+    if let Some(h) = vm.host.as_mut().and_then(|h| h.downcast_mut::<DomHost>()) {
+        // Royaume d'un cadre : l'hôte existe, il gagne un état de plus.
+        h.adopt(realm, fresh);
+    } else {
+        vm.host = Some(Box::new(DomHost {
+            doc: blank,
+            url: fresh.url,
+            wrappers: HashMap::new(),
+            kinds: HashMap::new(),
+            lists: Vec::new(),
+            node_proto: fresh.node_proto,
+            style_proto: fresh.style_proto,
+            class_list_proto: fresh.class_list_proto,
+            dataset_proto: fresh.dataset_proto,
+            storage: [Vec::new(), Vec::new()],
+            protos: fresh.protos,
+            listeners: Vec::new(),
+            observers: Vec::new(),
+            navigations: Vec::new(),
+            hooks: None,
+            activation: None,
+            tag_protos: HashMap::new(),
+            document: fresh.document,
+            realm,
+            parked: HashMap::new(),
+            doc_realms: HashMap::new(),
+            frames: HashMap::new(),
+            frame_sources: HashMap::new(),
+            frame_requests: Vec::new(),
+            frames_scanned: None,
+            cookies: String::new(),
+            cookie_writes: Vec::new(),
+            next_listener: 0,
+            timers: Vec::new(),
+            fetch_queue: Vec::new(),
+            fetches: HashMap::new(),
+            modules: HashMap::new(),
+            next_timer: 0,
+            dirty: false,
+            viewport: (0.0, 0.0),
+            started: Instant::now(),
+        }));
+    }
     vm.set_host_hooks(HostHooks {
         get: host_get,
         set: host_set,
+        keys: host_keys,
+        global: named_global,
     });
+    events::install_attributes(vm)?;
+    if let Some(proto) = storage_proto {
+        for (name, area) in [("localStorage", 0), ("sessionStorage", 1)] {
+            let object = vm.new_host_object(proto, CLASS_STORAGE, area);
+            vm.define_hidden(vm.global(), name, Value::Object(object));
+        }
+    }
 
     let global = vm.global();
     let window = Value::Object(global);
@@ -1527,6 +1853,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         ("cancelAnimationFrame", 1, clear_timer),
         ("addEventListener", 2, add_event_listener),
         ("removeEventListener", 2, remove_event_listener),
+        ("dispatchEvent", 1, events::dispatch_event),
         ("alert", 1, window_alert),
         ("confirm", 1, window_confirm),
         ("prompt", 1, window_prompt),
@@ -1552,40 +1879,70 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     vm.set(&navigator, "languages", languages)?;
     vm.define_hidden(global, "navigator", navigator);
 
-    // LIMITE : `location` est en lecture seule (l'affecter ne navigue pas).
-    let location = Value::Object(vm.new_object());
-    let origin = url.origin().ascii_serialization();
-    let fields = [
-        ("href", url.as_str().to_owned()),
-        ("protocol", format!("{}:", url.scheme())),
-        (
-            "host",
-            url.host_str().map_or(String::new(), |h| {
-                url.port().map_or(h.to_owned(), |p| format!("{h}:{p}"))
-            }),
-        ),
-        ("hostname", url.host_str().unwrap_or("").to_owned()),
-        ("pathname", url.path().to_owned()),
-        (
-            "search",
-            url.query().map_or(String::new(), |q| format!("?{q}")),
-        ),
-        (
-            "hash",
-            url.fragment().map_or(String::new(), |f| format!("#{f}")),
-        ),
-        ("origin", origin),
+    // Prélude : `URL`, `Headers`, `AbortController`… écrits en JavaScript. Il
+    // s'appuie sur les objets installés ci-dessus.
+    let prelude = vm.eval_script(include_str!("script/prelude.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
+        Value::Object(vm.new_function("changeUrl", 3, change_url)),
+        Value::Object(vm.new_function("observe", 4, mutation::observe)),
+        Value::Object(vm.new_function("disconnect", 1, mutation::disconnect)),
+        Value::Object(vm.new_function("takeRecords", 1, mutation::take_records)),
+        Value::Object(vm.new_function("locationHref", 0, location_href)),
+        Value::Object(vm.new_function("navigate", 2, navigate)),
     ];
-    for (key, value) in fields {
-        vm.set(&location, key, Value::string(&value))?;
+    let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
+    vm.add_root(hooks.clone());
+    if let Some(h) = host(vm) {
+        h.hooks = Some(hooks);
     }
-    vm.define_hidden(global, "location", location);
+    // Interfaces des éléments HTML et formulaires.
+    let elements = vm.eval_script(include_str!("script/elements.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("registerInterface", 2, register_interface)),
+        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
+        Value::Object(vm.new_function("changeUrl", 3, change_url)),
+        Value::Object(vm.new_function("locationHref", 0, location_href)),
+        Value::Object(vm.new_function("navigate", 3, navigate)),
+    ];
+    let activation = vm.call(&elements, &Value::Undefined, &helpers)?;
+    vm.add_root(activation.clone());
+    if let Some(h) = host(vm) {
+        h.activation = Some(activation);
+    }
+    // Parcours de l'arbre et sélection.
+    let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("iterNew", 1, traversal::iter_new)),
+        Value::Object(vm.new_function("iterGet", 1, traversal::iter_get)),
+        Value::Object(vm.new_function("iterSet", 3, traversal::iter_set)),
+    ];
+    vm.call(&traversal, &Value::Undefined, &helpers)?;
+    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
+    // qui reçoit le `fetch` d'origine.
+    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
+    let original_fetch = vm.get(&window, "fetch")?;
+    let xhr = vm.call(
+        &factory,
+        &Value::Undefined,
+        std::slice::from_ref(&original_fetch),
+    )?;
+    vm.define_hidden(global, "XMLHttpRequest", xhr);
+    // `Blob`, `Request`, `Response` et le `fetch` du standard, bâti sur
+    // celui du moteur.
+    let factory = vm.eval_script(include_str!("script/fetch.js"))?;
+    let fetch = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    vm.define_hidden(global, "fetch", fetch);
     Ok(())
 }
+
+pub(crate) use frames::fingerprint as frame_fingerprint;
 
 /// Moteur de script d'une page : la machine JavaScript et ses liaisons au DOM.
 pub(crate) struct ScriptEngine {
     vm: Vm,
+    /// Instructions accordées à chaque tâche.
+    task_budget: u64,
 }
 
 impl std::fmt::Debug for ScriptEngine {
@@ -1602,13 +1959,69 @@ impl ScriptEngine {
         if let Err(thrown) = install(&mut vm, url) {
             report(&mut vm, &thrown);
         }
-        Self { vm }
+        Self {
+            vm,
+            task_budget: TASK_BUDGET,
+        }
     }
 
     /// Exécute `task` avec le document `doc` prêté à la machine, sur un fil à
     /// grande pile et avec un budget d'instructions.
+    /// Charge dans le cadre `element` le document `source`, d'adresse
+    /// `url`, et exécute ses scripts classiques dans le royaume du cadre.
+    pub(crate) fn load_frame(
+        &mut self,
+        doc: &mut Document,
+        element: NodeId,
+        url: &Url,
+        source: &Document,
+        scripts: &[String],
+    ) {
+        self.run(doc, |vm| frames::load(vm, element, url, source, scripts));
+    }
+
+    /// Signale les cadres que l'embarqueur charge lui-même avec la page :
+    /// élément et empreinte de sa source. Ils ne sont pas redemandés.
+    pub(crate) fn note_static_frames(&mut self, frames: &[(NodeId, String)]) {
+        if let Some(h) = host(&mut self.vm) {
+            for (element, print) in frames {
+                let key = u32::try_from(element.index()).unwrap_or(u32::MAX);
+                h.frame_sources.insert(key, print.clone());
+            }
+        }
+    }
+
+    /// Documents de cadres demandés par les scripts depuis le dernier appel.
+    pub(crate) fn take_frame_requests(&mut self) -> Vec<(NodeId, Url)> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.frame_requests))
+            .unwrap_or_default()
+    }
+
+    /// Fixe le texte que `document.cookie` rend aux scripts.
+    pub(crate) fn set_cookies(&mut self, cookies: &str) {
+        if let Some(h) = host(&mut self.vm) {
+            cookies.clone_into(&mut h.cookies);
+        }
+    }
+
+    /// Écritures dans `document.cookie` depuis le dernier appel.
+    pub(crate) fn take_cookie_writes(&mut self) -> Vec<String> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.cookie_writes))
+            .unwrap_or_default()
+    }
+
+    /// Change le nombre d'instructions accordées à chaque tâche.
+    pub(crate) fn set_task_budget(&mut self, budget: u64) {
+        self.task_budget = budget;
+    }
+
     fn run<T: Send>(&mut self, doc: &mut Document, task: impl FnOnce(&mut Vm) -> T + Send) -> T {
+        let budget = self.task_budget;
         let vm = &mut self.vm;
+        // Une tâche commence dans le royaume de la page.
+        vm.set_realm(0);
         if let Some(h) = host(vm) {
             std::mem::swap(&mut h.doc, doc);
         }
@@ -1619,11 +2032,18 @@ impl ScriptEngine {
             let global = vm.global();
             vm.define_hidden(global, "document", wrapper);
         }
-        vm.set_budget(Some(TASK_BUDGET));
+        vm.set_budget(Some(budget));
         let result = oxyde_js::with_large_stack(|| {
             let result = task(vm);
-            // Fin de la tâche : les réactions de promesses en attente s'exécutent.
+            // Fin de la tâche : les réactions de promesses en attente
+            // s'exécutent, puis les observateurs de mutation sont prévenus.
             vm.run_microtasks();
+            mutation::deliver(vm);
+            // Les cadres apparus pendant la tâche prennent leur contenu.
+            if frames::scan(vm) {
+                vm.run_microtasks();
+                mutation::deliver(vm);
+            }
             result
         });
         if let Some(h) = host(vm) {
@@ -1728,6 +2148,91 @@ impl ScriptEngine {
         });
     }
 
+    /// Navigations demandées par les scripts depuis le dernier appel.
+    pub(crate) fn take_navigations(&mut self) -> Vec<crate::Navigation> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.navigations))
+            .unwrap_or_default()
+    }
+
+    /// L'embarqueur a parcouru l'historique de `delta` entrées sans changer
+    /// de document : l'adresse devient `url`, et les scripts en sont prévenus
+    /// (`popstate`, `hashchange`).
+    pub(crate) fn traverse(&mut self, doc: &mut Document, url: &Url, delta: i32) {
+        self.run(doc, |vm| {
+            let Some(h) = host(vm) else { return };
+            let before = Value::string(h.url.as_str());
+            h.url = url.clone();
+            let Some(hooks) = h.hooks.clone() else { return };
+            let outcome = vm
+                .get(&hooks, "traverse")
+                .and_then(|f| vm.call(&f, &hooks, &[Value::Number(f64::from(delta)), before]));
+            if let Err(thrown) = outcome {
+                report(vm, &thrown);
+            }
+        });
+    }
+
+    /// Clic sur `node` : comportement d'activation (case cochée, bouton de
+    /// formulaire) autour de l'événement `click`. Renvoie `true` si un script
+    /// a annulé l'action par défaut.
+    pub(crate) fn click(&mut self, doc: &mut Document, node: NodeId) -> bool {
+        self.run(doc, |vm| {
+            let activation = host(vm).and_then(|h| h.activation.clone());
+            let target = wrap(vm, node);
+            let hook = |vm: &mut Vm, name: &str, args: &[Value]| {
+                let hooks = activation.clone()?;
+                match vm.get(&hooks, name).and_then(|f| vm.call(&f, &hooks, args)) {
+                    Ok(value) => Some(value),
+                    Err(thrown) => {
+                        report(vm, &thrown);
+                        None
+                    }
+                }
+            };
+            let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
+            let prevented = dispatch(vm, Some(node), "click");
+            hook(vm, "after", &[state, Value::Bool(prevented)]);
+            prevented
+        })
+    }
+
+    /// Touche enfoncée (`down`) ou relâchée : distribue `keydown` (et
+    /// `keypress`) ou `keyup`. Renvoie `true` si un script a annulé l'action
+    /// par défaut.
+    pub(crate) fn key_event(
+        &mut self,
+        doc: &mut Document,
+        down: bool,
+        input: &crate::KeyInput<'_>,
+    ) -> bool {
+        self.run(doc, |vm| {
+            let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
+                return false;
+            };
+            let args = [
+                Value::Bool(down),
+                Value::string(input.key),
+                Value::string(input.code),
+                Value::Bool(input.ctrl),
+                Value::Bool(input.shift),
+                Value::Bool(input.alt),
+                Value::Bool(input.meta),
+                Value::Bool(input.repeat),
+            ];
+            match vm
+                .get(&hooks, "key")
+                .and_then(|f| vm.call(&f, &hooks, &args))
+            {
+                Ok(proceed) => !proceed.truthy(),
+                Err(thrown) => {
+                    report(vm, &thrown);
+                    false
+                }
+            }
+        })
+    }
+
     /// Requêtes `fetch` émises par les scripts depuis le dernier appel.
     pub(crate) fn take_fetches(&mut self) -> Vec<crate::FetchRequest> {
         host(&mut self.vm)
@@ -1810,8 +2315,66 @@ fn reject_fetch(vm: &mut Vm, reject: &Value, message: &str) -> JsResult<()> {
     vm.call(reject, &Value::Undefined, &[error]).map(|_| ())
 }
 
-fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let (promise, resolve, reject) = vm.promise_with_resolvers();
+/// En-têtes d'une requête donnés par un script : un objet `{ nom: valeur }`
+/// ou un tableau de paires. Les en-têtes interdits sont écartés sans bruit ;
+/// un nom ou une valeur invalide est une erreur.
+fn request_headers(vm: &mut Vm, source: &Value) -> JsResult<Result<Vec<(String, String)>, String>> {
+    let mut headers = Vec::new();
+    if source.as_object().is_none() {
+        return Ok(Ok(headers));
+    }
+    let global = Value::Object(vm.global());
+    let array = vm.get(&global, "Array")?;
+    // Itérable (tableau de paires, `Headers`, `Map`) : `Array.from` en tire
+    // les paires ; sinon ce sont les propriétés de l'objet.
+    let symbol = vm.get(&global, "Symbol")?;
+    let iterator = vm.get(&symbol, "iterator")?;
+    let iterable = match vm.to_key(&iterator) {
+        Ok(key) => {
+            let method = vm.get_key(source, &key)?;
+            vm.type_of(&method) == "function"
+        }
+        Err(_) => false,
+    };
+    let pairs = if iterable {
+        let from = vm.get(&array, "from")?;
+        vm.call(&from, &array, std::slice::from_ref(source))?
+    } else {
+        let object = vm.get(&global, "Object")?;
+        let entries = vm.get(&object, "entries")?;
+        vm.call(&entries, &object, std::slice::from_ref(source))?
+    };
+    let length = vm.get(&pairs, "length")?;
+    let count = vm.to_number(&length)?;
+    let mut index = 0.0;
+    while index < count {
+        let pair = vm.get(&pairs, &index.to_string())?;
+        index += 1.0;
+        let (name, value) = (vm.get(&pair, "0")?, vm.get(&pair, "1")?);
+        let name = vm.to_string(&name)?.to_string();
+        let value = vm.to_string(&value)?.trim().to_owned();
+        if !crate::cors::is_header_name(&name) {
+            return Ok(Err(format!("nom d'en-tête invalide : « {name} »")));
+        }
+        if !crate::cors::is_header_value(&value) {
+            return Ok(Err(format!("valeur invalide pour l'en-tête « {name} »")));
+        }
+        if !crate::cors::is_forbidden_header(&name) {
+            headers.push((name, value));
+        }
+    }
+    Ok(Ok(headers))
+}
+
+/// Requête décrite par les arguments de `fetch`, ou la raison de son refus.
+struct Outgoing {
+    address: String,
+    method: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+fn outgoing(vm: &mut Vm, args: &[Value]) -> JsResult<Result<Outgoing, String>> {
     // Adresse : chaîne, ou objet muni d'une propriété `url`.
     let input = arg(args, 0);
     let address = match &input {
@@ -1824,20 +2387,102 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             }
         }
         other => vm.to_string(other)?,
-    };
+    }
+    .to_string();
     let init = arg(args, 1);
-    let method = match &init {
-        Value::Object(_) => match vm.get(&init, "method")? {
-            Value::Undefined => "GET".to_owned(),
-            other => vm.to_string(&other)?.to_ascii_uppercase(),
-        },
-        _ => "GET".to_owned(),
+    let member = |vm: &mut Vm, name: &str| -> JsResult {
+        if init.as_object().is_some() {
+            vm.get(&init, name)
+        } else {
+            Ok(Value::Undefined)
+        }
+    };
+    let method = match member(vm, "method")? {
+        Value::Undefined => "GET".to_owned(),
+        other => {
+            let name = vm.to_string(&other)?;
+            if !crate::cors::is_allowed_method(&name) {
+                return Ok(Err(format!("la méthode « {name} » n'est pas permise")));
+            }
+            crate::cors::normalize_method(&name)
+        }
+    };
+    let header_source = member(vm, "headers")?;
+    let mut headers = match request_headers(vm, &header_source)? {
+        Ok(headers) => headers,
+        Err(message) => return Ok(Err(message)),
+    };
+    let body = match member(vm, "body")? {
+        Value::Undefined | Value::Null => Vec::new(),
+        other => {
+            if matches!(method.as_str(), "GET" | "HEAD") {
+                return Ok(Err(format!(
+                    "une requête {method} ne peut pas avoir de corps"
+                )));
+            }
+            // LIMITE : le corps est pris pour du texte ; des paramètres
+            // d'URL partent comme un formulaire.
+            let form = match &other {
+                Value::Object(_) => {
+                    let constructor = vm.get(&other, "constructor")?;
+                    let name = vm.get(&constructor, "name")?;
+                    name == Value::string("URLSearchParams")
+                }
+                _ => false,
+            };
+            let text = vm.to_string(&other)?;
+            if !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.push((
+                    "Content-Type".to_owned(),
+                    if form {
+                        "application/x-www-form-urlencoded;charset=UTF-8".to_owned()
+                    } else {
+                        "text/plain;charset=UTF-8".to_owned()
+                    },
+                ));
+            }
+            text.as_bytes().to_vec()
+        }
+    };
+    // Corps binaire : une chaîne d'un caractère (0 à 255) par octet.
+    let body = match member(vm, "binaryBody")? {
+        Value::String(binary) => {
+            if matches!(method.as_str(), "GET" | "HEAD") {
+                return Ok(Err(format!(
+                    "une requête {method} ne peut pas avoir de corps"
+                )));
+            }
+            binary
+                .chars()
+                .map(|c| u8::try_from(u32::from(c)).unwrap_or(b'?'))
+                .collect()
+        }
+        _ => body,
+    };
+    Ok(Ok(Outgoing {
+        address,
+        method,
+        headers,
+        body,
+    }))
+}
+
+fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let (promise, resolve, reject) = vm.promise_with_resolvers();
+    let request = match outgoing(vm, args)? {
+        Ok(request) => request,
+        Err(message) => {
+            reject_fetch(vm, &reject, &message)?;
+            return Ok(promise);
+        }
     };
     let Some(h) = host(vm) else {
         return Ok(promise);
     };
-    let refusal = match h.url.join(&address) {
-        _ if method != "GET" => Some(format!("la méthode {method} n'est pas prise en charge")),
+    let refusal = match h.url.join(&request.address) {
         Err(error) => Some(format!("adresse invalide ({error})")),
         Ok(url) if !matches!(url.scheme(), "http" | "https") => Some(format!(
             "le protocole « {} » n'est pas accessible aux scripts",
@@ -1848,9 +2493,23 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         }
         Ok(url) => {
             let id = NEXT_FETCH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let document = h.url.origin();
+            let cross_origin = !document.is_tuple() || document != url.origin();
+            // `Origin` accompagne toute requête vers une autre origine, et
+            // toute requête qui n'est ni `GET` ni `HEAD`.
+            let origin = (cross_origin || !matches!(request.method.as_str(), "GET" | "HEAD"))
+                .then(|| document.ascii_serialization());
+            let needs_preflight =
+                cross_origin && crate::cors::needs_preflight(&request.method, &request.headers);
             h.fetch_queue.push(crate::FetchRequest {
                 id,
+                initiator: h.url.clone(),
                 url: url.clone(),
+                method: request.method,
+                headers: request.headers,
+                body: request.body,
+                origin,
+                needs_preflight,
             });
             h.fetches.insert(
                 id,
@@ -1961,9 +2620,11 @@ fn make_response(
         .collect();
     let headers = vm.new_object();
     let get = vm.new_native_data(headers_get, pairs.clone());
-    let has = vm.new_native_data(headers_has, pairs);
+    let has = vm.new_native_data(headers_has, pairs.clone());
+    let for_each = vm.new_native_data(headers_for_each, pairs);
     vm.define_hidden(headers, "get", get);
     vm.define_hidden(headers, "has", has);
+    vm.define_hidden(headers, "forEach", for_each);
     vm.set(&object, "headers", Value::Object(headers))?;
 
     let text = String::from_utf8_lossy(&response.body);
@@ -1975,6 +2636,10 @@ fn make_response(
     let json_fn = vm.new_native_data(response_json, vec![text]);
     vm.define_hidden(id, "text", text_fn);
     vm.define_hidden(id, "json", json_fn);
+    // Octets du corps, un caractère par octet (voir `fetch.js`).
+    let binary: String = response.body.iter().map(|byte| char::from(*byte)).collect();
+    let binary_fn = vm.new_native_data(response_binary, vec![Value::string(&binary)]);
+    vm.define_hidden(id, "binary", binary_fn);
     Ok(object)
 }
 
@@ -2001,6 +2666,26 @@ fn headers_has(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> Js
     ))
 }
 
+/// `headers.forEach(rappel)` : `rappel(valeur, nom, headers)` pour chaque en-tête.
+fn headers_for_each(vm: &mut Vm, data: &[Value], this: &Value, args: &[Value]) -> JsResult {
+    let callback = arg(args, 0);
+    let this_arg = arg(args, 1);
+    for pair in data.chunks(2) {
+        if let [name, value] = pair {
+            vm.call(
+                &callback,
+                &this_arg,
+                &[value.clone(), name.clone(), this.clone()],
+            )?;
+        }
+    }
+    Ok(Value::Undefined)
+}
+
+fn response_binary(_vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {
+    Ok(data.first().cloned().unwrap_or(Value::Undefined))
+}
+
 fn response_text(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {
     let text = data.first().cloned().unwrap_or(Value::Undefined);
     Ok(vm.promise_resolved(text))
@@ -2014,6 +2699,172 @@ fn response_json(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
         Ok(value) => vm.promise_resolved(value),
         Err(thrown) => vm.promise_rejected(thrown),
     })
+}
+
+// ---- Navigation ------------------------------------------------------------------
+
+/// `registerInterface(balise, prototype)` : les éléments HTML de cette
+/// balise prendront ce prototype.
+fn register_interface(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let tag = vm.to_string(&arg(args, 0))?.to_string();
+    let proto = arg(args, 1);
+    if let Some(id) = proto.as_object() {
+        vm.add_root(proto);
+        if let Some(h) = host(vm) {
+            h.tag_protos.insert(tag, id);
+        }
+    }
+    Ok(Value::Undefined)
+}
+
+/// `locationHref()` : l'adresse courante du document.
+fn location_href(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    Ok(host(vm).map_or(Value::Undefined, |h| Value::string(h.url.as_str())))
+}
+
+/// `navigate(nature, valeur)` : consigne une navigation pour l'embarqueur.
+/// `pushState` et `replaceState` changent tout de suite l'adresse du
+/// document, qui doit rester dans son origine.
+fn navigate(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let kind = vm.to_string(&arg(args, 0))?;
+    let value = arg(args, 1);
+    let request = match &*kind {
+        "reload" => crate::Navigation::Reload,
+        "traverse" => {
+            let delta = vm.to_number(&value)?;
+            #[expect(clippy::cast_possible_truncation, reason = "nombre de pages, borné")]
+            let delta = delta.clamp(-1_000.0, 1_000.0) as i32;
+            crate::Navigation::Traverse(delta)
+        }
+        _ => {
+            let text = vm.to_string(&value)?;
+            let Some(h) = host(vm) else {
+                return Ok(Value::Undefined);
+            };
+            let Ok(url) = h.url.join(&text) else {
+                return Err(vm.error("SyntaxError", &format!("adresse invalide : {text}")));
+            };
+            match &*kind {
+                "pushState" | "replaceState" => {
+                    if url.origin() != h.url.origin() {
+                        return Err(dom_exception(
+                            vm,
+                            "SecurityError",
+                            "l'adresse doit rester dans l'origine du document",
+                        ));
+                    }
+                    h.url = url.clone();
+                    crate::Navigation::SameDocument {
+                        url,
+                        replace: &*kind == "replaceState",
+                    }
+                }
+                "post" => {
+                    let body = vm.to_string(&arg(args, 2))?;
+                    crate::Navigation::Load {
+                        url,
+                        replace: false,
+                        post: Some(crate::FormPost {
+                            content_type: "application/x-www-form-urlencoded".to_owned(),
+                            body: body.as_bytes().to_vec(),
+                        }),
+                    }
+                }
+                _ => crate::Navigation::Load {
+                    url,
+                    replace: &*kind == "replace",
+                    post: None,
+                },
+            }
+        }
+    };
+    if let Some(h) = host(vm) {
+        h.navigations.push(request);
+    }
+    Ok(Value::Undefined)
+}
+
+// ---- URL -------------------------------------------------------------------------
+
+/// Composants de `url`, dans l'ordre attendu par le prélude : href, protocol,
+/// username, password, host, hostname, port, pathname, search, hash, origin.
+fn url_parts(vm: &mut Vm, url: &Url) -> Value {
+    use url::quirks;
+    let origin = quirks::origin(url);
+    let items = [
+        quirks::href(url),
+        quirks::protocol(url),
+        quirks::username(url),
+        quirks::password(url),
+        quirks::host(url),
+        quirks::hostname(url),
+        quirks::port(url),
+        quirks::pathname(url),
+        quirks::search(url),
+        quirks::hash(url),
+        origin.as_str(),
+    ]
+    .map(Value::string)
+    .to_vec();
+    vm.new_array(items)
+}
+
+/// `parseUrl(texte, base)` : les composants de l'adresse, ou `null`.
+fn parse_url(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let input = vm.to_string(&arg(args, 0))?;
+    let parsed = match arg(args, 1) {
+        Value::Undefined => Url::parse(&input),
+        base => {
+            let base = vm.to_string(&base)?;
+            Url::parse(&base).and_then(|base| base.join(&input))
+        }
+    };
+    Ok(match parsed {
+        Ok(url) => url_parts(vm, &url),
+        Err(_) => Value::Null,
+    })
+}
+
+/// `changeUrl(href, rang, valeur)` : applique le mutateur du composant de
+/// rang `rang` (URL Standard §6.1) et rend les nouveaux composants. Une
+/// valeur refusée laisse l'adresse telle quelle.
+fn change_url(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    use url::quirks;
+    let href = vm.to_string(&arg(args, 0))?;
+    let rank = vm.to_number(&arg(args, 1))?;
+    let value = vm.to_string(&arg(args, 2))?;
+    let Ok(mut url) = Url::parse(&href) else {
+        return Ok(Value::Null);
+    };
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "rang choisi par le prélude, entre 1 et 9"
+    )]
+    let rank = rank as u8;
+    // Les mutateurs faillibles signalent un refus, sans autre effet.
+    let _refused = match rank {
+        1 => quirks::set_protocol(&mut url, &value),
+        2 => quirks::set_username(&mut url, &value),
+        3 => quirks::set_password(&mut url, &value),
+        4 => quirks::set_host(&mut url, &value),
+        5 => quirks::set_hostname(&mut url, &value),
+        6 => quirks::set_port(&mut url, &value),
+        7 => {
+            quirks::set_pathname(&mut url, &value);
+            Ok(())
+        }
+        8 => {
+            quirks::set_search(&mut url, &value);
+            Ok(())
+        }
+        9 => {
+            quirks::set_hash(&mut url, &value);
+            Ok(())
+        }
+        _ => Ok(()),
+    };
+    Ok(url_parts(vm, &url))
 }
 
 // ---- Couverture du DOM -----------------------------------------------------------
@@ -2055,14 +2906,20 @@ pub(crate) fn dom_coverage_report() -> String {
            const el = document.getElementById('p'); let ev = null;
            el.addEventListener('click', e => {{ ev = e; }}); el.click();
            const kind = n => n && n.nodeType;
+           const xml = document.implementation.createDocument(null, 'racine');
            const samples = {{
-             Event: ev, EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
+             Event: ev, CustomEvent: new CustomEvent('x'), EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
              DocumentType: kind(document.firstChild) === 10 ? document.firstChild : null,
-             DocumentFragment: null,
+             DocumentFragment: document.createDocumentFragment(), Storage: localStorage,
              CharacterData: el.firstChild, Text: el.firstChild,
              Comment: kind(el.lastChild) === 8 ? el.lastChild : null,
              DOMTokenList: el.classList, CSSStyleDeclaration: el.style,
              NodeList: document.querySelectorAll('p'), HTMLCollection: el.children,
+             Range: document.createRange(), AbstractRange: document.createRange(),
+             DOMImplementation: document.implementation, XMLDocument: xml,
+             ProcessingInstruction: xml.createProcessingInstruction('cible', 'x'),
+             CDATASection: xml.createCDATASection('x'),
+             NamedNodeMap: el.attributes, Attr: el.getAttributeNode('id'),
            }};
            let out = '';
            for (const [iface, nature, name, isStatic] of [{members}]) {{
@@ -2147,7 +3004,7 @@ pub(crate) fn dom_coverage_report() -> String {
          que les scripts trouvent réellement, mesurés en interrogeant une page d'essai. \
          Généré par `cargo run -p oxyde -- --dom-coverage`.\n\n\
          La mesure dit qu'un membre existe, pas qu'il se comporte comme le standard l'exige : \
-         c'est le rôle des Web Platform Tests, pas encore branchés. Les interfaces que l'IDL \
+         c'est le rôle des Web Platform Tests (voir `wpt.md`). Les interfaces que l'IDL \
          d'Oxyde ne décrit pas encore (éléments HTML particuliers, `Window`, observateurs, plages…) \
          ne sont pas comptées.\n\n\
          **Total : {done} membres disponibles sur {total} ({rate:.1} %).**\n\n\

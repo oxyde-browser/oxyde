@@ -9,17 +9,22 @@
 //! « 100 % Rust » de la maquette ; elle doit être réévaluée avant toute
 //! diffusion du navigateur.
 //!
-//! LIMITES CONNUES : pas de HTTP/3, pas de cache, pas de cookies, pas de
+//! LIMITES CONNUES : pas de HTTP/3, pas de cache, cookies en mémoire
+//! seulement (voir [`cookies`]), pas de
 //! réutilisation des connexions, pas de décompression (`Accept-Encoding:
-//! identity`), résolution DNS par le système, pas de proxy.
+//! identity`), résolution DNS par le système, pas de proxy ; le corps d'une
+//! requête est envoyé d'un bloc.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+pub mod cookies;
+
 use bytes::Bytes;
-use http_body_util::{BodyExt, Empty};
+pub use cookies::{Access, CookieJar, same_site};
+use http_body_util::{BodyExt, Full};
 use hyper::header::{self, HeaderValue};
-use hyper::{Request, StatusCode};
+use hyper::{Method, Request, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, RootCertStore};
@@ -157,10 +162,45 @@ pub struct Response {
     pub body: Vec<u8>,
 }
 
+/// Requête HTTP à envoyer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    /// Méthode (`GET`, `POST`…).
+    pub method: String,
+    /// Adresse, en `http` ou `https`.
+    pub url: Url,
+    /// En-têtes ajoutés à ceux du client (nom, valeur). `Host`,
+    /// `Content-Length` et `Accept-Encoding` sont toujours fixés par le client.
+    pub headers: Vec<(String, String)>,
+    /// Corps ; vide s'il n'y en a pas.
+    pub body: Vec<u8>,
+    /// Document qui émet la requête ; `None` pour une navigation demandée
+    /// par l'utilisateur. Décide des cookies joints : une requête vers un
+    /// autre site que celui du document ne reçoit que les cookies
+    /// `SameSite=None`.
+    pub initiator: Option<Url>,
+}
+
+impl HttpRequest {
+    /// Requête `GET` sans en-tête particulier.
+    #[must_use]
+    pub fn get(url: &Url) -> Self {
+        Self {
+            method: "GET".to_owned(),
+            url: url.clone(),
+            headers: Vec::new(),
+            body: Vec::new(),
+            initiator: None,
+        }
+    }
+}
+
 /// Client HTTP bloquant, partageable entre fils d'exécution.
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     tls: TlsConnector,
+    /// Cookies reçus, joints aux requêtes suivantes.
+    jar: std::sync::Mutex<CookieJar>,
 }
 
 impl std::fmt::Debug for Client {
@@ -194,6 +234,38 @@ impl Client {
         Ok(Self {
             runtime,
             tls: TlsConnector::from(Arc::new(config)),
+            jar: std::sync::Mutex::new(CookieJar::new()),
+        })
+    }
+
+    /// Texte de `document.cookie` pour un document d'adresse `url` : les
+    /// cookies qu'un script a le droit de lire.
+    #[must_use]
+    pub fn cookies_for_script(&self, url: &Url) -> String {
+        self.jar
+            .lock()
+            .ok()
+            .and_then(|mut jar| jar.header_for(url, Access::Script, false))
+            .unwrap_or_default()
+    }
+
+    /// Enregistre le cookie qu'un script du document `url` écrit dans
+    /// `document.cookie`. Renvoie `false` s'il est refusé.
+    pub fn set_cookie_from_script(&self, url: &Url, text: &str) -> bool {
+        self.jar
+            .lock()
+            .is_ok_and(|mut jar| jar.store(url, text, Access::Script, false))
+    }
+
+    /// Récupère `url` par une requête GET émise par le document `initiator`
+    /// (une feuille de style, une image, un script de la page).
+    ///
+    /// # Errors
+    /// Voir [`Client::send`].
+    pub fn get_from(&self, url: &Url, initiator: &Url) -> Result<Response, NetError> {
+        self.send(&HttpRequest {
+            initiator: Some(initiator.clone()),
+            ..HttpRequest::get(url)
         })
     }
 
@@ -205,22 +277,52 @@ impl Client {
     /// Voir [`NetError`]. Un code d'état 4xx ou 5xx n'est pas une erreur : la
     /// réponse est renvoyée telle quelle.
     pub fn get(&self, url: &Url) -> Result<Response, NetError> {
+        self.send(&HttpRequest::get(url))
+    }
+
+    /// Envoie `request` et suit les redirections. Après une redirection 303,
+    /// ou 301 et 302 pour un `POST`, la suite se fait en `GET` sans corps ;
+    /// 307 et 308 gardent la méthode et le corps.
+    ///
+    /// Bloque le fil appelant ; à ne pas appeler depuis le fil de l'interface.
+    ///
+    /// # Errors
+    /// Voir [`NetError`]. Un code d'état 4xx ou 5xx n'est pas une erreur.
+    pub fn send(&self, request: &HttpRequest) -> Result<Response, NetError> {
         self.runtime.block_on(async {
-            let mut current = url.clone();
+            let mut current = request.clone();
             for _ in 0..=MAX_REDIRECTS {
-                let step = tokio::time::timeout(REQUEST_TIMEOUT, self.get_once(&current))
+                let step = tokio::time::timeout(REQUEST_TIMEOUT, self.send_once(&current))
                     .await
                     .map_err(|_| NetError::Timeout)??;
                 match step {
                     Step::Done(response) => return Ok(response),
-                    Step::Redirect(next) => {
+                    Step::Redirect(next, status) => {
                         // Jamais de rétrogradation de https vers http.
-                        if current.scheme() == "https" && next.scheme() != "https" {
+                        if current.url.scheme() == "https" && next.scheme() != "https" {
                             return Err(NetError::InvalidRequest(format!(
                                 "redirection non sécurisée vers {next}"
                             )));
                         }
-                        current = next;
+                        let to_get = status == StatusCode::SEE_OTHER
+                            || (matches!(
+                                status,
+                                StatusCode::MOVED_PERMANENTLY | StatusCode::FOUND
+                            ) && current.method == "POST");
+                        if to_get {
+                            current.method = "GET".to_owned();
+                            current.body.clear();
+                            current.headers.retain(|(name, _)| {
+                                !name.to_ascii_lowercase().starts_with("content-")
+                            });
+                        }
+                        // Un jeton d'accès ne suit pas vers une autre origine.
+                        if next.origin() != current.url.origin() {
+                            current
+                                .headers
+                                .retain(|(name, _)| !name.eq_ignore_ascii_case("authorization"));
+                        }
+                        current.url = next;
                     }
                 }
             }
@@ -228,7 +330,10 @@ impl Client {
         })
     }
 
-    async fn get_once(&self, url: &Url) -> Result<Step, NetError> {
+    async fn send_once(&self, request: &HttpRequest) -> Result<Step, NetError> {
+        let url = &request.url;
+        let method = Method::from_bytes(request.method.as_bytes())
+            .map_err(|e| NetError::InvalidRequest(e.to_string()))?;
         let secure = match url.scheme() {
             "https" => true,
             "http" => false,
@@ -263,18 +368,56 @@ impl Client {
             Some(q) => format!("{}?{q}", url.path()),
             None => url.path().to_owned(),
         };
+        // En-têtes fixés par le client : l'appelant ne peut pas les remplacer.
+        let reserved = |name: &str| {
+            ["host", "content-length", "accept-encoding", "connection"]
+                .iter()
+                .any(|fixed| name.eq_ignore_ascii_case(fixed))
+        };
+        let has = |wanted: &str| {
+            request
+                .headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case(wanted))
+        };
+        // Cookies du pot, sauf si l'appelant a fixé l'en-tête lui-même.
+        let cross_site = request
+            .initiator
+            .as_ref()
+            .is_some_and(|initiator| !same_site(initiator, url));
+        let cookie = if has("cookie") {
+            None
+        } else {
+            self.jar
+                .lock()
+                .ok()
+                .and_then(|mut jar| jar.header_for(url, Access::Http, cross_site))
+        };
         let build = |target: &str| {
-            Request::builder()
-                .method("GET")
+            let mut builder = Request::builder()
+                .method(method.clone())
                 .uri(target)
                 .header(header::HOST, &authority)
-                .header(header::USER_AGENT, USER_AGENT)
-                .header(
+                .header(header::ACCEPT_ENCODING, "identity");
+            if !has("user-agent") {
+                builder = builder.header(header::USER_AGENT, USER_AGENT);
+            }
+            if !has("accept") {
+                builder = builder.header(
                     header::ACCEPT,
                     "text/html,application/xhtml+xml,text/css,*/*;q=0.8",
-                )
-                .header(header::ACCEPT_ENCODING, "identity")
-                .body(Empty::<Bytes>::new())
+                );
+            }
+            for (name, value) in &request.headers {
+                if !reserved(name) {
+                    builder = builder.header(name.as_str(), value.as_str());
+                }
+            }
+            if let Some(cookie) = &cookie {
+                builder = builder.header(header::COOKIE, cookie.as_str());
+            }
+            builder
+                .body(Full::new(Bytes::from(request.body.clone())))
                 .map_err(|e| NetError::InvalidRequest(e.to_string()))
         };
 
@@ -312,6 +455,14 @@ impl Client {
         };
 
         let status = response.status();
+        // Les cookies posés par la réponse, y compris celle d'une redirection.
+        if let Ok(mut jar) = self.jar.lock() {
+            for value in response.headers().get_all(header::SET_COOKIE) {
+                if let Ok(text) = value.to_str() {
+                    jar.store(url, text, Access::Http, cross_site);
+                }
+            }
+        }
         if matches!(
             status,
             StatusCode::MOVED_PERMANENTLY
@@ -330,7 +481,7 @@ impl Client {
             if !matches!(next.scheme(), "http" | "https") {
                 return Err(NetError::UnsupportedScheme(next.scheme().to_owned()));
             }
-            return Ok(Step::Redirect(next));
+            return Ok(Step::Redirect(next, status));
         }
 
         let content_type = response
@@ -341,6 +492,8 @@ impl Client {
         let headers = response
             .headers()
             .iter()
+            // `Set-Cookie` s'arrête ici : il ne remonte ni aux pages ni aux scripts.
+            .filter(|(name, _)| *name != header::SET_COOKIE)
             .filter_map(|(name, value)| {
                 Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
             })
@@ -367,7 +520,8 @@ impl Client {
 
 enum Step {
     Done(Response),
-    Redirect(Url),
+    /// Adresse suivante et code d'état de la redirection.
+    Redirect(Url, StatusCode),
 }
 
 #[cfg(test)]
@@ -412,6 +566,84 @@ mod tests {
             Some("text/html; charset=utf-8")
         );
         assert_eq!(response.body, b"bonjour");
+    }
+
+    /// Serveur local qui renvoie, dans le corps, la première ligne de la
+    /// requête, ses en-têtes `x-essai` et `content-type`, puis son corps.
+    fn echo(count: usize) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("écoute locale");
+        let port = listener.local_addr().expect("adresse locale").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(count) {
+                let Ok(mut stream) = stream else { continue };
+                let mut buffer = [0u8; 4096];
+                let n = stream.read(&mut buffer).unwrap_or(0);
+                let request = String::from_utf8_lossy(&buffer[..n]).into_owned();
+                let (head, body) = request.split_once("\r\n\r\n").unwrap_or((&request, ""));
+                let first = head.lines().next().unwrap_or("");
+                let reply = if first.starts_with("POST /redirige") {
+                    "HTTP/1.1 303 See Other\r\nLocation: /suite\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+                } else {
+                    let kept: Vec<&str> = head
+                        .lines()
+                        .filter(|line| {
+                            let lower = line.to_ascii_lowercase();
+                            lower.starts_with("x-essai") || lower.starts_with("content-type")
+                        })
+                        .collect();
+                    let text = format!("{first}|{}|{body}", kept.join(";"));
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+                        text.len()
+                    )
+                };
+                let _ = stream.write_all(reply.as_bytes());
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn post_sends_method_headers_and_body() {
+        let port = echo(1);
+        let client = Client::new().expect("client");
+        let request = HttpRequest {
+            method: "POST".to_owned(),
+            url: Url::parse(&format!("http://127.0.0.1:{port}/depot")).expect("url"),
+            headers: vec![
+                ("X-Essai".to_owned(), "oui".to_owned()),
+                ("Content-Type".to_owned(), "text/plain".to_owned()),
+                ("Host".to_owned(), "ailleurs.test".to_owned()),
+            ],
+            body: b"bonjour".to_vec(),
+            initiator: None,
+        };
+        let response = client.send(&request).expect("réponse");
+        let text = String::from_utf8_lossy(&response.body).into_owned();
+        assert!(text.starts_with("POST /depot HTTP/1.1|"), "{text}");
+        assert!(text.to_ascii_lowercase().contains("x-essai: oui"), "{text}");
+        assert!(
+            text.to_ascii_lowercase()
+                .contains("content-type: text/plain"),
+            "{text}"
+        );
+        assert!(text.ends_with("|bonjour"), "{text}");
+    }
+
+    #[test]
+    fn see_other_turns_post_into_get() {
+        let port = echo(2);
+        let client = Client::new().expect("client");
+        let request = HttpRequest {
+            method: "POST".to_owned(),
+            url: Url::parse(&format!("http://127.0.0.1:{port}/redirige")).expect("url"),
+            headers: vec![("Content-Type".to_owned(), "text/plain".to_owned())],
+            body: b"corps".to_vec(),
+            initiator: None,
+        };
+        let response = client.send(&request).expect("réponse");
+        let text = String::from_utf8_lossy(&response.body).into_owned();
+        assert_eq!(text, "GET /suite HTTP/1.1||");
     }
 
     #[test]

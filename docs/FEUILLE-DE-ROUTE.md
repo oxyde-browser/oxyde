@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **40 660 tests de test262 sur 48 795 (83,3 %)** ; il en reste 8 135.
+- `oxyde_js` réussit **40 768 tests de test262 sur 48 795 (83,5 %)** ; il en reste 8 027.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -20,7 +20,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
-| Royaumes (`$262.createRealm`) | — | 141 | à faire |
+| Royaumes (`$262.createRealm`) | — | 33 | fait pour l'essentiel (108 tests gagnés) |
 
 Ce qui reste dans A, B et C tient à quelques limites de fond :
 
@@ -130,13 +130,49 @@ Le plan d'origine reste la référence. Ce qui suit le précise à la lumière d
 ### Finir le jalon 4 côté web
 
 Le moteur n'est qu'une moitié du jalon ; l'autre est ce que les pages peuvent en faire.
+Branche `jalon-4-web`, empilée sur `test262-conformite`.
 
-- **DOM** : 125 membres disponibles sur 283 décrits par l'IDL d'Oxyde (44,2 %), et l'IDL ne
-  décrit pas encore `Window`, les éléments HTML particuliers, les observateurs ni les plages.
-- **Manquent pour les sites réels** : `XMLHttpRequest`, les formulaires, `fetch` autre que
-  `GET`, les événements clavier et de saisie, `localStorage`, `history`, `location` complet.
-- **Web Platform Tests** : écrire le lanceur (il n'existe pas encore) pour mesurer le DOM comme
-  test262 mesure le langage. Sans cette mesure, « ça marche » reste une impression.
+Fait :
+
+- **DOM** : 241 membres disponibles sur 291 décrits par l'IDL d'Oxyde (82,8 %) ; événements
+  conformes (`Event`, `CustomEvent`, capture et bouillonnement, `dispatchEvent`),
+  `MutationObserver`, fragments de document, collections, `dataset`, une interface par balise
+  (`HTMLInputElement`, `HTMLAnchorElement`…).
+- **Réseau des pages** : `fetch` avec méthode, en-têtes et corps sous contrôle CORS
+  (pré-vérification comprise), `XMLHttpRequest`, `URL`, `URLSearchParams`, `Headers`.
+- **Navigation** : `location` complet, `history` (`pushState`, `popstate`), soumission des
+  formulaires en GET et en POST.
+- **Divers** : `localStorage`, événements clavier, `AbortController`, `TextEncoder`,
+  `structuredClone`, `matchMedia`, `FormData`.
+
+Reste :
+
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 282 fichiers de test entièrement réussis sur 693 (40,7 %).
+  La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
+  documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
+  `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
+  les écouteurs passifs, l'accès nommé sur `window`, `moveBefore`, puis les cadres. Restent,
+  par gain décroissant : un analyseur XML (documents XML des cadres, `DOMParser`), les tests
+  pilotés par WebDriver (`testdriver.js`), `Observable`, `customElements`, puis `url/` et
+  `encoding/`.
+- **Cadres (`<iframe>`)** : chaque cadre a son royaume JavaScript (objet global et
+  interfaces du DOM à lui) et son document, dans la même arène que la page ;
+  `contentWindow`, `contentDocument`, `parent`, `top`, `frameElement`, chargement de `src`
+  et de `srcdoc`, gestionnaires en attribut (`onload="…"`). Limites : un cadre n'est pas
+  dessiné (jalon 6) ; faute d'isolation entre processus (jalon 5), seul un cadre de même
+  origine que la page est chargé ; dans le navigateur, seuls les cadres présents dans le
+  HTML reçu sont chargés, pas ceux qu'un script crée ensuite.
+- **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
+  `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
+  `ResizeObserver`.
+- **Stockage et réseau** : faits — `Blob`, `File`, `FileReader`, `Request` et `Response`
+  constructibles ; cookies (pot RFC 6265 dans `oxyde_net`, `Secure`, `HttpOnly`,
+  `SameSite`, préfixes `__Host-` et `__Secure-`, pas de cookies tiers implicites,
+  `document.cookie`). Restent : l'écriture du pot et de `localStorage` sur disque (jalon 7,
+  avec l'historique et les favoris) et la liste des suffixes publics.
+- **Royaumes** : faits dans `oxyde_js` (108 tests de test262 gagnés) et utilisés par les
+  cadres ; restent `ShadowRealm` et les quelques tests qui lisent le royaume d'une fonction
+  liée ou d'un `Proxy`.
 
 ### Jalon 5 — Multi-processus
 
@@ -189,5 +225,5 @@ Le point 3 inverse l'ordre du plan d'origine (5 puis 6) : c'est une proposition,
 - Un fil du pilote graphique AMD occupe un cœur au repos après quelques images ; cause non élucidée.
 - Les méthodes de `Array.prototype` qui modifient le tableau directement ignorent une longueur figée.
 - Un module avec `await` de premier niveau bloque aussi ses modules frères.
-- La branche `test262-conformite` n'a pas de PR, et repose sur un commit de `jalon-4-javascript`
-  qui n'est pas dans `main`.
+- Les branches `test262-conformite` (PR n° 3) et `jalon-4-web` (PR n° 4, empilée sur la
+  précédente) attendent leur relecture.

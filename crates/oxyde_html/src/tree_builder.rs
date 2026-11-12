@@ -405,6 +405,8 @@ impl TreeBuilder {
                     matches!(n, "mi" | "mo" | "mn" | "ms" | "mtext" | "annotation-xml")
                 }
                 Namespace::Svg => matches!(n, "foreignObject" | "desc" | "title"),
+                // L'analyseur HTML ne crée pas d'élément dans ces espaces.
+                Namespace::None | Namespace::Xml | Namespace::Xmlns | Namespace::Other(_) => false,
             },
         }
     }
@@ -812,7 +814,11 @@ impl TreeBuilder {
                             || v.eq_ignore_ascii_case("application/xhtml+xml")
                     })
             }
-            Namespace::Html => false,
+            Namespace::Html
+            | Namespace::None
+            | Namespace::Xml
+            | Namespace::Xmlns
+            | Namespace::Other(_) => false,
         }
     }
 
@@ -1993,10 +1999,7 @@ fn quirks_mode(
 /// Rend un attribut « nom=valeur » ; utile aux tests.
 #[cfg(test)]
 fn attr(name: &str, value: &str) -> Attribute {
-    Attribute {
-        name: name.into(),
-        value: value.into(),
-    }
+    Attribute::new(name, value)
 }
 
 #[cfg(not(test))]

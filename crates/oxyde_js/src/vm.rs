@@ -139,6 +139,8 @@ struct Frame {
     generator: Option<ObjId>,
     /// Portée de premier niveau du code exécuté (`None` : objet global).
     scope: Option<ObjId>,
+    /// Royaume à rétablir quand ce cadre quitte la pile.
+    prev_realm: u16,
 }
 
 /// Classes d'objets de l'hôte et crochets d'accès à leurs propriétés.
@@ -148,6 +150,13 @@ pub struct HostHooks {
     pub get: fn(&mut Vm, u32, u64, &str) -> Option<JsResult>,
     /// Écriture d'une propriété d'un objet hôte ; `None` : propriété ordinaire.
     pub set: fn(&mut Vm, u32, u64, &str, &Value) -> Option<JsResult<()>>,
+    /// Clés propres qu'un objet hôte ajoute aux siennes (les rangs d'une
+    /// collection, par exemple), dans l'ordre.
+    pub keys: fn(&mut Vm, u32, u64) -> Vec<String>,
+    /// Valeur d'une variable globale que ni les scripts ni l'objet global ne
+    /// définissent (accès nommé aux éléments d'une page) ; `None` : la
+    /// variable n'existe pas.
+    pub global: fn(&mut Vm, &str) -> Option<Value>,
 }
 
 /// Machine virtuelle JavaScript : un tas, un objet global, une pile.
@@ -209,6 +218,8 @@ pub struct Vm {
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
+    /// Clés des emplacements internes posés par l'hôte, par nom.
+    slot_keys: std::collections::HashMap<&'static str, Symbol>,
     /// Le constructeur `Promise` d'origine : ses promesses sont créées et
     /// réglées directement, sans passer par un exécuteur.
     pub(crate) promise_ctor: Option<ObjId>,
@@ -233,6 +244,128 @@ pub struct Vm {
     pub(crate) rng: u64,
     /// Messages de `console.*` en attente de lecture par l'hôte.
     pub(crate) console: Vec<crate::builtins::ConsoleMessage>,
+    /// Royaumes de la machine, par numéro ; l'entrée du royaume courant est
+    /// vide, son état étant dans les champs ci-dessus.
+    realms: Vec<Option<RealmState>>,
+    /// Numéro du royaume courant.
+    realm: u16,
+}
+
+/// Objets de base d'un royaume neuf : ses intrinsèques, son objet global
+/// et son environnement lexical global.
+fn fresh_realm_objects(heap: &mut Heap) -> (Intrinsics, ObjId, ObjId) {
+    let object_proto = heap.alloc(Object::new(None, Kind::Ordinary));
+    let proto = |heap: &mut Heap, kind: Kind| heap.alloc(Object::new(Some(object_proto), kind));
+    let function_proto = proto(heap, Kind::Ordinary);
+    let intrinsics = Intrinsics {
+        object_proto,
+        function_proto,
+        array_proto: proto(heap, Kind::Array(Vec::new())),
+        string_proto: proto(heap, Kind::Primitive(Value::string(""))),
+        number_proto: proto(heap, Kind::Primitive(Value::Number(0.0))),
+        boolean_proto: proto(heap, Kind::Primitive(Value::Bool(false))),
+        error_proto: proto(heap, Kind::Ordinary),
+        map_proto: proto(heap, Kind::Ordinary),
+        set_proto: proto(heap, Kind::Ordinary),
+        symbol_proto: proto(heap, Kind::Ordinary),
+        iterator_proto: proto(heap, Kind::Ordinary),
+        iterator_root: proto(heap, Kind::Ordinary),
+        iterator_helper_proto: proto(heap, Kind::Ordinary),
+        wrap_iterator_proto: proto(heap, Kind::Ordinary),
+        regexp_string_iterator_proto: proto(heap, Kind::Ordinary),
+        iterator_ctor: object_proto,
+        generator_proto: proto(heap, Kind::Ordinary),
+        generator_function_proto: proto(heap, Kind::Ordinary),
+        async_function_proto: proto(heap, Kind::Ordinary),
+        async_generator_function_proto: proto(heap, Kind::Ordinary),
+        promise_proto: proto(heap, Kind::Ordinary),
+        regexp_proto: proto(heap, Kind::Ordinary),
+        async_generator_proto: proto(heap, Kind::Ordinary),
+        array_buffer_proto: proto(heap, Kind::Ordinary),
+        data_view_proto: proto(heap, Kind::Ordinary),
+        bigint_proto: proto(heap, Kind::Ordinary),
+        date_proto: proto(heap, Kind::Ordinary),
+    };
+    let global = proto(heap, Kind::Ordinary);
+    let global_lexicals = heap.alloc(Object::new(None, Kind::Ordinary));
+    (intrinsics, global, global_lexicals)
+}
+
+/// État d'un royaume (ECMA-262 §9.3) qui n'est pas le royaume courant : son
+/// objet global et ses intrinsèques. L'état du royaume courant vit dans les
+/// champs de la machine ; changer de royaume les échange.
+pub(crate) struct RealmState {
+    global: ObjId,
+    intrinsics: Intrinsics,
+    error_protos: IndexMap<&'static str, ObjId>,
+    regexp_originals: Vec<(JsStr, ObjId)>,
+    regexp_species: Option<ObjId>,
+    global_lexicals: ObjId,
+    global_vars: std::collections::HashSet<JsStr>,
+    typed_protos: Vec<ObjId>,
+    iteration_intrinsics: Option<(ObjId, ObjId)>,
+    has_instance_function: Option<ObjId>,
+    promise_ctor: Option<ObjId>,
+    array_ctor: Option<ObjId>,
+    eval_function: Option<ObjId>,
+}
+
+impl RealmState {
+    /// Ajoute à `out` les objets que ce royaume garde en vie.
+    fn trace(&self, out: &mut Vec<Value>) {
+        let intr = self.intrinsics;
+        let fixed = [
+            self.global,
+            self.global_lexicals,
+            intr.object_proto,
+            intr.function_proto,
+            intr.array_proto,
+            intr.string_proto,
+            intr.number_proto,
+            intr.boolean_proto,
+            intr.error_proto,
+            intr.map_proto,
+            intr.set_proto,
+            intr.symbol_proto,
+            intr.iterator_proto,
+            intr.iterator_root,
+            intr.iterator_helper_proto,
+            intr.wrap_iterator_proto,
+            intr.regexp_string_iterator_proto,
+            intr.iterator_ctor,
+            intr.generator_proto,
+            intr.generator_function_proto,
+            intr.async_function_proto,
+            intr.async_generator_function_proto,
+            intr.promise_proto,
+            intr.regexp_proto,
+            intr.async_generator_proto,
+            intr.array_buffer_proto,
+            intr.data_view_proto,
+            intr.bigint_proto,
+            intr.date_proto,
+        ];
+        out.extend(fixed.into_iter().map(Value::Object));
+        out.extend(self.error_protos.values().map(|id| Value::Object(*id)));
+        out.extend(self.typed_protos.iter().map(|id| Value::Object(*id)));
+        out.extend(
+            self.regexp_originals
+                .iter()
+                .map(|(_, id)| Value::Object(*id)),
+        );
+        let singles = [
+            self.regexp_species,
+            self.has_instance_function,
+            self.promise_ctor,
+            self.array_ctor,
+            self.eval_function,
+        ];
+        out.extend(singles.into_iter().flatten().map(Value::Object));
+        if let Some((iterator, next)) = self.iteration_intrinsics {
+            out.push(Value::Object(iterator));
+            out.push(Value::Object(next));
+        }
+    }
 }
 
 /// Graine du générateur pseudo-aléatoire : tirée de l'horloge, jamais nulle
@@ -269,40 +402,7 @@ impl Vm {
     #[must_use]
     pub fn new() -> Self {
         let mut heap = Heap::new();
-        let object_proto = heap.alloc(Object::new(None, Kind::Ordinary));
-        let proto = |heap: &mut Heap, kind: Kind| heap.alloc(Object::new(Some(object_proto), kind));
-        let function_proto = proto(&mut heap, Kind::Ordinary);
-        let intrinsics = Intrinsics {
-            object_proto,
-            function_proto,
-            array_proto: proto(&mut heap, Kind::Array(Vec::new())),
-            string_proto: proto(&mut heap, Kind::Primitive(Value::string(""))),
-            number_proto: proto(&mut heap, Kind::Primitive(Value::Number(0.0))),
-            boolean_proto: proto(&mut heap, Kind::Primitive(Value::Bool(false))),
-            error_proto: proto(&mut heap, Kind::Ordinary),
-            map_proto: proto(&mut heap, Kind::Ordinary),
-            set_proto: proto(&mut heap, Kind::Ordinary),
-            symbol_proto: proto(&mut heap, Kind::Ordinary),
-            iterator_proto: proto(&mut heap, Kind::Ordinary),
-            iterator_root: proto(&mut heap, Kind::Ordinary),
-            iterator_helper_proto: proto(&mut heap, Kind::Ordinary),
-            wrap_iterator_proto: proto(&mut heap, Kind::Ordinary),
-            regexp_string_iterator_proto: proto(&mut heap, Kind::Ordinary),
-            iterator_ctor: object_proto,
-            generator_proto: proto(&mut heap, Kind::Ordinary),
-            generator_function_proto: proto(&mut heap, Kind::Ordinary),
-            async_function_proto: proto(&mut heap, Kind::Ordinary),
-            async_generator_function_proto: proto(&mut heap, Kind::Ordinary),
-            promise_proto: proto(&mut heap, Kind::Ordinary),
-            regexp_proto: proto(&mut heap, Kind::Ordinary),
-            async_generator_proto: proto(&mut heap, Kind::Ordinary),
-            array_buffer_proto: proto(&mut heap, Kind::Ordinary),
-            data_view_proto: proto(&mut heap, Kind::Ordinary),
-            bigint_proto: proto(&mut heap, Kind::Ordinary),
-            date_proto: proto(&mut heap, Kind::Ordinary),
-        };
-        let global = proto(&mut heap, Kind::Ordinary);
-        let global_lexicals = heap.alloc(Object::new(None, Kind::Ordinary));
+        let (intrinsics, global, global_lexicals) = fresh_realm_objects(&mut heap);
         let known = |id: u64, name: &str| Symbol::new(id, Some(Arc::from(name)));
         let well_known = WellKnown {
             iterator: known(1, "Symbol.iterator"),
@@ -349,6 +449,7 @@ impl Vm {
             constructing: false,
             native_new_target: Value::Undefined,
             has_instance_function: None,
+            slot_keys: std::collections::HashMap::new(),
             promise_ctor: None,
             self_hosted: Vec::new(),
             array_ctor: None,
@@ -360,6 +461,8 @@ impl Vm {
             interrupted: false,
             rng: seed(),
             console: Vec::new(),
+            realms: vec![None],
+            realm: 0,
         };
         crate::builtins::install(&mut vm);
         vm
@@ -424,6 +527,106 @@ impl Vm {
     /// Installe les crochets d'accès aux objets de l'hôte.
     pub fn set_host_hooks(&mut self, hooks: HostHooks) {
         self.host_hooks = Some(hooks);
+    }
+
+    // ---- Royaumes -----------------------------------------------------------
+
+    /// Numéro du royaume courant.
+    #[must_use]
+    pub fn realm(&self) -> usize {
+        usize::from(self.realm)
+    }
+
+    /// Royaume dans lequel `value` a été créé (0 pour une valeur primitive).
+    #[must_use]
+    pub fn realm_of(&self, value: &Value) -> usize {
+        value
+            .as_object()
+            .map_or(0, |id| usize::from(self.heap.get(id).realm))
+    }
+
+    /// Crée un royaume : un objet global neuf et ses propres intrinsèques
+    /// (`Object`, `Array`, `Function`…). Le royaume courant ne change pas.
+    /// Renvoie `None` si la machine en a déjà trop.
+    pub fn create_realm(&mut self) -> Option<usize> {
+        let id = u16::try_from(self.realms.len()).ok()?;
+        let previous = self.realm;
+        self.heap.realm = id;
+        let (intrinsics, global, global_lexicals) = fresh_realm_objects(&mut self.heap);
+        self.heap.realm = previous;
+        self.realms.push(Some(RealmState {
+            global,
+            intrinsics,
+            error_protos: IndexMap::new(),
+            regexp_originals: Vec::new(),
+            regexp_species: None,
+            global_lexicals,
+            global_vars: std::collections::HashSet::new(),
+            typed_protos: Vec::new(),
+            iteration_intrinsics: None,
+            has_instance_function: None,
+            promise_ctor: None,
+            array_ctor: None,
+            eval_function: None,
+        }));
+        self.switch_realm(id);
+        crate::builtins::install(self);
+        self.switch_realm(previous);
+        Some(usize::from(id))
+    }
+
+    /// Fait du royaume `id` le royaume courant : le code évalué ensuite voit
+    /// son objet global. Sans effet si `id` n'existe pas. Un appel de
+    /// fonction passe de lui-même dans le royaume de la fonction, le temps
+    /// de l'appel.
+    pub fn set_realm(&mut self, id: usize) {
+        if let Ok(id) = u16::try_from(id) {
+            self.switch_realm(id);
+        }
+    }
+
+    /// Objet global du royaume `id`.
+    #[must_use]
+    pub fn realm_global(&self, id: usize) -> Option<ObjId> {
+        if id == usize::from(self.realm) {
+            return Some(self.global);
+        }
+        self.realms.get(id)?.as_ref().map(|state| state.global)
+    }
+
+    /// Échange l'état du royaume courant avec celui du royaume `id`.
+    fn switch_realm(&mut self, id: u16) {
+        if id == self.realm {
+            return;
+        }
+        let Some(mut state) = self.realms.get_mut(usize::from(id)).and_then(Option::take) else {
+            return;
+        };
+        std::mem::swap(&mut self.global, &mut state.global);
+        std::mem::swap(&mut self.intrinsics, &mut state.intrinsics);
+        std::mem::swap(&mut self.error_protos, &mut state.error_protos);
+        std::mem::swap(&mut self.regexp_originals, &mut state.regexp_originals);
+        std::mem::swap(&mut self.regexp_species, &mut state.regexp_species);
+        std::mem::swap(&mut self.global_lexicals, &mut state.global_lexicals);
+        std::mem::swap(&mut self.global_vars, &mut state.global_vars);
+        std::mem::swap(&mut self.typed_protos, &mut state.typed_protos);
+        std::mem::swap(
+            &mut self.iteration_intrinsics,
+            &mut state.iteration_intrinsics,
+        );
+        std::mem::swap(
+            &mut self.has_instance_function,
+            &mut state.has_instance_function,
+        );
+        std::mem::swap(&mut self.promise_ctor, &mut state.promise_ctor);
+        std::mem::swap(&mut self.array_ctor, &mut state.array_ctor);
+        std::mem::swap(&mut self.eval_function, &mut state.eval_function);
+        // `state` porte maintenant l'état du royaume que l'on quitte.
+        if let Some(slot) = self.realms.get_mut(usize::from(self.realm)) {
+            *slot = Some(state);
+        }
+        self.realm = id;
+        self.heap.realm = id;
     }
 
     /// Nombre d'objets vivants dans le tas.
@@ -493,6 +696,9 @@ impl Vm {
         for module in self.modules.values() {
             module.trace(&mut job_values);
         }
+        for state in self.realms.iter().flatten() {
+            state.trace(&mut job_values);
+        }
         let roots: Vec<Value> = fixed
             .into_iter()
             .map(Value::Object)
@@ -543,6 +749,51 @@ impl Vm {
     /// Nouvelle fonction native.
     pub fn new_function(&mut self, name: &str, arity: u32, func: NativeFn) -> ObjId {
         self.new_native(name, arity, func, false)
+    }
+
+    /// Nouvelle fonction native que `new` peut appeler. L'instance qu'elle
+    /// rend reçoit ensuite le prototype de la classe dérivée, s'il y en a une.
+    pub fn new_constructor(&mut self, name: &str, arity: u32, func: NativeFn) -> ObjId {
+        self.new_native(name, arity, func, true)
+    }
+
+    /// Vrai pendant l'appel d'un constructeur natif par `new`.
+    #[must_use]
+    pub fn is_constructing(&self) -> bool {
+        self.constructing
+    }
+
+    /// Clé de l'emplacement interne `name`, créée à la première demande.
+    fn slot_key(&mut self, name: &'static str) -> Symbol {
+        if let Some(key) = self.slot_keys.get(name) {
+            return key.clone();
+        }
+        let id = self.next_symbol;
+        self.next_symbol = self.next_symbol.saturating_add(1);
+        let key = Symbol::new_private(id, Arc::from(name));
+        self.slot_keys.insert(name, key.clone());
+        key
+    }
+
+    /// Range `value` dans l'emplacement interne `name` de `object` : un état
+    /// que l'hôte attache à un objet et que les scripts ne peuvent ni lire ni
+    /// énumérer.
+    pub fn set_slot(&mut self, object: ObjId, name: &'static str, value: Value) {
+        let key = self.slot_key(name);
+        self.heap
+            .get_mut(object)
+            .symbols
+            .insert(key, Property::hidden(value));
+    }
+
+    /// Valeur de l'emplacement interne `name` de `object`, s'il existe.
+    #[must_use]
+    pub fn slot(&self, object: ObjId, name: &'static str) -> Option<Value> {
+        let key = self.slot_keys.get(name)?;
+        match &self.heap.get(object).symbols.get(key)?.slot {
+            Slot::Data(value) => Some(value.clone()),
+            Slot::Accessor { .. } => None,
+        }
     }
 
     pub(crate) fn new_native(
@@ -804,6 +1055,9 @@ impl Vm {
                 *slot = arg.clone();
             }
         }
+        // La fonction s'exécute dans son royaume.
+        let prev_realm = self.realm;
+        self.switch_realm(self.heap.get(closure).realm);
         self.frames.push(Frame {
             closure,
             proto,
@@ -817,6 +1071,7 @@ impl Vm {
             construct,
             generator: None,
             scope,
+            prev_realm,
         });
         Ok(())
     }
@@ -1118,6 +1373,7 @@ impl Vm {
 
     fn pop_frame(&mut self) -> Option<Frame> {
         let frame = self.frames.pop()?;
+        self.switch_realm(frame.prev_realm);
         self.close_upvalues(frame.base);
         self.stack.truncate(frame.base);
         Some(frame)
@@ -1137,7 +1393,10 @@ impl Vm {
                 let func = *func;
                 self.enter_native()?;
                 let saved = std::mem::replace(&mut self.constructing, false);
+                let caller = self.realm;
+                self.switch_realm(self.heap.get(id).realm);
                 let result = func(self, this, args);
+                self.switch_realm(caller);
                 self.constructing = saved;
                 self.native_depth -= 1;
                 result
@@ -1146,7 +1405,10 @@ impl Vm {
                 let (func, data) = (*func, data.clone());
                 self.enter_native()?;
                 let saved = std::mem::replace(&mut self.constructing, false);
+                let caller = self.realm;
+                self.switch_realm(self.heap.get(id).realm);
                 let result = func(self, &data, this, args);
+                self.switch_realm(caller);
                 self.constructing = saved;
                 self.native_depth -= 1;
                 result
@@ -1229,7 +1491,10 @@ impl Vm {
                 let saved = std::mem::replace(&mut self.constructing, true);
                 let saved_target =
                     std::mem::replace(&mut self.native_new_target, new_target.clone());
+                let caller = self.realm;
+                self.switch_realm(self.heap.get(id).realm);
                 let result = func(self, &Value::Undefined, args);
+                self.switch_realm(caller);
                 self.native_new_target = saved_target;
                 self.constructing = saved;
                 self.native_depth -= 1;
@@ -1441,6 +1706,7 @@ impl Vm {
                 let Some(frame) = self.frames.pop() else {
                     return Ok(None);
                 };
+                self.switch_realm(frame.prev_realm);
                 let base = frame.base;
                 let upvalues: Vec<(usize, UpId)> = self
                     .open_upvalues
@@ -1519,7 +1785,16 @@ impl Vm {
                     return Ok(None);
                 }
                 if !self.has_property(scope, &name) {
-                    return Err(self.error("ReferenceError", &format!("{name} n'est pas défini")));
+                    let named = self
+                        .host_hooks
+                        .and_then(|hooks| (hooks.global)(self, &name));
+                    let Some(value) = named else {
+                        return Err(
+                            self.error("ReferenceError", &format!("{name} n'est pas défini"))
+                        );
+                    };
+                    self.set_reg(dst, value);
+                    return Ok(None);
                 }
                 let value = self.get(&Value::Object(scope), &name)?;
                 self.set_reg(dst, value);
@@ -2758,7 +3033,10 @@ impl Vm {
                     }
                     self.open_upvalues.push((index, id));
                 }
+                let prev_realm = self.realm;
+                self.switch_realm(self.heap.get(saved.closure).realm);
                 self.frames.push(Frame {
+                    prev_realm,
                     closure: saved.closure,
                     proto: saved.proto,
                     pc: saved.pc,

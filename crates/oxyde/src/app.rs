@@ -136,7 +136,8 @@ impl App {
                     tab,
                     url,
                     push_history,
-                } => self.spawn_load(tab, url, push_history),
+                    post,
+                } => self.spawn_load(tab, url, push_history, post),
                 Command::Minimize => {
                     if let Some(window) = &self.window {
                         window.set_minimized(true);
@@ -164,13 +165,19 @@ impl App {
     }
 
     /// Charge `url` sur un fil dédié : l'interface reste réactive.
-    fn spawn_load(&self, tab: u64, url: Url, push_history: bool) {
+    fn spawn_load(
+        &self,
+        tab: u64,
+        url: Url,
+        push_history: bool,
+        post: Option<oxyde_content::FormPost>,
+    ) {
         let proxy = self.proxy.clone();
         let failed_url = url.clone();
         let spawned = std::thread::Builder::new()
             .name("oxyde-chargement".to_owned())
             .spawn(move || {
-                let loaded = Box::new(loader::load(url));
+                let loaded = Box::new(loader::load_with(url, post));
                 // La boucle d'événements peut s'être arrêtée entre-temps : rien à faire alors.
                 let _ = proxy.send_event(UserEvent::Loaded {
                     tab,
@@ -203,7 +210,7 @@ impl App {
             let spawned = std::thread::Builder::new()
                 .name("oxyde-fetch".to_owned())
                 .spawn(move || {
-                    let result = Box::new(loader::fetch_for_script(&request.url));
+                    let result = Box::new(loader::fetch_for_script(&request));
                     // La boucle d'événements peut s'être arrêtée entre-temps.
                     let _ = proxy.send_event(UserEvent::Fetched { tab, id, result });
                 });
@@ -427,6 +434,11 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
+        // Navigations demandées par les scripts depuis le dernier passage.
+        let navigations = self.browser.drain_navigations();
+        if !navigations.is_empty() {
+            self.execute(event_loop, navigations);
+        }
         event_loop.set_control_flow(match self.browser.next_wake() {
             // Jamais plus tôt que dans 4 ms : un minuteur en boucle ne monopolise pas le fil.
             Some(wake) => ControlFlow::WaitUntil(wake.max(now + MIN_TIMER_SLEEP)),
@@ -488,8 +500,35 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
-            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                self.key_pressed(event_loop, &event.logical_key, event.text.as_deref());
+            WindowEvent::KeyboardInput { event, .. } => {
+                let down = event.state == ElementState::Pressed;
+                // La page reçoit d'abord la touche (`keydown`, `keyup`).
+                let key = match &event.logical_key {
+                    Key::Character(text) => text.to_string(),
+                    Key::Named(NamedKey::Space) => " ".to_owned(),
+                    Key::Named(named) => format!("{named:?}"),
+                    _ => "Unidentified".to_owned(),
+                };
+                let code = match event.physical_key {
+                    winit::keyboard::PhysicalKey::Code(code) => format!("{code:?}"),
+                    winit::keyboard::PhysicalKey::Unidentified(_) => String::new(),
+                };
+                let input = oxyde_content::KeyInput {
+                    key: &key,
+                    code: &code,
+                    ctrl: self.modifiers.control_key(),
+                    shift: self.modifiers.shift_key(),
+                    alt: self.modifiers.alt_key(),
+                    meta: self.modifiers.super_key(),
+                    repeat: event.repeat,
+                };
+                let (_prevented, redraw) = self.browser.page_key(down, &input);
+                if redraw {
+                    self.request_redraw();
+                }
+                if down {
+                    self.key_pressed(event_loop, &event.logical_key, event.text.as_deref());
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let Some(window) = self.window.as_ref() else {

@@ -319,6 +319,21 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_get_own_property(id, key);
         }
+        // Objet hôte : une clé que l'hôte annonce est une propriété propre,
+        // en lecture seule, dont il sert la valeur.
+        if let PropertyKey::String(name) = key
+            && let Kind::Host { class, data } = &self.heap.get(id).kind
+        {
+            let (class, data) = (*class, *data);
+            if let Some(hooks) = self.host_hooks
+                && (hooks.keys)(self, class, data)
+                    .iter()
+                    .any(|own| **own == **name)
+                && let Some(value) = (hooks.get)(self, class, data, name)
+            {
+                return Ok(Some(Descriptor::data(value?, false, true, true)));
+            }
+        }
         Ok(self.ordinary_get_own(id, key))
     }
 
@@ -670,6 +685,17 @@ impl Vm {
             if self.has_own_key(obj, key) {
                 return Ok(true);
             }
+            // Objet hôte : une propriété que l'hôte sert existe.
+            if let PropertyKey::String(name) = key
+                && let Kind::Host { class, data } = &self.heap.get(obj).kind
+            {
+                let (class, data) = (*class, *data);
+                if let Some(hooks) = self.host_hooks
+                    && (hooks.get)(self, class, data, name).is_some()
+                {
+                    return Ok(true);
+                }
+            }
             current = self.heap.get(obj).proto;
         }
         Ok(false)
@@ -832,7 +858,20 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_own_keys(id);
         }
-        Ok(self.ordinary_own_keys(id))
+        let own = self.ordinary_own_keys(id);
+        // Objet hôte : les clés que l'hôte ajoute viennent en tête.
+        if let Kind::Host { class, data } = &self.heap.get(id).kind {
+            let (class, data) = (*class, *data);
+            if let Some(hooks) = self.host_hooks {
+                let mut keys: Vec<PropertyKey> = (hooks.keys)(self, class, data)
+                    .iter()
+                    .map(|name| PropertyKey::String(Arc::from(name.as_str())))
+                    .collect();
+                keys.extend(own);
+                return Ok(keys);
+            }
+        }
+        Ok(own)
     }
 
     /// `[[OwnPropertyKeys]]` d'un objet qui n'est pas un `Proxy`.

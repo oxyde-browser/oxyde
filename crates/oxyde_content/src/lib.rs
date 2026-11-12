@@ -10,9 +10,12 @@
 //! leur première image ; les images et feuilles externes ajoutées par un
 //! script ne sont pas chargées. Pour les scripts, voir le module `script`.
 
+mod cors;
 #[path = "generated/dom.rs"]
 mod dom_idl;
 mod script;
+
+pub use cors::preflight_allows;
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -45,6 +48,78 @@ pub struct FetchRequest {
     pub id: u64,
     /// Adresse absolue, toujours en `http` ou `https`.
     pub url: Url,
+    /// Méthode HTTP.
+    pub method: String,
+    /// En-têtes posés par le script (nom, valeur), déjà débarrassés de ceux
+    /// qu'un script n'a pas le droit de fixer.
+    pub headers: Vec<(String, String)>,
+    /// Corps de la requête ; vide s'il n'y en a pas.
+    pub body: Vec<u8>,
+    /// Valeur de l'en-tête `Origin` à envoyer, s'il en faut un.
+    pub origin: Option<String>,
+    /// Adresse du document qui émet la requête (pour le choix des cookies).
+    pub initiator: Url,
+    /// La requête vise une autre origine et sort des requêtes « simples » :
+    /// l'embarqueur doit d'abord envoyer une requête `OPTIONS` munie de
+    /// [`FetchRequest::preflight_headers`] et soumettre la réponse à
+    /// [`preflight_allows`].
+    pub needs_preflight: bool,
+}
+
+/// Touche du clavier, telle que la décrivent les UI Events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyInput<'a> {
+    /// Valeur de la touche (`"a"`, `"Enter"`, `"ArrowLeft"`…).
+    pub key: &'a str,
+    /// Touche physique (`"KeyA"`, `"Enter"`…).
+    pub code: &'a str,
+    /// Touche Ctrl enfoncée.
+    pub ctrl: bool,
+    /// Touche Maj enfoncée.
+    pub shift: bool,
+    /// Touche Alt enfoncée.
+    pub alt: bool,
+    /// Touche Méta (Windows) enfoncée.
+    pub meta: bool,
+    /// Répétition automatique d'une touche maintenue.
+    pub repeat: bool,
+}
+
+/// Corps d'une soumission de formulaire par la méthode `POST`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormPost {
+    /// Valeur de l'en-tête `Content-Type`.
+    pub content_type: String,
+    /// Données du formulaire, déjà encodées.
+    pub body: Vec<u8>,
+}
+
+/// Navigation demandée par un script, à exécuter par l'embarqueur.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Navigation {
+    /// Charger `url` (`location.assign`, `location.href = …`, soumission
+    /// d'un formulaire) ; `replace` : la page prend la place de l'entrée
+    /// courante de l'historique.
+    Load {
+        /// Adresse à charger.
+        url: Url,
+        /// Remplacer l'entrée courante au lieu d'en ajouter une.
+        replace: bool,
+        /// Formulaire soumis par `POST` : la page est demandée avec ce corps.
+        post: Option<FormPost>,
+    },
+    /// Recharger la page (`location.reload()`).
+    Reload,
+    /// Parcourir l'historique de ce nombre d'entrées (`history.back()`…).
+    Traverse(i32),
+    /// Le document garde sa place mais change d'adresse (`history.pushState`,
+    /// `replaceState`, changement de fragment).
+    SameDocument {
+        /// Nouvelle adresse du document.
+        url: Url,
+        /// Remplacer l'entrée courante au lieu d'en ajouter une.
+        replace: bool,
+    },
 }
 
 /// Réponse à une [`FetchRequest`].
@@ -124,6 +199,96 @@ enum ScriptSlot {
     },
 }
 
+/// Cadre (`<iframe>`) du document, dans l'ordre du source.
+#[derive(Debug)]
+struct FrameSlot {
+    /// L'élément `<iframe>`.
+    element: NodeId,
+    /// Adresse du document du cadre.
+    url: Url,
+    /// Vrai une fois la ressource fournie (ou déclarée indisponible).
+    resolved: bool,
+    /// Document analysé ; `None` tant qu'il n'est pas reçu ou s'il est
+    /// indisponible.
+    document: Option<Document>,
+    /// Scripts classiques du document du cadre.
+    scripts: Vec<ScriptSlot>,
+    /// Vrai une fois le document remis au cadre (ou abandonné).
+    loaded: bool,
+}
+
+impl FrameSlot {
+    /// Analyse `html` comme document du cadre et relève ses scripts.
+    fn fill(&mut self, html: &str) {
+        let document = oxyde_html::parse_document(html);
+        self.scripts = frame_scripts(&document, &self.url);
+        self.document = Some(document);
+        self.resolved = true;
+    }
+}
+
+/// Scripts classiques du document `doc` d'un cadre, dans l'ordre du source.
+fn frame_scripts(doc: &Document, base: &Url) -> Vec<ScriptSlot> {
+    let mut scripts = Vec::new();
+    for node in doc.descendants(doc.root()) {
+        let Some(el) = doc.element(node) else {
+            continue;
+        };
+        if !el.is_html("script")
+            || !is_classic_script(el.attr("type"))
+            || scripts.len() >= MAX_SCRIPTS
+        {
+            continue;
+        }
+        match el.attr("src").filter(|s| !s.trim().is_empty()) {
+            Some(src) => {
+                if let Ok(target) = base.join(src.trim()) {
+                    scripts.push(ScriptSlot::External {
+                        url: target,
+                        resolved: false,
+                        source: None,
+                        module: false,
+                    });
+                }
+            }
+            None => {
+                let source = doc.text_content(node);
+                if !source.trim().is_empty() {
+                    scripts.push(ScriptSlot::Inline(source));
+                }
+            }
+        }
+    }
+    scripts
+}
+
+/// Textes des scripts classiques disponibles parmi `scripts`.
+fn frame_sources(scripts: &[ScriptSlot]) -> Vec<String> {
+    scripts
+        .iter()
+        .filter_map(|slot| match slot {
+            ScriptSlot::Inline(source)
+            | ScriptSlot::External {
+                source: Some(source),
+                module: false,
+                ..
+            } => Some(source.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Vrai si `a` et `b` ont la même origine (deux fichiers locaux comptent
+/// pour une même origine). Tant que les cadres partagent le processus et la
+/// mémoire de la page, seul un cadre de même origine est chargé : un
+/// document d'une autre origine pourrait lire celui qui l'accueille.
+pub(crate) fn same_origin(a: &Url, b: &Url) -> bool {
+    (a.scheme() == "file" && b.scheme() == "file") || a.origin() == b.origin()
+}
+
+/// Nombre maximal de cadres chargés par page.
+const MAX_FRAMES: usize = 50;
+
 /// Une page chargée.
 #[derive(Debug)]
 pub struct Page {
@@ -137,7 +302,14 @@ pub struct Page {
     /// Modules importés par les scripts de type module, par adresse ; `None` :
     /// module indisponible.
     modules: HashMap<Url, Option<String>>,
+    /// Cadres du document dont le contenu vient d'une adresse ou de `srcdoc`.
+    frames: Vec<FrameSlot>,
     engine: Option<Box<ScriptEngine>>,
+    /// Instructions accordées à chaque tâche de script ; `None` : la valeur
+    /// par défaut du moteur.
+    task_budget: Option<u64>,
+    /// Texte de `document.cookie`, tel que l'embarqueur l'a fourni.
+    cookies: String,
     styles: StyleMap,
     tree: Option<LayoutTree>,
     list: DisplayList,
@@ -235,11 +407,34 @@ impl Page {
         let sheets = collect_sheets(&doc, &base, Vec::new());
         let mut images = HashMap::new();
         let mut scripts = Vec::new();
+        let mut frames: Vec<FrameSlot> = Vec::new();
         for node in doc.descendants(doc.root()) {
             let Some(el) = doc.element(node) else {
                 continue;
             };
-            if el.is_html("img")
+            if el.is_html("iframe") && frames.len() < MAX_FRAMES {
+                let mut slot = FrameSlot {
+                    element: node,
+                    url: base.clone(),
+                    resolved: false,
+                    document: None,
+                    scripts: Vec::new(),
+                    loaded: false,
+                };
+                if let Some(srcdoc) = el.attr("srcdoc") {
+                    slot.fill(srcdoc);
+                    frames.push(slot);
+                } else if let Some(target) = el
+                    .attr("src")
+                    .filter(|s| !s.trim().is_empty())
+                    .and_then(|s| base.join(s.trim()).ok())
+                    .filter(|u| matches!(u.scheme(), "http" | "https" | "file"))
+                    .filter(|u| same_origin(u, &url))
+                {
+                    slot.url = target;
+                    frames.push(slot);
+                }
+            } else if el.is_html("img")
                 && images.len() < MAX_IMAGES
                 && let Some(target) = el
                     .attr("src")
@@ -291,7 +486,10 @@ impl Page {
             images,
             scripts,
             modules: HashMap::new(),
+            frames,
             engine: None,
+            task_budget: None,
+            cookies: String::new(),
             styles: StyleMap::default(),
             tree: None,
             list: DisplayList::default(),
@@ -381,11 +579,98 @@ impl Page {
         found
     }
 
+    /// Adresses des documents de cadres (`<iframe src>`) qu'il reste à
+    /// fournir par [`Page::set_frame`].
+    ///
+    /// Les cadres créés ou redirigés par les scripts s'y ajoutent au fil de
+    /// l'exécution : à rappeler après chaque tâche, puis
+    /// [`Page::load_ready_frames`] une fois les ressources fournies.
+    pub fn pending_frames(&mut self) -> Vec<Url> {
+        let requests = self
+            .engine
+            .as_mut()
+            .map(|engine| engine.take_frame_requests())
+            .unwrap_or_default();
+        for (element, url) in requests {
+            if self.frames.len() < MAX_FRAMES * 4 {
+                self.frames.push(FrameSlot {
+                    element,
+                    url,
+                    resolved: false,
+                    document: None,
+                    scripts: Vec::new(),
+                    loaded: false,
+                });
+            }
+        }
+        self.frames
+            .iter()
+            .filter(|frame| !frame.resolved)
+            .map(|frame| frame.url.clone())
+            .collect()
+    }
+
+    /// Fournit le HTML d'un document de cadre demandé par
+    /// [`Page::pending_frames`] ; `None` s'il est indisponible (le cadre
+    /// reste vide). Ses scripts externes s'ajoutent à
+    /// [`Page::pending_scripts`]. Renvoie `false` si `url` n'était pas
+    /// attendue.
+    pub fn set_frame(&mut self, url: &Url, html: Option<&str>) -> bool {
+        let mut found = false;
+        for frame in &mut self.frames {
+            if frame.url == *url && !frame.resolved {
+                match html {
+                    Some(html) => frame.fill(html),
+                    None => {
+                        frame.resolved = true;
+                        frame.loaded = true;
+                    }
+                }
+                found = true;
+            }
+        }
+        found
+    }
+
+    /// Remet aux cadres les documents reçus depuis [`Page::run_scripts`] dont
+    /// tous les scripts sont fournis, et exécute ces scripts. Renvoie `true`
+    /// si au moins un cadre a été chargé.
+    pub fn load_ready_frames(&mut self) -> bool {
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        let mut any = false;
+        for frame in &mut self.frames {
+            let ready = !frame.loaded
+                && frame.scripts.iter().all(|slot| {
+                    !matches!(
+                        slot,
+                        ScriptSlot::External {
+                            resolved: false,
+                            ..
+                        }
+                    )
+                });
+            let (true, Some(document)) = (ready, &frame.document) else {
+                continue;
+            };
+            let sources = frame_sources(&frame.scripts);
+            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+            frame.loaded = true;
+            any = true;
+        }
+        if any && engine.take_dirty() {
+            self.dom_changed();
+        }
+        any
+    }
+
     /// Adresses des scripts externes pas encore chargés, dans l'ordre du document.
     #[must_use]
     pub fn pending_scripts(&self) -> Vec<Url> {
         self.scripts
             .iter()
+            .chain(self.frames.iter().flat_map(|frame| frame.scripts.iter()))
             .filter_map(|s| match s {
                 ScriptSlot::External {
                     url,
@@ -402,7 +687,11 @@ impl Page {
     /// sauté). Renvoie `false` si `url` n'était pas attendue.
     pub fn set_script(&mut self, url: &Url, source: Option<String>) -> bool {
         let mut found = false;
-        for slot in &mut self.scripts {
+        let frame_scripts = self
+            .frames
+            .iter_mut()
+            .flat_map(|frame| frame.scripts.iter_mut());
+        for slot in self.scripts.iter_mut().chain(frame_scripts) {
             if let ScriptSlot::External {
                 url: u,
                 resolved,
@@ -497,6 +786,23 @@ impl Page {
         let modules = std::mem::take(&mut self.modules);
         let scripts = std::mem::take(&mut self.scripts);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
+        // Les cadres relevés à l'analyse sont chargés ici, pas à la demande.
+        let noted: Vec<(NodeId, String)> = self
+            .frames
+            .iter()
+            .filter_map(|frame| {
+                let element = self.doc.element(frame.element)?;
+                Some((
+                    frame.element,
+                    script::frame_fingerprint(element.attr("srcdoc"), element.attr("src")),
+                ))
+            })
+            .collect();
+        engine.note_static_frames(&noted);
+        if let Some(budget) = self.task_budget {
+            engine.set_task_budget(budget);
+        }
+        engine.set_cookies(&self.cookies);
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
@@ -521,6 +827,15 @@ impl Page {
         }
         let root = self.doc.root();
         engine.dispatch(&mut self.doc, Some(root), "DOMContentLoaded");
+        // Les cadres se chargent avant l'événement `load` de la page.
+        for frame in &mut self.frames {
+            frame.loaded = true;
+            let Some(document) = &frame.document else {
+                continue;
+            };
+            let sources = frame_sources(&frame.scripts);
+            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+        }
         engine.dispatch(&mut self.doc, None, "load");
         engine.take_dirty();
         self.engine = Some(engine);
@@ -535,12 +850,91 @@ impl Page {
         self.dirty = true;
     }
 
+    /// Fixe le nombre d'instructions qu'une tâche de script (script, événement,
+    /// minuteur) peut exécuter avant d'être interrompue. À appeler avant
+    /// [`Page::run_scripts`] ; un lanceur de tests y met une valeur large.
+    pub fn set_task_budget(&mut self, budget: u64) {
+        self.task_budget = Some(budget);
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_task_budget(budget);
+        }
+    }
+
+    /// Fixe le texte que `document.cookie` rend aux scripts : les cookies du
+    /// pot de l'embarqueur qu'un script a le droit de lire, sous la forme
+    /// `nom=valeur; autre=valeur`. À rappeler quand le pot change.
+    pub fn set_cookies(&mut self, cookies: &str) {
+        cookies.clone_into(&mut self.cookies);
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_cookies(cookies);
+        }
+    }
+
+    /// Textes affectés à `document.cookie` par les scripts depuis le dernier
+    /// appel, dans l'ordre : l'embarqueur les soumet à son pot, qui décide de
+    /// les accepter, puis rend la vue à jour par [`Page::set_cookies`].
+    pub fn take_cookie_writes(&mut self) -> Vec<String> {
+        self.engine
+            .as_mut()
+            .map(|engine| engine.take_cookie_writes())
+            .unwrap_or_default()
+    }
+
     /// Messages écrits dans la console par les scripts depuis le dernier appel.
     pub fn take_console(&mut self) -> Vec<ConsoleMessage> {
         self.engine
             .as_mut()
             .map(|e| e.take_console())
             .unwrap_or_default()
+    }
+
+    /// Touche enfoncée (`down`) ou relâchée : les scripts reçoivent
+    /// `keydown` (puis `keypress` pour un caractère) ou `keyup`. Renvoie
+    /// (action par défaut annulée, page à redessiner).
+    pub fn key_event(&mut self, down: bool, input: &KeyInput<'_>) -> (bool, bool) {
+        let Some(engine) = self.engine.as_mut() else {
+            return (false, false);
+        };
+        let prevented = engine.key_event(&mut self.doc, down, input);
+        let redraw = engine.take_dirty();
+        if redraw {
+            self.dom_changed();
+        }
+        (prevented, redraw)
+    }
+
+    /// Navigations demandées par les scripts depuis le dernier appel. Un
+    /// changement d'adresse sans changement de document
+    /// ([`Navigation::SameDocument`]) est déjà appliqué à la page.
+    pub fn take_navigations(&mut self) -> Vec<Navigation> {
+        let navigations = self
+            .engine
+            .as_mut()
+            .map(|e| e.take_navigations())
+            .unwrap_or_default();
+        for navigation in &navigations {
+            if let Navigation::SameDocument { url, .. } = navigation {
+                self.url.clone_from(url);
+            }
+        }
+        navigations
+    }
+
+    /// L'embarqueur a parcouru l'historique de `delta` entrées jusqu'à une
+    /// entrée du même document, d'adresse `url` : la page prend cette adresse
+    /// et prévient ses scripts (`popstate`). Renvoie `true` si la page doit
+    /// être redessinée.
+    pub fn traverse(&mut self, url: &Url, delta: i32) -> bool {
+        self.url.clone_from(url);
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        engine.traverse(&mut self.doc, url, delta);
+        if engine.take_dirty() {
+            self.dom_changed();
+            return true;
+        }
+        false
     }
 
     /// Requêtes `fetch` émises par les scripts depuis le dernier appel.
@@ -594,11 +988,17 @@ impl Page {
     /// n'a pas été annulée.
     pub fn click(&mut self, x: f32, y: f32) -> Option<Url> {
         let node = self.node_at(x, y)?;
+        self.click_node(node)
+    }
+
+    /// Clic sur le nœud `node`, comme [`Page::click`] quand ce nœud est sous
+    /// le pointeur.
+    pub fn click_node(&mut self, node: NodeId) -> Option<Url> {
         let link = self.link_from(node);
         let Some(engine) = self.engine.as_mut() else {
             return link;
         };
-        let prevented = engine.dispatch(&mut self.doc, Some(node), "click");
+        let prevented = engine.click(&mut self.doc, node);
         if engine.take_dirty() {
             self.dom_changed();
         }
@@ -1024,12 +1424,13 @@ mod tests {
                fetch('/absent').then(r => noter('absent ' + r.status + ' ' + r.ok));
                fetch('/panne').catch(e => noter('panne ' + e.message));
                fetch('file:///C:/secret.txt').catch(() => noter('fichier refusé'));
-               fetch('x', { method: 'POST' }).catch(() => noter('POST refusé'));
+               fetch('x', { method: 'TRACE' }).catch(() => noter('TRACE refusé'));
              </script>",
         );
         p.run_scripts();
-        // Les refus immédiats n'atteignent jamais l'embarqueur.
-        assert_eq!(body_text(&p), "fichier refusé;POST refusé;");
+        // Les refus immédiats n'atteignent jamais l'embarqueur. La méthode
+        // est refusée la première : `Request` la contrôle avant tout envoi.
+        assert_eq!(body_text(&p), "TRACE refusé;fichier refusé;");
         let requests = p.take_fetches();
         let urls: Vec<&str> = requests.iter().map(|r| r.url.as_str()).collect();
         assert_eq!(
@@ -1086,7 +1487,7 @@ mod tests {
         assert!(!p.complete_fetch(u64::MAX, Err("perdu".to_owned())));
         assert_eq!(
             body_text(&p),
-            "fichier refusé;POST refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
+            "TRACE refusé;fichier refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
              bloqué TypeError;absent 404 false;panne fetch : connexion impossible;"
         );
         assert!(!body_text(&p).contains("secret"));
@@ -1217,7 +1618,7 @@ mod tests {
         assert_eq!(
             q.title(),
             "true true true true true false true true false true false true true 1 3 16 \
-             [object HTMLElement] [object Text] 1 2 0 \
+             [object HTMLParagraphElement] [object Text] 1 2 0 \
              undefined function function undefined function undefined function true false \
              TypeError TypeError"
         );
@@ -1239,7 +1640,7 @@ mod tests {
             .and_then(|rest| rest.split(' ').next())
             .and_then(|n| n.parse().ok())
             .expect("total lisible");
-        assert!(done >= 125, "couverture en régression : {done} membres");
+        assert!(done >= 310, "couverture en régression : {done} membres");
     }
 
     #[test]
@@ -1262,5 +1663,593 @@ mod tests {
         assert!(console[0].text.contains("TypeError"));
         assert!(console[1].text.contains("SyntaxError"));
         assert!(console[2].text.contains("temps d'exécution dépassé"));
+    }
+
+    #[test]
+    fn events_follow_capture_target_and_bubble_phases() {
+        let mut p = page(
+            "<div id=outer><p id=inner>x</p></div>
+             <script>
+               const log = [];
+               const outer = document.getElementById('outer');
+               const inner = document.getElementById('inner');
+               outer.addEventListener('ping', e => log.push('capture ' + e.eventPhase), true);
+               outer.addEventListener('ping', e => log.push('bulle ' + e.eventPhase));
+               inner.addEventListener('ping', e => {
+                 log.push('cible ' + e.eventPhase + ' ' + (e.target === inner));
+               });
+               inner.addEventListener('ping', { handleEvent(e) { log.push('objet ' + e.detail.n); } });
+               inner.addEventListener('ping', () => log.push('une fois'), { once: true });
+               inner.addEventListener('ping', e => e.preventDefault());
+               const event = new CustomEvent('ping', {
+                 bubbles: true, cancelable: true, detail: { n: 7 },
+               });
+               log.push('retour ' + inner.dispatchEvent(event));
+               inner.dispatchEvent(new CustomEvent('ping', { detail: { n: 8 } }));
+               log.push(event instanceof Event, event.isTrusted, event.eventPhase);
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "capture 1|cible 2 true|objet 7|une fois|bulle 3|retour false|",
+                "capture 1|cible 2 true|objet 8|true|false|0"
+            )
+        );
+    }
+
+    #[test]
+    fn fetch_sends_method_headers_and_body_under_cors_rules() {
+        let mut p = page(
+            "<script>
+               fetch('/api', {
+                 method: 'post',
+                 headers: { 'X-Jeton': ' 1 ', Cookie: 'a=b', 'Content-Type': 'application/json' },
+                 body: '{}',
+               });
+               fetch('https://ailleurs.test/simple', { method: 'POST', body: 'texte' });
+               fetch('https://ailleurs.test/riche', { method: 'PUT', headers: [['X-A', '1']] });
+               fetch('/lecture', { body: 'x' }).catch(e => { document.body.textContent = e.message; });
+             </script>",
+        );
+        p.run_scripts();
+        // Le refus vient du constructeur `Request`, que `fetch` appelle.
+        assert_eq!(body_text(&p), "une requête GET ne peut pas avoir de corps");
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 3);
+        let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
+        // Même origine : tout est permis, sans pré-vérification.
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(
+            requests[0].headers,
+            [
+                pair("content-type", "application/json"),
+                pair("x-jeton", "1")
+            ]
+        );
+        assert_eq!(requests[0].body, b"{}");
+        assert_eq!(requests[0].origin.as_deref(), Some("https://exemple.test"));
+        assert!(!requests[0].needs_preflight);
+        // Autre origine, requête simple : type de contenu par défaut.
+        assert_eq!(
+            requests[1].headers,
+            [pair("content-type", "text/plain;charset=UTF-8")]
+        );
+        assert!(!requests[1].needs_preflight);
+        // Autre origine, méthode et en-tête hors liste : pré-vérification.
+        assert!(requests[2].needs_preflight);
+        assert_eq!(
+            requests[2].preflight_headers(),
+            [
+                pair("Access-Control-Request-Method", "PUT"),
+                pair("Access-Control-Request-Headers", "x-a"),
+                pair("Origin", "https://exemple.test"),
+            ]
+        );
+    }
+
+    #[test]
+    fn document_cookie_goes_through_the_embedder() {
+        let mut p = page(
+            "<script>
+               document.cookie = 'a=1; Path=/';
+               document.cookie = 'b=2';
+               document.cookie = 'a=; Max-Age=0';
+               document.cookie = 'secret=1; HttpOnly';
+               document.body.textContent = document.cookie;
+             </script>",
+        );
+        p.set_cookies("z=9");
+        p.run_scripts();
+        // La page voit aussitôt ses propres écritures…
+        assert_eq!(body_text(&p), "z=9; b=2");
+        // … que l'embarqueur soumet à son pot, dans l'ordre.
+        assert_eq!(
+            p.take_cookie_writes(),
+            ["a=1; Path=/", "b=2", "a=; Max-Age=0", "secret=1; HttpOnly"]
+        );
+        assert!(p.take_cookie_writes().is_empty());
+    }
+
+    #[test]
+    fn blobs_requests_and_responses_are_constructible() {
+        let mut p = page(
+            "<script>
+               const out = [];
+               const blob = new Blob(['bon', 'jour'], { type: 'Text/Plain' });
+               out.push(blob.size, blob.type, blob.slice(3).size);
+               const request = new Request('/a?b=1', { method: 'post', body: 'x' });
+               out.push(request.method, request.url.endsWith('/a?b=1'),
+                        request.headers.get('content-type'));
+               const response = new Response('{\"n\":2}', { status: 201, headers: { 'X-A': '1' } });
+               out.push(response.status, response.ok, response.headers.get('x-a'));
+               let refused = '';
+               try { new Response('x', { status: 204 }); } catch (e) { refused = e.name; }
+               Promise.all([blob.text(), response.json(), Response.json([1]).text()])
+                 .then(([text, json, serialized]) => {
+                   out.push(text, json.n, serialized, response.bodyUsed, refused);
+                   document.body.textContent = out.join('|');
+                 });
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "7|text/plain|4|POST|true|text/plain;charset=UTF-8|201|true|1|bonjour|2|[1]|true|TypeError"
+        );
+    }
+
+    #[test]
+    fn xml_http_request_runs_over_fetch() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const xhr = new XMLHttpRequest();
+               xhr.onreadystatechange = () => log.push('état ' + xhr.readyState);
+               xhr.addEventListener('load', () => {
+                 log.push(xhr.status, xhr.responseText, xhr.getResponseHeader('X-Essai'));
+               });
+               xhr.onloadend = () => { document.body.textContent = log.join('|'); };
+               xhr.open('POST', '/depot');
+               xhr.setRequestHeader('X-Jeton', 'abc');
+               xhr.send('corps');
+               log.push(xhr instanceof EventTarget, XMLHttpRequest.DONE);
+             </script>",
+        );
+        p.run_scripts();
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[0].body, b"corps");
+        assert!(
+            requests[0]
+                .headers
+                .contains(&("X-Jeton".to_owned(), "abc".to_owned()))
+        );
+        assert!(p.complete_fetch(
+            requests[0].id,
+            Ok(FetchResponse {
+                url: requests[0].url.clone(),
+                status: 201,
+                headers: vec![("x-essai".to_owned(), "oui".to_owned())],
+                body: b"fait".to_vec(),
+            }),
+        ));
+        assert_eq!(
+            body_text(&p),
+            "état 1|true|4|état 2|état 3|état 4|201|fait|oui"
+        );
+    }
+
+    #[test]
+    fn url_search_params_and_headers() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const url = new URL('../a b/c?x=1&y=deux mots#h', 'https://Exemple.test:8443/d/e/');
+               log.push(url.href, url.origin, url.pathname, url.searchParams.get('y'));
+               url.searchParams.append('z', 'é&=');
+               url.port = '443';
+               url.hash = '';
+               log.push(url.search, url.host, String(url), URL.canParse('pas une url'));
+               const params = new URLSearchParams({ a: '1', b: 'x y' });
+               params.set('a', '2');
+               log.push(params.toString(), [...params.keys()].join(','), params.size);
+               const headers = new Headers([['X-B', '1'], ['x-a', ' 2 ']]);
+               headers.append('X-B', '3');
+               log.push([...headers].join(';'), headers.get('x-b'), headers.has('X-C'));
+               try { new URL('::'); } catch (e) { log.push(e.name); }
+               fetch('/form', { method: 'POST', headers, body: params });
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "https://exemple.test:8443/d/a%20b/c?x=1&y=deux%20mots#h|",
+                "https://exemple.test:8443|/d/a%20b/c|deux mots|",
+                "?x=1&y=deux+mots&z=%C3%A9%26%3D|exemple.test|",
+                "https://exemple.test/d/a%20b/c?x=1&y=deux+mots&z=%C3%A9%26%3D|false|",
+                "a=2&b=x+y|a,b|2|x-a,2;x-b,1, 3|1, 3|false|TypeError"
+            )
+        );
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].body, b"a=2&b=x+y");
+        let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
+        assert_eq!(
+            requests[0].headers,
+            // `Headers` rend ses noms en minuscules, triés.
+            [
+                pair(
+                    "content-type",
+                    "application/x-www-form-urlencoded;charset=UTF-8"
+                ),
+                pair("x-a", "2"),
+                pair("x-b", "1, 3"),
+            ]
+        );
+    }
+
+    #[test]
+    fn prelude_web_apis() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               log.push(btoa('Oxyde!'), atob('T3h5ZGUh'), atob(' T3g= '));
+               const bytes = new TextEncoder().encode('é€😀');
+               log.push(bytes.length, new TextDecoder().decode(bytes));
+               log.push(new TextDecoder().decode(new Uint8Array([0x41, 0xff, 0xe2, 0x82])));
+               const controller = new AbortController();
+               controller.signal.addEventListener('abort', () => log.push('abandon'));
+               controller.abort();
+               log.push(controller.signal.aborted, controller.signal.reason.name);
+               const source = { date: new Date(5), liste: [1, { a: new Map([[1, 2]]) }] };
+               source.soi = source;
+               const copy = structuredClone(source);
+               log.push(copy !== source, copy.soi === copy, copy.date.getTime());
+               log.push(copy.liste[1].a.get(1));
+               const key = new KeyboardEvent('keydown', { key: 'a', ctrlKey: 1, bubbles: true });
+               log.push(key.key, key.ctrlKey, key.bubbles, key instanceof UIEvent);
+               const mouse = new MouseEvent('click', { clientX: 4 });
+               log.push(mouse.pageX, mouse.button, mouse instanceof Event);
+               const legacy = document.createEvent('Event');
+               legacy.initEvent('vieux', true, false);
+               log.push(legacy.type, legacy.bubbles);
+               log.push(matchMedia('(min-width: 0px) and (max-width: 5000px)').matches);
+               log.push(matchMedia('print, (prefers-color-scheme: dark)').matches);
+               log.push(new XMLSerializer().serializeToString(document.createElement('br')));
+               log.push(new Image(3).getAttribute('width'), typeof performance.mark('m').startTime);
+               try { atob('@'); } catch (e) { log.push(e.name, e.code, e instanceof DOMException); }
+               queueMicrotask(() => { document.body.textContent = log.join('|'); });
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "T3h5ZGUh|Oxyde!|Ox|9|é€😀|A\u{fffd}\u{fffd}|abandon|true|AbortError|",
+                "true|true|5|2|a|true|true|true|4|0|true|vieux|true|true|false|<br>|3|number|",
+                "InvalidCharacterError|5|true"
+            )
+        );
+    }
+
+    #[test]
+    fn mutation_observers_receive_records_at_the_end_of_the_task() {
+        let mut p = page(
+            "<div id=root><p id=a class=x>un</p></div><pre id=out></pre>
+             <script>
+               const log = [];
+               const root = document.getElementById('root');
+               const a = document.getElementById('a');
+               const describe = r => [
+                 r.type, r.target.id || r.target.nodeName, r.attributeName, r.oldValue,
+                 r.addedNodes.length, r.removedNodes.length,
+               ].join(' ');
+               const observer = new MutationObserver((records, self) => {
+                 log.push('lot ' + records.length + ' ' + (self === observer));
+                 for (const r of records) log.push(describe(r));
+                 document.getElementById('out').textContent = log.join('|');
+               });
+               observer.observe(root, {
+                 subtree: true, childList: true, attributeOldValue: true,
+                 characterDataOldValue: true, attributeFilter: ['class'],
+               });
+               a.className = 'y';
+               a.setAttribute('title', 'ignoré');
+               a.firstChild.data = 'deux';
+               root.appendChild(document.createElement('b'));
+               a.remove();
+               log.push('avant ' + observer.takeRecords().length);
+               a.className = 'hors du sous-arbre';
+               root.setAttribute('class', 'z');
+               const silent = new MutationObserver(() => log.push('jamais'));
+               silent.observe(root, { attributes: true });
+               silent.disconnect();
+               root.removeAttribute('class');
+               try { observer.observe(root, {}); } catch (e) { log.push(e.name); }
+             </script>",
+        );
+        p.run_scripts();
+        let out = p
+            .document()
+            .descendants(p.document().root())
+            .find(|n| {
+                p.document()
+                    .element(*n)
+                    .is_some_and(|e| e.attr("id") == Some("out"))
+            })
+            .map(|n| p.document().text_content(n))
+            .unwrap_or_default();
+        assert_eq!(
+            out,
+            concat!(
+                "avant 4|TypeError|lot 2 true|",
+                "attributes root class  0 0|attributes root class z 0 0"
+            )
+        );
+    }
+
+    #[test]
+    fn location_and_history_ask_the_embedder_to_navigate() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               history.pushState({ n: 1 }, '', 'page2?x=1');
+               log.push(location.pathname + location.search, history.length, history.state.n);
+               history.replaceState(null, '', '#frag');
+               location.hash = 'autre';
+               log.push(document.URL === location.href, location.hash);
+               addEventListener('popstate', e => {
+                 log.push('pop ' + JSON.stringify(e.state) + ' ' + location.hash);
+               });
+               addEventListener('hashchange', e => {
+                 log.push('fragment ' + new URL(e.newURL).hash);
+                 document.body.textContent = log.join('|');
+               });
+               try { history.pushState(null, '', 'https://ailleurs.test/'); } catch (e) { log.push(e.name); }
+               location.assign('/suite');
+               location.replace('fin');
+               location.reload();
+               history.back();
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        let at = |path: &str| Url::parse(&format!("https://exemple.test{path}")).expect("url");
+        assert_eq!(
+            p.take_navigations(),
+            [
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1"),
+                    replace: false
+                },
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1#frag"),
+                    replace: true
+                },
+                Navigation::SameDocument {
+                    url: at("/dossier/page2?x=1#autre"),
+                    replace: false
+                },
+                Navigation::Load {
+                    url: at("/suite"),
+                    replace: false,
+                    post: None
+                },
+                Navigation::Load {
+                    url: at("/dossier/fin"),
+                    replace: true,
+                    post: None
+                },
+                Navigation::Reload,
+                Navigation::Traverse(-1),
+            ]
+        );
+        assert_eq!(p.url(), &at("/dossier/page2?x=1#autre"));
+        assert_eq!(
+            body_text(&p),
+            "/dossier/page2?x=1|2|1|true|#autre|SecurityError"
+        );
+        // L'embarqueur revient d'une entrée, dans le même document.
+        let redraw = p.traverse(&at("/dossier/page2?x=1#frag"), -1);
+        assert!(redraw, "{:?}", p.take_console());
+        assert_eq!(p.url(), &at("/dossier/page2?x=1#frag"));
+        assert_eq!(
+            body_text(&p),
+            "/dossier/page2?x=1|2|1|true|#autre|SecurityError|pop null #frag|fragment #frag"
+        );
+    }
+
+    #[test]
+    fn keyboard_events_reach_the_page() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               for (const type of ['keydown', 'keypress', 'keyup']) {
+                 document.addEventListener(type, e => {
+                   log.push(type + ' ' + e.key + ' ' + e.code + ' ' + e.keyCode + ' ' + e.ctrlKey);
+                   if (e.key === 'Enter') e.preventDefault();
+                   document.body.textContent = log.join('|');
+                 });
+               }
+             </script>",
+        );
+        p.run_scripts();
+        let key = |key: &'static str, code: &'static str, ctrl: bool| KeyInput {
+            key,
+            code,
+            ctrl,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        assert_eq!(p.key_event(true, &key("a", "KeyA", false)), (false, true));
+        assert_eq!(p.key_event(false, &key("a", "KeyA", false)), (false, true));
+        assert_eq!(
+            p.key_event(true, &key("Enter", "Enter", true)),
+            (true, true)
+        );
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "keydown a KeyA 65 false|keypress a KeyA 97 false|keyup a KeyA 65 false|",
+                "keydown Enter Enter 13 true"
+            )
+        );
+    }
+
+    #[test]
+    fn typed_elements_and_form_submission() {
+        let mut p = page(
+            "<form id=f action='/recherche' method=get>
+               <input name=q value='deux mots'>
+               <input type=checkbox name=c id=c value=oui>
+               <input type=radio name=r value=1 checked><input type=radio name=r value=2 id=r2>
+               <select name=s><option>un<option value=2 selected>deux</select>
+               <textarea name=t>texte</textarea>
+               <input name=ignore disabled value=x>
+               <button id=b name=bouton value=ok>Envoyer</button>
+             </form>
+             <form id=g action='/depot' method=post><input name=a value=1></form>
+             <a id=lien href='page?x=1#h'>lien</a><pre id=out></pre>
+             <script>
+               const log = [];
+               const $ = id => document.getElementById(id);
+               const form = $('f');
+               log.push(form instanceof HTMLFormElement, form instanceof HTMLElement);
+               log.push(form.elements.length, form.method, form.action);
+               log.push($('lien').pathname + $('lien').search, $('lien') instanceof HTMLAnchorElement);
+               form.querySelector('select').value = 'un';
+               log.push(form.querySelector('select').selectedIndex, form.querySelector('textarea').value);
+               log.push(new URLSearchParams([...new FormData(form)]).toString());
+               $('c').addEventListener('change', () => log.push('change ' + $('c').checked));
+               form.addEventListener('submit', e => {
+                 log.push('envoi ' + e.submitter.id);
+                 $('out').textContent = log.join('|');
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let by_id = |p: &Page, id: &str| {
+            let doc = p.document();
+            doc.descendants(doc.root())
+                .find(|n| doc.element(*n).is_some_and(|e| e.attr("id") == Some(id)))
+                .expect("élément")
+        };
+        for id in ["c", "r2", "b"] {
+            let node = by_id(&p, id);
+            p.click_node(node);
+        }
+        let doc = p.document();
+        let out = doc
+            .descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.attr("id") == Some("out")))
+            .map(|n| doc.text_content(n))
+            .unwrap_or_default();
+        assert_eq!(
+            out,
+            concat!(
+                "true|true|8|get|https://exemple.test/recherche|/dossier/page?x=1|true|0|texte|",
+                "q=deux+mots&r=1&s=un&t=texte|change true|envoi b"
+            )
+        );
+        let at = |path: &str| Url::parse(&format!("https://exemple.test{path}")).expect("url");
+        assert_eq!(
+            p.take_navigations(),
+            [Navigation::Load {
+                url: at("/recherche?q=deux+mots&c=oui&r=2&s=un&t=texte&bouton=ok"),
+                replace: false,
+                post: None,
+            }]
+        );
+        // Soumission par POST : les données partent dans le corps.
+        let mut p = page(
+            "<form id=g action='/depot' method=post><input name=a value='1 2'></form>
+             <script>document.getElementById('g').submit();</script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            p.take_navigations(),
+            [Navigation::Load {
+                url: at("/depot"),
+                replace: false,
+                post: Some(FormPost {
+                    content_type: "application/x-www-form-urlencoded".to_owned(),
+                    body: b"a=1+2".to_vec(),
+                }),
+            }]
+        );
+    }
+
+    #[test]
+    fn storage_fragments_collections_and_dataset() {
+        let mut p = page(
+            "<p id=a data-user-id=7 name=n>x</p><p>y</p>
+             <script>
+               const log = [];
+               localStorage.setItem('k', 1);
+               localStorage.theme = 'sombre';
+               log.push(localStorage.getItem('k'), localStorage.theme, localStorage.length);
+               log.push(localStorage.key(1), localStorage.getItem('absent'));
+               localStorage.removeItem('k');
+               sessionStorage.setItem('s', 'v');
+               log.push(localStorage.length, sessionStorage.length);
+               const fragment = document.createDocumentFragment();
+               fragment.append(document.createElement('b'), 'texte');
+               log.push(fragment.nodeType, fragment.childNodes.length);
+               const host = document.createElement('div');
+               host.appendChild(fragment);
+               log.push(host.innerHTML, fragment.childNodes.length);
+               const paragraphs = document.getElementsByTagName('p');
+               log.push(paragraphs.item(1).textContent, paragraphs.namedItem('n').id);
+               log.push(document.querySelectorAll('p').item(5));
+               const a = document.getElementById('a');
+               a.dataset.fooBar = 'z';
+               log.push(a.dataset.userId, a.getAttribute('data-foo-bar'));
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "1|sombre|2|theme||1|1|11|2|<b></b>texte|0|y|a||7|z"
+        );
+    }
+
+    #[test]
+    fn dom_tree_operations() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const d = document.createElement('div');
+               d.innerHTML = '<b>a</b>c';
+               d.firstChild.after('x', document.createElement('i'));
+               d.lastChild.before(document.createComment('k'));
+               d.querySelector('i').replaceWith('y');
+               d.normalize();
+               const text = d.childNodes[1];
+               text.insertData(1, '-');
+               const tail = text.splitText(2);
+               log.push(d.innerHTML, d.childNodes.length, tail.wholeText);
+               log.push(d.firstChild.toggleAttribute('hidden'), d.firstChild.getAttributeNames());
+               d.insertAdjacentHTML('afterbegin', '<u>z</u>');
+               log.push(d.firstChild.outerHTML, d.compareDocumentPosition(d.firstChild));
+               log.push(d.firstChild.isEqualNode(d.firstChild.cloneNode(true)));
+               d.replaceChildren('fin');
+               log.push(d.textContent);
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "<b>a</b>x-y<!--k-->c|5|x-y|true|hidden|<u>z</u>|20|true|fin"
+        );
     }
 }
