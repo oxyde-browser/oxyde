@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 2312 / 7211 (32,1 %)** — fichiers entièrement réussis : 135 / 693 (19,5 %).
+**Sous-tests réussis : 7034 / 36036 (19,5 %)** — fichiers entièrement réussis : 167 / 693 (24,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,21 +13,21 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `dom` | 1 / 9 | 69 / 142 (48,6 %) |
+| `dom` | 1 / 9 | 101 / 142 (71,1 %) |
 | `dom/abort` | 2 / 6 | 33 / 37 (89,2 %) |
 | `dom/collections` | 0 / 12 | 10 / 60 (16,7 %) |
-| `dom/events` | 44 / 100 | 251 / 495 (50,7 %) |
+| `dom/events` | 48 / 100 | 266 / 495 (53,7 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
 | `dom/events/scrolling` | 0 / 39 | 1 / 34 (2,9 %) |
 | `dom/lists` | 0 / 5 | 155 / 189 (82,0 %) |
-| `dom/nodes` | 83 / 265 | 1774 / 5422 (32,7 %) |
-| `dom/nodes/Document-contentType/contentType` | 0 / 16 | 0 / 16 (0,0 %) |
+| `dom/nodes` | 109 / 265 | 6446 / 9743 (66,2 %) |
+| `dom/nodes/Document-contentType/contentType` | 2 / 16 | 2 / 16 (12,5 %) |
 | `dom/nodes/insertion-removing-steps` | 3 / 22 | 5 / 37 (13,5 %) |
-| `dom/nodes/moveBefore` | 1 / 64 | 3 / 168 (1,8 %) |
+| `dom/nodes/moveBefore` | 1 / 64 | 4 / 168 (2,4 %) |
 | `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
-| `dom/ranges` | 0 / 49 | 1 / 113 (0,9 %) |
+| `dom/ranges` | 0 / 49 | 1 / 23825 (0,0 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
-| `dom/traversal` | 0 / 18 | 1 / 54 (1,9 %) |
+| `dom/traversal` | 0 / 18 | 1 / 846 (0,1 %) |
 
 ## Fichiers non entièrement réussis
 
@@ -53,13 +53,10 @@ est le plus honnête des deux.
 | `dom/events/AddEventListenerOptions-passive.any.js` | 1 / 5 |  |
 | `dom/events/AddEventListenerOptions-signal.any.js` | 4 / 11 |  |
 | `dom/events/Body-FrameSet-Event-Handlers.html` | 0 / 5 |  |
-| `dom/events/Event-dispatch-bubbles-false.html` | 2 / 5 |  |
-| `dom/events/Event-dispatch-bubbles-true.html` | 2 / 5 |  |
-| `dom/events/Event-dispatch-click.html` | 10 / 33 | harnais : délai du harnais dépassé |
+| `dom/events/Event-dispatch-click.html` | 11 / 33 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-detached-input-and-change.html` | 4 / 12 |  |
 | `dom/events/Event-dispatch-listener-order.window.js` | 0 / 1 |  |
 | `dom/events/Event-dispatch-on-disabled-elements.html` | 3 / 9 | harnais : délai du harnais dépassé |
-| `dom/events/Event-dispatch-other-document.html` | 0 / 1 |  |
 | `dom/events/Event-dispatch-redispatch.html` | 2 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-single-activation-behavior.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 | harnais : délai du harnais dépassé |
@@ -78,8 +75,7 @@ est le plus honnête des deux.
 | `dom/events/EventListener-incumbent-global-2.sub.html` | 0 / 1 |  |
 | `dom/events/EventListener-invoke-legacy.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `dom/events/EventTarget-add-listener-platform-object.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/events/EventTarget-dispatchEvent.html` | 4 / 25 |  |
-| `dom/events/EventTarget-this-of-listener.html` | 0 / 6 |  |
+| `dom/events/EventTarget-dispatchEvent.html` | 5 / 25 |  |
 | `dom/events/click-on-absolute-pseudo.html` | 0 / 1 |  |
 | `dom/events/event-global-event-targets.html` | 0 / 5 |  |
 | `dom/events/event-global-extra.window.js` | 0 / 6 | harnais : délai du harnais dépassé |
@@ -187,35 +183,27 @@ est le plus honnête des deux.
 | `dom/events/webkit-transition-end-event.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/window-event-restored-after-throwing-onerror.html` | 0 / 1 |  |
 | `dom/historical-mutation-events.html` | 1 / 10 |  |
-| `dom/historical.html` | 48 / 80 |  |
+| `dom/historical.html` | 78 / 80 |  |
 | `dom/idlharness.window.js` | 0 / 1 |  |
-| `dom/interface-objects.html` | 17 / 23 |  |
+| `dom/interface-objects.html` | 19 / 23 |  |
 | `dom/lists/DOMTokenList-Iterable.html` | 0 / 6 |  |
 | `dom/lists/DOMTokenList-coverage-for-attributes.html` | 155 / 175 | harnais : 35 duplicate test names: "a.classList in http://www.w3.org/1999/xhtml namespace should be DOMTokenList.", "area.classLis |
 | `dom/lists/DOMTokenList-iteration.html` | 0 / 6 |  |
 | `dom/lists/DOMTokenList-stringifier.html` | 0 / 1 |  |
 | `dom/lists/DOMTokenList-value.html` | 0 / 1 |  |
 | `dom/nodes/Attr-prefix.html` | 0 / 6 |  |
-| `dom/nodes/CharacterData-appendChild.html` | 0 / 9 |  |
-| `dom/nodes/CharacterData-appendData.html` | 6 / 14 |  |
-| `dom/nodes/CharacterData-data.html` | 8 / 16 |  |
-| `dom/nodes/CharacterData-deleteData.html` | 8 / 18 |  |
-| `dom/nodes/CharacterData-insertData.html` | 7 / 18 |  |
-| `dom/nodes/CharacterData-remove.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
-| `dom/nodes/CharacterData-replaceData.html` | 18 / 34 |  |
-| `dom/nodes/CharacterData-substringData.html` | 12 / 28 |  |
-| `dom/nodes/CharacterData-surrogates.html` | 1 / 8 |  |
-| `dom/nodes/ChildNode-before.html` | 36 / 45 |  |
-| `dom/nodes/Comment-constructor.html` | 0 / 16 | harnais : délai du harnais dépassé |
-| `dom/nodes/DOMImplementation-createDocument-no-browsing-context.html` | 0 / 5 |  |
-| `dom/nodes/DOMImplementation-createDocument.html` | 1 / 2 |  |
-| `dom/nodes/DOMImplementation-createDocumentType.html` | 0 / 1 |  |
+| `dom/nodes/CharacterData-appendData.html` | 12 / 14 |  |
+| `dom/nodes/CharacterData-substringData.html` | 26 / 28 |  |
+| `dom/nodes/CharacterData-surrogates.html` | 2 / 8 |  |
+| `dom/nodes/Comment-constructor.html` | 15 / 16 | harnais : délai du harnais dépassé |
+| `dom/nodes/DOMImplementation-createDocument-no-browsing-context.html` | 2 / 5 |  |
+| `dom/nodes/DOMImplementation-createDocument.html` | 190 / 434 |  |
+| `dom/nodes/DOMImplementation-createDocumentType.html` | 81 / 82 |  |
 | `dom/nodes/DOMImplementation-createHTMLDocument-with-saved-implementation.html` | 0 / 1 |  |
-| `dom/nodes/DOMImplementation-createHTMLDocument.html` | 0 / 13 |  |
-| `dom/nodes/DOMImplementation-hasFeature.html` | 1 / 137 |  |
+| `dom/nodes/DOMImplementation-createHTMLDocument.html` | 12 / 13 |  |
 | `dom/nodes/Document-URL.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/Document-adoptNode-DocumentFragment-with-host.window.js` | 0 / 7 |  |
-| `dom/nodes/Document-adoptNode.html` | 1 / 7 |  |
+| `dom/nodes/Document-adoptNode-DocumentFragment-with-host.window.js` | 1 / 7 |  |
+| `dom/nodes/Document-adoptNode.html` | 4 / 7 |  |
 | `dom/nodes/Document-base-url-not-live.window.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-characterSet-normalization-1.html` | 0 / 315 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-characterSet-normalization-2.html` | 0 / 339 | harnais : délai du harnais dépassé |
@@ -224,7 +212,7 @@ est le plus honnête des deux.
 | `dom/nodes/Document-cloneNode-base-url-xml.window.js` | 0 / 3 |  |
 | `dom/nodes/Document-cloneNode-base-url.window.js` | 0 / 11 |  |
 | `dom/nodes/Document-cloneNode-srcdoc-base-url.window.js` | 0 / 4 | harnais : délai du harnais dépassé |
-| `dom/nodes/Document-constructor.html` | 0 / 5 |  |
+| `dom/nodes/Document-constructor.html` | 4 / 5 |  |
 | `dom/nodes/Document-contentType/contentType/contenttype_bmp.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-contentType/contentType/contenttype_css.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-contentType/contentType/contenttype_datauri_02.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -238,38 +226,29 @@ est le plus honnête des deux.
 | `dom/nodes/Document-contentType/contentType/contenttype_png.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-contentType/contentType/contenttype_txt.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/Document-contentType/contentType/contenttype_xml.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/Document-contentType/contentType/createDocument.html` | 0 / 1 |  |
-| `dom/nodes/Document-contentType/contentType/createHTMLDocument.html` | 0 / 1 |  |
 | `dom/nodes/Document-contentType/contentType/xhr_responseType_document.html` | 0 / 1 |  |
-| `dom/nodes/Document-createAttribute.html` | 0 / 0 | harnais : TypeError: impossible de lire la propriété « createDocument » de undefined |
-| `dom/nodes/Document-createCDATASection.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/Document-createComment.html` | 0 / 6 |  |
-| `dom/nodes/Document-createElement-namespace.html` | 1 / 51 | harnais : délai du harnais dépassé |
-| `dom/nodes/Document-createElement.html` | 11 / 147 |  |
-| `dom/nodes/Document-createElementNS.html` | 1 / 596 |  |
+| `dom/nodes/Document-createAttribute.html` | 0 / 36 |  |
+| `dom/nodes/Document-createElement-namespace.html` | 3 / 51 | harnais : délai du harnais dépassé |
+| `dom/nodes/Document-createElement.html` | 49 / 147 |  |
+| `dom/nodes/Document-createElementNS.html` | 63 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 213 / 279 |  |
-| `dom/nodes/Document-createProcessingInstruction.html` | 1 / 12 |  |
 | `dom/nodes/Document-createTreeWalker.html` | 1 / 5 |  |
-| `dom/nodes/Document-doctype.html` | 1 / 2 |  |
 | `dom/nodes/Document-getElementById.html` | 14 / 18 |  |
 | `dom/nodes/Document-getElementsByClassName.html` | 0 / 1 |  |
-| `dom/nodes/Document-getElementsByTagName.html` | 5 / 18 |  |
+| `dom/nodes/Document-getElementsByTagName.html` | 6 / 18 |  |
 | `dom/nodes/Document-getElementsByTagNameNS.html` | 0 / 14 |  |
-| `dom/nodes/Document-implementation.html` | 0 / 2 |  |
-| `dom/nodes/Document-importNode.html` | 0 / 5 |  |
-| `dom/nodes/DocumentFragment-constructor.html` | 0 / 2 |  |
+| `dom/nodes/Document-importNode.html` | 4 / 5 |  |
 | `dom/nodes/DocumentFragment-getElementById.html` | 3 / 5 |  |
-| `dom/nodes/DocumentType-remove.html` | 0 / 0 | harnais : TypeError: impossible de lire la propriété « createDocumentType » de undefined |
 | `dom/nodes/Element-childElementCount.html` | 0 / 1 |  |
 | `dom/nodes/Element-children.html` | 0 / 2 |  |
-| `dom/nodes/Element-classlist.html` | 715 / 1420 |  |
+| `dom/nodes/Element-classlist.html` | 820 / 1420 |  |
 | `dom/nodes/Element-closest.html` | 24 / 29 |  |
 | `dom/nodes/Element-getElementsByClassName.html` | 2 / 3 |  |
 | `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/Element-getElementsByTagName.html` | 6 / 19 |  |
+| `dom/nodes/Element-getElementsByTagName.html` | 7 / 19 |  |
 | `dom/nodes/Element-getElementsByTagNameNS.html` | 0 / 16 |  |
-| `dom/nodes/Element-insertAdjacentElement.html` | 4 / 6 |  |
-| `dom/nodes/Element-insertAdjacentText.html` | 4 / 6 |  |
+| `dom/nodes/Element-insertAdjacentElement.html` | 5 / 6 |  |
+| `dom/nodes/Element-insertAdjacentText.html` | 5 / 6 |  |
 | `dom/nodes/Element-matches-complex-nth-last-of-type.html` | 0 / 1 |  |
 | `dom/nodes/Element-matches-disabled-pseudo-class.html` | 0 / 11 |  |
 | `dom/nodes/Element-matches-namespaced-elements.html` | 4 / 6 |  |
@@ -285,7 +264,8 @@ est le plus honnête des deux.
 | `dom/nodes/MutationObserver-callback-arguments.html` | 0 / 1 |  |
 | `dom/nodes/MutationObserver-callback-order.window.js` | 2 / 3 |  |
 | `dom/nodes/MutationObserver-callback-tricky.html` | 0 / 2 |  |
-| `dom/nodes/MutationObserver-childList.html` | 14 / 40 | harnais : délai du harnais dépassé |
+| `dom/nodes/MutationObserver-characterData.html` | 15 / 23 |  |
+| `dom/nodes/MutationObserver-childList.html` | 22 / 40 |  |
 | `dom/nodes/MutationObserver-cross-realm-callback-report-exception.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/MutationObserver-disconnect.html` | 1 / 2 |  |
 | `dom/nodes/MutationObserver-document.html` | 1 / 4 |  |
@@ -293,33 +273,26 @@ est le plus honnête des deux.
 | `dom/nodes/MutationObserver-textContent.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `dom/nodes/MutationObserver-transient-registered-observers.window.js` | 3 / 15 |  |
 | `dom/nodes/Node-appendChild-cereactions-vs-script.window.js` | 0 / 1 |  |
-| `dom/nodes/Node-appendChild.html` | 5 / 11 |  |
+| `dom/nodes/Node-appendChild.html` | 8 / 11 |  |
 | `dom/nodes/Node-baseURI.html` | 4 / 9 |  |
 | `dom/nodes/Node-childNodes.html` | 1 / 6 |  |
-| `dom/nodes/Node-cloneNode-XMLDocument.html` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots.window.js` | 0 / 1 |  |
-| `dom/nodes/Node-cloneNode-document-with-doctype.html` | 0 / 3 |  |
-| `dom/nodes/Node-cloneNode-external-stylesheet-no-bc.sub.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/nodes/Node-cloneNode-document-with-doctype.html` | 2 / 3 |  |
 | `dom/nodes/Node-cloneNode-svg.html` | 2 / 4 |  |
-| `dom/nodes/Node-cloneNode.html` | 3 / 135 |  |
-| `dom/nodes/Node-compareDocumentPosition.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/nodes/Node-contains.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/nodes/Node-insertBefore.html` | 5 / 40 |  |
+| `dom/nodes/Node-cloneNode.html` | 7 / 135 |  |
 | `dom/nodes/Node-isConnected-shadow-dom.html` | 0 / 2 |  |
 | `dom/nodes/Node-isConnected.html` | 1 / 2 |  |
-| `dom/nodes/Node-isEqualNode.html` | 3 / 9 |  |
-| `dom/nodes/Node-isSameNode.html` | 5 / 9 |  |
-| `dom/nodes/Node-lookupNamespaceURI.html` | 0 / 68 |  |
-| `dom/nodes/Node-mutation-adoptNode.html` | 0 / 2 |  |
+| `dom/nodes/Node-isEqualNode.html` | 6 / 9 |  |
+| `dom/nodes/Node-isSameNode.html` | 8 / 9 |  |
+| `dom/nodes/Node-lookupNamespaceURI.html` | 0 / 70 |  |
+| `dom/nodes/Node-mutation-adoptNode.html` | 1 / 2 |  |
 | `dom/nodes/Node-nodeName.html` | 5 / 6 |  |
-| `dom/nodes/Node-nodeValue.html` | 4 / 7 |  |
 | `dom/nodes/Node-normalize-2.html` | 0 / 2 |  |
 | `dom/nodes/Node-normalize.html` | 3 / 4 |  |
 | `dom/nodes/Node-parentNode.html` | 4 / 5 | harnais : délai du harnais dépassé |
-| `dom/nodes/Node-properties.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/nodes/Node-removeChild.html` | 1 / 28 |  |
-| `dom/nodes/Node-replaceChild.html` | 6 / 29 |  |
-| `dom/nodes/Node-textContent.html` | 0 / 0 | harnais : TypeError: impossible de lire la propriété « createDocument » de undefined |
+| `dom/nodes/Node-properties.html` | 720 / 726 |  |
+| `dom/nodes/Node-removeChild.html` | 19 / 28 |  |
+| `dom/nodes/Node-textContent.html` | 73 / 81 |  |
 | `dom/nodes/NodeList-Iterable.html` | 7 / 8 |  |
 | `dom/nodes/NodeList-live-mutations.window.js` | 0 / 4 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-1.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -328,9 +301,7 @@ est le plus honnête des deux.
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-3.html` | 0 / 1 |  |
-| `dom/nodes/ParentNode-append.html` | 16 / 25 |  |
 | `dom/nodes/ParentNode-children.html` | 0 / 1 |  |
-| `dom/nodes/ParentNode-prepend.html` | 14 / 22 |  |
 | `dom/nodes/ParentNode-querySelector-All-scope.html` | 0 / 8 |  |
 | `dom/nodes/ParentNode-querySelector-All.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/ParentNode-querySelector-basic-has.html` | 0 / 1 |  |
@@ -350,16 +321,14 @@ est le plus honnête des deux.
 | `dom/nodes/ParentNode-querySelectorAll-scope-change.html` | 0 / 1 |  |
 | `dom/nodes/ParentNode-querySelectorAll-scope-colon-id-class.html` | 0 / 2 |  |
 | `dom/nodes/ParentNode-querySelectors-namespaces.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/ParentNode-replaceChildren.html` | 16 / 31 | harnais : délai du harnais dépassé |
-| `dom/nodes/Text-constructor.html` | 0 / 16 | harnais : délai du harnais dépassé |
-| `dom/nodes/Text-splitText.html` | 5 / 6 |  |
-| `dom/nodes/adoption.window.js` | 0 / 6 |  |
-| `dom/nodes/append-on-Document.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/nodes/ParentNode-replaceChildren.html` | 25 / 31 | harnais : délai du harnais dépassé |
+| `dom/nodes/Text-constructor.html` | 15 / 16 | harnais : délai du harnais dépassé |
+| `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/attributes-namednodemap-cross-document.window.js` | 0 / 2 |  |
 | `dom/nodes/attributes-namednodemap.html` | 0 / 8 |  |
-| `dom/nodes/attributes.html` | 13 / 67 |  |
-| `dom/nodes/case.html` | 95 / 285 |  |
+| `dom/nodes/attributes.html` | 14 / 67 |  |
+| `dom/nodes/case.html` | 97 / 285 |  |
 | `dom/nodes/create-element-realm-after-adoption.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/getElementById-namespaced-id.html` | 0 / 4 |  |
 | `dom/nodes/getElementsByClassName-03.htm` | 0 / 1 |  |
@@ -372,7 +341,7 @@ est le plus honnête des deux.
 | `dom/nodes/getElementsByClassName-22.htm` | 0 / 1 |  |
 | `dom/nodes/getElementsByClassName-25.htm` | 0 / 1 |  |
 | `dom/nodes/getElementsByClassName-31.htm` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/insert-adjacent.html` | 10 / 14 |  |
+| `dom/nodes/insert-adjacent.html` | 12 / 14 |  |
 | `dom/nodes/insertion-removing-steps/Node-append-form-and-script-from-fragment.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/Node-append-meta-referrer-and-script-from-fragment.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/Node-appendChild-script-and-button-from-div.html` | 0 / 1 |  |
@@ -393,7 +362,7 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-script.window.js` | 0 / 1 |  |
 | `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
-| `dom/nodes/moveBefore/Node-moveBefore.html` | 2 / 32 |  |
+| `dom/nodes/moveBefore/Node-moveBefore.html` | 3 / 32 |  |
 | `dom/nodes/moveBefore/child-style-preserve.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -456,7 +425,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/stylesheet-cascade-order.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/stylesheet-no-refetch.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/throws-exception.html` | 0 / 1 |  |
-| `dom/nodes/name-validation.html` | 0 / 5 |  |
+| `dom/nodes/name-validation.html` | 1 / 5 |  |
 | `dom/nodes/namespaced-attribute-mutations.html` | 8 / 24 |  |
 | `dom/nodes/node-creation-realm.html` | 0 / 13 |  |
 | `dom/nodes/node-realm-adoption-after-frame-removal.html` | 0 / 3 |  |
@@ -464,7 +433,6 @@ est le plus honnête des deux.
 | `dom/nodes/node-realm-preserved-across-adoption.html` | 0 / 5 |  |
 | `dom/nodes/node-realm-preserved-across-frameless-adoption.html` | 0 / 4 |  |
 | `dom/nodes/post-connection-steps-shadow-tree.html` | 0 / 1 |  |
-| `dom/nodes/prepend-on-Document.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/nodes/processing-instruction-attributes.html` | 0 / 140 |  |
 | `dom/nodes/query-target-in-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/querySelector-empty-id.html` | 0 / 1 |  |
@@ -473,7 +441,7 @@ est le plus honnête des deux.
 | `dom/nodes/remove-and-adopt-thcrash.html` | 0 / 1 |  |
 | `dom/nodes/remove-next-sibling-during-replace-with.html` | 0 / 1 |  |
 | `dom/nodes/remove-unscopable.html` | 0 / 6 |  |
-| `dom/nodes/rootNode.html` | 0 / 5 |  |
+| `dom/nodes/rootNode.html` | 4 / 5 |  |
 | `dom/nodes/svg-template-querySelector.html` | 0 / 3 |  |
 | `dom/observable/tentative/idlharness.html` | 0 / 1 |  |
 | `dom/observable/tentative/observable-catch.any.js` | 0 / 9 |  |
@@ -508,49 +476,49 @@ est le plus honnête des deux.
 | `dom/ranges/Range-cloneContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-cloneContents-around-shadow.tentative.html` | 0 / 3 |  |
 | `dom/ranges/Range-cloneContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-cloneContents.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-cloneRange.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-collapse.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-cloneContents.html` | 0 / 187 | harnais : délai du harnais dépassé |
+| `dom/ranges/Range-cloneRange.html` | 0 / 62 |  |
+| `dom/ranges/Range-collapse.html` | 0 / 186 |  |
 | `dom/ranges/Range-commonAncestorContainer-2.html` | 1 / 6 |  |
-| `dom/ranges/Range-commonAncestorContainer.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-compareBoundaryPoints.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-commonAncestorContainer.html` | 0 / 63 |  |
+| `dom/ranges/Range-compareBoundaryPoints.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-comparePoint-2.html` | 0 / 3 |  |
-| `dom/ranges/Range-comparePoint.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-comparePoint.html` | 0 / 5580 |  |
 | `dom/ranges/Range-constructor.html` | 0 / 1 |  |
 | `dom/ranges/Range-deleteContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-deleteContents-around-shadow.tentative.html` | 0 / 2 |  |
 | `dom/ranges/Range-deleteContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-deleteContents.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-deleteContents.html` | 0 / 125 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-detach.html` | 0 / 1 |  |
 | `dom/ranges/Range-expand-shadow.tentative.html` | 0 / 13 |  |
 | `dom/ranges/Range-extractContents-around-shadow.html` | 0 / 9 |  |
 | `dom/ranges/Range-extractContents-around-shadow.tentative.html` | 0 / 3 |  |
 | `dom/ranges/Range-extractContents-dynamic-end.html` | 0 / 1 |  |
 | `dom/ranges/Range-extractContents-in-ShadowRoot.html` | 0 / 4 |  |
-| `dom/ranges/Range-extractContents.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-extractContents.html` | 0 / 187 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-in-shadow-after-the-shadow-removed.html` | 0 / 2 |  |
-| `dom/ranges/Range-insertNode.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-insertNode.html` | 0 / 1840 | harnais : délai du harnais dépassé |
 | `dom/ranges/Range-intersectsNode-2.html` | 0 / 1 |  |
 | `dom/ranges/Range-intersectsNode-binding.html` | 0 / 1 |  |
 | `dom/ranges/Range-intersectsNode-shadow.html` | 0 / 1 |  |
-| `dom/ranges/Range-intersectsNode.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-isPointInRange.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-appendChild.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-appendData.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-dataChange.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-deleteData.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-insertBefore.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-insertData.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-intersectsNode.html` | 0 / 2356 |  |
+| `dom/ranges/Range-isPointInRange.html` | 0 / 5643 |  |
+| `dom/ranges/Range-mutations-appendChild.html` | 0 / 70 |  |
+| `dom/ranges/Range-mutations-appendData.html` | 0 / 384 |  |
+| `dom/ranges/Range-mutations-dataChange.html` | 0 / 2808 |  |
+| `dom/ranges/Range-mutations-deleteData.html` | 0 / 564 |  |
+| `dom/ranges/Range-mutations-insertBefore.html` | 0 / 76 |  |
+| `dom/ranges/Range-mutations-insertData.html` | 0 / 382 |  |
 | `dom/ranges/Range-mutations-normalize.html` | 0 / 4 |  |
-| `dom/ranges/Range-mutations-removeChild.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-replaceChild.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-replaceData.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-mutations-splitText.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-selectNode.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/Range-set.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/ranges/Range-mutations-removeChild.html` | 0 / 20 |  |
+| `dom/ranges/Range-mutations-replaceChild.html` | 0 / 60 |  |
+| `dom/ranges/Range-mutations-replaceData.html` | 0 / 1146 |  |
+| `dom/ranges/Range-mutations-splitText.html` | 0 / 116 |  |
+| `dom/ranges/Range-selectNode.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/ranges/Range-set.html` | 0 / 0 | le harnais n'a pas terminé |
 | `dom/ranges/Range-stringifier.html` | 0 / 1 |  |
-| `dom/ranges/Range-surroundContents.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/ranges/StaticRange-constructor.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `dom/ranges/Range-surroundContents.html` | 0 / 1840 | harnais : délai du harnais dépassé |
+| `dom/ranges/StaticRange-constructor.html` | 0 / 17 |  |
 | `dom/ranges/tentative/OpaqueRange-auto-disconnect.html` | 0 / 17 |  |
 | `dom/ranges/tentative/OpaqueRange-basic.html` | 0 / 3 |  |
 | `dom/ranges/tentative/OpaqueRange-disconnect.html` | 0 / 5 |  |
@@ -572,8 +540,8 @@ est le plus honnête des deux.
 | `dom/ranges/tentative/OpaqueRange-validation.html` | 0 / 2 |  |
 | `dom/traversal/NodeFilter-constants.html` | 0 / 0 | harnais : ReferenceError: NodeFilter n'est pas défini |
 | `dom/traversal/NodeIterator-removal-during-filtering.html` | 0 / 4 |  |
-| `dom/traversal/NodeIterator-removal.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
-| `dom/traversal/NodeIterator.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/traversal/NodeIterator-removal.html` | 0 / 25 |  |
+| `dom/traversal/NodeIterator.html` | 0 / 766 |  |
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm.html` | 0 / 5 |  |
 | `dom/traversal/TreeWalker-acceptNode-filter.html` | 0 / 12 |  |
@@ -587,7 +555,7 @@ est le plus honnête des deux.
 | `dom/traversal/TreeWalker-traversal-skip-most.html` | 0 / 2 |  |
 | `dom/traversal/TreeWalker-traversal-skip.html` | 0 / 6 |  |
 | `dom/traversal/TreeWalker-walking-outside-a-tree.html` | 0 / 1 |  |
-| `dom/traversal/TreeWalker.html` | 0 / 0 | harnais : TypeError: la valeur n'est pas un constructeur |
+| `dom/traversal/TreeWalker.html` | 0 / 1 |  |
 | `dom/window-extends-event-target.html` | 2 / 3 |  |
 | `dom/xpath-evaluation-detached-nodes.html` | 0 / 19 |  |
 | `dom/xpath-result-single-node-value-nullable.html` | 0 / 1 |  |

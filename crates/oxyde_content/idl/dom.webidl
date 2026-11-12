@@ -237,6 +237,17 @@ interface Document : Node {
 };
 
 [Exposed=Window]
+interface XMLDocument : Document {};
+
+[Exposed=Window]
+interface DOMImplementation {
+  [NewObject] DocumentType createDocumentType(DOMString qualifiedName, DOMString publicId, DOMString systemId);
+  [NewObject] XMLDocument createDocument(DOMString? namespace, DOMString qualifiedName, optional DocumentType? doctype = null);
+  [NewObject] Document createHTMLDocument(optional DOMString title);
+  boolean hasFeature();
+};
+
+[Exposed=Window]
 interface DocumentType : Node {
   readonly attribute DOMString name;
   readonly attribute DOMString publicId;
@@ -311,6 +322,15 @@ interface Text : CharacterData {
 
   [NewObject] Text splitText(unsigned long offset);
   readonly attribute DOMString wholeText;
+};
+
+[Exposed=Window]
+interface CDATASection : Text {
+};
+
+[Exposed=Window]
+interface ProcessingInstruction : CharacterData {
+  readonly attribute DOMString target;
 };
 
 [Exposed=Window]

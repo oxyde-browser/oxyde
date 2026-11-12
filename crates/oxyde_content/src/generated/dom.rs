@@ -230,6 +230,32 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "XMLDocument",
+        parent: Some("Document"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "DOMImplementation",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+            OperationDescriptor { name: "createDocumentType", length: 3, is_static: false },
+            OperationDescriptor { name: "createDocument", length: 2, is_static: false },
+            OperationDescriptor { name: "createHTMLDocument", length: 0, is_static: false },
+            OperationDescriptor { name: "hasFeature", length: 0, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
         name: "DocumentType",
         parent: Some("Node"),
         constructor: None,
@@ -383,6 +409,29 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
         operations: &[
             OperationDescriptor { name: "splitText", length: 1, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
+        name: "CDATASection",
+        parent: Some("Text"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "ProcessingInstruction",
+        parent: Some("CharacterData"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "target", readonly: true, is_static: false },
+        ],
+        operations: &[
         ],
     },
     InterfaceDescriptor {

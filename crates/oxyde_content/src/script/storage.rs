@@ -49,9 +49,10 @@ pub(super) fn store(vm: &mut Vm, area: usize, key: &str, value: &str) -> JsResul
         .map(|(name, value)| name.len() + value.len())
         .sum();
     if used.saturating_add(key.len()).saturating_add(value.len()) > QUOTA {
-        return Err(vm.error(
-            "Error",
-            "QuotaExceededError : la zone de stockage est pleine",
+        return Err(super::dom_exception(
+            vm,
+            "QuotaExceededError",
+            "la zone de stockage est pleine",
         ));
     }
     match entries.iter_mut().find(|(name, _)| name == key) {

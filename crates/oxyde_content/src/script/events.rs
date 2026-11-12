@@ -591,9 +591,10 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
 pub(super) fn dispatch_event(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let event = event_of(vm, &arg(args, 0))?;
     if flag(vm, event, DISPATCHING) {
-        return Err(vm.error(
-            "Error",
-            "InvalidStateError : l'événement est déjà en cours de distribution",
+        return Err(super::dom_exception(
+            vm,
+            "InvalidStateError",
+            "l'événement est déjà en cours de distribution",
         ));
     }
     set_flag(vm, event, TRUSTED, false);

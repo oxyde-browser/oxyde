@@ -25,10 +25,12 @@ use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
+mod documents;
 mod dom_ops;
 mod events;
 mod mutation;
 mod storage;
+mod tree;
 
 use events::{Listener, add_event_listener, dispatch, remove_event_listener};
 
@@ -60,6 +62,8 @@ struct DomHost {
     doc: Document,
     url: Url,
     wrappers: HashMap<u32, ObjId>,
+    /// Nature des documents autres que celui de la page, par index de nœud.
+    kinds: HashMap<u32, documents::DocumentKind>,
     node_proto: ObjId,
     style_proto: ObjId,
     class_list_proto: ObjId,
@@ -100,6 +104,23 @@ struct DomHost {
 
 fn host(vm: &mut Vm) -> Option<&mut DomHost> {
     vm.host.as_mut()?.downcast_mut::<DomHost>()
+}
+
+/// `DOMException` de nom `name` (`HierarchyRequestError`, `NotFoundError`…).
+fn dom_exception(vm: &mut Vm, name: &str, message: &str) -> Value {
+    let hooks = host(vm).and_then(|h| h.hooks.clone());
+    if let Some(hooks) = hooks
+        && let Ok(make) = vm.get(&hooks, "domException")
+        && let Ok(exception) = vm.call(
+            &make,
+            &hooks,
+            &[Value::string(name), Value::string(message)],
+        )
+    {
+        return exception;
+    }
+    // Avant l'installation du prélude : une erreur ordinaire.
+    vm.error("Error", &format!("{name} : {message}"))
 }
 
 fn arg(args: &[Value], i: usize) -> Value {
@@ -145,7 +166,10 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
     }
     // L'enveloppe prend le prototype de l'interface du nœud.
     let interface = match &h.doc.node(node).data {
+        NodeData::Document if h.kinds.get(&index).is_some_and(|k| k.xml_interface) => "XMLDocument",
         NodeData::Document => "Document",
+        NodeData::CData(_) => "CDATASection",
+        NodeData::ProcessingInstruction { .. } => "ProcessingInstruction",
         NodeData::Doctype { .. } => "DocumentType",
         NodeData::Element(element) if element.ns == Namespace::Html => "HTMLElement",
         NodeData::Element(_) => "Element",
@@ -249,6 +273,14 @@ fn serialize(doc: &Document, node: NodeId, out: &mut String) {
                 out.push_str("<!--");
                 out.push_str(text);
                 out.push_str("-->");
+            }
+            NodeData::CData(text) => escape(text, false, out),
+            NodeData::ProcessingInstruction { target, data } => {
+                out.push_str("<?");
+                out.push_str(target);
+                out.push(' ');
+                out.push_str(data);
+                out.push('>');
             }
             NodeData::Element(element) => {
                 out.push('<');
@@ -521,11 +553,13 @@ fn node_name(doc: &Document, node: NodeId) -> String {
         NodeData::Fragment => "#document-fragment".to_owned(),
         NodeData::Element(e) if e.ns == Namespace::Html => e.name.to_ascii_uppercase(),
         NodeData::Element(e) => e.name.clone(),
+        NodeData::CData(_) => "#cdata-section".to_owned(),
+        NodeData::ProcessingInstruction { target, .. } => target.clone(),
     }
 }
 
-fn document_title(doc: &Document) -> String {
-    doc.find_html_element(doc.root(), "title")
+fn document_title(doc: &Document, document: NodeId) -> String {
+    doc.find_html_element(document, "title")
         .map(|n| {
             doc.text_content(n)
                 .split_whitespace()
@@ -539,7 +573,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
     let h = host(vm)?;
     let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
     let doc = &h.doc;
-    let is_document = node == doc.root();
+    let is_document = doc.is_document(node);
     let links = doc.node(node);
     let (parent, first, last, next, prev) = (
         links.parent,
@@ -559,6 +593,8 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             NodeData::Element(_) => 1.0,
             NodeData::Text(_) => 3.0,
             NodeData::Comment(_) => 8.0,
+            NodeData::CData(_) => 4.0,
+            NodeData::ProcessingInstruction { .. } => 7.0,
             NodeData::Document => 9.0,
             NodeData::Doctype { .. } => 10.0,
             NodeData::Fragment => 11.0,
@@ -572,17 +608,23 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 name
             })
         }
-        "textContent" | "innerText" => {
-            if is_document {
-                Ok(Value::Null)
-            } else {
-                string(&doc.text_content(node))
-            }
-        }
-        "nodeValue" | "data" => match &links.data {
-            NodeData::Text(t) | NodeData::Comment(t) => string(t),
-            _ => Ok(Value::Null),
+        "textContent" | "innerText" => match &links.data {
+            NodeData::Document | NodeData::Doctype { .. } => Ok(Value::Null),
+            NodeData::Comment(t) | NodeData::ProcessingInstruction { data: t, .. } => string(t),
+            _ => string(&doc.text_content(node)),
         },
+        "nodeValue" | "data" => match doc.character_data(node) {
+            Some(t) => string(t),
+            None if key == "data" => return None,
+            None => Ok(Value::Null),
+        },
+        "target" => match &links.data {
+            NodeData::ProcessingInstruction { target, .. } => string(target),
+            _ => return None,
+        },
+        "implementation" if is_document => {
+            return Some(Ok(documents::implementation(vm, node)));
+        }
         "innerHTML" => string(&inner_html(doc, node)),
         "outerHTML" => {
             let mut out = String::new();
@@ -614,7 +656,9 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "childElementCount" => Ok(number(
             doc.children(node).filter(|c| is_element(doc, *c)).count(),
         )),
-        "isConnected" => Ok(Value::Bool(doc.contains(doc.root(), node))),
+        "isConnected" => Ok(Value::Bool(
+            doc.is_document(doc.ancestors(node).last().unwrap_or(node)),
+        )),
         "parentNode" => return Some(Ok(wrap_opt(vm, parent))),
         "parentElement" => {
             let parent = parent.filter(|p| is_element(doc, *p));
@@ -657,7 +701,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             return Some(Ok(wrap_all(vm, nodes)));
         }
         "ownerDocument" => {
-            let root = doc.root();
+            let root = doc.owner(node);
             return Some(Ok(if is_document {
                 Value::Null
             } else {
@@ -679,26 +723,36 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             )));
         }
         "body" | "head" if is_document => {
-            let found = doc.find_html_element(doc.root(), key);
+            let found = doc.find_html_element(node, key);
             return Some(Ok(wrap_opt(vm, found)));
         }
         "documentElement" if is_document => {
-            let found = doc.children(doc.root()).find(|c| is_element(doc, *c));
+            let found = doc.children(node).find(|c| is_element(doc, *c));
             return Some(Ok(wrap_opt(vm, found)));
         }
-        "title" if is_document => string(&document_title(doc)),
-        "URL" | "documentURI" if is_document => string(h.url.as_str()),
+        "title" if is_document => string(&document_title(doc, node)),
+        "URL" | "documentURI" if is_document => string(if data == 0 {
+            h.url.as_str()
+        } else {
+            "about:blank"
+        }),
         "readyState" if is_document => string("complete"),
         "baseURI" => string(h.url.as_str()),
-        "length" if matches!(links.data, NodeData::Text(_) | NodeData::Comment(_)) => Ok(number(
-            doc.text(node).map_or(0, |t| t.encode_utf16().count()),
+        "length" if doc.character_data(node).is_some() => Ok(number(
+            doc.character_data(node)
+                .map_or(0, |t| t.encode_utf16().count()),
         )),
         "wholeText" if matches!(links.data, NodeData::Text(_)) => {
             string(&dom_ops::whole_text(doc, node))
         }
         "characterSet" | "charset" | "inputEncoding" if is_document => string("UTF-8"),
         "compatMode" if is_document => string("CSS1Compat"),
-        "contentType" if is_document => string("text/html"),
+        "contentType" if is_document => string(
+            u32::try_from(data)
+                .ok()
+                .and_then(|i| h.kinds.get(&i))
+                .map_or("text/html", |kind| kind.content_type),
+        ),
         "referrer" | "dir" if is_document => string(""),
         "designMode" if is_document => string("off"),
         "visibilityState" if is_document => string("visible"),
@@ -708,7 +762,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "defaultView" if is_document => return Some(Ok(Value::Object(vm.global()))),
         "doctype" if is_document => {
             let found = doc
-                .children(doc.root())
+                .children(node)
                 .find(|c| matches!(doc.node(*c).data, NodeData::Doctype { .. }));
             return Some(Ok(wrap_opt(vm, found)));
         }
@@ -721,7 +775,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 _ => &["embed"],
             };
             let nodes: Vec<NodeId> = doc
-                .descendants(doc.root())
+                .descendants(node)
                 .filter(|n| {
                     doc.element(*n).is_some_and(|e| {
                         wanted.iter().any(|name| e.is_html(name))
@@ -807,16 +861,31 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         Ok(text) => text,
         Err(thrown) => return Some(Err(thrown)),
     };
+    // `null` vaut la chaîne vide pour le contenu textuel.
+    let text: String =
+        if matches!(value, Value::Null) && matches!(key, "textContent" | "nodeValue" | "data") {
+            String::new()
+        } else {
+            text.to_string()
+        };
     let truthy = value.truthy();
     let h = host(vm)?;
     let doc = &mut h.doc;
-    let is_document = node == doc.root();
+    let is_document = doc.is_document(node);
     match key {
         "textContent" | "innerText" => match &doc.node(node).data {
-            NodeData::Text(_) | NodeData::Comment(_) => doc.set_text(node, &text),
+            NodeData::Text(_)
+            | NodeData::Comment(_)
+            | NodeData::CData(_)
+            | NodeData::ProcessingInstruction { .. } => doc.set_text(node, &text),
             NodeData::Element(_) | NodeData::Fragment => {
-                doc.remove_children(node);
-                doc.insert_text(node, None, &text);
+                let owner = doc.owner(node);
+                let content = (!text.is_empty()).then(|| {
+                    let created = doc.create_text(&text);
+                    doc.set_owner(created, owner);
+                    created
+                });
+                tree::replace_all(doc, content, node);
             }
             _ => {}
         },
@@ -824,7 +893,7 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         "innerHTML" if !is_document => set_inner_html(doc, node, &text),
         "className" => doc.set_attr(node, "class", &text),
         "title" if is_document => {
-            if let Some(title) = doc.find_html_element(doc.root(), "title") {
+            if let Some(title) = doc.find_html_element(node, "title") {
                 doc.remove_children(title);
                 doc.insert_text(title, None, &text);
             }
@@ -950,103 +1019,6 @@ fn node_arg(vm: &mut Vm, value: &Value) -> JsResult<NodeId> {
     }
 }
 
-/// Refuse une insertion qui créerait un cycle (un nœud dans son propre sous-arbre).
-fn check_insertion(vm: &mut Vm, parent: NodeId, child: NodeId) -> JsResult<()> {
-    let cyclic = host(vm).is_some_and(|h| h.doc.contains(child, parent) || child == h.doc.root());
-    if cyclic {
-        return Err(vm.error(
-            "Error",
-            "HierarchyRequestError : insertion impossible à cet endroit",
-        ));
-    }
-    Ok(())
-}
-
-fn append_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    check_insertion(vm, parent, child)?;
-    if let Some(h) = host(vm) {
-        h.doc.append_child(parent, child);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn insert_before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    let reference = node_of(vm, &arg(args, 1));
-    check_insertion(vm, parent, child)?;
-    if let Some(h) = host(vm) {
-        h.doc.insert_before(parent, child, reference);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn remove_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let child = node_arg(vm, &arg(args, 0))?;
-    let is_child = host(vm).is_some_and(|h| h.doc.node(child).parent == Some(parent));
-    if !is_child {
-        return Err(vm.error(
-            "Error",
-            "NotFoundError : le nœud n'est pas un enfant de ce parent",
-        ));
-    }
-    if let Some(h) = host(vm) {
-        h.doc.detach(child);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
-}
-
-fn remove(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    if let Some(h) = host(vm) {
-        h.doc.detach(node);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-/// `append(...)` et `prepend(...)` : nœuds ou chaînes.
-fn append_many(vm: &mut Vm, this: &Value, args: &[Value], at_start: bool) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let reference = if at_start {
-        host(vm).and_then(|h| h.doc.node(parent).first_child)
-    } else {
-        None
-    };
-    for value in args {
-        let child = match node_of(vm, value) {
-            Some(node) => node,
-            None => {
-                let text = vm.to_string(value)?;
-                match host(vm) {
-                    Some(h) => h.doc.create_text(&text),
-                    None => return Ok(Value::Undefined),
-                }
-            }
-        };
-        check_insertion(vm, parent, child)?;
-        if let Some(h) = host(vm) {
-            h.doc.insert_before(parent, child, reference);
-            h.dirty = true;
-        }
-    }
-    Ok(Value::Undefined)
-}
-
-fn append(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    append_many(vm, this, args, false)
-}
-
-fn prepend(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    append_many(vm, this, args, true)
-}
-
 fn get_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
     let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
@@ -1062,7 +1034,11 @@ fn set_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     if name.is_empty()
         || name.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '>' | '/' | '='))
     {
-        return Err(vm.error("Error", "InvalidCharacterError : nom d'attribut invalide"));
+        return Err(dom_exception(
+            vm,
+            "InvalidCharacterError",
+            "nom d'attribut invalide",
+        ));
     }
     if let Some(h) = host(vm) {
         h.doc.set_attr(node, &name, &value);
@@ -1185,26 +1161,19 @@ fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRe
     Ok(wrap_collection(vm, found))
 }
 
-fn create_element(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
-    if !valid {
-        return Err(vm.error("Error", "InvalidCharacterError : nom d'élément invalide"));
+fn create_element(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let raw = vm.to_string(&arg(args, 0))?.to_string();
+    let html = node_of(vm, this).is_none_or(|d| documents::is_html_document(vm, d));
+    let name = if html { raw.to_ascii_lowercase() } else { raw };
+    if !documents::is_element_local_name(&name) {
+        return Err(dom_exception(
+            vm,
+            "InvalidCharacterError",
+            "nom d'élément invalide",
+        ));
     }
     let node = host(vm).map(|h| h.doc.create_element(&name, Namespace::Html, Vec::new()));
-    Ok(wrap_opt(vm, node))
-}
-
-fn create_document_fragment(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    let node = host(vm).map(|h| h.doc.create_fragment());
-    Ok(wrap_opt(vm, node))
-}
-
-fn create_text_node(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let text = vm.to_string(&arg(args, 0))?;
-    let node = host(vm).map(|h| h.doc.create_text(&text));
-    Ok(wrap_opt(vm, node))
+    Ok(documents::created_by(vm, this, node))
 }
 
 fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1213,20 +1182,6 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Bool(other.is_some_and(|o| {
         host(vm).is_some_and(|h| h.doc.contains(node, o))
     })))
-}
-
-fn clone_node(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let deep = arg(args, 0).truthy();
-    let copy = host(vm).map(|h| {
-        let source = h.doc.clone();
-        let copy = h.doc.import(&source, node);
-        if !deep {
-            h.doc.remove_children(copy);
-        }
-        copy
-    });
-    Ok(wrap_opt(vm, copy))
 }
 
 fn no_op(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
@@ -1400,12 +1355,12 @@ fn define_getter(vm: &mut Vm, target: ObjId, name: &str, func: NativeFn) -> JsRe
 /// déclare l'opération ; l'IDL décide sur quels prototypes elle est installée
 /// et avec quelle arité.
 const OPERATIONS: &[(&str, &str, NativeFn)] = &[
-    ("", "appendChild", append_child),
-    ("", "insertBefore", insert_before),
-    ("", "removeChild", remove_child),
-    ("", "remove", remove),
-    ("", "append", append),
-    ("", "prepend", prepend),
+    ("", "appendChild", tree::append_child),
+    ("", "insertBefore", tree::insert_before),
+    ("", "removeChild", tree::remove_child),
+    ("", "remove", tree::remove),
+    ("", "append", tree::append),
+    ("", "prepend", tree::prepend),
     ("", "getAttribute", get_attribute),
     ("", "setAttribute", set_attribute),
     ("", "removeAttribute", remove_attribute),
@@ -1418,9 +1373,9 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "getElementsByTagName", get_elements_by_tag_name),
     ("", "getElementsByClassName", get_elements_by_class_name),
     ("", "createElement", create_element),
-    ("", "createTextNode", create_text_node),
+    ("", "createTextNode", documents::create_text_node),
     ("", "contains", contains),
-    ("", "cloneNode", clone_node),
+    ("", "cloneNode", documents::clone_node),
     ("", "addEventListener", add_event_listener),
     ("", "removeEventListener", remove_event_listener),
     ("", "click", element_click),
@@ -1439,7 +1394,33 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("Event", "composedPath", events::composed_path),
     ("Event", "initEvent", events::init_event),
     ("CustomEvent", "initCustomEvent", events::init_custom_event),
-    ("", "createDocumentFragment", create_document_fragment),
+    (
+        "",
+        "createDocumentFragment",
+        documents::create_document_fragment,
+    ),
+    ("", "createCDATASection", documents::create_cdata_section),
+    (
+        "",
+        "createProcessingInstruction",
+        documents::create_processing_instruction,
+    ),
+    (
+        "DOMImplementation",
+        "createDocumentType",
+        documents::create_document_type,
+    ),
+    (
+        "DOMImplementation",
+        "createDocument",
+        documents::create_document,
+    ),
+    (
+        "DOMImplementation",
+        "createHTMLDocument",
+        documents::create_html_document,
+    ),
+    ("DOMImplementation", "hasFeature", documents::has_feature),
     ("Storage", "getItem", storage::get_item),
     ("Storage", "setItem", storage::set_item),
     ("Storage", "removeItem", storage::remove_item),
@@ -1451,7 +1432,7 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "hasChildNodes", dom_ops::has_child_nodes),
     ("", "isSameNode", dom_ops::is_same_node),
     ("", "getRootNode", dom_ops::get_root_node),
-    ("", "replaceChild", dom_ops::replace_child),
+    ("", "replaceChild", tree::replace_child),
     ("", "normalize", dom_ops::normalize),
     ("", "isEqualNode", dom_ops::is_equal_node),
     (
@@ -1459,10 +1440,10 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
         "compareDocumentPosition",
         dom_ops::compare_document_position,
     ),
-    ("", "before", dom_ops::before),
-    ("", "after", dom_ops::after),
-    ("", "replaceWith", dom_ops::replace_with),
-    ("", "replaceChildren", dom_ops::replace_children),
+    ("", "before", tree::before),
+    ("", "after", tree::after),
+    ("", "replaceWith", tree::replace_with),
+    ("", "replaceChildren", tree::replace_children),
     ("", "hasAttributes", dom_ops::has_attributes),
     ("", "getAttributeNames", dom_ops::get_attribute_names),
     ("", "toggleAttribute", dom_ops::toggle_attribute),
@@ -1484,10 +1465,10 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "deleteData", dom_ops::delete_data),
     ("", "replaceData", dom_ops::replace_data),
     ("", "splitText", dom_ops::split_text),
-    ("", "createComment", dom_ops::create_comment),
+    ("", "createComment", documents::create_comment),
     ("", "createElementNS", dom_ops::create_element_ns),
-    ("", "importNode", dom_ops::import_node),
-    ("", "adoptNode", dom_ops::adopt_node),
+    ("", "importNode", documents::import_node),
+    ("", "adoptNode", documents::adopt_node),
     ("", "getElementsByName", dom_ops::get_elements_by_name),
     ("", "hasFocus", dom_ops::has_focus),
     ("DOMTokenList", "item", dom_ops::class_list_item),
@@ -1545,6 +1526,10 @@ const CONSTRUCTORS: &[(&str, NativeFn)] = &[
     ("Event", events::event_ctor),
     ("CustomEvent", events::custom_event_ctor),
     ("EventTarget", events::event_target_ctor),
+    ("Document", documents::document_ctor),
+    ("DocumentFragment", documents::fragment_ctor),
+    ("Text", documents::text_ctor),
+    ("Comment", documents::comment_ctor),
 ];
 
 /// Les autres objets interface ne se construisent pas depuis un script.
@@ -1644,6 +1629,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         doc: Document::new(),
         url: url.clone(),
         wrappers: HashMap::new(),
+        kinds: HashMap::new(),
         node_proto,
         style_proto,
         class_list_proto,
@@ -2481,9 +2467,10 @@ fn navigate(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             match &*kind {
                 "pushState" | "replaceState" => {
                     if url.origin() != h.url.origin() {
-                        return Err(vm.error(
-                            "Error",
-                            "SecurityError : l'adresse doit rester dans l'origine du document",
+                        return Err(dom_exception(
+                            vm,
+                            "SecurityError",
+                            "l'adresse doit rester dans l'origine du document",
                         ));
                     }
                     h.url = url.clone();

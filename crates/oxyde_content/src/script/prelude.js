@@ -1029,6 +1029,10 @@
       }
       return proceed;
     },
+    // Fabrique des exceptions du DOM levées par le moteur.
+    domException(name, message) {
+      return new DOMException(message, name);
+    },
     // L'embarqueur a parcouru l'historique de `delta` entrées sans quitter
     // ce document : `popstate`, et `hashchange` si seul le fragment change.
     traverse(delta, before) {

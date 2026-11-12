@@ -1,31 +1,22 @@
 //! Compléments du DOM : opérations de `Node`, `Element`, `CharacterData`,
 //! `Text`, `Document` et `DOMTokenList` (DOM Standard, WHATWG).
 //!
-//! LIMITES CONNUES : les erreurs du DOM sont des `Error` dont le message
-//! commence par le nom de l'exception (`NotFoundError : …`), pas encore des
-//! `DOMException` ; les espaces de noms des attributs sont ignorés ;
+//! LIMITES CONNUES : les espaces de noms des attributs sont ignorés ;
 //! `insertAdjacentHTML` analyse son fragment comme le contenu d'un `<body>`.
 
 use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{JsResult, Value, Vm};
 
 use super::{
-    CLASS_LIST, arg, check_insertion, class_tokens, host, node_arg, node_of, number, owner_node,
-    string, this_node, wrap, wrap_all, wrap_opt,
+    CLASS_LIST, arg, class_tokens, host, node_arg, node_of, number, owner_node, string, this_node,
+    wrap, wrap_all, wrap_opt,
 };
 
 /// Profondeur maximale explorée par les comparaisons d'arbres.
 const MAX_DEPTH: usize = 2_000;
 
 fn dom_error(vm: &mut Vm, name: &str, message: &str) -> Value {
-    vm.error("Error", &format!("{name} : {message}"))
-}
-
-/// Marque le document comme modifié : la mise en page est à refaire.
-fn touch(vm: &mut Vm) {
-    if let Some(h) = host(vm) {
-        h.dirty = true;
-    }
+    super::dom_exception(vm, name, message)
 }
 
 // ---- Node ----------------------------------------------------------------------------
@@ -46,29 +37,6 @@ pub(super) fn get_root_node(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsRes
     let node = this_node(vm, this)?;
     let root = host(vm).map(|h| h.doc.ancestors(node).last().unwrap_or(node));
     Ok(wrap_opt(vm, root))
-}
-
-pub(super) fn replace_child(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let new = node_arg(vm, &arg(args, 0))?;
-    let old = node_arg(vm, &arg(args, 1))?;
-    let is_child = host(vm).is_some_and(|h| h.doc.node(old).parent == Some(parent));
-    if !is_child {
-        return Err(dom_error(
-            vm,
-            "NotFoundError",
-            "le nœud à remplacer n'est pas un enfant de ce parent",
-        ));
-    }
-    check_insertion(vm, parent, new)?;
-    if new != old
-        && let Some(h) = host(vm)
-    {
-        h.doc.insert_before(parent, new, Some(old));
-        h.doc.detach(old);
-        h.dirty = true;
-    }
-    Ok(arg(args, 1))
 }
 
 /// Fusionne les nœuds texte voisins du sous-arbre et retire ceux qui sont vides.
@@ -205,132 +173,6 @@ pub(super) fn compare_document_position(vm: &mut Vm, this: &Value, args: &[Value
     }))
 }
 
-// ---- ChildNode et ParentNode -----------------------------------------------------------
-
-/// Nœuds désignés par des arguments « nœud ou chaîne » : une chaîne devient
-/// un nœud texte.
-fn nodes_from(vm: &mut Vm, args: &[Value]) -> JsResult<Vec<NodeId>> {
-    let mut nodes = Vec::with_capacity(args.len());
-    for value in args {
-        let node = match node_of(vm, value) {
-            Some(node) => node,
-            None => {
-                let text = vm.to_string(value)?;
-                match host(vm) {
-                    Some(h) => h.doc.create_text(&text),
-                    None => continue,
-                }
-            }
-        };
-        nodes.push(node);
-    }
-    Ok(nodes)
-}
-
-/// Insère `nodes` dans `parent`, avant `reference` (à la fin si `None`).
-fn insert_all(
-    vm: &mut Vm,
-    parent: NodeId,
-    nodes: &[NodeId],
-    reference: Option<NodeId>,
-) -> JsResult<()> {
-    for node in nodes {
-        check_insertion(vm, parent, *node)?;
-    }
-    if let Some(h) = host(vm) {
-        for node in nodes {
-            h.doc.insert_before(parent, *node, reference);
-        }
-        h.dirty = true;
-    }
-    Ok(())
-}
-
-/// Premier frère de `node` dans le sens `forward` qui n'est pas dans `nodes`.
-fn viable_sibling(vm: &mut Vm, node: NodeId, nodes: &[NodeId], forward: bool) -> Option<NodeId> {
-    let doc = &host(vm)?.doc;
-    let step = |n: NodeId| {
-        if forward {
-            doc.node(n).next_sibling
-        } else {
-            doc.node(n).prev_sibling
-        }
-    };
-    let mut current = step(node);
-    while let Some(candidate) = current {
-        if !nodes.contains(&candidate) {
-            return Some(candidate);
-        }
-        current = step(candidate);
-    }
-    None
-}
-
-pub(super) fn before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let Some(parent) = host(vm).and_then(|h| h.doc.node(node).parent) else {
-        return Ok(Value::Undefined);
-    };
-    let nodes = nodes_from(vm, args)?;
-    // Repère : après le frère précédent qui ne bouge pas.
-    let reference = match viable_sibling(vm, node, &nodes, false) {
-        Some(previous) => host(vm).and_then(|h| h.doc.node(previous).next_sibling),
-        None => host(vm).and_then(|h| h.doc.node(parent).first_child),
-    };
-    insert_all(vm, parent, &nodes, reference)?;
-    Ok(Value::Undefined)
-}
-
-pub(super) fn after(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let Some(parent) = host(vm).and_then(|h| h.doc.node(node).parent) else {
-        return Ok(Value::Undefined);
-    };
-    let nodes = nodes_from(vm, args)?;
-    let reference = viable_sibling(vm, node, &nodes, true);
-    insert_all(vm, parent, &nodes, reference)?;
-    Ok(Value::Undefined)
-}
-
-pub(super) fn replace_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let Some(parent) = host(vm).and_then(|h| h.doc.node(node).parent) else {
-        return Ok(Value::Undefined);
-    };
-    let nodes = nodes_from(vm, args)?;
-    let reference = viable_sibling(vm, node, &nodes, true);
-    for candidate in &nodes {
-        check_insertion(vm, parent, *candidate)?;
-    }
-    if !nodes.contains(&node)
-        && let Some(h) = host(vm)
-    {
-        h.doc.detach(node);
-    }
-    insert_all(vm, parent, &nodes, reference)?;
-    touch(vm);
-    Ok(Value::Undefined)
-}
-
-pub(super) fn replace_children(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let parent = this_node(vm, this)?;
-    let nodes = nodes_from(vm, args)?;
-    for candidate in &nodes {
-        check_insertion(vm, parent, *candidate)?;
-    }
-    if let Some(h) = host(vm) {
-        // Les nouveaux enfants sont d'abord détachés : certains peuvent être
-        // des enfants actuels.
-        for node in &nodes {
-            h.doc.detach(*node);
-        }
-        h.doc.remove_children(parent);
-    }
-    insert_all(vm, parent, &nodes, None)?;
-    touch(vm);
-    Ok(Value::Undefined)
-}
-
 // ---- Attributs d'Element ---------------------------------------------------------------
 
 pub(super) fn has_attributes(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -435,13 +277,13 @@ fn insert_adjacent(
     };
     match position.to_ascii_lowercase().as_str() {
         "beforebegin" => match parent {
-            Some(parent) => insert_all(vm, parent, nodes, Some(element))?,
+            Some(parent) => super::tree::insert_all(vm, parent, nodes, Some(element))?,
             None => return Ok(false),
         },
-        "afterbegin" => insert_all(vm, element, nodes, first)?,
-        "beforeend" => insert_all(vm, element, nodes, None)?,
+        "afterbegin" => super::tree::insert_all(vm, element, nodes, first)?,
+        "beforeend" => super::tree::insert_all(vm, element, nodes, None)?,
         "afterend" => match parent {
-            Some(parent) => insert_all(vm, parent, nodes, next)?,
+            Some(parent) => super::tree::insert_all(vm, parent, nodes, next)?,
             None => return Ok(false),
         },
         _ => {
@@ -500,7 +342,11 @@ pub(super) fn insert_adjacent_html(vm: &mut Vm, this: &Value, args: &[Value]) ->
 /// Texte d'un nœud texte ou commentaire, en unités UTF-16.
 fn data_units(vm: &mut Vm, node: NodeId) -> Vec<u16> {
     host(vm)
-        .and_then(|h| h.doc.text(node).map(|t| t.encode_utf16().collect()))
+        .and_then(|h| {
+            h.doc
+                .character_data(node)
+                .map(|t| t.encode_utf16().collect())
+        })
         .unwrap_or_default()
 }
 
@@ -646,13 +492,7 @@ pub(super) fn whole_text(doc: &Document, node: NodeId) -> String {
 
 // ---- Document ------------------------------------------------------------------------------
 
-pub(super) fn create_comment(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let text = vm.to_string(&arg(args, 0))?;
-    let node = host(vm).map(|h| h.doc.create_comment(&text));
-    Ok(wrap_opt(vm, node))
-}
-
-pub(super) fn create_element_ns(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+pub(super) fn create_element_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let namespace = match arg(args, 0) {
         Value::Null | Value::Undefined => String::new(),
         other => vm.to_string(&other)?.to_string(),
@@ -681,39 +521,7 @@ pub(super) fn create_element_ns(vm: &mut Vm, _this: &Value, args: &[Value]) -> J
         _ => Namespace::Html,
     };
     let node = host(vm).map(|h| h.doc.create_element(&local, ns, Vec::new()));
-    Ok(wrap_opt(vm, node))
-}
-
-/// `importNode(node, deep)` : une copie de `node` (le document est le même).
-pub(super) fn import_node(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let node = node_arg(vm, &arg(args, 0))?;
-    let deep = arg(args, 1).truthy();
-    let copy = host(vm).map(|h| {
-        let source = h.doc.clone();
-        let copy = h.doc.import(&source, node);
-        if !deep {
-            h.doc.remove_children(copy);
-        }
-        copy
-    });
-    Ok(wrap_opt(vm, copy))
-}
-
-/// `adoptNode(node)` : détache le nœud de son parent et le rend.
-pub(super) fn adopt_node(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let node = node_arg(vm, &arg(args, 0))?;
-    if let Some(h) = host(vm) {
-        if node == h.doc.root() {
-            return Err(dom_error(
-                vm,
-                "NotSupportedError",
-                "un document ne peut pas être adopté",
-            ));
-        }
-        h.doc.detach(node);
-        h.dirty = true;
-    }
-    Ok(arg(args, 0))
+    Ok(super::documents::created_by(vm, this, node))
 }
 
 pub(super) fn get_elements_by_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {

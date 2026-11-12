@@ -1,9 +1,8 @@
 //! `MutationObserver` (DOM Standard §4.3) : le document consigne ses
 //! modifications, et la fin de chaque tâche les remet aux observateurs.
 //!
-//! LIMITES CONNUES : un enregistrement par nœud inséré ou retiré (le standard
-//! en regroupe plusieurs dans un même enregistrement) ; un nœud retiré cesse
-//! aussitôt d'être suivi par les observations de sous-arbre.
+//! LIMITES CONNUES : un nœud retiré cesse aussitôt d'être suivi par les
+//! observations de sous-arbre.
 
 use oxyde_dom::{Mutation, NodeId};
 use oxyde_js::{JsResult, ObjId, Value, Vm};
@@ -182,8 +181,8 @@ pub(super) fn take_records(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResu
 #[derive(Default)]
 struct Change<'a> {
     kind: &'a str,
-    added: Option<NodeId>,
-    removed: Option<NodeId>,
+    added: &'a [NodeId],
+    removed: &'a [NodeId],
     previous: Option<NodeId>,
     next: Option<NodeId>,
     attribute: Option<&'a str>,
@@ -194,8 +193,8 @@ struct Change<'a> {
 fn record(vm: &mut Vm, target: NodeId, change: &Change<'_>) -> JsResult {
     let object = Value::Object(vm.new_object());
     let target = wrap(vm, target);
-    let added = wrap_all(vm, change.added.into_iter().collect());
-    let removed = wrap_all(vm, change.removed.into_iter().collect());
+    let added = wrap_all(vm, change.added.to_vec());
+    let removed = wrap_all(vm, change.removed.to_vec());
     let previous = wrap_opt(vm, change.previous);
     let next = wrap_opt(vm, change.next);
     let text = |value: Option<&str>| value.map_or(Value::Null, Value::string);
@@ -277,26 +276,16 @@ fn collect(vm: &mut Vm) {
                     old: with_old.then_some(old.as_str()),
                     ..Change::default()
                 },
-                Mutation::Inserted {
-                    node,
+                Mutation::Children {
+                    added,
+                    removed,
                     previous,
                     next,
                     ..
                 } => Change {
                     kind: "childList",
-                    added: Some(*node),
-                    previous: *previous,
-                    next: *next,
-                    ..Change::default()
-                },
-                Mutation::Removed {
-                    node,
-                    previous,
-                    next,
-                    ..
-                } => Change {
-                    kind: "childList",
-                    removed: Some(*node),
+                    added,
+                    removed,
                     previous: *previous,
                     next: *next,
                     ..Change::default()

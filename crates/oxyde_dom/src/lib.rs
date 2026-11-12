@@ -118,6 +118,15 @@ pub enum NodeData {
     Text(String),
     /// Commentaire.
     Comment(String),
+    /// Section CDATA (documents XML seulement).
+    CData(String),
+    /// Instruction de traitement (`<?cible données?>`).
+    ProcessingInstruction {
+        /// Cible de l'instruction.
+        target: String,
+        /// Données.
+        data: String,
+    },
 }
 
 /// Un nœud de l'arbre et ses liens.
@@ -133,6 +142,9 @@ pub struct Node {
     pub prev_sibling: Option<NodeId>,
     /// Frère suivant.
     pub next_sibling: Option<NodeId>,
+    /// Document auquel le nœud appartient (« node document ») ; un nœud
+    /// document est son propre propriétaire.
+    pub owner: NodeId,
     /// Contenu.
     pub data: NodeData,
 }
@@ -160,6 +172,11 @@ pub struct Document {
     /// modification est accompagnée du nœud touché et de ses ancêtres à cet
     /// instant : un nœud détaché ensuite reste attribué à son ancien arbre.
     mutations: Option<Vec<(Mutation, Vec<NodeId>)>>,
+    /// Groupe de chaque entrée du journal (0 : hors groupe), en parallèle.
+    groups: Vec<u32>,
+    /// Groupe en cours (0 : aucun) et dernier numéro attribué.
+    group: u32,
+    last_group: u32,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -181,26 +198,19 @@ pub enum Mutation {
         /// Texte précédent.
         old: String,
     },
-    /// `node` a été inséré dans `parent`, entre `previous` et `next`.
-    Inserted {
-        /// Parent qui reçoit le nœud.
+    /// Les enfants de `parent` ont changé : `added` ont été insérés et
+    /// `removed` retirés, entre `previous` et `next`. Les changements d'une
+    /// même opération (voir [`Document::begin_group`]) sont réunis.
+    Children {
+        /// Parent dont la liste d'enfants a changé.
         parent: NodeId,
-        /// Nœud inséré.
-        node: NodeId,
-        /// Frère précédent après l'insertion.
+        /// Nœuds insérés, dans l'ordre.
+        added: Vec<NodeId>,
+        /// Nœuds retirés, dans l'ordre.
+        removed: Vec<NodeId>,
+        /// Frère qui précède la zone modifiée.
         previous: Option<NodeId>,
-        /// Frère suivant après l'insertion.
-        next: Option<NodeId>,
-    },
-    /// `node` a été retiré de `parent`, d'entre `previous` et `next`.
-    Removed {
-        /// Ancien parent.
-        parent: NodeId,
-        /// Nœud retiré.
-        node: NodeId,
-        /// Frère précédent avant le retrait.
-        previous: Option<NodeId>,
-        /// Frère suivant avant le retrait.
+        /// Frère qui suit la zone modifiée.
         next: Option<NodeId>,
     },
 }
@@ -225,10 +235,14 @@ impl Document {
                 last_child: None,
                 prev_sibling: None,
                 next_sibling: None,
+                owner: NodeId(0),
                 data: NodeData::Document,
             }],
             quirks_mode: QuirksMode::NoQuirks,
             mutations: None,
+            groups: Vec::new(),
+            group: 0,
+            last_group: 0,
         }
     }
 
@@ -305,9 +319,72 @@ impl Document {
             last_child: None,
             prev_sibling: None,
             next_sibling: None,
+            owner: NodeId(0),
             data,
         });
         id
+    }
+
+    /// Crée un document supplémentaire, vide et détaché, dans la même arène
+    /// (`document.implementation.createHTMLDocument()`, `new Document()`).
+    pub fn create_document(&mut self) -> NodeId {
+        let id = self.push(NodeData::Document);
+        self.node_mut(id).owner = id;
+        id
+    }
+
+    /// Document auquel `id` appartient ; un document se rend lui-même.
+    #[must_use]
+    pub fn owner(&self, id: NodeId) -> NodeId {
+        self.node(id).owner
+    }
+
+    /// Vrai si `id` est un nœud document.
+    #[must_use]
+    pub fn is_document(&self, id: NodeId) -> bool {
+        matches!(self.node(id).data, NodeData::Document)
+    }
+
+    /// Fait de `owner` le document de `id` et de tout son sous-arbre
+    /// (« adopt »). Sans effet sur un nœud document.
+    pub fn set_owner(&mut self, id: NodeId, owner: NodeId) {
+        if self.is_document(id) || self.node(id).owner == owner {
+            return;
+        }
+        self.node_mut(id).owner = owner;
+        let descendants: Vec<NodeId> = self.descendants(id).collect();
+        for d in descendants {
+            self.node_mut(d).owner = owner;
+        }
+    }
+
+    /// Copie le nœud `id` — avec son sous-arbre si `deep` — dans le document
+    /// `owner` ; renvoie la copie, détachée. Les copies ne sont pas
+    /// consignées au journal des mutations.
+    pub fn clone_subtree(&mut self, id: NodeId, deep: bool, owner: NodeId) -> NodeId {
+        let journal = self.mutations.take();
+        let root = self.push(self.node(id).data.clone());
+        if self.is_document(root) {
+            self.node_mut(root).owner = root;
+        } else {
+            self.node_mut(root).owner = owner;
+        }
+        let inner = if self.is_document(root) { root } else { owner };
+        if deep {
+            // Parcours itératif : (nœud source, parent de la copie).
+            let mut pending: Vec<(NodeId, NodeId)> = self.children(id).map(|c| (c, root)).collect();
+            pending.reverse();
+            while let Some((src, parent)) = pending.pop() {
+                let copy = self.push(self.node(src).data.clone());
+                self.node_mut(copy).owner = inner;
+                self.append_child(parent, copy);
+                let before = pending.len();
+                pending.extend(self.children(src).map(|c| (c, copy)));
+                pending[before..].reverse();
+            }
+        }
+        self.mutations = journal;
+        root
     }
 
     /// Tient (ou cesse de tenir) le journal des modifications.
@@ -322,10 +399,29 @@ impl Document {
     /// Rend les modifications consignées depuis le dernier relevé, chacune
     /// avec le nœud touché suivi de ses ancêtres au moment où elle a eu lieu.
     pub fn take_mutations(&mut self) -> Vec<(Mutation, Vec<NodeId>)> {
+        self.groups.clear();
         self.mutations
             .as_mut()
             .map(std::mem::take)
             .unwrap_or_default()
+    }
+
+    /// Ouvre un groupe : jusqu'à [`Document::end_group`], les insertions et
+    /// retraits d'enfants d'un même parent forment une seule entrée du
+    /// journal (un seul `MutationRecord`). Sans effet si un groupe est déjà
+    /// ouvert ; renvoie `true` si c'est cet appel qui l'a ouvert.
+    pub fn begin_group(&mut self) -> bool {
+        if self.group != 0 {
+            return false;
+        }
+        self.last_group = self.last_group.wrapping_add(1).max(1);
+        self.group = self.last_group;
+        true
+    }
+
+    /// Ferme le groupe ouvert par [`Document::begin_group`].
+    pub fn end_group(&mut self) {
+        self.group = 0;
     }
 
     fn log(&mut self, mutation: impl FnOnce() -> Mutation) {
@@ -339,19 +435,55 @@ impl Document {
         let mutation = mutation();
         let target = match &mutation {
             Mutation::Attribute { target, .. } | Mutation::Text { target, .. } => *target,
-            Mutation::Inserted { parent, .. } | Mutation::Removed { parent, .. } => *parent,
+            Mutation::Children { parent, .. } => *parent,
         };
+        // Dans un groupe, les changements d'enfants d'un même parent fusionnent.
+        if self.group != 0
+            && let Mutation::Children {
+                parent,
+                added,
+                removed,
+                next,
+                ..
+            } = &mutation
+            && let Some(log) = &mut self.mutations
+        {
+            for (index, (entry, _)) in log.iter_mut().enumerate().rev() {
+                if self.groups.get(index).copied() != Some(self.group) {
+                    break;
+                }
+                if let Mutation::Children {
+                    parent: p,
+                    added: a,
+                    removed: r,
+                    next: n,
+                    ..
+                } = entry
+                    && p == parent
+                {
+                    a.extend(added.iter().copied());
+                    r.extend(removed.iter().copied());
+                    *n = *next;
+                    return;
+                }
+            }
+        }
         let path: Vec<NodeId> = std::iter::once(target)
             .chain(self.ancestors(target))
             .collect();
         if let Some(log) = &mut self.mutations {
             log.push((mutation, path));
+            self.groups.push(self.group);
         }
     }
 
     /// Remplace le texte d'un nœud texte ou commentaire ; sans effet sur les autres nœuds.
     pub fn set_text(&mut self, id: NodeId, text: &str) {
-        if let NodeData::Text(t) | NodeData::Comment(t) = &mut self.node_mut(id).data {
+        if let NodeData::Text(t)
+        | NodeData::Comment(t)
+        | NodeData::CData(t)
+        | NodeData::ProcessingInstruction { data: t, .. } = &mut self.node_mut(id).data
+        {
             let old = std::mem::replace(t, text.to_owned());
             self.log(|| Mutation::Text { target: id, old });
         }
@@ -446,6 +578,32 @@ impl Document {
         self.push(NodeData::Comment(text.to_owned()))
     }
 
+    /// Crée une section CDATA détachée.
+    pub fn create_cdata(&mut self, text: &str) -> NodeId {
+        self.push(NodeData::CData(text.to_owned()))
+    }
+
+    /// Crée une instruction de traitement détachée.
+    pub fn create_processing_instruction(&mut self, target: &str, data: &str) -> NodeId {
+        self.push(NodeData::ProcessingInstruction {
+            target: target.to_owned(),
+            data: data.to_owned(),
+        })
+    }
+
+    /// Données du nœud s'il en porte (texte, commentaire, section CDATA,
+    /// instruction de traitement).
+    #[must_use]
+    pub fn character_data(&self, id: NodeId) -> Option<&str> {
+        match &self.node(id).data {
+            NodeData::Text(t)
+            | NodeData::Comment(t)
+            | NodeData::CData(t)
+            | NodeData::ProcessingInstruction { data: t, .. } => Some(t),
+            _ => None,
+        }
+    }
+
     /// Crée un nœud DOCTYPE détaché.
     pub fn create_doctype(&mut self, name: &str, public_id: &str, system_id: &str) -> NodeId {
         self.push(NodeData::Doctype {
@@ -462,9 +620,10 @@ impl Document {
             (n.parent, n.prev_sibling, n.next_sibling)
         };
         let Some(parent) = parent else { return };
-        self.log(|| Mutation::Removed {
+        self.log(|| Mutation::Children {
             parent,
-            node: child,
+            added: Vec::new(),
+            removed: vec![child],
             previous: prev,
             next,
         });
@@ -530,13 +689,20 @@ impl Document {
             }
         }
         self.node_mut(child).parent = Some(parent);
+        let owner = if self.is_document(parent) {
+            parent
+        } else {
+            self.node(parent).owner
+        };
+        self.set_owner(child, owner);
         let (previous, next) = {
             let inserted = self.node(child);
             (inserted.prev_sibling, inserted.next_sibling)
         };
-        self.log(|| Mutation::Inserted {
+        self.log(|| Mutation::Children {
             parent,
-            node: child,
+            added: vec![child],
+            removed: Vec::new(),
             previous,
             next,
         });
@@ -612,12 +778,16 @@ impl Document {
     /// Concatène le texte de tous les descendants de `id`.
     #[must_use]
     pub fn text_content(&self, id: NodeId) -> String {
+        let text = |n: NodeId| match &self.node(n).data {
+            NodeData::Text(t) | NodeData::CData(t) => Some(t.as_str()),
+            _ => None,
+        };
         let mut out = String::new();
-        if let Some(t) = self.text(id) {
+        if let Some(t) = text(id) {
             out.push_str(t);
         }
         for n in self.descendants(id) {
-            if let Some(t) = self.text(n) {
+            if let Some(t) = text(n) {
                 out.push_str(t);
             }
         }
@@ -640,6 +810,10 @@ impl Document {
         // `write!` vers une `String` ne peut pas échouer.
         let _ = match &self.node(id).data {
             NodeData::Document => Ok(()),
+            NodeData::CData(t) => writeln!(out, "| {indent}<![CDATA[{t}]]>"),
+            NodeData::ProcessingInstruction { target, data } => {
+                writeln!(out, "| {indent}<?{target} {data}>")
+            }
             NodeData::Doctype {
                 name,
                 public_id,

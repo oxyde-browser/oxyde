@@ -7,7 +7,8 @@
 //! un plantage ou une boucle sans fin n'emporte que lui.
 //!
 //! ```text
-//! oxyde_wpt [--suite vendor/wpt] [--filtre texte] [--publier] [--echecs N] [dossier…]
+//! oxyde_wpt [--suite vendor/wpt] [--filtre texte] [--publier] [--echecs N]
+//!           [--journal fichier] [dossier…]
 //! oxyde_wpt --un dom/nodes/Node-appendChild.html
 //! ```
 
@@ -61,6 +62,7 @@ fn main() -> ExitCode {
     let mut single: Option<String> = None;
     let mut publish = false;
     let mut shown = 40usize;
+    let mut journal: Option<PathBuf> = None;
     let mut dirs: Vec<String> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -69,6 +71,7 @@ fn main() -> ExitCode {
             "--filtre" => filter = args.next(),
             "--un" => single = args.next(),
             "--publier" => publish = true,
+            "--journal" => journal = args.next().map(PathBuf::from),
             "--echecs" => shown = args.next().and_then(|n| n.parse().ok()).unwrap_or(shown),
             _ => dirs.push(arg),
         }
@@ -95,6 +98,11 @@ fn main() -> ExitCode {
         tests.retain(|t| t.contains(f.as_str()));
     }
     let results = run_all(&suite, &tests);
+    if let Some(path) = journal
+        && let Err(e) = std::fs::write(&path, journal_text(&results))
+    {
+        eprintln!("journal non écrit dans {} : {e}", path.display());
+    }
     print!("{}", render(&dirs, &results, publish, shown));
     ExitCode::SUCCESS
 }
@@ -566,6 +574,30 @@ fn render(dirs: &[String], results: &[(String, Outcome)], publish: bool, shown: 
     }
     if !publish && !details.is_empty() {
         let _ = writeln!(out, "\n## Premiers échecs\n\n{details}");
+    }
+    out
+}
+
+/// Journal : une ligne par sous-test (`PASS` ou `FAIL`, fichier, nom) et une
+/// par fichier (`FILE-OK` ou `FILE-KO`), pour comparer deux exécutions.
+fn journal_text(results: &[(String, Outcome)]) -> String {
+    let mut out = String::new();
+    for (test, outcome) in results {
+        let (subtests, clean) = match outcome {
+            Outcome::Done(s) => (s.as_slice(), true),
+            Outcome::HarnessError(s, _) => (s.as_slice(), false),
+            Outcome::NoResult(_) => (&[][..], false),
+        };
+        let all = clean && !subtests.is_empty() && subtests.iter().all(|t| t.pass);
+        let _ = writeln!(out, "{}\t{test}", if all { "FILE-OK" } else { "FILE-KO" });
+        for t in subtests {
+            let _ = writeln!(
+                out,
+                "{}\t{test}\t{}",
+                if t.pass { "PASS" } else { "FAIL" },
+                t.name
+            );
+        }
     }
     out
 }
