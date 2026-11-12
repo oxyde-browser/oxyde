@@ -247,21 +247,42 @@ fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
     Ok((response.url, response.body))
 }
 
-/// Exécute une requête `fetch` émise par un script. L'échec est décrit par
-/// un message destiné au script (`TypeError`).
-pub(crate) fn fetch_for_script(url: &Url) -> Result<oxyde_content::FetchResponse, String> {
+/// Exécute une requête `fetch` émise par un script, précédée de sa
+/// pré-vérification CORS si la page la demande. L'échec est décrit par un
+/// message destiné au script (`TypeError`).
+pub(crate) fn fetch_for_script(
+    request: &oxyde_content::FetchRequest,
+) -> Result<oxyde_content::FetchResponse, String> {
     // La page ne demande que du http(s) ; on le revérifie avant d'ouvrir une connexion.
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err(format!("protocole « {} » refusé", url.scheme()));
+    if !matches!(request.url.scheme(), "http" | "https") {
+        return Err(format!("protocole « {} » refusé", request.url.scheme()));
     }
     let client = http_client().map_err(|e| e.message)?;
-    let response = client.get(url).map_err(|e| e.to_string())?;
-    Ok(oxyde_content::FetchResponse {
-        url: response.url,
-        status: response.status,
-        headers: response.headers,
-        body: response.body,
-    })
+    let send = |method: &str, headers: Vec<(String, String)>, body: Vec<u8>| {
+        client
+            .send(&oxyde_net::HttpRequest {
+                method: method.to_owned(),
+                url: request.url.clone(),
+                headers,
+                body,
+            })
+            .map(|response| oxyde_content::FetchResponse {
+                url: response.url,
+                status: response.status,
+                headers: response.headers,
+                body: response.body,
+            })
+            .map_err(|e| e.to_string())
+    };
+    if request.needs_preflight {
+        let answer = send("OPTIONS", request.preflight_headers(), Vec::new())?;
+        oxyde_content::preflight_allows(request, &answer)?;
+    }
+    let mut headers = request.headers.clone();
+    if let Some(origin) = &request.origin {
+        headers.push(("Origin".to_owned(), origin.clone()));
+    }
+    send(&request.method, headers, request.body.clone())
 }
 
 /// Exécute, l'une après l'autre, les requêtes `fetch` en attente de `page`
@@ -276,7 +297,7 @@ pub(crate) fn settle_fetches(page: &mut Page) {
             break;
         }
         for request in requests {
-            page.complete_fetch(request.id, fetch_for_script(&request.url));
+            page.complete_fetch(request.id, fetch_for_script(&request));
         }
     }
     report_console(page);

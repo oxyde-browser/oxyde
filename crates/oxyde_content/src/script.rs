@@ -7,7 +7,7 @@
 //! les attributs restent écrits à la main dans ce module.
 //!
 //! LIMITES CONNUES : les modules sont chargés entièrement avant toute
-//! exécution et sans contrôle CORS ; `fetch` se limite à `GET` sans en-têtes ni corps, et la
+//! exécution et sans contrôle CORS ; le corps d'une requête `fetch` est pris pour du texte, et la
 //! réponse est lue d'un bloc (pas de flux, `text()` et `json()` seulement) ;
 //! pas de `XMLHttpRequest`, `localStorage`, `MutationObserver`
 //! ni `getBoundingClientRect` réel ; `getElementsBy…` et `querySelectorAll`
@@ -1933,8 +1933,58 @@ fn reject_fetch(vm: &mut Vm, reject: &Value, message: &str) -> JsResult<()> {
     vm.call(reject, &Value::Undefined, &[error]).map(|_| ())
 }
 
-fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let (promise, resolve, reject) = vm.promise_with_resolvers();
+/// En-têtes d'une requête donnés par un script : un objet `{ nom: valeur }`
+/// ou un tableau de paires. Les en-têtes interdits sont écartés sans bruit ;
+/// un nom ou une valeur invalide est une erreur.
+fn request_headers(vm: &mut Vm, source: &Value) -> JsResult<Result<Vec<(String, String)>, String>> {
+    let mut headers = Vec::new();
+    if source.as_object().is_none() {
+        return Ok(Ok(headers));
+    }
+    let global = Value::Object(vm.global());
+    let array = vm.get(&global, "Array")?;
+    let is_array = vm.get(&array, "isArray")?;
+    let pairs = if vm
+        .call(&is_array, &array, std::slice::from_ref(source))?
+        .truthy()
+    {
+        source.clone()
+    } else {
+        let object = vm.get(&global, "Object")?;
+        let entries = vm.get(&object, "entries")?;
+        vm.call(&entries, &object, std::slice::from_ref(source))?
+    };
+    let length = vm.get(&pairs, "length")?;
+    let count = vm.to_number(&length)?;
+    let mut index = 0.0;
+    while index < count {
+        let pair = vm.get(&pairs, &index.to_string())?;
+        index += 1.0;
+        let (name, value) = (vm.get(&pair, "0")?, vm.get(&pair, "1")?);
+        let name = vm.to_string(&name)?.to_string();
+        let value = vm.to_string(&value)?.trim().to_owned();
+        if !crate::cors::is_header_name(&name) {
+            return Ok(Err(format!("nom d'en-tête invalide : « {name} »")));
+        }
+        if !crate::cors::is_header_value(&value) {
+            return Ok(Err(format!("valeur invalide pour l'en-tête « {name} »")));
+        }
+        if !crate::cors::is_forbidden_header(&name) {
+            headers.push((name, value));
+        }
+    }
+    Ok(Ok(headers))
+}
+
+/// Requête décrite par les arguments de `fetch`, ou la raison de son refus.
+struct Outgoing {
+    address: String,
+    method: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+fn outgoing(vm: &mut Vm, args: &[Value]) -> JsResult<Result<Outgoing, String>> {
     // Adresse : chaîne, ou objet muni d'une propriété `url`.
     let input = arg(args, 0);
     let address = match &input {
@@ -1947,20 +1997,74 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
             }
         }
         other => vm.to_string(other)?,
-    };
+    }
+    .to_string();
     let init = arg(args, 1);
-    let method = match &init {
-        Value::Object(_) => match vm.get(&init, "method")? {
-            Value::Undefined => "GET".to_owned(),
-            other => vm.to_string(&other)?.to_ascii_uppercase(),
-        },
-        _ => "GET".to_owned(),
+    let member = |vm: &mut Vm, name: &str| -> JsResult {
+        if init.as_object().is_some() {
+            vm.get(&init, name)
+        } else {
+            Ok(Value::Undefined)
+        }
+    };
+    let method = match member(vm, "method")? {
+        Value::Undefined => "GET".to_owned(),
+        other => {
+            let name = vm.to_string(&other)?;
+            if !crate::cors::is_allowed_method(&name) {
+                return Ok(Err(format!("la méthode « {name} » n'est pas permise")));
+            }
+            crate::cors::normalize_method(&name)
+        }
+    };
+    let header_source = member(vm, "headers")?;
+    let mut headers = match request_headers(vm, &header_source)? {
+        Ok(headers) => headers,
+        Err(message) => return Ok(Err(message)),
+    };
+    let body = match member(vm, "body")? {
+        Value::Undefined | Value::Null => Vec::new(),
+        other => {
+            if matches!(method.as_str(), "GET" | "HEAD") {
+                return Ok(Err(format!(
+                    "une requête {method} ne peut pas avoir de corps"
+                )));
+            }
+            // LIMITE : le corps est pris pour du texte.
+            let text = vm.to_string(&other)?;
+            if !headers
+                .iter()
+                .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+            {
+                headers.push((
+                    "Content-Type".to_owned(),
+                    "text/plain;charset=UTF-8".to_owned(),
+                ));
+            }
+            text.as_bytes().to_vec()
+        }
+    };
+    Ok(Ok(Outgoing {
+        address,
+        method,
+        headers,
+        body,
+    }))
+}
+
+fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let (promise, resolve, reject) = vm.promise_with_resolvers();
+    let request = match outgoing(vm, args)? {
+        Ok(request) => request,
+        Err(message) => {
+            reject_fetch(vm, &reject, &message)?;
+            return Ok(promise);
+        }
     };
     let Some(h) = host(vm) else {
         return Ok(promise);
     };
-    let refusal = match h.url.join(&address) {
-        _ if method != "GET" => Some(format!("la méthode {method} n'est pas prise en charge")),
+    let refusal = match h.url.join(&request.address) {
         Err(error) => Some(format!("adresse invalide ({error})")),
         Ok(url) if !matches!(url.scheme(), "http" | "https") => Some(format!(
             "le protocole « {} » n'est pas accessible aux scripts",
@@ -1971,9 +2075,22 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         }
         Ok(url) => {
             let id = NEXT_FETCH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let document = h.url.origin();
+            let cross_origin = !document.is_tuple() || document != url.origin();
+            // `Origin` accompagne toute requête vers une autre origine, et
+            // toute requête qui n'est ni `GET` ni `HEAD`.
+            let origin = (cross_origin || !matches!(request.method.as_str(), "GET" | "HEAD"))
+                .then(|| document.ascii_serialization());
+            let needs_preflight =
+                cross_origin && crate::cors::needs_preflight(&request.method, &request.headers);
             h.fetch_queue.push(crate::FetchRequest {
                 id,
                 url: url.clone(),
+                method: request.method,
+                headers: request.headers,
+                body: request.body,
+                origin,
+                needs_preflight,
             });
             h.fetches.insert(
                 id,

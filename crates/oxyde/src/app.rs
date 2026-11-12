@@ -203,7 +203,7 @@ impl App {
             let spawned = std::thread::Builder::new()
                 .name("oxyde-fetch".to_owned())
                 .spawn(move || {
-                    let result = Box::new(loader::fetch_for_script(&request.url));
+                    let result = Box::new(loader::fetch_for_script(&request));
                     // La boucle d'événements peut s'être arrêtée entre-temps.
                     let _ = proxy.send_event(UserEvent::Fetched { tab, id, result });
                 });

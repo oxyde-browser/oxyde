@@ -10,9 +10,12 @@
 //! leur première image ; les images et feuilles externes ajoutées par un
 //! script ne sont pas chargées. Pour les scripts, voir le module `script`.
 
+mod cors;
 #[path = "generated/dom.rs"]
 mod dom_idl;
 mod script;
+
+pub use cors::preflight_allows;
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -45,6 +48,20 @@ pub struct FetchRequest {
     pub id: u64,
     /// Adresse absolue, toujours en `http` ou `https`.
     pub url: Url,
+    /// Méthode HTTP.
+    pub method: String,
+    /// En-têtes posés par le script (nom, valeur), déjà débarrassés de ceux
+    /// qu'un script n'a pas le droit de fixer.
+    pub headers: Vec<(String, String)>,
+    /// Corps de la requête ; vide s'il n'y en a pas.
+    pub body: Vec<u8>,
+    /// Valeur de l'en-tête `Origin` à envoyer, s'il en faut un.
+    pub origin: Option<String>,
+    /// La requête vise une autre origine et sort des requêtes « simples » :
+    /// l'embarqueur doit d'abord envoyer une requête `OPTIONS` munie de
+    /// [`FetchRequest::preflight_headers`] et soumettre la réponse à
+    /// [`preflight_allows`].
+    pub needs_preflight: bool,
 }
 
 /// Réponse à une [`FetchRequest`].
@@ -1024,12 +1041,12 @@ mod tests {
                fetch('/absent').then(r => noter('absent ' + r.status + ' ' + r.ok));
                fetch('/panne').catch(e => noter('panne ' + e.message));
                fetch('file:///C:/secret.txt').catch(() => noter('fichier refusé'));
-               fetch('x', { method: 'POST' }).catch(() => noter('POST refusé'));
+               fetch('x', { method: 'TRACE' }).catch(() => noter('TRACE refusé'));
              </script>",
         );
         p.run_scripts();
         // Les refus immédiats n'atteignent jamais l'embarqueur.
-        assert_eq!(body_text(&p), "fichier refusé;POST refusé;");
+        assert_eq!(body_text(&p), "fichier refusé;TRACE refusé;");
         let requests = p.take_fetches();
         let urls: Vec<&str> = requests.iter().map(|r| r.url.as_str()).collect();
         assert_eq!(
@@ -1086,7 +1103,7 @@ mod tests {
         assert!(!p.complete_fetch(u64::MAX, Err("perdu".to_owned())));
         assert_eq!(
             body_text(&p),
-            "fichier refusé;POST refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
+            "fichier refusé;TRACE refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
              bloqué TypeError;absent 404 false;panne fetch : connexion impossible;"
         );
         assert!(!body_text(&p).contains("secret"));
@@ -1296,6 +1313,58 @@ mod tests {
                 "capture 1|cible 2 true|objet 7|une fois|bulle 3|retour false|",
                 "capture 1|cible 2 true|objet 8|true|false|0"
             )
+        );
+    }
+
+    #[test]
+    fn fetch_sends_method_headers_and_body_under_cors_rules() {
+        let mut p = page(
+            "<script>
+               fetch('/api', {
+                 method: 'post',
+                 headers: { 'X-Jeton': ' 1 ', Cookie: 'a=b', 'Content-Type': 'application/json' },
+                 body: '{}',
+               });
+               fetch('https://ailleurs.test/simple', { method: 'POST', body: 'texte' });
+               fetch('https://ailleurs.test/riche', { method: 'PUT', headers: [['X-A', '1']] });
+               fetch('/lecture', { body: 'x' }).catch(e => { document.body.textContent = e.message; });
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "fetch : une requête GET ne peut pas avoir de corps"
+        );
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 3);
+        let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
+        // Même origine : tout est permis, sans pré-vérification.
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(
+            requests[0].headers,
+            [
+                pair("X-Jeton", "1"),
+                pair("Content-Type", "application/json")
+            ]
+        );
+        assert_eq!(requests[0].body, b"{}");
+        assert_eq!(requests[0].origin.as_deref(), Some("https://exemple.test"));
+        assert!(!requests[0].needs_preflight);
+        // Autre origine, requête simple : type de contenu par défaut.
+        assert_eq!(
+            requests[1].headers,
+            [pair("Content-Type", "text/plain;charset=UTF-8")]
+        );
+        assert!(!requests[1].needs_preflight);
+        // Autre origine, méthode et en-tête hors liste : pré-vérification.
+        assert!(requests[2].needs_preflight);
+        assert_eq!(
+            requests[2].preflight_headers(),
+            [
+                pair("Access-Control-Request-Method", "PUT"),
+                pair("Access-Control-Request-Headers", "x-a"),
+                pair("Origin", "https://exemple.test"),
+            ]
         );
     }
 
