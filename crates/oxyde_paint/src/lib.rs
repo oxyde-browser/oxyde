@@ -11,6 +11,8 @@
 //! `visible` découpe son contenu ; le décalage d'une zone défilante n'est
 //! pas dans la liste, il est appliqué à la composition.
 
+pub mod wire;
+
 pub use kurbo::BezPath;
 pub use oxyde_layout::Rect;
 

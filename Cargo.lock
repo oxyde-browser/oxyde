@@ -2666,6 +2666,7 @@ dependencies = [
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",
+ "oxyde_ipc",
  "oxyde_layout",
  "oxyde_text",
  "peniko",

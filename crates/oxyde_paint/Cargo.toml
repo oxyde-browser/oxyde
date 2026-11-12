@@ -11,6 +11,7 @@ publish.workspace = true
 kurbo = "0.13"
 oxyde_css.workspace = true
 oxyde_dom.workspace = true
+oxyde_ipc.workspace = true
 oxyde_layout.workspace = true
 oxyde_text.workspace = true
 peniko = "0.6"
