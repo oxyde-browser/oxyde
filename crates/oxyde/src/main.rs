@@ -18,6 +18,8 @@
 //!         ajoutés rejoignent le profil
 //! oxyde --screen historique|favoris|parametres|palette …
 //!         ouvre l'historique, les favoris, les paramètres ou la palette
+//! oxyde --find TEXTE …
+//!         ouvre la barre de recherche dans la page sur TEXTE
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
 //! oxyde --no-sandbox …
@@ -80,6 +82,8 @@ struct Args {
     palette: bool,
     /// Fenêtre de navigation privée.
     private: bool,
+    /// Texte à chercher dans la page au lancement.
+    find: Option<String>,
 }
 
 fn parse_args() -> Result<Args> {
@@ -100,6 +104,7 @@ fn parse_args() -> Result<Args> {
         settings: false,
         palette: false,
         private: false,
+        find: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -120,6 +125,7 @@ fn parse_args() -> Result<Args> {
             }
             "--no-profile" => args.no_profile = true,
             "--private" => args.private = true,
+            "--find" => args.find = Some(it.next().context("--find attend un texte")?),
             "--screen" => match it.next().as_deref() {
                 Some("historique") => args.screen = Some(LibrarySection::History),
                 Some("favoris") => args.screen = Some(LibrarySection::Bookmarks),
@@ -201,7 +207,7 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         let input = args.target.as_deref().unwrap_or("about:newtab");
         let url = loader::resolve_input(input)
             .map_err(|error| anyhow::anyhow!("{} : {}", error.title, error.detail))?;
-        let page = remote_page(url, &mut text, (w, h))?;
+        let page = remote_page(url, &mut text, (w, h), args.find.as_deref())?;
         let (scroll_x, scroll_y) = page.scroll_offset();
         append_scrolled(
             &mut scene,
@@ -220,6 +226,9 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
                 height: h,
             },
         );
+        if let Some(query) = &args.find {
+            page.find(query);
+        }
         // Une capture montre la page telle que ses scripts l'ont fait défiler.
         let (scroll_x, scroll_y) = page.scroll_offset();
         append_scrolled(
@@ -252,7 +261,15 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         if args.palette {
             browser.open_palette();
         }
+        if let Some(text) = &args.find {
+            browser.find_text(text);
+        }
         frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
+        // L'interface est dessinée avant la mise en page des pages : une
+        // seconde passe montre le compte des occurrences cherchées.
+        if args.find.is_some() {
+            frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
+        }
         theme::WINDOW
     };
     let pixels = Gpu::new().render_to_rgba(&scene, width, height, clear)?;
@@ -261,7 +278,12 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
 
 /// Fait charger `url` par un processus de rendu et attend que la page soit
 /// stable : chargée, puis sans nouvelle image pendant un court instant.
-fn remote_page(url: Url, text: &mut TextContext, viewport: (f32, f32)) -> Result<PageHost> {
+fn remote_page(
+    url: Url,
+    text: &mut TextContext,
+    viewport: (f32, f32),
+    mut find: Option<&str>,
+) -> Result<PageHost> {
     /// Durée sans nouvelle image après laquelle la page est tenue pour stable.
     const QUIET: Duration = Duration::from_millis(300);
     /// Attente maximale.
@@ -300,6 +322,13 @@ fn remote_page(url: Url, text: &mut TextContext, viewport: (f32, f32)) -> Result
             }
         }
         if committed && painted && timed_out {
+            // La page est stable : la recherche demandée part maintenant, et
+            // la capture attend l'image qui porte son surlignage.
+            if let Some(query) = find.take() {
+                page.find(query);
+                painted = false;
+                continue;
+            }
             return Ok(page);
         }
         if started.elapsed() > LIMIT {
@@ -416,6 +445,9 @@ fn run() -> Result<()> {
     }
     if args.palette {
         browser.open_palette();
+    }
+    if let Some(text) = &args.find {
+        browser.find_text(text);
     }
     app::run(browser, multi_process, profile)
 }

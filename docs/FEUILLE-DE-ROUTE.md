@@ -427,8 +427,15 @@ Fait :
   fenêtres. La teinte violette de la maquette ne couvre que la barre de titre et la page
   « Nouvel onglet ».
 
+- **Recherche dans la page** (Ctrl F) : une barre flottante en haut du volet ; les occurrences
+  sont surlignées, la courante d'une autre couleur, et la page défile jusqu'à elle ; Entrée et
+  Maj Entrée les parcourent en boucle. La recherche ignore la casse et traverse les éléments en
+  ligne. Elle se fait là où vit la page : dans le processus de rendu en mode multi-processus,
+  par deux messages de plus. Limites : une occurrence ne traverse pas deux blocs ; les zones
+  défilantes internes ne défilent pas jusqu'à l'occurrence ; les accents comptent.
+
 Reste : les dossiers de favoris et l'import ; les écrans (téléchargements, infos du site,
-autorisations, recherche dans la page, mots de passe,
+autorisations, mots de passe,
 premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.
 

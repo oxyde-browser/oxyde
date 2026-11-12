@@ -164,6 +164,8 @@ struct Renderer {
     resources: ResourceSender,
     /// Décalages de défilement connus du navigateur.
     known_scroll: HashMap<u32, (f32, f32)>,
+    /// Avancement de la recherche connu du navigateur.
+    sent_found: oxyde_content::FindStatus,
     /// Requêtes `fetch` des scripts en cours : identifiant réseau → requête.
     fetches: HashMap<u64, u64>,
     /// Vrai si une image doit partir même sans changement de la page.
@@ -198,6 +200,7 @@ impl Renderer {
                 })?;
                 self.page = Some(loaded.page);
                 self.known_scroll.clear();
+                self.sent_found = oxyde_content::FindStatus::default();
                 self.fetches.clear();
                 self.force_frame = true;
             }
@@ -249,6 +252,19 @@ impl Renderer {
                     self.known_scroll.insert(id, actual);
                 }
             }
+            ToRenderer::Find { query } => {
+                if let Some(page) = self.page.as_mut() {
+                    page.find(&query);
+                    // Le surlignage change sans nouvelle mise en page.
+                    self.force_frame = true;
+                }
+            }
+            ToRenderer::FindStep { forward } => {
+                if let Some(page) = self.page.as_mut() {
+                    page.find_step(forward);
+                    self.force_frame = true;
+                }
+            }
             ToRenderer::Traverse { url, delta } => {
                 if let (Some(page), Ok(url)) = (self.page.as_mut(), Url::parse(&url)) {
                     page.traverse(&url, delta);
@@ -287,6 +303,16 @@ impl Renderer {
             self.link.send(&FromRenderer::Navigate(navigation))?;
         }
         let repainted = page.update(&mut self.text, self.viewport);
+        // L'avancement de la recherche, quand il a changé (nouvelle
+        // recherche, occurrence suivante, page remise en page).
+        let found = page.find_status();
+        if found != self.sent_found {
+            self.sent_found = found;
+            self.link.send(&FromRenderer::Found {
+                count: u32::try_from(found.count).unwrap_or(u32::MAX),
+                current: u32::try_from(found.current).unwrap_or(u32::MAX),
+            })?;
+        }
         // Zones que les scripts ont fait défiler à l'insu du navigateur.
         let mut scroll = Vec::new();
         let current: HashMap<u32, (f32, f32)> = page
@@ -375,6 +401,7 @@ pub(crate) fn run() -> ExitCode {
         },
         resources: ResourceSender::new(),
         known_scroll: HashMap::new(),
+        sent_found: oxyde_content::FindStatus::default(),
         fetches: HashMap::new(),
         force_frame: false,
         sent_meta: (String::new(), String::new()),

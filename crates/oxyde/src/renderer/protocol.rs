@@ -98,6 +98,10 @@ pub(crate) enum ToRenderer {
     Traverse { url: String, delta: i32 },
     /// Réponse à la requête réseau `id`.
     Network { id: u64, reply: NetworkReply },
+    /// Chercher `query` dans le texte de la page ; vide : effacer la recherche.
+    Find { query: String },
+    /// Passer à l'occurrence suivante ou précédente.
+    FindStep { forward: bool },
 }
 ipc_enum!(ToRenderer {
     0 => Load { url, post, width, height },
@@ -108,6 +112,8 @@ ipc_enum!(ToRenderer {
     5 => Scroll { id, x, y },
     6 => Traverse { url, delta },
     7 => Network { id, reply },
+    8 => Find { query },
+    9 => FindStep { forward },
 });
 
 /// Image de la page, prête à composer.
@@ -151,6 +157,8 @@ pub(crate) enum FromRenderer {
     Clicked { url: String },
     /// Le pointeur est, ou n'est pas, au-dessus d'un lien.
     Hover { link: bool },
+    /// Avancement de la recherche : nombre d'occurrences, rang de la courante.
+    Found { count: u32, current: u32 },
 }
 ipc_enum!(FromRenderer {
     0 => Network { id, request },
@@ -159,4 +167,5 @@ ipc_enum!(FromRenderer {
     3 => Navigate(navigation),
     4 => Clicked { url },
     5 => Hover { link },
+    6 => Found { count, current },
 });

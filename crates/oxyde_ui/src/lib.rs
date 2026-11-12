@@ -14,6 +14,7 @@
 //! Les polices de la maquette (Inter, Space Grotesk, JetBrains Mono) sont
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
 
+mod find;
 mod library;
 mod palette;
 mod panes;
@@ -81,6 +82,14 @@ pub enum Hit {
     LibrarySearch,
     /// Bibliothèque : effacer tout l'historique (à confirmer).
     LibraryClear,
+    /// Recherche dans la page : champ de saisie.
+    FindInput,
+    /// Recherche dans la page : occurrence précédente.
+    FindPrevious,
+    /// Recherche dans la page : occurrence suivante.
+    FindNext,
+    /// Recherche dans la page : fermer la barre.
+    FindClose,
     /// Palette : ligne d'index donné.
     PaletteRow(usize),
     /// Palette : filtre d'index donné.
@@ -99,6 +108,19 @@ pub enum Hit {
         /// Index de la valeur choisie.
         option: usize,
     },
+}
+
+/// Barre de recherche dans la page telle que l'interface l'affiche.
+#[derive(Clone, Copy, Debug)]
+pub struct FindView<'a> {
+    /// Texte cherché, affiché quand la barre n'a pas la saisie.
+    pub query: &'a str,
+    /// La barre a la saisie : le texte est alors [`ChromeState::address`].
+    pub focused: bool,
+    /// Nombre d'occurrences.
+    pub count: usize,
+    /// Rang de l'occurrence courante, à partir de 1.
+    pub current: usize,
 }
 
 /// Dessin placé en tête d'une ligne de la palette.
@@ -378,6 +400,8 @@ pub struct ChromeState<'a> {
     pub settings: Option<SettingsView<'a>>,
     /// Palette de commandes ouverte par-dessus les pages.
     pub palette: Option<PaletteView<'a>>,
+    /// Barre de recherche dans la page active.
+    pub find: Option<FindView<'a>>,
     /// Couleur d'accent.
     pub accent: Color,
     /// Fenêtre de navigation privée.
@@ -773,10 +797,11 @@ pub(crate) fn tab_title<'a>(tab: &TabView<'a>) -> &'a str {
 
 /// Construit l'interface pour l'état `state`.
 pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
-    // La palette a la saisie : dessous, la fenêtre s'affiche comme au repos.
+    // La palette ou la barre de recherche a la saisie : dessous, la fenêtre
+    // s'affiche comme au repos.
     let typed = state;
     let resting;
-    let state = if typed.palette.is_some() {
+    let state = if typed.palette.is_some() || typed.find.is_some_and(|find| find.focused) {
         resting = ChromeState {
             editing: false,
             address: typed.page_address,
@@ -1303,17 +1328,30 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         hover,
         accent,
     } = p;
+    // La barre de recherche d'abord : la palette la recouvre.
+    let mut front = Painter {
+        text,
+        list: DisplayList::default(),
+        hits: Vec::new(),
+        widgets: Vec::new(),
+        hover,
+        accent,
+    };
+    if let Some(view) = &typed.find {
+        let pane = web_panes
+            .iter()
+            .find(|pane| pane.tab == state.active)
+            .map_or(area, |pane| pane.rect);
+        find::build(&mut front, typed, view, pane);
+        overlay.items.append(&mut front.list.items);
+        front.hits.append(&mut hits);
+        hits = std::mem::take(&mut front.hits);
+        front.widgets.append(&mut widgets);
+        widgets = std::mem::take(&mut front.widgets);
+    }
     if let Some(view) = &state.palette {
-        let mut front = Painter {
-            text,
-            list: DisplayList::default(),
-            hits: Vec::new(),
-            widgets: Vec::new(),
-            hover,
-            accent,
-        };
         palette::build(&mut front, typed, view);
-        overlay.items.extend(front.list.items);
+        overlay.items.append(&mut front.list.items);
         front.hits.append(&mut hits);
         hits = front.hits;
         front.widgets.append(&mut widgets);
@@ -1385,6 +1423,7 @@ mod tests {
             library: None,
             settings: None,
             palette: None,
+            find: None,
             accent: theme::ACCENT,
             private: false,
         }
@@ -1971,5 +2010,59 @@ mod tests {
             .find(|w| w.role == Role::TextInput && w.label == "Rechercher ou saisir une adresse")
             .expect("champ de recherche");
         assert_eq!(field.hit, Some(Hit::Address));
+    }
+
+    #[test]
+    fn find_bar_floats_over_the_active_pane() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let mut s = state(&tabs, None);
+        s.find = Some(FindView {
+            query: "wgpu",
+            focused: false,
+            count: 12,
+            current: 3,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        let pane = chrome.panes[0].rect;
+        let bar = find_hit(&chrome, Hit::FindNext).expect("suivante");
+        // Dans le volet, en haut à droite, et devant lui pour les clics.
+        assert!(bar.x > pane.x + pane.w / 2.0 && bar.y < pane.y + 60.0);
+        assert_eq!(chrome.hit(bar.x + 4.0, bar.y + 4.0), Some(Hit::FindNext));
+        for hit in [Hit::FindInput, Hit::FindPrevious, Hit::FindClose] {
+            assert!(find_hit(&chrome, hit).is_some(), "{hit:?}");
+        }
+        assert_eq!(
+            chrome.hit(pane.x + 20.0, pane.y + 200.0),
+            Some(Hit::Pane(0))
+        );
+        let labels: Vec<&str> = chrome.widgets.iter().map(|w| w.label.as_str()).collect();
+        assert!(labels.contains(&"3 sur 12"), "{labels:?}");
+        // Sans la saisie, la barre d'adresse garde la sienne.
+        let field = chrome
+            .widgets
+            .iter()
+            .find(|w| w.label == "Rechercher dans la page")
+            .expect("champ");
+        assert_eq!(field.value.as_deref(), Some("wgpu"));
+
+        // Avec la saisie, le texte tapé est celui de l'état ; rien de trouvé se dit.
+        s.editing = true;
+        s.address = "absent";
+        s.find = Some(FindView {
+            query: "wgpu",
+            focused: true,
+            count: 0,
+            current: 0,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        let labels: Vec<&str> = chrome.widgets.iter().map(|w| w.label.as_str()).collect();
+        assert!(labels.contains(&"Aucun résultat"), "{labels:?}");
+        let address = chrome
+            .widgets
+            .iter()
+            .find(|w| w.label == "Adresse")
+            .expect("barre d'adresse");
+        assert_eq!(address.value.as_deref(), Some("docs.rs/wgpu"));
     }
 }

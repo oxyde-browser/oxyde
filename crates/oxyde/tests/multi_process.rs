@@ -26,8 +26,12 @@ fn page(name: &str) -> String {
         .to_string()
 }
 
+/// Chemin d'une capture, propre à chaque appel : les tests tournent en
+/// parallèle et peuvent capturer la même page.
 fn output_path(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("oxyde-{}-{name}.png", std::process::id()))
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("oxyde-{}-{serial}-{name}.png", std::process::id()))
 }
 
 /// Pixels RGBA d'une capture.
@@ -44,8 +48,13 @@ fn pixels(path: &Path) -> (u32, u32, Vec<u8>) {
 
 /// Rend `name` et renvoie ses pixels ; `None` si le rendu est impossible ici.
 fn capture(name: &str, multi_process: bool) -> Option<(u32, u32, Vec<u8>)> {
+    capture_with(name, multi_process, &[])
+}
+
+/// Comme [`capture`], avec les options `extra` en plus.
+fn capture_with(name: &str, multi_process: bool, extra: &[&str]) -> Option<(u32, u32, Vec<u8>)> {
     let mode = if multi_process { "multi" } else { "mono" };
-    let output = output_path(&format!("{name}-{mode}"));
+    let output = output_path(&format!("{name}-{mode}-{}", extra.len()));
     let url = page(name);
     let mut args = vec![
         "--screenshot",
@@ -57,6 +66,7 @@ fn capture(name: &str, multi_process: bool) -> Option<(u32, u32, Vec<u8>)> {
     if multi_process {
         args.push("--multi-process");
     }
+    args.extend_from_slice(extra);
     args.push(&url);
     let run = oxyde(&args);
     if !run.status.success() {
@@ -169,4 +179,37 @@ fn web_page_cannot_read_local_files() {
             "le refus d'un fichier ne doit pas faire planter le rendu : {message}"
         );
     }
+}
+
+/// Nombre de pixels qui diffèrent nettement entre deux captures.
+fn differing(a: &[u8], b: &[u8]) -> usize {
+    let (a, _) = a.as_chunks::<4>();
+    let (b, _) = b.as_chunks::<4>();
+    a.iter()
+        .zip(b)
+        .filter(|(x, y)| x.iter().zip(*y).any(|(p, q)| p.abs_diff(*q) > 2))
+        .count()
+}
+
+#[test]
+fn find_in_page_highlights_the_same_matches_in_both_modes() {
+    let name = "tableaux.html";
+    let Some((_, _, plain)) = capture(name, false) else {
+        return;
+    };
+    let find = ["--find", "bordures"];
+    let (_, _, local) = capture_with(name, false, &find).expect("recherche dans le navigateur");
+    let (_, _, remote) =
+        capture_with(name, true, &find).expect("recherche par le processus de rendu");
+    // La recherche surligne quelque chose…
+    assert!(
+        differing(&plain, &local) > 50,
+        "aucun surlignage dans le processus du navigateur"
+    );
+    // … et le processus de rendu surligne la même chose, au même endroit.
+    assert_eq!(
+        differing(&local, &remote),
+        0,
+        "le surlignage diffère entre les deux modes"
+    );
 }

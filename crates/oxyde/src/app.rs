@@ -324,6 +324,7 @@ impl App {
         if size.width <= 0.0 || size.height <= 0.0 {
             return Ok(());
         }
+        let found = self.browser.find_status();
         self.chrome = frame::compose(
             &mut self.browser,
             &mut self.text,
@@ -332,6 +333,11 @@ impl App {
             size.height,
             scale,
         );
+        // La mise en page de cette image a changé le compte des occurrences
+        // cherchées : la barre, dessinée avant, le dira à l'image suivante.
+        if self.browser.find_status() != found {
+            window.request_redraw();
+        }
         // Les paramètres viennent de sauter à une rubrique : le défilement
         // retenu par l'interface devient celui du navigateur.
         if let Some(scroll) = self.chrome.settings_scroll {
@@ -451,6 +457,7 @@ impl App {
         let alt = self.modifiers.alt_key();
         let shift = self.modifiers.shift_key();
         let press = match key {
+            Key::Named(NamedKey::Enter) if shift => Some(KeyPress::ShiftEnter),
             Key::Named(NamedKey::Enter) => Some(KeyPress::Enter),
             Key::Named(NamedKey::Escape) => Some(KeyPress::Escape),
             Key::Named(NamedKey::Backspace) => Some(KeyPress::Backspace),

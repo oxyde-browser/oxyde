@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use oxyde_compositor::{ROOT_SCROLLER, ScrollTree};
-use oxyde_content::{FormPost, KeyInput, Navigation, Page};
+use oxyde_content::{FindStatus, FormPost, KeyInput, Navigation, Page};
 use oxyde_css::{Color, Viewport};
 use oxyde_ipc::{Bytes, ChannelError, Receiver, Sender};
 use oxyde_paint::DisplayList;
@@ -52,6 +52,9 @@ pub(crate) struct RemotePage {
     /// Dernier point de survol transmis, et sa réponse.
     hover: Cell<Option<(f32, f32)>>,
     over_link: bool,
+    /// Avancement de la recherche dans la page, tel que le processus de
+    /// rendu l'a annoncé en dernier.
+    found: FindStatus,
     crashed: bool,
     /// Site auquel ce processus est voué, tenu par le navigateur seul.
     lock: Arc<Mutex<SiteLock>>,
@@ -159,6 +162,7 @@ impl RemotePage {
             commits: Vec::new(),
             hover: Cell::new(None),
             over_link: false,
+            found: FindStatus::default(),
             crashed: false,
             lock: Arc::default(),
         };
@@ -338,6 +342,13 @@ impl RemotePage {
                             self.navigations.push(navigation);
                         }
                     }
+                }
+                FromRenderer::Found { count, current } => {
+                    self.found = FindStatus {
+                        count: usize::try_from(count).unwrap_or(usize::MAX),
+                        current: usize::try_from(current).unwrap_or(usize::MAX),
+                    };
+                    redraw = true;
                 }
                 FromRenderer::Hover { link } => {
                     if link != self.over_link {
@@ -684,6 +695,41 @@ impl PageHost {
                 }));
                 (false, false)
             }
+        }
+    }
+
+    /// Cherche `query` dans le texte de la page et surligne ses
+    /// occurrences ; vide : efface la recherche. Pour une page distante,
+    /// l'avancement arrive plus tard (voir [`PageHost::find_status`]).
+    pub(crate) fn find(&mut self, query: &str) {
+        match self {
+            Self::Local(page) => {
+                page.find(query);
+            }
+            Self::Remote(page) => {
+                page.found = FindStatus::default();
+                page.send(&ToRenderer::Find {
+                    query: query.to_owned(),
+                });
+            }
+        }
+    }
+
+    /// Passe à l'occurrence suivante ou précédente de la recherche.
+    pub(crate) fn find_step(&mut self, forward: bool) {
+        match self {
+            Self::Local(page) => {
+                page.find_step(forward);
+            }
+            Self::Remote(page) => page.send(&ToRenderer::FindStep { forward }),
+        }
+    }
+
+    /// Avancement de la recherche dans la page.
+    pub(crate) fn find_status(&self) -> FindStatus {
+        match self {
+            Self::Local(page) => page.find_status(),
+            Self::Remote(page) => page.found,
         }
     }
 

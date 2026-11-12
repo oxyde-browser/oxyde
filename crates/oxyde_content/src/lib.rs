@@ -509,6 +509,41 @@ pub(crate) fn same_origin(a: &Url, b: &Url) -> bool {
 /// Nombre maximal de cadres chargés par page.
 const MAX_FRAMES: usize = 50;
 
+/// Surlignage des occurrences d'une recherche dans la page.
+const FIND_HIGHLIGHT: Color = Color {
+    r: 0xFF,
+    g: 0xD5,
+    b: 0x4F,
+    a: 0x73,
+};
+/// Surlignage de l'occurrence courante.
+const FIND_CURRENT: Color = Color {
+    r: 0xFF,
+    g: 0x8A,
+    b: 0x00,
+    a: 0x99,
+};
+
+/// Avancement d'une recherche dans la page.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FindStatus {
+    /// Nombre d'occurrences trouvées.
+    pub count: usize,
+    /// Rang de l'occurrence courante, à partir de 1 ; nul s'il n'y en a aucune.
+    pub current: usize,
+}
+
+/// Recherche en cours dans la page.
+#[derive(Debug)]
+struct Find {
+    query: String,
+    /// Rectangles de chaque occurrence, dans l'ordre du document.
+    matches: Vec<Vec<oxyde_layout::Rect>>,
+    /// Index de l'occurrence courante. INVARIANT : nul, ou inférieur à
+    /// `matches.len()`.
+    current: usize,
+}
+
 /// Une page chargée.
 #[derive(Debug)]
 pub struct Page {
@@ -542,6 +577,11 @@ pub struct Page {
     scrolling: std::sync::Arc<Scrolling>,
     /// Vrai si le style, les images, le DOM ou la taille ont changé depuis la dernière mise en page.
     dirty: bool,
+    /// Recherche de texte en cours.
+    find: Option<Find>,
+    /// Nombre d'éléments de `list` qui viennent de la page ; les suivants
+    /// sont le surlignage de la recherche.
+    painted: usize,
 }
 
 fn attr_has_token(value: &str, token: &str) -> bool {
@@ -728,6 +768,8 @@ impl Page {
             animations: std::sync::Arc::new(Animations::new()),
             scrolling: std::sync::Arc::default(),
             dirty: true,
+            find: None,
+            painted: 0,
         }
     }
 
@@ -1451,6 +1493,7 @@ impl Page {
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         self.list = oxyde_paint::paint(&tree, viewport, &image_of);
+        self.painted = self.list.items.len();
         // Les décalages de défilement sont ramenés dans les bornes du
         // nouveau contenu.
         self.scrolling.lock().update(
@@ -1459,7 +1502,122 @@ impl Page {
             (tree.width, tree.height),
         );
         self.tree = Some(tree);
+        // La mise en page a changé : les occurrences aussi.
+        if let (Some(find), Some(tree)) = (&mut self.find, &self.tree) {
+            find.matches = oxyde_layout::find_text(tree, &find.query);
+            find.current = find.current.min(find.matches.len().saturating_sub(1));
+        }
+        self.paint_find();
         true
+    }
+
+    /// Cherche `query` dans le texte de la page, sans tenir compte de la
+    /// casse, et surligne ses occurrences. L'occurrence courante est la
+    /// première à partir du haut de la fenêtre ; la page défile jusqu'à
+    /// elle si elle n'est pas visible. Une recherche vide efface le
+    /// surlignage. La page doit avoir été mise en page ([`Page::update`]).
+    pub fn find(&mut self, query: &str) -> FindStatus {
+        if query.is_empty() {
+            self.find = None;
+        } else if !self.find.as_ref().is_some_and(|find| find.query == query) {
+            let matches = self
+                .tree
+                .as_ref()
+                .map(|tree| oxyde_layout::find_text(tree, query))
+                .unwrap_or_default();
+            let (_, top) = self.scroll_offset();
+            let current = matches
+                .iter()
+                .position(|rects| rects.first().is_some_and(|r| r.y + r.h > top))
+                .unwrap_or(0);
+            self.find = Some(Find {
+                query: query.to_owned(),
+                matches,
+                current,
+            });
+            self.reveal_find();
+        }
+        self.paint_find();
+        self.find_status()
+    }
+
+    /// Passe à l'occurrence suivante (`forward`) ou précédente de la
+    /// recherche en cours, en bouclant, et fait défiler la page jusqu'à elle.
+    pub fn find_step(&mut self, forward: bool) -> FindStatus {
+        if let Some(find) = &mut self.find
+            && !find.matches.is_empty()
+        {
+            let count = find.matches.len();
+            let step = if forward { 1 } else { count - 1 };
+            find.current = (find.current + step) % count;
+        }
+        self.reveal_find();
+        self.paint_find();
+        self.find_status()
+    }
+
+    /// Avancement de la recherche en cours.
+    #[must_use]
+    pub fn find_status(&self) -> FindStatus {
+        match &self.find {
+            Some(find) if !find.matches.is_empty() => FindStatus {
+                count: find.matches.len(),
+                current: find.current + 1,
+            },
+            _ => FindStatus::default(),
+        }
+    }
+
+    /// Fait défiler la fenêtre pour que l'occurrence courante soit visible.
+    fn reveal_find(&mut self) {
+        let rect = self
+            .find
+            .as_ref()
+            .and_then(|find| find.matches.get(find.current))
+            .and_then(|rects| rects.first())
+            .copied();
+        let Some(rect) = rect else {
+            return;
+        };
+        let (x, y) = self.scroll_offset();
+        let (width, height) = (self.viewport.width, self.viewport.height);
+        // Une marge : l'occurrence ne colle pas au bord, ni ne passe sous la
+        // barre de recherche.
+        let margin = 64.0f32.min(height / 4.0);
+        let fits_x = rect.x >= x && rect.x + rect.w <= x + width;
+        let fits_y = rect.y >= y + margin && rect.y + rect.h <= y + height - margin;
+        if fits_x && fits_y {
+            return;
+        }
+        let target_x = if fits_x {
+            x
+        } else {
+            (rect.x - margin).max(0.0)
+        };
+        let target_y = if fits_y {
+            y
+        } else {
+            (rect.y + rect.h / 2.0 - height / 2.0).max(0.0)
+        };
+        self.set_scroll(oxyde_compositor::ROOT_SCROLLER, target_x, target_y);
+    }
+
+    /// Remplace le surlignage de la recherche à la fin de la liste d'affichage.
+    fn paint_find(&mut self) {
+        self.list.items.truncate(self.painted);
+        let Some(find) = &self.find else {
+            return;
+        };
+        for (index, rects) in find.matches.iter().enumerate() {
+            let color = if index == find.current {
+                FIND_CURRENT
+            } else {
+                FIND_HIGHLIGHT
+            };
+            for rect in rects {
+                self.list.rect(*rect, color, 2.0);
+            }
+        }
     }
 
     /// Liste d'affichage de la dernière mise en page (coordonnées de la page).
@@ -2727,5 +2885,69 @@ mod tests {
             body_text(&p),
             "<b>a</b>x-y<!--k-->c|5|x-y|true|hidden|<u>z</u>|20|true|fin"
         );
+    }
+
+    #[test]
+    fn find_highlights_steps_and_scrolls() {
+        let mut text = TextContext::new();
+        let mut page = page(
+            "<body style='margin:0'><p>Premier MOT</p><div style='height:2000px'></div>\
+             <p>second mot, troisième <b>mot</b></p></body>",
+        );
+        // Avant la mise en page, rien n'est trouvé ; la mise en page rattrape.
+        assert_eq!(page.find("mot"), FindStatus::default());
+        page.update(&mut text, VIEWPORT);
+        assert_eq!(
+            page.find_status(),
+            FindStatus {
+                count: 3,
+                current: 1
+            }
+        );
+        let painted = page.display_list().items.len();
+        let highlights = |page: &Page| {
+            page.display_list()
+                .items
+                .iter()
+                .filter(|item| {
+                    matches!(item, DisplayItem::Rect { color, .. }
+                        if *color == FIND_HIGHLIGHT || *color == FIND_CURRENT)
+                })
+                .count()
+        };
+        assert_eq!(highlights(&page), 3);
+        assert_eq!(page.scroll_offset(), (0.0, 0.0));
+
+        // L'occurrence suivante est plus bas : la page défile jusqu'à elle.
+        assert_eq!(
+            page.find_step(true),
+            FindStatus {
+                count: 3,
+                current: 2
+            }
+        );
+        assert!(page.scroll_offset().1 > 1000.0);
+        assert_eq!(page.find_step(true).current, 3);
+        // La recherche boucle, dans les deux sens.
+        assert_eq!(page.find_step(true).current, 1);
+        assert_eq!(page.scroll_offset().1, 0.0);
+        assert_eq!(page.find_step(false).current, 3);
+
+        // Une autre recherche repart de ce qui est à l'écran.
+        assert_eq!(
+            page.find("troisième"),
+            FindStatus {
+                count: 1,
+                current: 1
+            }
+        );
+        assert_eq!(highlights(&page), 1);
+        assert_eq!(page.find("absent"), FindStatus::default());
+        assert_eq!(highlights(&page), 0);
+        // Effacer la recherche rend la liste d'affichage telle qu'elle était.
+        page.find("mot");
+        page.find("");
+        assert_eq!(page.find_status(), FindStatus::default());
+        assert_eq!(page.display_list().items.len(), painted - 3);
     }
 }

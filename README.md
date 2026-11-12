@@ -35,6 +35,7 @@ cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 |---|---|
 | Ctrl L | saisir une adresse ou une recherche |
 | Ctrl K | palette de commandes : onglets, historique, favoris, commandes |
+| Ctrl F | chercher dans la page ; Entrée et Maj Entrée parcourent les occurrences |
 | Ctrl V, Ctrl A | coller, tout sélectionner (pendant la saisie) |
 | Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
 | Ctrl Maj T | rouvrir le dernier onglet fermé |

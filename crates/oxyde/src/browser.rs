@@ -11,9 +11,9 @@ use oxyde_css::Color;
 use oxyde_platform::CivilTime;
 use oxyde_storage::{Bookmarks, History, Session, SessionTab, Settings};
 use oxyde_ui::{
-    ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, LibraryRow, LibrarySection, LibraryView,
-    PaletteGlyph, PaletteRow, PaletteView, PaneContent, SettingControl, SettingRow, SettingsGroup,
-    SettingsView, SpaceView, TabView, theme,
+    ChromeState, ClosedView, ErrorStyle, ErrorView, FindView, Hit, LibraryRow, LibrarySection,
+    LibraryView, PaletteGlyph, PaletteRow, PaletteView, PaneContent, SettingControl, SettingRow,
+    SettingsGroup, SettingsView, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
@@ -155,6 +155,16 @@ struct Palette {
     items: Vec<PaletteItem>,
 }
 
+/// Barre de recherche dans la page d'un onglet.
+struct FindBar {
+    /// Identifiant de l'onglet où l'on cherche.
+    tab: u64,
+    /// Texte cherché.
+    query: String,
+    /// La barre a la saisie : [`Browser::editing`] porte alors son texte.
+    focused: bool,
+}
+
 /// Écran Paramètres ouvert à la place des onglets.
 struct SettingsScreen {
     /// Rubrique mise en avant.
@@ -264,6 +274,8 @@ pub(crate) enum KeyPress {
     /// Texte collé depuis le presse-papiers.
     Paste(String),
     Enter,
+    /// Entrée accompagnée de Maj.
+    ShiftEnter,
     Escape,
     Backspace,
     /// Lettre accompagnée de Ctrl (en minuscule).
@@ -434,6 +446,8 @@ pub(crate) struct Browser {
     palette: Option<Palette>,
     /// Fenêtre de navigation privée : rien n'y est noté dans l'historique.
     private: bool,
+    /// Barre de recherche dans la page, quand elle est ouverte.
+    find: Option<FindBar>,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -478,6 +492,7 @@ impl Browser {
             settings_screen: None,
             palette: None,
             private: false,
+            find: None,
         };
         browser.refresh_address();
         browser
@@ -729,6 +744,160 @@ impl Browser {
                 })
                 .collect(),
         }
+    }
+
+    /// Ouvre la barre de recherche dans la page active, ou lui rend la
+    /// saisie. Sans effet sur une page interne (nouvel onglet, erreur).
+    fn open_find(&mut self) {
+        let Some(tab) = self.tabs.get(self.active) else {
+            return;
+        };
+        if tab.error.is_some() || tab.is_new_tab() {
+            return;
+        }
+        let id = tab.id;
+        let query = match &self.find {
+            Some(bar) if bar.tab == id => bar.query.clone(),
+            Some(_) => {
+                // La barre était sur un autre onglet : elle s'y ferme.
+                self.close_find();
+                String::new()
+            }
+            None => String::new(),
+        };
+        self.caret = query.len();
+        self.select_all = !query.is_empty();
+        self.editing = Some(query.clone());
+        self.find = Some(FindBar {
+            tab: id,
+            query,
+            focused: true,
+        });
+    }
+
+    /// Ouvre la barre de recherche sur `text` (ligne de commande).
+    pub(crate) fn find_text(&mut self, text: &str) {
+        self.open_find();
+        if self.find.is_some() {
+            self.editing = Some(text.to_owned());
+            self.caret = text.len();
+            self.select_all = false;
+            self.requery_find();
+        }
+    }
+
+    /// Avancement de la recherche affichée par la barre, si elle est ouverte.
+    pub(crate) fn find_status(&self) -> Option<oxyde_content::FindStatus> {
+        let bar = self.find.as_ref()?;
+        let tab = self.tabs.iter().find(|tab| tab.id == bar.tab)?;
+        Some(tab.page.find_status())
+    }
+
+    /// Ferme la barre de recherche et efface le surlignage.
+    fn close_find(&mut self) {
+        let Some(bar) = self.find.take() else {
+            return;
+        };
+        if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == bar.tab) {
+            tab.page.find("");
+        }
+        if bar.focused {
+            self.editing = None;
+            self.refresh_address();
+        }
+    }
+
+    /// La barre de recherche perd la saisie ; elle reste affichée.
+    fn blur_find(&mut self) {
+        if let Some(bar) = &mut self.find
+            && std::mem::take(&mut bar.focused)
+        {
+            self.editing = None;
+            self.refresh_address();
+        }
+    }
+
+    /// Le texte de la barre de recherche a peut-être changé : la page
+    /// cherche le nouveau.
+    fn requery_find(&mut self) {
+        let Some(bar) = &mut self.find else {
+            return;
+        };
+        let query = self.editing.clone().unwrap_or_default();
+        if query == bar.query {
+            return;
+        }
+        bar.query = query;
+        if let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == bar.tab) {
+            tab.page.find(&bar.query);
+        }
+    }
+
+    /// Passe à l'occurrence suivante ou précédente.
+    fn step_find(&mut self, forward: bool) {
+        if let Some(bar) = &self.find
+            && let Some(tab) = self.tabs.iter_mut().find(|tab| tab.id == bar.tab)
+        {
+            tab.page.find_step(forward);
+        }
+    }
+
+    /// Clic sur la barre de recherche ; `false` : le clic vise autre chose.
+    fn find_click(&mut self, hit: Hit) -> bool {
+        match hit {
+            Hit::FindInput => {
+                if let Some(bar) = &mut self.find
+                    && !bar.focused
+                {
+                    bar.focused = true;
+                    self.caret = bar.query.len();
+                    self.select_all = false;
+                    self.editing = Some(bar.query.clone());
+                }
+            }
+            Hit::FindNext => self.step_find(true),
+            Hit::FindPrevious => self.step_find(false),
+            Hit::FindClose => self.close_find(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// Touche pendant que la barre de recherche est ouverte ; `false` : la
+    /// touche suit son cours habituel.
+    fn find_key(&mut self, key: &KeyPress) -> bool {
+        let focused = self.find.as_ref().is_some_and(|bar| bar.focused);
+        match key {
+            KeyPress::Ctrl('f') => self.open_find(),
+            // Échap annule d'abord une saisie d'adresse en cours.
+            KeyPress::Escape if focused || self.editing.is_none() => self.close_find(),
+            KeyPress::Enter if focused => self.step_find(true),
+            KeyPress::ShiftEnter if focused => self.step_find(false),
+            KeyPress::Ctrl('a') if focused => self.select_all = true,
+            KeyPress::Text(typed) | KeyPress::Paste(typed) if focused => {
+                self.insert_text(typed);
+                self.requery_find();
+            }
+            KeyPress::Backspace
+            | KeyPress::Delete
+            | KeyPress::Left
+            | KeyPress::Right
+            | KeyPress::Home
+            | KeyPress::End
+                if focused =>
+            {
+                self.edit_key(key);
+                self.requery_find();
+            }
+            KeyPress::Tab | KeyPress::Up | KeyPress::Down if focused => {}
+            // Tout autre raccourci agit comme d'habitude ; la barre reste
+            // ouverte tant que son onglet est affiché.
+            _ => {
+                self.blur_find();
+                return false;
+            }
+        }
+        true
     }
 
     /// Vrai si la palette de commandes est ouverte.
@@ -1298,6 +1467,20 @@ impl Browser {
                 confirm_clear: library.confirm_clear,
                 truncated: library.truncated,
             }),
+            find: self.find.as_ref().map(|bar| {
+                let status = self
+                    .tabs
+                    .iter()
+                    .find(|tab| tab.id == bar.tab)
+                    .map(|tab| tab.page.find_status())
+                    .unwrap_or_default();
+                FindView {
+                    query: &bar.query,
+                    focused: bar.focused,
+                    count: status.count,
+                    current: status.current,
+                }
+            }),
             palette: self.palette.as_ref().map(|palette| PaletteView {
                 rows: &views.palette,
                 selected: palette.selected,
@@ -1844,6 +2027,13 @@ impl Browser {
         if self.palette.is_some() {
             return self.palette_click(hit);
         }
+        if self.find.is_some() {
+            if self.find_click(hit) {
+                return Vec::new();
+            }
+            // Un clic ailleurs retire la saisie à la barre, sans la fermer.
+            self.blur_find();
+        }
         if self.library_open() {
             // Seuls les boutons de la fenêtre gardent leur rôle habituel.
             let window = matches!(
@@ -1932,6 +2122,8 @@ impl Browser {
             | Hit::PaletteFilter(_)
             | Hit::PaletteInput
             | Hit::PaletteDismiss => Vec::new(),
+            // La barre de recherche est fermée.
+            Hit::FindInput | Hit::FindPrevious | Hit::FindNext | Hit::FindClose => Vec::new(),
             Hit::LibraryBack
             | Hit::LibrarySection(_)
             | Hit::LibraryRow(_)
@@ -2013,6 +2205,25 @@ impl Browser {
 
     /// Touche du clavier.
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
+        // Ouvrir la palette, la bibliothèque ou les paramètres ferme la
+        // barre de recherche : sa page n'est plus affichée.
+        if self.find.is_some() && self.palette.is_none() && !self.library_open() {
+            if self.find_key(&key) {
+                return Vec::new();
+            }
+            if matches!(
+                key,
+                KeyPress::Ctrl('k' | 'h' | ',') | KeyPress::CtrlShift('o')
+            ) {
+                self.close_find();
+            }
+        }
+        // Hors de la barre de recherche, Maj Entrée vaut Entrée.
+        let key = if key == KeyPress::ShiftEnter {
+            KeyPress::Enter
+        } else {
+            key
+        };
         if self.palette.is_some()
             && let Some(commands) = self.palette_key(&key)
         {
@@ -2032,6 +2243,7 @@ impl Browser {
             KeyPress::CtrlShift('o') => self.open_library(LibrarySection::Bookmarks),
             KeyPress::Ctrl('l') => self.start_editing(),
             KeyPress::Ctrl('k') => self.open_palette(),
+            KeyPress::Ctrl('f') => self.open_find(),
             KeyPress::CtrlShift('n') => return vec![Command::PrivateWindow],
             KeyPress::CtrlShift('s') => self.toggle_split(),
             // Sans la palette, ces touches ne concernent que la page.
@@ -2088,7 +2300,8 @@ impl Browser {
                     };
                 }
             }
-            KeyPress::Ctrl(_) | KeyPress::CtrlShift(_) => {}
+            // Maj Entrée a déjà été ramenée à Entrée.
+            KeyPress::Ctrl(_) | KeyPress::CtrlShift(_) | KeyPress::ShiftEnter => {}
         }
         Vec::new()
     }
@@ -2096,6 +2309,12 @@ impl Browser {
     /// Exécute les minuteurs échus de tous les onglets ; renvoie `true` si un
     /// onglet doit être redessiné.
     pub(crate) fn tick(&mut self, now: std::time::Instant) -> bool {
+        // La barre de recherche suit son onglet : elle se ferme dès qu'un
+        // autre est affiché, ou qu'il a disparu.
+        let shown = self.tabs.get(self.active).map(|tab| tab.id);
+        if self.find.as_ref().is_some_and(|bar| Some(bar.tab) != shown) {
+            self.close_find();
+        }
         let mut redraw = false;
         let mut commits = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
@@ -2213,6 +2432,11 @@ impl Browser {
         tab.loading = false;
         tab.asleep = false;
         tab.refresh_labels();
+        if let Some(bar) = &self.find
+            && bar.tab == tab.id
+        {
+            tab.page.find(&bar.query);
+        }
         if push_history {
             self.record_visit(index);
         }
@@ -2307,6 +2531,11 @@ impl Browser {
         tab.loading = false;
         tab.asleep = false;
         tab.refresh_labels();
+        if let Some(bar) = &self.find
+            && bar.tab == tab.id
+        {
+            tab.page.find(&bar.query);
+        }
         if push_history {
             self.record_visit(index);
         }
@@ -3027,5 +3256,60 @@ mod tests {
             b.key(KeyPress::Enter).as_slice(),
             [Command::PrivateWindow]
         ));
+    }
+
+    fn find_view(b: &Browser) -> Option<(String, bool)> {
+        let views = b.views();
+        let state = b.chrome_state(&views, 1440.0, 900.0);
+        state.find.map(|find| (find.query.to_owned(), find.focused))
+    }
+
+    #[test]
+    fn find_bar_follows_its_tab() {
+        let mut b = browser();
+        b.key(KeyPress::Ctrl('f'));
+        assert_eq!(find_view(&b), Some((String::new(), true)));
+        b.key(KeyPress::Text("lien".into()));
+        b.key(KeyPress::Enter);
+        b.key(KeyPress::ShiftEnter);
+        assert_eq!(find_view(&b), Some(("lien".into(), true)));
+        assert!(b.is_editing());
+
+        // Un clic dans la page retire la saisie à la barre, sans la fermer ;
+        // un clic sur son champ la lui rend, avec son texte.
+        b.click(Hit::Reload, None);
+        assert_eq!(find_view(&b), Some(("lien".into(), false)));
+        assert!(!b.is_editing());
+        assert_eq!(b.address, "a.test");
+        b.click(Hit::FindInput, None);
+        assert_eq!(find_view(&b), Some(("lien".into(), true)));
+        b.key(KeyPress::Backspace);
+        assert_eq!(find_view(&b), Some(("lie".into(), true)));
+        b.click(Hit::FindNext, None);
+        b.click(Hit::FindPrevious, None);
+
+        // Ctrl L prend la saisie pour l'adresse ; Ctrl F la reprend.
+        b.key(KeyPress::Ctrl('l'));
+        assert_eq!(find_view(&b), Some(("lie".into(), false)));
+        b.key(KeyPress::Escape);
+        b.key(KeyPress::Ctrl('f'));
+        assert_eq!(find_view(&b), Some(("lie".into(), true)));
+
+        // La barre se ferme avec Échap, par son bouton, ou quand son onglet
+        // n'est plus affiché.
+        b.key(KeyPress::Escape);
+        assert_eq!(find_view(&b), None);
+        assert!(!b.is_editing());
+        b.key(KeyPress::Ctrl('f'));
+        b.click(Hit::FindClose, None);
+        assert_eq!(find_view(&b), None);
+        b.key(KeyPress::Ctrl('f'));
+        b.key(KeyPress::Ctrl('t'));
+        b.tick(std::time::Instant::now());
+        assert_eq!(find_view(&b), None);
+        // Un nouvel onglet vide n'a rien où chercher.
+        b.key(KeyPress::Escape);
+        b.key(KeyPress::Ctrl('f'));
+        assert_eq!(find_view(&b), None);
     }
 }
