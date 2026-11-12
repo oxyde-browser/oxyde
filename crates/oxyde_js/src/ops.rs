@@ -481,6 +481,18 @@ impl Vm {
             } else {
                 Hint::Number
             };
+            if op != BinaryOp::Add {
+                // Chaque opérande est converti en entier avant l'autre.
+                let x = self.to_numeric(a)?;
+                let y = self.to_numeric(b)?;
+                return match (&x, &y) {
+                    (Value::BigInt(p), Value::BigInt(q)) => self.bigint_binary(op, p, q),
+                    (Value::BigInt(_), _) | (_, Value::BigInt(_)) => Err(self.type_error(
+                        "impossible de mêler BigInt et autres types ; utiliser des conversions explicites",
+                    )),
+                    _ => self.binary(op, &x, &y),
+                };
+            }
             // Les objets sont convertis une seule fois ; un `BigInt` ne se
             // mêle à aucun autre type numérique.
             let (x, y) = (

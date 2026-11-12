@@ -975,6 +975,115 @@ impl Compiler {
         chain
     }
 
+    /// Résout `name` contre les `with` englobants, comme une référence, avant
+    /// d'évaluer la valeur qui lui sera affectée : le registre rendu reçoit
+    /// l'objet de `with` qui fournit `name`, ou `undefined` si aucun ne le
+    /// fournit. `None` hors de tout `with`.
+    fn with_base(&mut self, name: &JsStr) -> CResult<Option<Reg>> {
+        let chain = self.with_chain(name);
+        if chain.is_empty() {
+            return Ok(None);
+        }
+        let base = self.alloc()?;
+        let index = self.string(name);
+        let mut ends = Vec::new();
+        for with in &chain {
+            let mark = self.mark();
+            let obj = self.load_plain(with, None)?;
+            let flag = self.alloc()?;
+            self.emit(Op::WithHas {
+                dst: flag,
+                obj,
+                name: index,
+            });
+            let skip = self.emit(Op::JumpIfFalse {
+                src: flag,
+                target: 0,
+            });
+            self.emit(Op::Move {
+                dst: base,
+                src: obj,
+            });
+            ends.push(self.emit(Op::Jump { target: 0 }));
+            self.patch(skip);
+            self.free_to(mark);
+        }
+        self.emit(Op::LoadUndefined { dst: base });
+        for end in ends {
+            self.patch(end);
+        }
+        Ok(Some(base))
+    }
+
+    /// Lit `name` par la référence que [`Self::with_base`] a résolue.
+    fn load_ref(&mut self, name: &JsStr, base: Option<Reg>, dst: Option<Reg>) -> CResult<Reg> {
+        let Some(base) = base else {
+            return self.load_plain(name, dst);
+        };
+        let dst = self.dst_or_alloc(dst)?;
+        let index = self.string(name);
+        let on_object = self.emit(Op::JumpIfNotUndefined {
+            src: base,
+            target: 0,
+        });
+        self.load_plain(name, Some(dst))?;
+        let end = self.emit(Op::Jump { target: 0 });
+        self.patch(on_object);
+        self.emit(Op::GetProp {
+            dst,
+            obj: base,
+            name: index,
+        });
+        self.patch(end);
+        Ok(dst)
+    }
+
+    /// Écrit `name` par la référence que [`Self::with_base`] a résolue :
+    /// l'objet de `with` reçoit la valeur même s'il a perdu la propriété
+    /// entre-temps.
+    fn store_ref(&mut self, name: &JsStr, base: Option<Reg>, src: Reg) -> CResult<()> {
+        let Some(base) = base else {
+            return self.store_plain(name, src, false);
+        };
+        let index = self.string(name);
+        let on_object = self.emit(Op::JumpIfNotUndefined {
+            src: base,
+            target: 0,
+        });
+        self.store_plain(name, src, false)?;
+        let end = self.emit(Op::Jump { target: 0 });
+        self.patch(on_object);
+        if self.f().strict {
+            // En mode strict, écrire une liaison que l'objet n'a plus est
+            // une `ReferenceError`.
+            let mark = self.mark();
+            let flag = self.alloc()?;
+            self.emit(Op::WithHas {
+                dst: flag,
+                obj: base,
+                name: index,
+            });
+            let present = self.emit(Op::JumpIfTrue {
+                src: flag,
+                target: 0,
+            });
+            self.emit(Op::LoadHole { dst: flag });
+            self.emit(Op::CheckInit {
+                src: flag,
+                name: index,
+            });
+            self.patch(present);
+            self.free_to(mark);
+        }
+        self.emit(Op::SetProp {
+            obj: base,
+            name: index,
+            src,
+        });
+        self.patch(end);
+        Ok(())
+    }
+
     /// Charge la variable `name` ; renvoie le registre qui contient sa valeur.
     fn load(&mut self, name: &JsStr, dst: Option<Reg>) -> CResult<Reg> {
         let chain = self.with_chain(name);
@@ -1990,6 +2099,15 @@ impl Compiler {
         for (pattern, value) in decls {
             let mark = self.mark();
             match (pattern, value) {
+                (Pattern::Ident(name), Some(value))
+                    if !init && !self.with_chain(name).is_empty() =>
+                {
+                    // `var x = v` dans un `with` : une affectation ordinaire,
+                    // qui atteint l'objet du `with` s'il fournit `x`.
+                    let base = self.with_base(name)?;
+                    let reg = self.expr_named(value, name, None)?;
+                    self.store_ref(name, base, reg)?;
+                }
                 (Pattern::Ident(name), Some(value)) => {
                     // `export default <expression>` : la valeur s'appelle « default ».
                     let reg = if &**name == crate::parser::DEFAULT_EXPORT {
@@ -3812,7 +3930,8 @@ impl Compiler {
         let (old, new) = (self.alloc()?, self.alloc()?);
         match target {
             Expr::Ident(name) => {
-                let current = self.load(name, None)?;
+                let base = self.with_base(name)?;
+                let current = self.load_ref(name, base, None)?;
                 self.emit(Op::ToNumber {
                     dst: old,
                     src: current,
@@ -3822,7 +3941,7 @@ impl Compiler {
                     src: old,
                     increment,
                 });
-                self.store(name, new, false)?;
+                self.store_ref(name, base, new)?;
             }
             Expr::Member { object, name, .. } => {
                 let obj = self.expr_to_temp(object)?;
@@ -3889,9 +4008,10 @@ impl Compiler {
         let mark = self.mark();
         match (op, target) {
             (AssignOp::Assign, Pattern::Ident(name)) => {
+                let base = self.with_base(name)?;
                 let src = self.alloc()?;
                 self.expr_named(value, name, Some(src))?;
-                self.store(name, src, false)?;
+                self.store_ref(name, base, src)?;
                 self.emit(Op::Move { dst, src });
             }
             (AssignOp::Assign, Pattern::Expr(Expr::Member { object, name, .. })) => {
@@ -3931,10 +4051,11 @@ impl Compiler {
                 self.emit(Op::Move { dst, src: current });
             }
             (_, Pattern::Ident(name)) => {
+                let base = self.with_base(name)?;
                 let current = self.alloc()?;
-                self.load(name, Some(current))?;
+                self.load_ref(name, base, Some(current))?;
                 let skip = self.compound(op, current, value, Some(name))?;
-                self.store(name, current, false)?;
+                self.store_ref(name, base, current)?;
                 if let Some(skip) = skip {
                     self.patch(skip);
                 }

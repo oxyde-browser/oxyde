@@ -80,50 +80,36 @@ const PUNCTUATORS: &[&str] = &[
     "&", "|", "^", "!", "~", "?", ":", "=", ".", "@",
 ];
 
-/// Début d'identifiant (`ID_Start`, plus `$` et `_`).
-///
-/// LIMITE : sans table Unicode, `ID_Start` est approché par « alphabétique »
-/// plus les quelques caractères que le standard y ajoute.
-fn is_id_start(c: char) -> bool {
-    c == '$'
-        || c == '_'
-        || c.is_alphabetic()
-        || matches!(c, '\u{2118}' | '\u{212e}' | '\u{309b}' | '\u{309c}')
+/// Caractères de `ID_Start` et `ID_Continue` absents de `XID_Start` et
+/// `XID_Continue` (UAX #31, modifications pour la normalisation NFKC).
+fn nfkc_exception(c: char, start: bool) -> bool {
+    matches!(
+        c,
+        '\u{37a}' | '\u{309b}' | '\u{309c}' | '\u{fc5e}'
+            ..='\u{fc63}'
+                | '\u{fdfa}'
+                | '\u{fdfb}'
+                | '\u{fe70}'
+                | '\u{fe72}'
+                | '\u{fe74}'
+                | '\u{fe76}'
+                | '\u{fe78}'
+                | '\u{fe7a}'
+                | '\u{fe7c}'
+                | '\u{fe7e}'
+    ) || (start && matches!(c, '\u{e33}' | '\u{eb3}' | '\u{ff9e}' | '\u{ff9f}'))
 }
 
-/// Suite d'identifiant (`ID_Continue`, plus `$`, ZWNJ et ZWJ) ; même
-/// approximation que [`is_id_start`], les marques combinantes étant reconnues
-/// par blocs.
+/// Début d'identifiant (`ID_Start`, plus `$` et `_`).
+fn is_id_start(c: char) -> bool {
+    c == '$' || c == '_' || unicode_ident::is_xid_start(c) || nfkc_exception(c, true)
+}
+
+/// Suite d'identifiant (`ID_Continue`, plus `$`, ZWNJ et ZWJ).
 fn is_id_part(c: char) -> bool {
-    is_id_start(c)
-        || c.is_numeric()
-        || matches!(
-            c,
-            '\u{200c}'
-                | '\u{200d}'
-                | '\u{b7}'
-                | '\u{387}'
-                | '\u{203f}'
-                | '\u{2040}'
-                | '\u{2054}'
-                | '\u{fe33}'
-                | '\u{fe34}'
-                | '\u{fe4d}'..='\u{fe4f}'
-                | '\u{ff3f}'
-                | '\u{300}'..='\u{36f}'
-                | '\u{483}'..='\u{487}'
-                | '\u{591}'..='\u{5bd}'
-                | '\u{610}'..='\u{61a}'
-                | '\u{64b}'..='\u{669}'
-                | '\u{900}'..='\u{903}'
-                | '\u{93a}'..='\u{94f}'
-                | '\u{1ab0}'..='\u{1aff}'
-                | '\u{1dc0}'..='\u{1dff}'
-                | '\u{20d0}'..='\u{20f0}'
-                | '\u{fe00}'..='\u{fe0f}'
-                | '\u{fe20}'..='\u{fe2f}'
-                | '\u{e0100}'..='\u{e01ef}'
-        )
+    matches!(c, '$' | '\u{200c}' | '\u{200d}')
+        || unicode_ident::is_xid_continue(c)
+        || nfkc_exception(c, false)
 }
 
 fn is_line_terminator(c: char) -> bool {

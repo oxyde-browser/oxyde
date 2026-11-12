@@ -1581,10 +1581,15 @@ impl Vm {
                                 "impossible de déclarer « {name} » : l'objet global n'est pas extensible"
                             )));
                         }
-                        self.heap
-                            .get_mut(scope)
-                            .props
-                            .insert(name, Property::data(Value::Undefined));
+                        // Une variable de script ne se supprime pas ; celle
+                        // que crée un `eval`, si.
+                        self.heap.get_mut(scope).props.insert(
+                            name,
+                            Property {
+                                configurable: !declared,
+                                ..Property::data(Value::Undefined)
+                            },
+                        );
                     }
                 } else {
                     self.heap
@@ -1677,10 +1682,23 @@ impl Vm {
                 if declared && scope == self.global {
                     self.global_vars.insert(Arc::clone(&name));
                 }
-                self.heap
-                    .get_mut(scope)
-                    .props
-                    .insert(name, Property::data(value));
+                // `CreateGlobalFunctionBinding` : une propriété non
+                // configurable garde ses attributs, seule sa valeur change.
+                let object = self.heap.get_mut(scope);
+                match object.props.get_mut(&name) {
+                    Some(existing) if !existing.configurable => {
+                        existing.slot = Slot::Data(value);
+                    }
+                    _ => {
+                        object.props.insert(
+                            name,
+                            Property {
+                                configurable: !declared,
+                                ..Property::data(value)
+                            },
+                        );
+                    }
+                }
             }
             Op::DefineVar { obj, name } => {
                 let name = self.name(name);

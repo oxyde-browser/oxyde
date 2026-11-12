@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 indexmap = "2"
+unicode-ident = "1"
 
 [lints]
 workspace = true

@@ -4,12 +4,12 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 40258 réussis sur 48795 (82.5 %).**
+**Total : 40412 réussis sur 48795 (82.8 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
 | `annexB/built-ins` | 241 | 182 | 75.5 % |
-| `annexB/language` | 845 | 807 | 95.5 % |
+| `annexB/language` | 845 | 815 | 96.4 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 23 | 92.0 % |
 | `built-ins/Array` | 3083 | 3017 | 97.9 % |
@@ -81,14 +81,14 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/computed-property-names` | 48 | 48 | 100.0 % |
 | `language/destructuring` | 19 | 18 | 94.7 % |
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
-| `language/eval-code` | 347 | 335 | 96.5 % |
+| `language/eval-code` | 347 | 339 | 97.7 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10686 | 95.8 % |
+| `language/expressions` | 11156 | 10759 | 96.4 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
-| `language/global-code` | 42 | 37 | 88.1 % |
+| `language/global-code` | 42 | 42 | 100.0 % |
 | `language/identifier-resolution` | 14 | 13 | 92.9 % |
-| `language/identifiers` | 268 | 208 | 77.6 % |
+| `language/identifiers` | 268 | 268 | 100.0 % |
 | `language/import` | 129 | 15 | 11.6 % |
 | `language/keywords` | 25 | 25 | 100.0 % |
 | `language/line-terminators` | 41 | 34 | 82.9 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9020 | 96.0 % |
+| `language/statements` | 9399 | 9024 | 96.0 % |
 | `language/types` | 113 | 108 | 95.6 % |
 | `language/white-space` | 67 | 67 | 100.0 % |
