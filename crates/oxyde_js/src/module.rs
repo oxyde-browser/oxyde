@@ -154,7 +154,11 @@ fn import_getter(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
     else {
         return Ok(Value::Undefined);
     };
-    if !vm.has_own(scope, name) {
+    let dead = matches!(
+        vm.heap.get(scope).props.get(&**name).map(|p| &p.slot),
+        None | Some(Slot::Data(Value::Hole))
+    );
+    if dead {
         return Err(vm.error(
             "ReferenceError",
             &format!("{name} est utilisé avant son initialisation"),
@@ -452,10 +456,16 @@ impl Vm {
             return Err(self.error("RangeError", "trop de modules imbriqués ou chargés"));
         }
         let parsed = parser::parse_module(source).and_then(|(body, info)| {
+            // Liaisons de premier niveau, créées dès le chargement : les
+            // `let`, `const` et classes en zone morte, les `var` à `undefined`.
+            let mut lexical = Vec::new();
+            compiler::lexical_names(&body, &mut lexical);
+            let mut vars = Vec::new();
+            compiler::var_names(&body, &mut vars);
             compiler::compile_script(&body, true, info.has_top_level_await, true, false)
-                .map(|proto| (proto, info))
+                .map(|proto| (proto, info, lexical, vars))
         });
-        let (proto, info) = match parsed {
+        let (proto, info, lexical, vars) = match parsed {
             Ok(parsed) => parsed,
             Err(error) => {
                 return Err(self.error("SyntaxError", &format!("module {id} : {}", error.message)));
@@ -468,6 +478,13 @@ impl Vm {
         let meta = Value::Object(self.heap.alloc(Object::new(None, Kind::Ordinary)));
         self.set(&meta, "url", Value::String(Arc::clone(id)))?;
         self.define_hidden(scope, "import.meta", meta);
+        let props = &mut self.heap.get_mut(scope).props;
+        for name in vars {
+            props.insert(name, Property::data(Value::Undefined));
+        }
+        for name in lexical {
+            props.insert(name, Property::data(Value::Hole));
+        }
         let info = Arc::new(info);
         self.modules.insert(
             Arc::clone(id),

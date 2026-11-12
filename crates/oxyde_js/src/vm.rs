@@ -514,6 +514,14 @@ impl Vm {
         self.interrupted = false;
     }
 
+    /// Erreur d'accès à une liaison de module avant son initialisation.
+    fn dead_zone(&mut self, name: &str) -> Value {
+        self.error(
+            "ReferenceError",
+            &format!("{name} est utilisé avant son initialisation"),
+        )
+    }
+
     /// Impute `steps` pas de travail natif (recherche d'expression
     /// rationnelle…) au budget d'instructions du script.
     pub(crate) fn charge(&mut self, steps: u64) {
@@ -1938,6 +1946,9 @@ impl Vm {
                     return Ok(None);
                 }
                 let value = self.get(&Value::Object(scope), &name)?;
+                if value == Value::Hole {
+                    return Err(self.dead_zone(&name));
+                }
                 self.set_reg(dst, value);
             }
             Op::SetGlobal { name, src } => {
@@ -1965,6 +1976,13 @@ impl Vm {
                 } else {
                     scope
                 };
+                let uninitialized = matches!(
+                    self.heap.get(target).props.get(&*name).map(|p| &p.slot),
+                    Some(Slot::Data(Value::Hole))
+                );
+                if uninitialized {
+                    return Err(self.dead_zone(&name));
+                }
                 if self.strict() {
                     // Affecter une variable non déclarée est une erreur.
                     if !self.has_property(target, &name) {
@@ -2067,6 +2085,9 @@ impl Vm {
                 } else {
                     Value::Undefined
                 };
+                if value == Value::Hole {
+                    return Err(self.dead_zone(&name));
+                }
                 let type_name = self.type_of(&value);
                 self.set_reg(dst, Value::string(type_name));
             }

@@ -602,6 +602,9 @@ fn run_once(
 
     // Les scripts aussi peuvent importer, par `import()`.
     vm.set_module_loader(file_loader);
+    // Même forme que les identifiants rendus par le chargeur : un module
+    // qui s'importe lui-même n'est chargé qu'une fois.
+    let path: PathBuf = path.components().collect();
     vm.set_script_url(&path.to_string_lossy());
     let result = if meta.has("module") {
         vm.eval_module(source, &path.to_string_lossy())
