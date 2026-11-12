@@ -254,6 +254,23 @@ pub(crate) fn parse_module(source: &str) -> PResult<(Vec<Stmt>, ModuleInfo)> {
         parser.module_item(&mut body, &mut info)?;
     }
     info.has_top_level_await = parser.top_level_await;
+    // Un nom exporté par `export { x }` doit être déclaré dans le module.
+    let mut declared: Vec<Arc<str>> = Vec::new();
+    crate::compiler::var_names(&body, &mut declared);
+    crate::compiler::lexical_names(&body, &mut declared);
+    for stmt in &body {
+        if let Stmt::Function(func) = stmt {
+            declared.extend(func.name.clone());
+        }
+    }
+    declared.extend(info.imports.iter().map(|import| Arc::clone(&import.local)));
+    for (_, local) in &info.local_exports {
+        if !declared.contains(local) {
+            return Err(parser
+                .lexer
+                .error_at(0, format!("« {local} » est exporté sans être déclaré")));
+        }
+    }
     Ok((body, info))
 }
 
@@ -590,7 +607,13 @@ impl Parser {
             let declaration = self.is_kw("function")
                 || self.is_kw("class")
                 || (self.is_kw("async") && self.async_function_follows()?);
-            let value = self.assignment()?;
+            // Une déclaration s'arrête à son accolade : `function () {}()`
+            // n'est pas un appel.
+            let value = if declaration {
+                self.primary()?
+            } else {
+                self.assignment()?
+            };
             let local = match value {
                 // Fonction ou classe nommée : c'est une déclaration ordinaire.
                 Expr::Function(func) if declaration && func.name.is_some() => {

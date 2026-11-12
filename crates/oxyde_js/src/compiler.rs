@@ -249,7 +249,9 @@ pub(crate) fn compile_script(
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
-    check_declarations(body, true, &[], strict)?;
+    // Dans un module, une fonction de premier niveau est une liaison
+    // lexicale : elle ne se redéclare pas.
+    check_declarations(body, !module, &[], strict)?;
     if !module && !(eval && strict) {
         // Collisions avec les scripts précédents, vérifiées avant toute liaison.
         let mut lexical = Vec::new();
