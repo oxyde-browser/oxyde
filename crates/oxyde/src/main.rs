@@ -13,8 +13,8 @@
 //!         que dans le profil de l'utilisateur
 //! oxyde --no-profile …
 //!         ne lit ni n'écrit aucun profil
-//! oxyde --screen historique|favoris|parametres …
-//!         ouvre l'historique, les favoris ou les paramètres
+//! oxyde --screen historique|favoris|parametres|palette …
+//!         ouvre l'historique, les favoris, les paramètres ou la palette
 //! oxyde --single-process …
 //!         garde toutes les pages dans le processus du navigateur
 //! oxyde --no-sandbox …
@@ -73,6 +73,8 @@ struct Args {
     screen: Option<LibrarySection>,
     /// Ouvrir l'écran Paramètres au lancement.
     settings: bool,
+    /// Ouvrir la palette de commandes au lancement.
+    palette: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -91,6 +93,7 @@ fn parse_args() -> Result<Args> {
         no_profile: false,
         screen: None,
         settings: false,
+        palette: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -114,7 +117,10 @@ fn parse_args() -> Result<Args> {
                 Some("historique") => args.screen = Some(LibrarySection::History),
                 Some("favoris") => args.screen = Some(LibrarySection::Bookmarks),
                 Some("parametres") => args.settings = true,
-                _ => bail!("--screen attend « historique », « favoris » ou « parametres »"),
+                Some("palette") => args.palette = true,
+                _ => bail!(
+                    "--screen attend « historique », « favoris », « parametres » ou « palette »"
+                ),
             },
             "--page-only" => args.page_only = true,
             "--dump-dom" => args.dump_dom = true,
@@ -232,6 +238,9 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         }
         if args.settings {
             browser.open_settings();
+        }
+        if args.palette {
+            browser.open_palette();
         }
         frame::compose(&mut browser, &mut text, &mut scene, w, h, 1.0);
         theme::WINDOW
@@ -388,6 +397,9 @@ fn run() -> Result<()> {
     }
     if args.settings {
         browser.open_settings();
+    }
+    if args.palette {
+        browser.open_palette();
     }
     app::run(browser, multi_process, profile)
 }

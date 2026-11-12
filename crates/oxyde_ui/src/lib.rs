@@ -7,12 +7,14 @@
 //!
 //! Écrans couverts : « Fenêtre principale · vue scindée » (`Main`), « Nouvel
 //! onglet » (`NewTab`), « Pages d'erreur » (`Errors`), « Historique »
-//! (`History`), « Favoris » (`Bookmarks`) et « Paramètres » (`Settings`).
+//! (`History`), « Favoris » (`Bookmarks`), « Paramètres » (`Settings`) et
+//! « Palette de commandes » (`Palette`).
 //!
 //! Les polices de la maquette (Inter, Space Grotesk, JetBrains Mono) sont
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
 
 mod library;
+mod palette;
 mod panes;
 mod settings;
 pub mod theme;
@@ -78,6 +80,14 @@ pub enum Hit {
     LibrarySearch,
     /// Bibliothèque : effacer tout l'historique (à confirmer).
     LibraryClear,
+    /// Palette : ligne d'index donné.
+    PaletteRow(usize),
+    /// Palette : filtre d'index donné.
+    PaletteFilter(usize),
+    /// Palette : la boîte elle-même, hors de ses lignes.
+    PaletteInput,
+    /// Palette : le reste de la fenêtre (un clic la ferme).
+    PaletteDismiss,
     /// Paramètres : rubrique d'index donné.
     SettingsGroup(usize),
     /// Paramètres : commande du réglage `row` (index parmi tous les
@@ -88,6 +98,50 @@ pub enum Hit {
         /// Index de la valeur choisie.
         option: usize,
     },
+}
+
+/// Dessin placé en tête d'une ligne de la palette.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PaletteGlyph {
+    /// Pastille portant l'initiale du site.
+    Badge,
+    /// Commande du navigateur.
+    Command,
+    /// Recherche sur le web.
+    Search,
+    /// Adresse à ouvrir.
+    Page,
+}
+
+/// Ligne de la palette de commandes.
+#[derive(Clone, Copy, Debug)]
+pub struct PaletteRow<'a> {
+    /// Texte principal.
+    pub title: &'a str,
+    /// Nom d'hôte, pour la pastille.
+    pub host: &'a str,
+    /// Indication à droite (vide s'il n'y en a pas).
+    pub hint: &'a str,
+    /// L'indication est un raccourci clavier, à encadrer.
+    pub shortcut: bool,
+    /// Dessin de tête.
+    pub glyph: PaletteGlyph,
+    /// Titre de groupe à afficher avant la ligne.
+    pub heading: Option<&'a str>,
+}
+
+/// Palette de commandes telle que l'interface l'affiche. Le texte saisi
+/// est celui de [`ChromeState::address`].
+#[derive(Clone, Copy, Debug)]
+pub struct PaletteView<'a> {
+    /// Lignes ; leur index est celui porté par [`Hit::PaletteRow`].
+    pub rows: &'a [PaletteRow<'a>],
+    /// Index de la ligne choisie au clavier.
+    pub selected: usize,
+    /// Noms des filtres ; leur index est celui porté par [`Hit::PaletteFilter`].
+    pub filters: &'a [&'a str],
+    /// Index du filtre actif.
+    pub filter: usize,
 }
 
 /// Commande d'un réglage.
@@ -289,8 +343,12 @@ pub struct ChromeState<'a> {
     pub active: usize,
     /// Index de l'onglet affiché dans le second volet, si la vue est scindée.
     pub split: Option<usize>,
-    /// Texte de la barre d'adresse.
+    /// Texte de la barre d'adresse, ou texte en cours de saisie (adresse,
+    /// recherche dans l'historique, palette de commandes).
     pub address: &'a str,
+    /// Adresse de la page active, affichée dans la barre d'adresse quand la
+    /// saisie se fait ailleurs.
+    pub page_address: &'a str,
     /// Vrai pendant la saisie d'une adresse.
     pub editing: bool,
     /// Vrai si tout le texte saisi est sélectionné.
@@ -317,6 +375,8 @@ pub struct ChromeState<'a> {
     pub library: Option<LibraryView<'a>>,
     /// Paramètres ouverts à la place des onglets.
     pub settings: Option<SettingsView<'a>>,
+    /// Palette de commandes ouverte par-dessus les pages.
+    pub palette: Option<PaletteView<'a>>,
     /// Couleur d'accent.
     pub accent: Color,
 }
@@ -710,6 +770,19 @@ pub(crate) fn tab_title<'a>(tab: &TabView<'a>) -> &'a str {
 
 /// Construit l'interface pour l'état `state`.
 pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
+    // La palette a la saisie : dessous, la fenêtre s'affiche comme au repos.
+    let typed = state;
+    let resting;
+    let state = if typed.palette.is_some() {
+        resting = ChromeState {
+            editing: false,
+            address: typed.page_address,
+            ..typed.clone()
+        };
+        &resting
+    } else {
+        typed
+    };
     let mut p = Painter {
         text,
         list: DisplayList::default(),
@@ -1200,13 +1273,40 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         p.target(page, Hit::Pane(tab_index), Role::Document, tab_title(tab));
     }
 
+    // ---- Palette de commandes : par-dessus les pages, et avant tout le
+    // reste pour les clics comme pour les technologies d'assistance.
+    let Painter {
+        text,
+        list,
+        mut hits,
+        mut widgets,
+        hover,
+        accent,
+    } = p;
+    if let Some(view) = &state.palette {
+        let mut front = Painter {
+            text,
+            list: DisplayList::default(),
+            hits: Vec::new(),
+            widgets: Vec::new(),
+            hover,
+            accent,
+        };
+        palette::build(&mut front, typed, view);
+        overlay.items.extend(front.list.items);
+        front.hits.append(&mut hits);
+        hits = front.hits;
+        front.widgets.append(&mut widgets);
+        widgets = front.widgets;
+    }
+
     Chrome {
-        list: p.list,
+        list,
         overlay,
-        hits: p.hits,
+        hits,
         panes: web_panes,
         tab_scroll_max,
-        widgets: p.widgets,
+        widgets,
         library_scroll_max: 0.0,
         settings_scroll: None,
     }
@@ -1250,6 +1350,7 @@ mod tests {
             active: 0,
             split,
             address: "docs.rs/wgpu",
+            page_address: "docs.rs/wgpu",
             editing: false,
             select_all: false,
             secure: true,
@@ -1263,6 +1364,7 @@ mod tests {
             caret: 0,
             library: None,
             settings: None,
+            palette: None,
             accent: theme::ACCENT,
         }
     }
@@ -1736,5 +1838,81 @@ mod tests {
         let chrome = build_chrome(&s, &mut text);
         let applied = chrome.settings_scroll.expect("saut");
         assert!(applied > 0.0 && applied <= chrome.library_scroll_max);
+    }
+
+    #[test]
+    fn palette_sits_above_everything() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let row = |title, glyph, heading| PaletteRow {
+            title,
+            host: "docs.rs",
+            hint: "Ctrl T",
+            shortcut: glyph == PaletteGlyph::Command,
+            glyph,
+            heading,
+        };
+        let rows = [
+            row(
+                "wgpu — docs.rs",
+                PaletteGlyph::Badge,
+                Some("Onglets ouverts"),
+            ),
+            row("Nouvel onglet", PaletteGlyph::Command, Some("Commandes")),
+            row("Rechercher « wg »", PaletteGlyph::Search, Some("Web")),
+        ];
+        let filters = ["Tout", "Onglets"];
+        let mut s = state(&tabs, None);
+        s.address = "wg";
+        s.editing = true;
+        s.caret = 2;
+        s.palette = Some(PaletteView {
+            rows: &rows,
+            selected: 1,
+            filters: &filters,
+            filter: 0,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        // La page reste dessous, mais les clics vont à la palette.
+        assert_eq!(chrome.panes.len(), 1);
+        assert!(!chrome.overlay.items.is_empty());
+        let target = find_hit(&chrome, Hit::PaletteRow(1)).expect("ligne");
+        assert_eq!(
+            chrome.hit(target.x + 5.0, target.y + 5.0),
+            Some(Hit::PaletteRow(1))
+        );
+        assert_eq!(
+            chrome.hit(target.x + 5.0, target.y - 20.0),
+            Some(Hit::PaletteInput)
+        );
+        assert_eq!(chrome.hit(5.0, 5.0), Some(Hit::PaletteDismiss));
+        assert_eq!(chrome.hit(1420.0, 880.0), Some(Hit::PaletteDismiss));
+        assert!(find_hit(&chrome, Hit::PaletteFilter(1)).is_some());
+
+        // Le champ de la palette vient en premier et porte le texte saisi ;
+        // la barre d'adresse, dessous, garde l'adresse de la page.
+        let first = chrome.widgets.first().expect("champ");
+        assert_eq!(
+            (first.role, first.value.as_deref()),
+            (Role::TextInput, Some("wg"))
+        );
+        let address = chrome
+            .widgets
+            .iter()
+            .find(|w| w.label == "Adresse")
+            .expect("barre d'adresse");
+        assert_eq!(address.value.as_deref(), Some("docs.rs/wgpu"));
+        let chosen: Vec<&str> = chrome
+            .widgets
+            .iter()
+            .filter(|w| matches!(w.hit, Some(Hit::PaletteRow(_))) && w.selected)
+            .map(|w| w.label.as_str())
+            .collect();
+        assert_eq!(chosen, ["Nouvel onglet"]);
+
+        // Dans une fenêtre basse, les lignes qui ne tiennent pas ne sont pas cliquables.
+        s.height = 330.0;
+        let chrome = build_chrome(&s, &mut text);
+        assert!(find_hit(&chrome, Hit::PaletteRow(2)).is_none());
     }
 }

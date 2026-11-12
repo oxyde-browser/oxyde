@@ -415,8 +415,13 @@ Fait :
   n'ont pas encore d'effet (disposition des onglets, thème clair, performances, traqueurs) n'y
   figurent pas.
 
+- **Palette de commandes** (Ctrl K) : posée sur les pages, elle cherche à la fois dans les
+  onglets ouverts, l'historique, les favoris et les commandes du navigateur, avec des filtres
+  (Tab) ; sa dernière ligne ouvre l'adresse saisie ou lance la recherche. Ctrl Maj S scinde la
+  vue. La liste ne défile pas encore.
+
 Reste : les dossiers de favoris et l'import ; les écrans (téléchargements, infos du site,
-autorisations, recherche dans la page, navigation privée, palette de commandes, mots de passe,
+autorisations, recherche dans la page, navigation privée, mots de passe,
 premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.
 

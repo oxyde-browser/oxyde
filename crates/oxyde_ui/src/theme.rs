@@ -37,6 +37,8 @@ pub const TEXT_MUTED: Color = Color::rgb(0x9A, 0xA3, 0xAE);
 pub const TEXT_SECONDARY: Color = Color::rgb(0xA3, 0xAD, 0xB9);
 /// Fond d'un interrupteur éteint, et du choix retenu dans un groupe.
 pub const SWITCH_OFF: Color = Color::rgb(0x2A, 0x32, 0x3D);
+/// Fond d'un filtre de la palette de commandes.
+pub const CHIP: Color = Color::rgb(0x21, 0x28, 0x32);
 /// Icône.
 pub const ICON: Color = Color::rgb(0xC3, 0xCA, 0xD3);
 /// Icône désactivée.

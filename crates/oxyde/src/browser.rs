@@ -12,8 +12,8 @@ use oxyde_platform::CivilTime;
 use oxyde_storage::{Bookmarks, History, Session, SessionTab, Settings};
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, LibraryRow, LibrarySection, LibraryView,
-    PaneContent, SettingControl, SettingRow, SettingsGroup, SettingsView, SpaceView, TabView,
-    theme,
+    PaletteGlyph, PaletteRow, PaletteView, PaneContent, SettingControl, SettingRow, SettingsGroup,
+    SettingsView, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
@@ -56,6 +56,98 @@ const ROW_RESTORE: usize = 1;
 const ROW_ENGINE: usize = 2;
 const ROW_HISTORY: usize = 3;
 const ROW_CLEAR: usize = 4;
+
+/// Filtres de la palette de commandes.
+const PALETTE_FILTERS: [&str; 5] = ["Tout", "Onglets", "Historique", "Favoris", "Commandes"];
+const FILTER_ALL: usize = 0;
+const FILTER_TABS: usize = 1;
+const FILTER_HISTORY: usize = 2;
+const FILTER_BOOKMARKS: usize = 3;
+const FILTER_COMMANDS: usize = 4;
+
+/// Commande du navigateur proposée par la palette.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PaletteCommand {
+    NewTab,
+    CloseTab,
+    Reopen,
+    Split,
+    Pin,
+    Reload,
+    Bookmark,
+    History,
+    Bookmarks,
+    Settings,
+    ClearData,
+}
+
+/// Commandes de la palette : commande, nom, raccourci.
+const PALETTE_COMMANDS: [(PaletteCommand, &str, &str); 11] = [
+    (PaletteCommand::NewTab, "Nouvel onglet", "Ctrl T"),
+    (PaletteCommand::Split, "Scinder la vue", "Ctrl Maj S"),
+    (PaletteCommand::History, "Ouvrir l'historique", "Ctrl H"),
+    (
+        PaletteCommand::Bookmarks,
+        "Ouvrir les favoris",
+        "Ctrl Maj O",
+    ),
+    (PaletteCommand::Settings, "Ouvrir les paramètres", "Ctrl ,"),
+    (
+        PaletteCommand::Bookmark,
+        "Ajouter la page aux favoris, ou l'en retirer",
+        "Ctrl D",
+    ),
+    (
+        PaletteCommand::Pin,
+        "Épingler ou désépingler l'onglet",
+        "Ctrl Maj P",
+    ),
+    (PaletteCommand::Reload, "Actualiser la page", "Ctrl R"),
+    (PaletteCommand::CloseTab, "Fermer l'onglet", "Ctrl W"),
+    (
+        PaletteCommand::Reopen,
+        "Rouvrir le dernier onglet fermé",
+        "Ctrl Maj T",
+    ),
+    (
+        PaletteCommand::ClearData,
+        "Effacer les données de navigation",
+        "",
+    ),
+];
+
+/// Ce que fait une ligne de la palette.
+#[derive(Clone, Debug)]
+enum PaletteAction {
+    /// Aller à l'onglet d'identifiant donné.
+    Tab(u64),
+    /// Ouvrir cette adresse dans un nouvel onglet.
+    Open(Url),
+    /// Traiter ce texte comme une saisie dans la barre d'adresse.
+    Input(String),
+    Run(PaletteCommand),
+}
+
+/// Ligne de la palette de commandes.
+struct PaletteItem {
+    title: String,
+    host: String,
+    hint: String,
+    shortcut: bool,
+    glyph: PaletteGlyph,
+    heading: Option<&'static str>,
+    action: PaletteAction,
+}
+
+/// Palette de commandes ouverte par-dessus les pages. Le texte saisi est
+/// celui de la saisie en cours ([`Browser::editing`]).
+struct Palette {
+    /// Index du filtre actif dans [`PALETTE_FILTERS`].
+    filter: usize,
+    /// Index de la ligne choisie. INVARIANT : nul, ou inférieur à `items.len()`.
+    selected: usize,
+    items: Vec<PaletteItem>,
+}
 
 /// Écran Paramètres ouvert à la place des onglets.
 struct SettingsScreen {
@@ -171,6 +263,10 @@ pub(crate) enum KeyPress {
     /// Lettre accompagnée de Ctrl et Maj (en minuscule).
     CtrlShift(char),
     CtrlTab,
+    /// Tabulation seule.
+    Tab,
+    Up,
+    Down,
     AltLeft,
     AltRight,
     F5,
@@ -290,6 +386,7 @@ pub(crate) struct Views<'a> {
     spaces: [SpaceView<'static>; SPACES.len()],
     library: Vec<LibraryRow<'a>>,
     settings: Vec<SettingsGroup<'a>>,
+    palette: Vec<PaletteRow<'a>>,
 }
 
 pub(crate) struct Browser {
@@ -325,6 +422,8 @@ pub(crate) struct Browser {
     pub(crate) settings: Settings,
     /// Écran Paramètres, quand il est ouvert.
     settings_screen: Option<SettingsScreen>,
+    /// Palette de commandes, quand elle est ouverte.
+    palette: Option<Palette>,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -367,6 +466,7 @@ impl Browser {
             library: None,
             settings: Settings::default(),
             settings_screen: None,
+            palette: None,
         };
         browser.refresh_address();
         browser
@@ -588,7 +688,354 @@ impl Browser {
             } else {
                 Vec::new()
             },
+            palette: self
+                .palette
+                .iter()
+                .flat_map(|palette| &palette.items)
+                .map(|item| PaletteRow {
+                    title: &item.title,
+                    host: &item.host,
+                    hint: &item.hint,
+                    shortcut: item.shortcut,
+                    glyph: item.glyph,
+                    heading: item.heading,
+                })
+                .collect(),
         }
+    }
+
+    /// Vrai si la palette de commandes est ouverte.
+    pub(crate) fn palette_open(&self) -> bool {
+        self.palette.is_some()
+    }
+
+    /// Ouvre la palette de commandes.
+    pub(crate) fn open_palette(&mut self) {
+        self.library = None;
+        self.settings_screen = None;
+        self.palette = Some(Palette {
+            filter: FILTER_ALL,
+            selected: 0,
+            items: Vec::new(),
+        });
+        self.editing = Some(String::new());
+        self.caret = 0;
+        self.select_all = false;
+        self.refresh_palette();
+    }
+
+    fn close_palette(&mut self) {
+        self.palette = None;
+        self.editing = None;
+        self.refresh_address();
+    }
+
+    /// Recalcule les lignes de la palette d'après le texte saisi et le filtre.
+    fn refresh_palette(&mut self) {
+        let Some(filter) = self.palette.as_ref().map(|palette| palette.filter) else {
+            return;
+        };
+        let query = self.editing.as_deref().unwrap_or("").trim().to_owned();
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let matches = |texts: &[&str]| {
+            words.iter().all(|word| {
+                texts
+                    .iter()
+                    .any(|text| text.to_lowercase().contains(word.as_str()))
+            })
+        };
+        let wants = |kind: usize| filter == FILTER_ALL || filter == kind;
+        // Dans « Tout », chaque sorte ne montre que ses premiers résultats.
+        let limit = |few: usize| if filter == FILTER_ALL { few } else { 10 };
+        let host_of = |url: &Url| url.host_str().unwrap_or("").to_owned();
+        let mut items: Vec<PaletteItem> = Vec::new();
+        let push = |items: &mut Vec<PaletteItem>, heading: &'static str, mut item: PaletteItem| {
+            let first = items.last().is_none_or(|last: &PaletteItem| {
+                std::mem::discriminant(&last.action) != std::mem::discriminant(&item.action)
+            });
+            item.heading = first.then_some(heading);
+            items.push(item);
+        };
+
+        if wants(FILTER_TABS) {
+            let visible = self
+                .tabs
+                .iter()
+                .filter(|tab| tab.pinned || tab.space == self.space)
+                .filter(|tab| matches(&[&tab.title, tab.page.url().as_str()]))
+                .take(limit(5));
+            for tab in visible {
+                let title = if tab.is_new_tab() {
+                    "Nouvel onglet".to_owned()
+                } else {
+                    tab.title.clone()
+                };
+                push(
+                    &mut items,
+                    "Onglets ouverts",
+                    PaletteItem {
+                        title,
+                        host: tab.host.clone(),
+                        hint: "Aller à l'onglet".to_owned(),
+                        shortcut: false,
+                        glyph: PaletteGlyph::Badge,
+                        heading: None,
+                        action: PaletteAction::Tab(tab.id),
+                    },
+                );
+            }
+        }
+        // L'historique et les favoris n'apparaissent dans « Tout » qu'une
+        // fois la recherche commencée.
+        let searching = !words.is_empty();
+        let mut pages: Vec<(&'static str, &str, &str)> = Vec::new();
+        if filter == FILTER_HISTORY || (filter == FILTER_ALL && searching) {
+            let mut seen: Vec<&str> = Vec::new();
+            for visit in self.history.search(&query) {
+                if seen.len() == limit(4) {
+                    break;
+                }
+                if !seen.contains(&visit.url.as_str()) {
+                    seen.push(&visit.url);
+                    pages.push(("Historique", &visit.url, &visit.title));
+                }
+            }
+        }
+        let history_rows = pages.len();
+        if filter == FILTER_BOOKMARKS || (filter == FILTER_ALL && searching) {
+            let found = self
+                .bookmarks
+                .items()
+                .iter()
+                .filter(|item| matches(&[&item.title, &item.url]))
+                .take(limit(4));
+            for item in found {
+                pages.push(("Favoris", &item.url, &item.title));
+            }
+        }
+        for (index, (heading, address, title)) in pages.into_iter().enumerate() {
+            let Ok(url) = Url::parse(address) else {
+                continue;
+            };
+            let mut item = PaletteItem {
+                title: if title.is_empty() {
+                    display_url(&url)
+                } else {
+                    title.to_owned()
+                },
+                host: host_of(&url),
+                hint: host_of(&url),
+                shortcut: false,
+                glyph: PaletteGlyph::Badge,
+                heading: None,
+                action: PaletteAction::Open(url),
+            };
+            // Les favoris suivent l'historique : leur titre de groupe ne
+            // peut pas se déduire de la sorte d'action, qui est la même.
+            let starts_group = index == 0 || index == history_rows;
+            item.heading = starts_group.then_some(heading);
+            items.push(item);
+        }
+        if wants(FILTER_COMMANDS) {
+            let few = if searching { 6 } else { 5 };
+            let found = PALETTE_COMMANDS
+                .iter()
+                .filter(|(_, name, _)| matches(&[name]))
+                .take(if filter == FILTER_ALL {
+                    few
+                } else {
+                    PALETTE_COMMANDS.len()
+                });
+            for (command, name, keys) in found {
+                push(
+                    &mut items,
+                    "Commandes",
+                    PaletteItem {
+                        title: (*name).to_owned(),
+                        host: String::new(),
+                        hint: (*keys).to_owned(),
+                        shortcut: true,
+                        glyph: PaletteGlyph::Command,
+                        heading: None,
+                        action: PaletteAction::Run(*command),
+                    },
+                );
+            }
+        }
+        // Dernière ligne : le texte saisi, comme dans la barre d'adresse.
+        if filter == FILTER_ALL && searching {
+            let engine = loader::SEARCH_ENGINE_NAMES
+                .get(self.engine_index())
+                .copied()
+                .unwrap_or("");
+            let search = loader::resolve_input_with(&query, usize::MAX)
+                .ok()
+                .is_none_or(|url| {
+                    url.query_pairs()
+                        .any(|(key, value)| key == "q" && value == query.as_str())
+                });
+            let (title, glyph, hint) = if search {
+                (
+                    format!("Rechercher « {query} »"),
+                    PaletteGlyph::Search,
+                    engine.to_owned(),
+                )
+            } else {
+                (format!("Ouvrir {query}"), PaletteGlyph::Page, String::new())
+            };
+            push(
+                &mut items,
+                "Web",
+                PaletteItem {
+                    title,
+                    host: String::new(),
+                    hint,
+                    shortcut: false,
+                    glyph,
+                    heading: None,
+                    action: PaletteAction::Input(query.clone()),
+                },
+            );
+        }
+        if let Some(palette) = &mut self.palette {
+            palette.selected = palette.selected.min(items.len().saturating_sub(1));
+            palette.items = items;
+        }
+    }
+
+    /// Exécute la ligne `index` de la palette, qui se ferme.
+    fn activate_palette(&mut self, index: usize) -> Vec<Command> {
+        let action = self
+            .palette
+            .as_ref()
+            .and_then(|palette| palette.items.get(index))
+            .map(|item| item.action.clone());
+        let Some(action) = action else {
+            return Vec::new();
+        };
+        self.close_palette();
+        match action {
+            PaletteAction::Tab(id) => {
+                if let Some(position) = self.tabs.iter().position(|tab| tab.id == id) {
+                    self.activate(position);
+                }
+                Vec::new()
+            }
+            PaletteAction::Open(url) => self.open_in_tab(url),
+            PaletteAction::Input(text) => {
+                self.editing = Some(text);
+                self.key(KeyPress::Enter)
+            }
+            PaletteAction::Run(command) => self.run_command(command),
+        }
+    }
+
+    fn run_command(&mut self, command: PaletteCommand) -> Vec<Command> {
+        match command {
+            PaletteCommand::NewTab => self.new_tab(),
+            PaletteCommand::CloseTab => return self.close_tab(self.active),
+            PaletteCommand::Reopen => return self.reopen(0),
+            PaletteCommand::Split => self.toggle_split(),
+            PaletteCommand::Pin => self.toggle_pin(),
+            PaletteCommand::Reload => return self.reload(self.active),
+            PaletteCommand::Bookmark => self.toggle_bookmark(),
+            PaletteCommand::History => self.open_library(LibrarySection::History),
+            PaletteCommand::Bookmarks => self.open_library(LibrarySection::Bookmarks),
+            PaletteCommand::Settings => self.open_settings(),
+            PaletteCommand::ClearData => {
+                // Le bouton d'effacement est dans la rubrique de la confidentialité.
+                self.open_settings();
+                if let Some(screen) = &mut self.settings_screen {
+                    screen.selected = 3;
+                    screen.jump = Some(3);
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Ouvre `url` dans l'onglet actif s'il est vide, sinon dans un nouvel onglet.
+    fn open_in_tab(&mut self, url: Url) -> Vec<Command> {
+        if !self.tabs.get(self.active).is_some_and(Tab::is_new_tab) {
+            self.split = None;
+            self.active = self.push_tab(blank(), self.space);
+        }
+        self.load(self.active, url, true)
+    }
+
+    /// Clic pendant que la palette est ouverte.
+    fn palette_click(&mut self, hit: Hit) -> Vec<Command> {
+        match hit {
+            Hit::PaletteRow(index) => return self.activate_palette(index),
+            Hit::PaletteFilter(filter) => {
+                if let Some(palette) = &mut self.palette {
+                    palette.filter = filter.min(PALETTE_FILTERS.len() - 1);
+                    palette.selected = 0;
+                }
+                self.refresh_palette();
+            }
+            Hit::PaletteInput => {}
+            _ => self.close_palette(),
+        }
+        Vec::new()
+    }
+
+    /// Touche pendant que la palette est ouverte ; `None` : la touche suit
+    /// son cours habituel.
+    fn palette_key(&mut self, key: &KeyPress) -> Option<Vec<Command>> {
+        let count = self
+            .palette
+            .as_ref()
+            .map_or(0, |palette| palette.items.len());
+        match key {
+            KeyPress::Escape | KeyPress::Ctrl('k') => self.close_palette(),
+            KeyPress::Down | KeyPress::Up if count > 0 => {
+                if let Some(palette) = &mut self.palette {
+                    let step = if *key == KeyPress::Down { 1 } else { count - 1 };
+                    palette.selected = (palette.selected + step) % count;
+                }
+            }
+            KeyPress::Tab => {
+                if let Some(palette) = &mut self.palette {
+                    palette.filter = (palette.filter + 1) % PALETTE_FILTERS.len();
+                    palette.selected = 0;
+                }
+                self.refresh_palette();
+            }
+            KeyPress::Enter => {
+                let selected = self.palette.as_ref().map_or(0, |palette| palette.selected);
+                return Some(self.activate_palette(selected));
+            }
+            KeyPress::Ctrl('a') => self.select_all = true,
+            KeyPress::Text(typed) | KeyPress::Paste(typed) => {
+                self.insert_text(typed);
+                self.requery_palette();
+            }
+            KeyPress::Backspace
+            | KeyPress::Delete
+            | KeyPress::Left
+            | KeyPress::Right
+            | KeyPress::Home
+            | KeyPress::End => {
+                self.edit_key(key);
+                self.requery_palette();
+            }
+            KeyPress::Down | KeyPress::Up | KeyPress::AltLeft | KeyPress::AltRight => {}
+            // Tout autre raccourci ferme la palette puis fait son office.
+            _ => {
+                self.close_palette();
+                return None;
+            }
+        }
+        Some(Vec::new())
+    }
+
+    /// Le texte saisi a peut-être changé : la première ligne redevient la choisie.
+    fn requery_palette(&mut self) {
+        if let Some(palette) = &mut self.palette {
+            palette.selected = 0;
+        }
+        self.refresh_palette();
     }
 
     /// Index de la couleur d'accent choisie dans [`ACCENT_COLORS`].
@@ -780,7 +1227,7 @@ impl Browser {
         match key {
             KeyPress::Escape | KeyPress::Ctrl(',' | 'w') => self.close_settings(),
             // Ces raccourcis quittent les paramètres puis font leur office.
-            KeyPress::Ctrl('l' | 'k' | 't' | 'h') | KeyPress::CtrlShift('t' | 'o') => {
+            KeyPress::Ctrl('l' | 'k' | 't' | 'h') | KeyPress::CtrlShift('t' | 'o' | 's') => {
                 self.close_settings();
                 return false;
             }
@@ -804,6 +1251,7 @@ impl Browser {
             active: self.active,
             split: self.split,
             address: self.editing.as_deref().unwrap_or(&self.address),
+            page_address: &self.address,
             editing: self.editing.is_some(),
             select_all: self.select_all,
             secure: active.is_some_and(|t| t.error.is_none() && t.page.url().scheme() == "https"),
@@ -821,6 +1269,12 @@ impl Browser {
                 scroll: library.scroll,
                 confirm_clear: library.confirm_clear,
                 truncated: library.truncated,
+            }),
+            palette: self.palette.as_ref().map(|palette| PaletteView {
+                rows: &views.palette,
+                selected: palette.selected,
+                filters: &PALETTE_FILTERS,
+                filter: palette.filter,
             }),
             settings: self.settings_screen.as_ref().map(|screen| SettingsView {
                 groups: &views.settings,
@@ -968,11 +1422,7 @@ impl Browser {
             return Vec::new();
         };
         self.close_library();
-        if !self.tabs.get(self.active).is_some_and(Tab::is_new_tab) {
-            self.split = None;
-            self.active = self.push_tab(blank(), self.space);
-        }
-        self.load(self.active, url, true)
+        self.open_in_tab(url)
     }
 
     /// Retire de l'historique ou des favoris la ligne `index` de la bibliothèque.
@@ -1362,6 +1812,9 @@ impl Browser {
     /// Clic sur un élément de l'interface. `page_point` : position dans la
     /// page (pixels CSS, défilement compris) quand le clic vise un volet.
     pub(crate) fn click(&mut self, hit: Hit, page_point: Option<(f32, f32)>) -> Vec<Command> {
+        if self.palette.is_some() {
+            return self.palette_click(hit);
+        }
         if self.library_open() {
             // Seuls les boutons de la fenêtre gardent leur rôle habituel.
             let window = matches!(
@@ -1446,6 +1899,10 @@ impl Browser {
             // La bibliothèque et les paramètres sont fermés : leurs éléments
             // ne sont pas à l'écran.
             Hit::SettingsGroup(_) | Hit::Setting { .. } => Vec::new(),
+            Hit::PaletteRow(_)
+            | Hit::PaletteFilter(_)
+            | Hit::PaletteInput
+            | Hit::PaletteDismiss => Vec::new(),
             Hit::LibraryBack
             | Hit::LibrarySection(_)
             | Hit::LibraryRow(_)
@@ -1527,6 +1984,11 @@ impl Browser {
 
     /// Touche du clavier.
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
+        if self.palette.is_some()
+            && let Some(commands) = self.palette_key(&key)
+        {
+            return commands;
+        }
         if self.settings_screen.is_some() && self.settings_key(&key) {
             return Vec::new();
         }
@@ -1539,7 +2001,11 @@ impl Browser {
             KeyPress::Ctrl(',') => self.open_settings(),
             KeyPress::Ctrl('h') => self.open_library(LibrarySection::History),
             KeyPress::CtrlShift('o') => self.open_library(LibrarySection::Bookmarks),
-            KeyPress::Ctrl('l' | 'k') => self.start_editing(),
+            KeyPress::Ctrl('l') => self.start_editing(),
+            KeyPress::Ctrl('k') => self.open_palette(),
+            KeyPress::CtrlShift('s') => self.toggle_split(),
+            // Sans la palette, ces touches ne concernent que la page.
+            KeyPress::Tab | KeyPress::Up | KeyPress::Down => {}
             KeyPress::Ctrl('t') => self.new_tab(),
             KeyPress::Ctrl('w') => return self.close_tab(self.active),
             KeyPress::Ctrl('r') | KeyPress::F5 => return self.reload(self.active),
@@ -2403,5 +2869,100 @@ mod tests {
         assert!(b.settings_screen.is_some());
         b.key(KeyPress::Ctrl('h'));
         assert!(b.settings_screen.is_none() && b.library.is_some());
+    }
+
+    fn palette_titles(b: &Browser) -> Vec<String> {
+        let views = b.views();
+        let state = b.chrome_state(&views, 1440.0, 900.0);
+        state
+            .palette
+            .map(|palette| {
+                palette
+                    .rows
+                    .iter()
+                    .map(|row| row.title.to_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn palette_finds_tabs_pages_and_commands() {
+        let mut b = browser();
+        b.history
+            .record("https://docs.test/rust", "Le langage Rust", 100);
+        b.bookmarks
+            .add("https://wgpu.test/", "Dessiner un triangle", 1);
+        b.key(KeyPress::Ctrl('k'));
+        assert!(b.palette_open());
+        assert_eq!(
+            palette_titles(&b),
+            [
+                "A",
+                "Nouvel onglet",
+                "Scinder la vue",
+                "Ouvrir l'historique",
+                "Ouvrir les favoris",
+                "Ouvrir les paramètres"
+            ]
+        );
+
+        // Taper cherche partout ; la dernière ligne reprend le texte saisi.
+        b.key(KeyPress::Text("rust".into()));
+        assert_eq!(
+            palette_titles(&b),
+            ["Le langage Rust", "Rechercher « rust »"]
+        );
+        b.key(KeyPress::Text(" triangle".into()));
+        assert_eq!(palette_titles(&b), ["Rechercher « rust triangle »"]);
+        for _ in 0.." triangle".len() {
+            b.key(KeyPress::Backspace);
+        }
+        // Les flèches tournent en rond.
+        b.key(KeyPress::Up);
+        b.key(KeyPress::Down);
+        let commands = b.key(KeyPress::Enter);
+        assert_eq!(
+            load_target(&commands).map(|(_, url, push)| (url, push)),
+            Some(("https://docs.test/rust".into(), true))
+        );
+        assert!(!b.palette_open() && !b.is_editing());
+        assert_eq!(b.tabs.len(), 2, "ouverte dans un nouvel onglet");
+
+        // Une commande.
+        b.key(KeyPress::Ctrl('k'));
+        b.key(KeyPress::Text("scind".into()));
+        b.key(KeyPress::Enter);
+        assert!(b.split.is_some());
+
+        // Tab change de filtre ; « Commandes » les montre toutes.
+        b.key(KeyPress::Ctrl('k'));
+        for _ in 0..FILTER_COMMANDS {
+            b.key(KeyPress::Tab);
+        }
+        assert_eq!(palette_titles(&b).len(), PALETTE_COMMANDS.len());
+        b.click(Hit::PaletteFilter(FILTER_BOOKMARKS), None);
+        assert_eq!(palette_titles(&b), ["Dessiner un triangle"]);
+        b.click(Hit::PaletteInput, None);
+        assert!(b.palette_open());
+        b.click(Hit::PaletteDismiss, None);
+        assert!(!b.palette_open());
+
+        // Une adresse s'ouvre telle quelle.
+        b.key(KeyPress::Ctrl('k'));
+        b.key(KeyPress::Text("c.test/x".into()));
+        assert_eq!(palette_titles(&b), ["Ouvrir c.test/x"]);
+        assert_eq!(
+            load_target(&b.key(KeyPress::Enter)).map(|(_, url, _)| url),
+            Some("https://c.test/x".into())
+        );
+
+        // Aller à un onglet ; un autre raccourci ferme la palette et agit.
+        b.key(KeyPress::Ctrl('k'));
+        b.click(Hit::PaletteRow(0), None);
+        assert_eq!(b.active, 0);
+        b.key(KeyPress::Ctrl('k'));
+        b.key(KeyPress::Ctrl('h'));
+        assert!(!b.palette_open() && b.library.is_some());
     }
 }

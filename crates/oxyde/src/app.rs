@@ -423,6 +423,9 @@ impl App {
             Key::Named(NamedKey::Backspace) => Some(KeyPress::Backspace),
             Key::Named(NamedKey::F5) => Some(KeyPress::F5),
             Key::Named(NamedKey::Tab) if ctrl => Some(KeyPress::CtrlTab),
+            Key::Named(NamedKey::Tab) => Some(KeyPress::Tab),
+            Key::Named(NamedKey::ArrowUp) => Some(KeyPress::Up),
+            Key::Named(NamedKey::ArrowDown) => Some(KeyPress::Down),
             Key::Named(NamedKey::ArrowLeft) if alt => Some(KeyPress::AltLeft),
             Key::Named(NamedKey::ArrowRight) if alt => Some(KeyPress::AltRight),
             Key::Named(NamedKey::ArrowLeft) => Some(KeyPress::Left),
@@ -633,6 +636,10 @@ impl ApplicationHandler<UserEvent> for App {
                 let Some((x, y)) = self.cursor_logical() else {
                     return;
                 };
+                // La palette est posée sur les pages : la molette ne les atteint pas.
+                if self.browser.palette_open() {
+                    return;
+                }
                 // La bibliothèque occupe la fenêtre : la molette fait défiler sa liste.
                 if self.browser.library_open() {
                     if self
