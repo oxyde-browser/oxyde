@@ -93,6 +93,10 @@ pub enum Longhand {
     TableLayout,
     CaptionSide,
     VerticalAlign,
+    AspectRatio,
+    Transform,
+    TransformOriginX,
+    TransformOriginY,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -118,6 +122,8 @@ pub enum Value {
     Line(crate::grid::GridLine),
     /// Zones nommées d'une grille.
     Areas(crate::grid::GridAreas),
+    /// Fonctions de transformation ; liste vide pour `none`.
+    Transform(Vec<crate::transform::TransformFunction<Length>>),
     /// `inherit`
     Inherit,
     /// `initial`
@@ -238,6 +244,74 @@ fn length_value(token: &Token, allow_negative: bool) -> Option<Value> {
         non_negative(length)?
     };
     Some(Value::Length(length))
+}
+
+/// `transform-origin` : une ou deux positions (mots-clés, longueurs ou
+/// pourcentages) ; une troisième valeur, la profondeur, est lue et ignorée.
+fn transform_origin(tokens: &[Token]) -> Option<(Length, Length)> {
+    // (valeur, axe imposé par le mot-clé : `Some(true)` pour l'horizontale)
+    let position = |token: &Token| -> Option<(Length, Option<bool>)> {
+        match ident_of(token).as_deref() {
+            Some("left") => Some((Length::Percent(0.0), Some(true))),
+            Some("right") => Some((Length::Percent(100.0), Some(true))),
+            Some("top") => Some((Length::Percent(0.0), Some(false))),
+            Some("bottom") => Some((Length::Percent(100.0), Some(false))),
+            Some("center") => Some((Length::Percent(50.0), None)),
+            Some(_) => None,
+            None => parse_length(token).map(|length| (length, None)),
+        }
+    };
+    let center = Length::Percent(50.0);
+    let parts = components(tokens);
+    match parts.as_slice() {
+        [one] => match position(one)? {
+            (value, Some(false)) => Some((center, value)),
+            (value, _) => Some((value, center)),
+        },
+        [first, second, depth @ ..] if depth.len() <= 1 => {
+            if let [depth] = depth {
+                parse_length(depth)?;
+            }
+            let (a, a_axis) = position(first)?;
+            let (b, b_axis) = position(second)?;
+            match (a_axis, b_axis) {
+                (Some(false), Some(false)) | (Some(true), Some(true)) => None,
+                (Some(false), _) | (_, Some(true)) => Some((b, a)),
+                _ => Some((a, b)),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Mots-clés de `width`, `height`, `min-width` et `min-height`.
+const AUTO_SIZES: &[&str] = &["auto", "min-content", "max-content", "fit-content"];
+
+/// Mots-clés de `max-width` et `max-height`.
+const NONE_SIZES: &[&str] = &["none", "min-content", "max-content", "fit-content"];
+
+/// `aspect-ratio` : `auto`, un rapport `<largeur> / <hauteur>`, ou les deux.
+/// Le rapport est rendu sous forme d'un nombre ; un rapport dégénéré vaut
+/// `auto`.
+fn aspect_ratio(tokens: &[Token]) -> Option<Value> {
+    let mut numbers = Vec::new();
+    let mut auto = false;
+    for token in components(tokens) {
+        match token {
+            Token::Number(v) if *v >= 0.0 => numbers.push(*v),
+            Token::Delim('/') if numbers.len() == 1 => {}
+            other if ident_of(other).as_deref() == Some("auto") && !auto => auto = true,
+            _ => return None,
+        }
+    }
+    let auto_value = || Value::Ident("auto".to_owned());
+    match numbers.as_slice() {
+        [] if auto => Some(auto_value()),
+        [width] if *width > 0.0 => Some(Value::Number(*width)),
+        [width, height] if *width > 0.0 && *height > 0.0 => Some(Value::Number(width / height)),
+        [_] | [_, _] => Some(auto_value()),
+        _ => None,
+    }
 }
 
 fn length_or_keywords(token: &Token, keywords: &[&str], allow_negative: bool) -> Option<Value> {
@@ -747,12 +821,30 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             let first = components(tokens).into_iter().next()?;
             single(Longhand::BorderRadius, length_value(first, false))
         }
-        "width" => single(Longhand::Width, size(&["auto"])),
-        "height" => single(Longhand::Height, size(&["auto"])),
-        "min-width" => single(Longhand::MinWidth, size(&["auto"])),
-        "min-height" => single(Longhand::MinHeight, size(&["auto"])),
-        "max-width" => single(Longhand::MaxWidth, size(&["none"])),
-        "max-height" => single(Longhand::MaxHeight, size(&["none"])),
+        "width" => single(Longhand::Width, size(AUTO_SIZES)),
+        "height" => single(Longhand::Height, size(AUTO_SIZES)),
+        "min-width" => single(Longhand::MinWidth, size(AUTO_SIZES)),
+        "min-height" => single(Longhand::MinHeight, size(AUTO_SIZES)),
+        "max-width" => single(Longhand::MaxWidth, size(NONE_SIZES)),
+        "max-height" => single(Longhand::MaxHeight, size(NONE_SIZES)),
+        "aspect-ratio" => single(Longhand::AspectRatio, aspect_ratio(tokens)),
+        "transform" | "-webkit-transform" => single(
+            Longhand::Transform,
+            crate::transform::parse_transform(tokens).map(Value::Transform),
+        ),
+        "transform-origin" | "-webkit-transform-origin" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::TransformOriginX, w.clone()),
+                    (Longhand::TransformOriginY, w),
+                ]);
+            }
+            let (x, y) = transform_origin(tokens)?;
+            Some(vec![
+                (Longhand::TransformOriginX, Value::Length(x)),
+                (Longhand::TransformOriginY, Value::Length(y)),
+            ])
+        }
         "box-sizing" => single(
             Longhand::BoxSizing,
             keyword(tokens, &["content-box", "border-box"]),

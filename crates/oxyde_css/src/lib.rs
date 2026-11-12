@@ -3,6 +3,7 @@
 //! - [`syntax`] : tokenizer CSS ;
 //! - [`selector`] : sélecteurs, spécificité, correspondance ;
 //! - [`values`] / [`properties`] / [`grid`] : valeurs et déclarations ;
+//! - [`transform`] : fonctions de transformation et matrices affines ;
 //! - [`stylesheet`] : règles et requêtes média ;
 //! - [`style`] : cascade et [`style::ComputedStyle`].
 //!
@@ -22,16 +23,18 @@ pub mod selector;
 pub mod style;
 pub mod stylesheet;
 pub mod syntax;
+pub mod transform;
 pub mod values;
 
 pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, TrackSize};
 pub use properties::Side;
 pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
-    LineHeight, ListStyle, Overflow, Position, Size, StyleMap, TextAlign, VerticalAlign,
-    Visibility, WhiteSpace, collect_style_elements, compute_styles,
+    LineHeight, ListStyle, Overflow, Position, Size, SizeKeyword, StyleMap, TextAlign,
+    VerticalAlign, Visibility, WhiteSpace, collect_style_elements, compute_styles,
 };
 pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
+pub use transform::{Affine, TransformFunction};
 
 /// Vrai si le moteur de style accepte la déclaration `property: value`
 /// (`CSS.supports`).

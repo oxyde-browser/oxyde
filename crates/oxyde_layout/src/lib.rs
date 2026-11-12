@@ -25,8 +25,8 @@ mod table;
 use std::sync::Arc;
 
 use oxyde_css::{
-    ComputedStyle, Display, Edges, LineHeight, ListStyle, Position, Size, StyleMap, TextAlign,
-    Viewport, Visibility, WhiteSpace,
+    ComputedStyle, Display, Edges, LineHeight, ListStyle, Position, Size, SizeKeyword, StyleMap,
+    TextAlign, Viewport, Visibility, WhiteSpace,
 };
 use oxyde_dom::{Document, NodeData, NodeId};
 use oxyde_text::parley::{
@@ -608,14 +608,49 @@ impl Engine<'_> {
         let intrinsic = dimensions.map(|(w, h, _)| (w, h));
         // Une image garde ses proportions ; un champ de formulaire, non.
         let keeps_ratio = dimensions.is_some_and(|(_, _, ratio)| ratio);
-        let specified = style.width.resolve(cb_w).map(to_content_w).or_else(|| {
-            // Élément remplacé : largeur intrinsèque, ou déduite de la hauteur imposée.
-            let (iw, ih) = intrinsic?;
-            Some(match style.height {
-                Size::Px(h) if ih > 0.0 && keeps_ratio => iw * h / ih,
-                _ => iw,
+        // `aspect-ratio` ne vaut pas pour un élément remplacé, qui a le sien.
+        let ratio = style.aspect_ratio.filter(|_| intrinsic.is_none());
+        let specified = style
+            .width
+            .resolve(cb_w)
+            .map(to_content_w)
+            .or_else(|| {
+                // Élément remplacé : largeur intrinsèque, ou déduite de la hauteur imposée.
+                let (iw, ih) = intrinsic?;
+                Some(match style.height {
+                    Size::Px(h) if ih > 0.0 && keeps_ratio => iw * h / ih,
+                    _ => iw,
+                })
             })
-        });
+            .or_else(|| {
+                // `aspect-ratio` : une boîte ajustée à son contenu tire sa
+                // largeur de sa hauteur imposée.
+                let ratio = ratio.filter(|_| mode == Width::ShrinkToFit)?;
+                let own_h = fixed_h.or_else(|| {
+                    resolve_height(style.height, cb_h).map(|h| {
+                        if style.border_box {
+                            (h - extras_h).max(0.0)
+                        } else {
+                            h
+                        }
+                    })
+                })?;
+                Some(if style.border_box {
+                    ((own_h + extras_h) * ratio - extras_w).max(0.0)
+                } else {
+                    own_h * ratio
+                })
+            });
+        // Hauteur de contenu qu'`aspect-ratio` donne à une largeur de contenu.
+        let ratio_h = |content_w: f32| {
+            ratio.map(|ratio| {
+                if style.border_box {
+                    ((content_w + extras_w) / ratio - extras_h).max(0.0)
+                } else {
+                    content_w / ratio
+                }
+            })
+        };
         let clamp_w = |w: f32| {
             let max = style
                 .max_width
@@ -630,6 +665,7 @@ impl Engine<'_> {
             w.min(max).max(min).max(0.0)
         };
         let available = (cb_w - ml - mr - extras_w).max(0.0);
+        let keyword = style.width_keyword;
         let mut shrink = false;
         // Un tableau fixe lui-même sa largeur : celle de ses colonnes.
         let planned = (style.display == Display::Table).then(|| {
@@ -644,10 +680,16 @@ impl Engine<'_> {
             (Some(w), _, _) => w,
             (None, Width::Fixed(w), _) => w.max(0.0),
             (None, _, Some(w)) => clamp_w(w),
-            (None, Width::Stretch, None) => clamp_w(available),
-            (None, Width::ShrinkToFit, None) => {
+            (None, Width::Stretch, None) if keyword == SizeKeyword::None => clamp_w(available),
+            // Largeur définie par le contenu : `fit-content` part de la place
+            // disponible, `min-content` et `max-content` d'une largeur sans
+            // contrainte ; la seconde passe ramène la boîte à son contenu.
+            (None, _, None) => {
                 shrink = true;
-                clamp_w(available)
+                let unbounded =
+                    matches!(keyword, SizeKeyword::MinContent | SizeKeyword::MaxContent)
+                        && self.shrink_depth < MAX_SHRINK_DEPTH;
+                if unbounded { 1.0e6 } else { clamp_w(available) }
             }
         };
 
@@ -662,7 +704,7 @@ impl Engine<'_> {
             };
         }
 
-        let content_x = border_x + bw.left + pad.left;
+        let mut content_x = border_x + bw.left + pad.left;
         let content_y = y + bw.top + pad.top;
         let to_content_h = |outer: f32| {
             if style.border_box {
@@ -672,13 +714,16 @@ impl Engine<'_> {
             }
         };
         // Hauteur imposée : elle sert de base aux pourcentages des enfants.
-        let definite_h = fixed_h.or_else(|| resolve_height(style.height, cb_h).map(to_content_h));
+        let own_h = fixed_h.or_else(|| resolve_height(style.height, cb_h).map(to_content_h));
+        // `aspect-ratio` : la hauteur découle de la largeur, si elle est déjà connue.
+        let definite_h = own_h.or_else(|| if shrink { None } else { ratio_h(content_w) });
         // Les boîtes hors flux rencontrées plus bas attendent ce bloc conteneur.
         let out_of_flow_start = self.out_of_flow.len();
         // Contexte de formatage de blocs : ses flottants lui sont propres.
         let outer_floats = self
             .establishes_bfc(node, style, mode)
             .then(|| std::mem::take(&mut self.floats));
+        let floats_start = self.floats.len();
         let (mut children, mut content_h) = self.layout_children(
             node,
             style,
@@ -694,16 +739,33 @@ impl Engine<'_> {
             // Grille : la somme de ses colonnes sans contrainte.
             let wanted = match self.grids.get(&node).filter(|_| style.grid_container) {
                 Some(tracks) => tracks.max_content,
+                None if keyword == SizeKeyword::MinContent => children
+                    .iter()
+                    .map(|c| self.min_content(c))
+                    .fold(0.0_f32, f32::max),
                 None => self.max_content_of(style, &children, content_w),
             };
             let fitted = clamp_w(wanted.ceil().min(content_w));
             if fitted < content_w - 0.5 {
                 self.shrink_depth += 1;
                 content_w = fitted;
+                if mode == Width::Stretch {
+                    // Les marges automatiques centrent la boîte une fois sa
+                    // largeur connue.
+                    let free = (cb_w - content_w - extras_w - ml - mr).max(0.0);
+                    border_x = cb_x
+                        + ml
+                        + match (margin_left, margin_right) {
+                            (None, None) => free / 2.0,
+                            (None, Some(_)) => free,
+                            _ => 0.0,
+                        };
+                    content_x = border_x + bw.left + pad.left;
+                }
                 // La seconde passe remet en attente les mêmes boîtes hors flux
                 // et replace les mêmes flottants.
                 self.out_of_flow.truncate(out_of_flow_start);
-                self.floats.clear();
+                self.floats.truncate(floats_start);
                 (children, content_h) = self.layout_children(
                     node,
                     style,
@@ -724,7 +786,7 @@ impl Engine<'_> {
             }
             self.floats = outer;
         }
-        let specified_h = definite_h.or_else(|| {
+        let specified_h = definite_h.or_else(|| ratio_h(content_w)).or_else(|| {
             intrinsic.map(|(iw, ih)| {
                 if iw > 0.0 && keeps_ratio {
                     ih * content_w / iw
@@ -734,6 +796,10 @@ impl Engine<'_> {
             })
         });
         let mut height = specified_h.unwrap_or(content_h);
+        // Une hauteur tirée d'`aspect-ratio` cède devant un contenu plus haut.
+        if own_h.is_none() && ratio.is_some() && style.overflow_y == oxyde_css::Overflow::Visible {
+            height = height.max(content_h);
+        }
         // La hauteur d'une cellule est un minimum ; celle d'un tableau vaut
         // pour sa grille, et sa mise en page l'a déjà prise en compte.
         match style.display {
@@ -2001,6 +2067,62 @@ mod tests {
         );
         let c = rect(&doc, &tree, "c");
         assert_eq!((c.w, c.h), (100.0, 10.0));
+    }
+
+    #[test]
+    fn width_keywords_follow_content() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0} i{display:inline-block;width:40px;height:10px}</style>\
+             <div id=max style='width:max-content'><i></i> <i></i> <i></i></div>\
+             <div id=min style='width:min-content'><i></i> <i></i> <i></i></div>\
+             <div id=fit style='width:fit-content;margin:0 auto'><i></i></div>\
+             <div style='width:60px'><div id=big style='width:max-content'><i></i> <i></i></div></div>",
+            400.0,
+        );
+        let max = rect(&doc, &tree, "max");
+        assert!(
+            max.w > 120.0 && max.w < 140.0,
+            "trois boîtes sur une ligne : {}",
+            max.w
+        );
+        assert_eq!(rect(&doc, &tree, "min").w, 40.0);
+        let fit = rect(&doc, &tree, "fit");
+        assert_eq!(
+            (fit.x, fit.w),
+            (180.0, 40.0),
+            "ajusté au contenu puis centré"
+        );
+        let big = rect(&doc, &tree, "big");
+        assert!(
+            big.w > 80.0,
+            "max-content dépasse la place disponible : {}",
+            big.w
+        );
+    }
+
+    #[test]
+    fn aspect_ratio_links_width_and_height() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=a style='width:200px;aspect-ratio:2/1'></div>\
+             <div id=b style='float:left;height:50px;aspect-ratio:3'></div>\
+             <div id=c style='clear:both;width:100px;aspect-ratio:1'>\
+             <div style='height:150px'></div></div>\
+             <div id=d style='width:100px;aspect-ratio:1;box-sizing:border-box;padding:10px'></div>",
+            400.0,
+        );
+        assert_eq!(rect(&doc, &tree, "a").h, 100.0);
+        assert_eq!(rect(&doc, &tree, "b").w, 150.0);
+        assert_eq!(
+            rect(&doc, &tree, "c").h,
+            150.0,
+            "le contenu l'emporte s'il est plus haut"
+        );
+        assert_eq!(
+            rect(&doc, &tree, "d").h,
+            100.0,
+            "le rapport vaut pour la boîte de bordure"
+        );
     }
 
     #[test]

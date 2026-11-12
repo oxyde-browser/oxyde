@@ -15,6 +15,7 @@ use crate::grid::{GridAreas, GridLine, TrackList, TrackSize};
 use crate::properties::{Declaration, Longhand, Side, Value, parse_declarations};
 use crate::stylesheet::{Stylesheet, Viewport, parse_stylesheet};
 use crate::syntax::tokenize;
+use crate::transform::{Affine, TransformFunction};
 use crate::values::{Color, Length};
 
 /// Valeurs par côté.
@@ -165,6 +166,31 @@ pub enum Visibility {
     Visible,
     Hidden,
     Collapse,
+}
+
+/// Largeur définie par le contenu (`width: min-content`…).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SizeKeyword {
+    /// Aucun mot-clé : la largeur est une longueur ou `auto`.
+    #[default]
+    None,
+    /// `min-content`
+    MinContent,
+    /// `max-content`
+    MaxContent,
+    /// `fit-content`
+    FitContent,
+}
+
+impl SizeKeyword {
+    fn parse(ident: &str) -> Self {
+        match ident {
+            "min-content" => Self::MinContent,
+            "max-content" => Self::MaxContent,
+            "fit-content" => Self::FitContent,
+            _ => Self::None,
+        }
+    }
 }
 
 /// Valeur calculée de `vertical-align`.
@@ -476,6 +502,15 @@ pub struct ComputedStyle {
     pub caption_bottom: bool,
     /// `vertical-align`
     pub vertical_align: VerticalAlign,
+    /// Mot-clé de `width`, quand la largeur est définie par le contenu ;
+    /// [`ComputedStyle::width`] vaut alors [`Size::Auto`].
+    pub width_keyword: SizeKeyword,
+    /// `aspect-ratio` : largeur rapportée à la hauteur ; `None` : `auto`.
+    pub aspect_ratio: Option<f32>,
+    /// `transform` ; `None` : `none`.
+    pub transform: Option<Arc<[TransformFunction<Size>]>>,
+    /// `transform-origin`, rapporté à la boîte de bordure.
+    pub transform_origin: (Size, Size),
 }
 
 impl ComputedStyle {
@@ -557,6 +592,10 @@ impl ComputedStyle {
             table_layout_fixed: false,
             caption_bottom: false,
             vertical_align: VerticalAlign::Baseline,
+            width_keyword: SizeKeyword::None,
+            aspect_ratio: None,
+            transform: None,
+            transform_origin: (Size::Percent(50.0), Size::Percent(50.0)),
         }
     }
 
@@ -564,6 +603,35 @@ impl ComputedStyle {
     #[must_use]
     pub fn is_positioned(&self) -> bool {
         self.position != Position::Static
+    }
+
+    /// Transformation de la boîte, dans le repère dont l'origine est le coin
+    /// supérieur gauche de sa boîte de bordure de taille `width` × `height` ;
+    /// `None` sans `transform`.
+    #[must_use]
+    pub fn transform_matrix(&self, width: f32, height: f32) -> Option<Affine> {
+        let list = self.transform.as_ref()?;
+        let mut matrix = Affine::IDENTITY;
+        for function in list.iter() {
+            let step = match *function {
+                TransformFunction::Translate(x, y) => Affine::translate(
+                    x.resolve(width).unwrap_or(0.0),
+                    y.resolve(height).unwrap_or(0.0),
+                ),
+                TransformFunction::Scale(x, y) => Affine::scale(x, y),
+                TransformFunction::Rotate(angle) => Affine::rotate(angle),
+                TransformFunction::Skew(x, y) => Affine::skew(x, y),
+                TransformFunction::Matrix(m) => Affine(m),
+            };
+            matrix = matrix.then_inner(step);
+        }
+        let origin_x = self.transform_origin.0.resolve(width).unwrap_or(0.0);
+        let origin_y = self.transform_origin.1.resolve(height).unwrap_or(0.0);
+        Some(
+            Affine::translate(origin_x, origin_y)
+                .then_inner(matrix)
+                .then_inner(Affine::translate(-origin_x, -origin_y)),
+        )
     }
 
     /// Vrai si la boîte sort du flux (`position: absolute` ou `fixed`).
@@ -724,7 +792,14 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::BorderColor(s) => style.border_color.set(s, from.border_color.get(s)),
         Longhand::BorderStyle(s) => style.border_style.set(s, from.border_style.get(s)),
         Longhand::BorderRadius => style.border_radius = from.border_radius,
-        Longhand::Width => style.width = from.width,
+        Longhand::Width => {
+            style.width = from.width;
+            style.width_keyword = from.width_keyword;
+        }
+        Longhand::AspectRatio => style.aspect_ratio = from.aspect_ratio,
+        Longhand::Transform => style.transform = from.transform.clone(),
+        Longhand::TransformOriginX => style.transform_origin.0 = from.transform_origin.0,
+        Longhand::TransformOriginY => style.transform_origin.1 = from.transform_origin.1,
         Longhand::Height => style.height = from.height,
         Longhand::MinWidth => style.min_width = from.min_width,
         Longhand::MaxWidth => style.max_width = from.max_width,
@@ -978,7 +1053,39 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
                 style.border_radius = v;
             }
         }
-        Longhand::Width => style.width = size_of(&decl.value, fs, cx),
+        Longhand::Width => {
+            style.width = size_of(&decl.value, fs, cx);
+            style.width_keyword = SizeKeyword::parse(ident);
+        }
+        Longhand::Transform => {
+            if let Value::Transform(list) = &decl.value {
+                style.transform = if list.is_empty() {
+                    None
+                } else {
+                    Some(
+                        list.iter()
+                            .map(|function| function.map(|length| length_px(length, fs, cx)))
+                            .collect(),
+                    )
+                };
+            }
+        }
+        Longhand::TransformOriginX | Longhand::TransformOriginY => {
+            if let Value::Length(l) = &decl.value {
+                let size = length_px(*l, fs, cx);
+                if property == Longhand::TransformOriginX {
+                    style.transform_origin.0 = size;
+                } else {
+                    style.transform_origin.1 = size;
+                }
+            }
+        }
+        Longhand::AspectRatio => {
+            style.aspect_ratio = match &decl.value {
+                Value::Number(ratio) if *ratio > 0.0 => Some(*ratio),
+                _ => None,
+            };
+        }
         Longhand::Height => style.height = size_of(&decl.value, fs, cx),
         Longhand::MinWidth => style.min_width = size_of(&decl.value, fs, cx),
         Longhand::MaxWidth => style.max_width = size_of(&decl.value, fs, cx),

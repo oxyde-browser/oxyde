@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9039 / 28699 (31,5 %)** — fichiers entièrement réussis : 478 / 2267 (21,1 %).
+**Sous-tests réussis : 9690 / 28699 (33,8 %)** — fichiers entièrement réussis : 512 / 2267 (22,6 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,14 +13,14 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `css/CSS2/floats` | 5 / 19 | 10 / 52 (19,2 %) |
+| `css/CSS2/floats` | 11 / 19 | 44 / 52 (84,6 %) |
 | `css/CSS2/normal-flow` | 19 / 31 | 103 / 130 (79,2 %) |
 | `css/CSS2/positioning` | 5 / 9 | 8 / 18 (44,4 %) |
 | `css/css-align` | 0 / 3 | 4 / 27 (14,8 %) |
 | `css/css-align/abspos` | 0 / 69 | 132 / 1142 (11,6 %) |
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-align/baseline-rules` | 1 / 4 | 9 / 20 (45,0 %) |
-| `css/css-align/blocks` | 0 / 37 | 55 / 556 (9,9 %) |
+| `css/css-align/blocks` | 0 / 37 | 136 / 556 (24,5 %) |
 | `css/css-align/content-distribution` | 2 / 17 | 145 / 573 (25,3 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
 | `css/css-align/gaps` | 1 / 20 | 121 / 162 (74,7 %) |
@@ -39,21 +39,21 @@ est le plus honnête des deux.
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 63 / 185 | 766 / 1804 (42,5 %) |
+| `css/css-flexbox` | 69 / 185 | 989 / 1804 (54,8 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-flexbox/balance` | 1 / 10 | 15 / 68 (22,1 %) |
 | `css/css-flexbox/getcomputedstyle` | 51 / 75 | 53 / 78 (67,9 %) |
-| `css/css-flexbox/intrinsic-size` | 1 / 16 | 5 / 51 (9,8 %) |
+| `css/css-flexbox/intrinsic-size` | 3 / 16 | 7 / 51 (13,7 %) |
 | `css/css-flexbox/parsing` | 8 / 27 | 68 / 215 (31,6 %) |
 | `css/css-grid` | 5 / 11 | 59 / 187 (31,6 %) |
-| `css/css-grid/abspos` | 4 / 58 | 403 / 3513 (11,5 %) |
-| `css/css-grid/alignment` | 59 / 286 | 469 / 1778 (26,4 %) |
+| `css/css-grid/abspos` | 4 / 58 | 411 / 3513 (11,7 %) |
+| `css/css-grid/alignment` | 62 / 286 | 553 / 1778 (31,1 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
-| `css/css-grid/grid-definition` | 14 / 51 | 743 / 1318 (56,4 %) |
-| `css/css-grid/grid-items` | 15 / 50 | 477 / 984 (48,5 %) |
+| `css/css-grid/grid-definition` | 14 / 51 | 744 / 1318 (56,4 %) |
+| `css/css-grid/grid-items` | 15 / 50 | 478 / 984 (48,6 %) |
 | `css/css-grid/grid-lanes` | 0 / 2 | 2 / 35 (5,7 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
@@ -68,35 +68,35 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing` | 0 / 1 | 0 / 1 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat` | 0 / 18 | 0 / 57 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/intrinsic-auto-repeat` | 0 / 13 | 0 / 33 (0,0 %) |
-| `css/css-grid/grid-model` | 7 / 22 | 108 / 188 (57,4 %) |
+| `css/css-grid/grid-model` | 10 / 22 | 143 / 188 (76,1 %) |
 | `css/css-grid/implicit-grids` | 2 / 6 | 42 / 56 (75,0 %) |
-| `css/css-grid/layout-algorithm` | 11 / 60 | 297 / 895 (33,2 %) |
+| `css/css-grid/layout-algorithm` | 13 / 60 | 365 / 895 (40,8 %) |
 | `css/css-grid/parsing` | 4 / 60 | 506 / 1600 (31,6 %) |
-| `css/css-grid/placement` | 9 / 24 | 232 / 316 (73,4 %) |
+| `css/css-grid/placement` | 10 / 24 | 234 / 316 (74,1 %) |
 | `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 24 / 47 | 132 / 256 (51,6 %) |
+| `css/css-position` | 26 / 47 | 147 / 256 (57,4 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
 | `css/css-position/sticky` | 4 / 33 | 18 / 82 (22,0 %) |
-| `css/css-sizing` | 11 / 53 | 172 / 705 (24,4 %) |
+| `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
-| `css/css-sizing/aspect-ratio` | 2 / 24 | 59 / 291 (20,3 %) |
+| `css/css-sizing/aspect-ratio` | 8 / 24 | 102 / 291 (35,1 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 7 / 38 (18,4 %) |
-| `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1140 / 1338 (85,2 %) |
+| `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1141 / 1338 (85,3 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
-| `css/css-sizing/stretch` | 12 / 50 | 192 / 1015 (18,9 %) |
-| `css/css-tables` | 27 / 82 | 180 / 285 (63,2 %) |
+| `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
+| `css/css-tables` | 28 / 82 | 187 / 285 (65,6 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 2 / 5 | 5 / 10 (50,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
-| `css/css-tables/tentative` | 3 / 23 | 189 / 333 (56,8 %) |
+| `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
 | `css/cssom-view` | 38 / 233 | 634 / 1747 (36,3 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
@@ -106,19 +106,13 @@ est le plus honnête des deux.
 | Fichier | Sous-tests | Cause |
 |---|---:|---|
 | `css/CSS2/floats/computed-float-position-absolute.html` | 0 / 1 |  |
-| `css/CSS2/floats/float-dynamic-formatting-context.html` | 0 / 12 |  |
-| `css/CSS2/floats/float-in-block-in-inline-position-001.html` | 2 / 6 |  |
 | `css/CSS2/floats/float-no-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/CSS2/floats/floats-in-inline-content-intrinsic-size-001.html` | 0 / 16 |  |
+| `css/CSS2/floats/floats-in-inline-content-intrinsic-size-001.html` | 14 / 16 |  |
 | `css/CSS2/floats/hit-test-floats-001.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-002.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-003.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-004.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-005.html` | 0 / 1 |  |
-| `css/CSS2/floats/zero-space-between-floats-001.html` | 0 / 1 |  |
-| `css/CSS2/floats/zero-space-between-floats-002.html` | 0 / 1 |  |
-| `css/CSS2/floats/zero-space-between-floats-003.html` | 0 / 1 |  |
-| `css/CSS2/floats/zero-space-between-floats-004.html` | 0 / 1 |  |
 | `css/CSS2/normal-flow/auto-margins-used-values-with-floats.tentative.html` | 0 / 6 |  |
 | `css/CSS2/normal-flow/auto-margins-used-values.html` | 0 / 6 |  |
 | `css/CSS2/normal-flow/block-in-inline-client-rects-001.html` | 2 / 3 |  |
@@ -216,16 +210,16 @@ est le plus honnête des deux.
 | `css/css-align/baseline-rules/synthesized-baseline-grid-001.html` | 3 / 7 |  |
 | `css/css-align/blocks/align-content-block-002.html` | 0 / 17 |  |
 | `css/css-align/blocks/align-content-block-003.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-004.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-005.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-006.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-007.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-008.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-009.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-010.html` | 0 / 17 |  |
-| `css/css-align/blocks/align-content-block-011.html` | 0 / 17 |  |
+| `css/css-align/blocks/align-content-block-004.html` | 6 / 17 |  |
+| `css/css-align/blocks/align-content-block-005.html` | 14 / 17 |  |
+| `css/css-align/blocks/align-content-block-006.html` | 6 / 17 |  |
+| `css/css-align/blocks/align-content-block-007.html` | 14 / 17 |  |
+| `css/css-align/blocks/align-content-block-008.html` | 6 / 17 |  |
+| `css/css-align/blocks/align-content-block-009.html` | 14 / 17 |  |
+| `css/css-align/blocks/align-content-block-010.html` | 6 / 17 |  |
+| `css/css-align/blocks/align-content-block-011.html` | 14 / 17 |  |
 | `css/css-align/blocks/align-content-block-display-coverage.html` | 1 / 8 |  |
-| `css/css-align/blocks/align-content-block-float-001.html` | 0 / 4 |  |
+| `css/css-align/blocks/align-content-block-float-001.html` | 1 / 4 |  |
 | `css/css-align/blocks/align-content-block-simple-height-change.html` | 0 / 1 |  |
 | `css/css-align/blocks/align-content-table-cell.html` | 4 / 8 |  |
 | `css/css-align/blocks/justify-self-block-in-inline.html` | 1 / 2 |  |
@@ -473,9 +467,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/abspos/position-absolute-012.html` | 24 / 96 |  |
 | `css/css-flexbox/abspos/position-absolute-013.html` | 110 / 432 |  |
 | `css/css-flexbox/abspos/position-absolute-015.html` | 0 / 1 |  |
-| `css/css-flexbox/align-content-horiz-001a.html` | 1 / 72 |  |
-| `css/css-flexbox/align-content-horiz-001b.html` | 1 / 72 |  |
-| `css/css-flexbox/align-content-horiz-002.html` | 0 / 72 |  |
+| `css/css-flexbox/align-content-horiz-002.html` | 52 / 72 |  |
 | `css/css-flexbox/align-content-rounding.html` | 0 / 1 |  |
 | `css/css-flexbox/align-content-stretch-rounding.html` | 0 / 1 |  |
 | `css/css-flexbox/align-content-vert-001b.html` | 17 / 72 |  |
@@ -553,7 +545,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/balance/flex-wrap-invalid.html` | 0 / 13 |  |
 | `css/css-flexbox/balance/flex-wrap-valid.html` | 5 / 8 |  |
 | `css/css-flexbox/canvas-dynamic-change-001.html` | 0 / 1 |  |
-| `css/css-flexbox/change-column-flex-width.html` | 0 / 1 |  |
 | `css/css-flexbox/checkbox-percentage-width-in-flex.html` | 0 / 4 |  |
 | `css/css-flexbox/column-reverse-wrap-auto-margins-001.html` | 0 / 3 |  |
 | `css/css-flexbox/flex-aspect-ratio-img-column-011.html` | 4 / 10 |  |
@@ -564,18 +555,17 @@ est le plus honnête des deux.
 | `css/css-flexbox/flex-base-size-ignores-min-max-width-003.html` | 0 / 4 |  |
 | `css/css-flexbox/flex-basis-009.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-basis-013.html` | 0 / 20 |  |
-| `css/css-flexbox/flex-basis-014.html` | 3 / 9 |  |
+| `css/css-flexbox/flex-basis-014.html` | 6 / 9 |  |
 | `css/css-flexbox/flex-basis-content-percentage-height.html` | 2 / 4 |  |
-| `css/css-flexbox/flex-basis-intrinsics-001.html` | 5 / 12 |  |
+| `css/css-flexbox/flex-basis-intrinsics-001.html` | 6 / 12 |  |
 | `css/css-flexbox/flex-basis-min-content-dynamic-001.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-container-max-content-002.tentative.html` | 8 / 24 |  |
-| `css/css-flexbox/flex-container-min-content-002.tentative.html` | 4 / 24 |  |
+| `css/css-flexbox/flex-container-min-content-002.tentative.html` | 7 / 24 |  |
 | `css/css-flexbox/flex-factor-less-than-one.html` | 12 / 22 |  |
 | `css/css-flexbox/flex-flow-013.html` | 3 / 12 |  |
 | `css/css-flexbox/flex-item-compressible-001.html` | 0 / 15 |  |
 | `css/css-flexbox/flex-item-compressible-002.html` | 0 / 15 |  |
 | `css/css-flexbox/flex-item-contains-strict.html` | 4 / 8 |  |
-| `css/css-flexbox/flex-item-min-max-width-intrinsic-contribution-001.html` | 0 / 2 |  |
 | `css/css-flexbox/flex-item-percentage-height-img-001.html` | 0 / 2 |  |
 | `css/css-flexbox/flex-minimum-height-flex-items-012.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-minimum-height-flex-items-025.html` | 0 / 4 |  |
@@ -590,8 +580,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/flexbox-ignores-first-letter.html` | 9 / 12 |  |
 | `css/css-flexbox/flexbox-justify-content-wmvert-002.html` | 2 / 4 |  |
 | `css/css-flexbox/flexbox-justify-content-wmvert-003.html` | 2 / 4 |  |
-| `css/css-flexbox/flexbox-min-height-auto-003.html` | 0 / 4 |  |
-| `css/css-flexbox/flexbox-min-height-auto-004.html` | 0 / 4 |  |
+| `css/css-flexbox/flexbox-min-height-auto-004.html` | 1 / 4 |  |
 | `css/css-flexbox/flexbox_justifycontent-rtl-001.html` | 5 / 12 |  |
 | `css/css-flexbox/flexbox_justifycontent-rtl-002.html` | 0 / 12 |  |
 | `css/css-flexbox/flexitem-stretch-image.html` | 0 / 1 |  |
@@ -639,9 +628,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/image-as-flexitem-size-007v.html` | 13 / 18 |  |
 | `css/css-flexbox/inheritance.html` | 12 / 20 |  |
 | `css/css-flexbox/inline-flexbox-wrap-vertically-width-calculation.html` | 2 / 16 |  |
-| `css/css-flexbox/intrinsic-size/col-wrap-004.html` | 0 / 1 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-005.html` | 0 / 1 |  |
-| `css/css-flexbox/intrinsic-size/col-wrap-010.html` | 0 / 1 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-018.html` | 0 / 1 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-019.html` | 0 / 1 |  |
 | `css/css-flexbox/intrinsic-size/col-wrap-baseline-001.html` | 0 / 4 |  |
@@ -651,8 +638,8 @@ est le plus honnête des deux.
 | `css/css-flexbox/intrinsic-size/percentage-gap-001.html` | 0 / 2 |  |
 | `css/css-flexbox/intrinsic-size/row-005.html` | 0 / 9 |  |
 | `css/css-flexbox/intrinsic-size/row-008.html` | 0 / 11 |  |
-| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 1 / 3 |  |
-| `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 3 / 6 |  |
+| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 2 / 3 |  |
+| `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 2 / 6 |  |
 | `css/css-flexbox/intrinsic-size/row-wrap-001.html` | 0 / 5 |  |
 | `css/css-flexbox/intrinsic-width-orthogonal-writing-mode.html` | 1 / 3 |  |
 | `css/css-flexbox/justify-content-007.html` | 0 / 1 |  |
@@ -682,7 +669,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/parsing/order-computed.html` | 6 / 7 |  |
 | `css/css-flexbox/parsing/order-invalid.html` | 0 / 3 |  |
 | `css/css-flexbox/parsing/webkit-aliases.html` | 0 / 12 |  |
-| `css/css-flexbox/percent-height-flex-items-cross-sizes-with-mutations.html` | 7 / 21 |  |
 | `css/css-flexbox/percentage-heights-000.html` | 3 / 6 |  |
 | `css/css-flexbox/percentage-heights-001.html` | 5 / 13 |  |
 | `css/css-flexbox/percentage-heights-003.html` | 3 / 7 |  |
@@ -701,7 +687,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/text-as-flexitem-size-001.html` | 13 / 18 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 10 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 12 |  |
-| `css/css-grid/abspos/empty-grid-001.html` | 0 / 9 |  |
+| `css/css-grid/abspos/empty-grid-001.html` | 8 / 9 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-001.html` | 0 / 1 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-002.html` | 0 / 1 |  |
 | `css/css-grid/abspos/grid-positioned-items-and-autofit-tracks-003.html` | 0 / 1 |  |
@@ -792,12 +778,12 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-align-content.html` | 7 / 13 |  |
 | `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-lr.html` | 0 / 18 |  |
 | `css/css-grid/alignment/grid-align-justify-margin-border-padding-vertical-rl.html` | 0 / 18 |  |
-| `css/css-grid/alignment/grid-align-justify-margin-border-padding.html` | 0 / 18 |  |
-| `css/css-grid/alignment/grid-align-justify-overflow.html` | 0 / 8 |  |
+| `css/css-grid/alignment/grid-align-justify-margin-border-padding.html` | 7 / 18 |  |
+| `css/css-grid/alignment/grid-align-justify-overflow.html` | 2 / 8 |  |
 | `css/css-grid/alignment/grid-align-justify-stretch-with-orthogonal-flows.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-align-justify-stretch.html` | 0 / 16 |  |
+| `css/css-grid/alignment/grid-align-justify-stretch.html` | 11 / 16 |  |
 | `css/css-grid/alignment/grid-align-stretching-replaced-items.html` | 5 / 6 |  |
-| `css/css-grid/alignment/grid-align.html` | 0 / 16 |  |
+| `css/css-grid/alignment/grid-align.html` | 6 / 16 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-011.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-012.html` | 1 / 2 |  |
 | `css/css-grid/alignment/grid-alignment-implies-size-change-013.html` | 1 / 2 |  |
@@ -850,26 +836,23 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-container-baseline-first-item-in-grid-order.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-content-alignment-and-self-alignment-001.html` | 12 / 24 |  |
 | `css/css-grid/alignment/grid-content-alignment-and-self-alignment-002.html` | 16 / 32 |  |
-| `css/css-grid/alignment/grid-content-alignment-overflow-001.html` | 2 / 14 |  |
-| `css/css-grid/alignment/grid-content-alignment-overflow-002.html` | 1 / 14 |  |
+| `css/css-grid/alignment/grid-content-alignment-overflow-001.html` | 4 / 14 |  |
+| `css/css-grid/alignment/grid-content-alignment-overflow-002.html` | 3 / 14 |  |
 | `css/css-grid/alignment/grid-content-alignment-second-pass-001.html` | 2 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-second-pass-002.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-abspos-001.html` | 0 / 1 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-001.html` | 4 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-lr-001.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-content-alignment-with-span-vertical-rl-001.html` | 0 / 8 |  |
-| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 9 / 25 |  |
+| `css/css-grid/alignment/grid-gutters-and-alignment.html` | 11 / 25 |  |
 | `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-lr.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows-vertical-rl.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-item-alignment-with-orthogonal-flows.html` | 1 / 7 |  |
-| `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-001.html` | 0 / 20 |  |
-| `css/css-grid/alignment/grid-item-aspect-ratio-justify-self-002.html` | 0 / 20 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-lr.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-alignment-vertical-rl.html` | 0 / 8 |  |
 | `css/css-grid/alignment/grid-item-auto-margins-alignment.html` | 4 / 8 |  |
-| `css/css-grid/alignment/grid-item-auto-margins-and-stretch-001.html` | 0 / 6 |  |
-| `css/css-grid/alignment/grid-item-stretch-dynamic-size-margin-change-001.html` | 3 / 6 |  |
-| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-001.html` | 0 / 12 |  |
+| `css/css-grid/alignment/grid-item-auto-margins-and-stretch-001.html` | 1 / 6 |  |
+| `css/css-grid/alignment/grid-item-stretch-margin-border-padding-001.html` | 6 / 12 |  |
 | `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-lr-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-item-stretch-margin-border-padding-vertical-rl-001.html` | 0 / 12 |  |
 | `css/css-grid/alignment/grid-justify-baseline-002.html` | 1 / 6 |  |
@@ -882,7 +865,7 @@ est le plus honnête des deux.
 | `css/css-grid/alignment/grid-justify-content-distribution-vertical-rl-001.html` | 0 / 24 |  |
 | `css/css-grid/alignment/grid-justify-content-vertical-lr-001.html` | 0 / 10 |  |
 | `css/css-grid/alignment/grid-justify-content-vertical-rl-001.html` | 0 / 10 |  |
-| `css/css-grid/alignment/grid-justify-self-cell-001.html` | 0 / 10 |  |
+| `css/css-grid/alignment/grid-justify-self-cell-001.html` | 2 / 10 |  |
 | `css/css-grid/alignment/grid-place-content-001.html` | 18 / 20 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-001.html` | 0 / 4 |  |
 | `css/css-grid/alignment/grid-row-axis-alignment-positioned-items-002.html` | 0 / 4 |  |
@@ -1009,7 +992,7 @@ est le plus honnête des deux.
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-001.html` | 0 / 12 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-002.html` | 0 / 4 |  |
 | `css/css-grid/grid-definition/grid-auto-repeat-min-size-004.html` | 0 / 1 |  |
-| `css/css-grid/grid-definition/grid-auto-repeat-rows-dynamic-height-001.html` | 0 / 3 |  |
+| `css/css-grid/grid-definition/grid-auto-repeat-rows-dynamic-height-001.html` | 1 / 3 |  |
 | `css/css-grid/grid-definition/grid-change-fit-content-argument-001.html` | 6 / 8 |  |
 | `css/css-grid/grid-definition/grid-change-intrinsic-size-with-auto-repeat-tracks-001.html` | 0 / 8 |  |
 | `css/css-grid/grid-definition/grid-inline-auto-repeat-001.html` | 5 / 12 |  |
@@ -1033,7 +1016,7 @@ est le plus honnête des deux.
 | `css/css-grid/grid-definition/grid-template-columns-rows-changes-001.html` | 14 / 21 |  |
 | `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 40 / 76 |  |
 | `css/css-grid/grid-important.html` | 0 / 1 |  |
-| `css/css-grid/grid-items/grid-automatic-minimum-intrinsic-aspect-ratio-001.html` | 0 / 14 |  |
+| `css/css-grid/grid-items/grid-automatic-minimum-intrinsic-aspect-ratio-001.html` | 1 / 14 |  |
 | `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 12 / 14 |  |
 | `css/css-grid/grid-items/grid-item-min-auto-size-001.html` | 2 / 4 |  |
 | `css/css-grid/grid-items/grid-item-min-contribution-behaves-as-auto-001.html` | 0 / 2 |  |
@@ -1168,20 +1151,17 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/row-auto-repeat-023.html` | 0 / 1 |  |
 | `css/css-grid/grid-lanes/track-sizing/dynamic-grid-track-direction.html` | 0 / 1 |  |
 | `css/css-grid/grid-layout-properties.html` | 35 / 140 |  |
-| `css/css-grid/grid-model/compute-intrinsic-widths-scrollbar-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-box-sizing-001.html` | 22 / 24 |  |
 | `css/css-grid/grid-model/grid-computed-value-display-floated-items-001.html` | 2 / 6 |  |
-| `css/css-grid/grid-model/grid-container-margin-border-padding-scrollbar-001.html` | 0 / 16 |  |
 | `css/css-grid/grid-model/grid-container-padding-border-size-001.html` | 3 / 6 |  |
-| `css/css-grid/grid-model/grid-container-sizing-constraints-001.html` | 0 / 15 |  |
+| `css/css-grid/grid-model/grid-container-sizing-constraints-001.html` | 9 / 15 |  |
 | `css/css-grid/grid-model/grid-gutters-and-flex-content-001.html` | 6 / 8 |  |
-| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 10 / 17 |  |
+| `css/css-grid/grid-model/grid-gutters-and-tracks-001.html` | 16 / 17 |  |
 | `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 6 / 16 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-letter-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-line-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-hit-test.html` | 0 / 1 |  |
-| `css/css-grid/grid-model/grid-min-max-width-001.html` | 10 / 20 |  |
-| `css/css-grid/grid-model/grid-size-shrink-to-fit-001.html` | 3 / 4 |  |
+| `css/css-grid/grid-model/grid-min-max-width-001.html` | 11 / 20 |  |
 | `css/css-grid/grid-model/grid-support-display-001.html` | 3 / 6 |  |
 | `css/css-grid/grid-template-columns-mixed-calc.html` | 9 / 11 |  |
 | `css/css-grid/implicit-grids/grid-auto-columns-rows-auto-flow-resolution-001.html` | 10 / 12 |  |
@@ -1196,19 +1176,18 @@ est le plus honnête des deux.
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-004.html` | 0 / 24 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-005.html` | 0 / 24 |  |
 | `css/css-grid/layout-algorithm/baseline-alignment-affects-intrinsic-size-006.html` | 0 / 24 |  |
-| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 3 / 8 |  |
-| `css/css-grid/layout-algorithm/flex-sizing-columns-min-max-width-001.html` | 5 / 12 |  |
-| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-001.html` | 0 / 12 |  |
+| `css/css-grid/layout-algorithm/flex-and-intrinsic-sizes-001.html` | 5 / 8 |  |
+| `css/css-grid/layout-algorithm/flex-sizing-columns-min-max-width-001.html` | 11 / 12 |  |
+| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-001.html` | 8 / 12 |  |
 | `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-002.html` | 4 / 14 |  |
-| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-border-box-001.html` | 0 / 6 |  |
+| `css/css-grid/layout-algorithm/flex-sizing-rows-min-max-height-border-box-001.html` | 2 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-auto-columns-content-resolution-001.html` | 2 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-auto-row-regrows-after-container-height-shrinks-001.html` | 0 / 1 |  |
 | `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-columns-001.html` | 1 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-automatic-minimum-for-auto-rows-001.html` | 2 / 4 |  |
-| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 4 / 20 |  |
-| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 5 / 24 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-001.html` | 17 / 20 |  |
+| `css/css-grid/layout-algorithm/grid-container-percentage-002.html` | 9 / 24 |  |
 | `css/css-grid/layout-algorithm/grid-content-distribution-must-account-for-track-sizing-002.html` | 0 / 1 |  |
-| `css/css-grid/layout-algorithm/grid-find-fr-size-gutters-001.html` | 6 / 17 |  |
 | `css/css-grid/layout-algorithm/grid-fit-content-percentage.html` | 0 / 20 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-001.html` | 6 / 30 |  |
 | `css/css-grid/layout-algorithm/grid-flex-track-intrinsic-sizes-002.html` | 0 / 5 |  |
@@ -1216,8 +1195,7 @@ est le plus honnête des deux.
 | `css/css-grid/layout-algorithm/grid-flex-tracks-item-with-border-001.html` | 1 / 3 |  |
 | `css/css-grid/layout-algorithm/grid-intrinsic-size-with-orthogonal-items.html` | 0 / 7 |  |
 | `css/css-grid/layout-algorithm/grid-intrinsic-track-sizes-001.html` | 27 / 31 |  |
-| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 6 / 35 |  |
-| `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-001.html` | 0 / 4 |  |
+| `css/css-grid/layout-algorithm/grid-intrinsic-width-minmax-tracks-001.html` | 20 / 35 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-001.html` | 0 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-lr-002.html` | 0 / 2 |  |
 | `css/css-grid/layout-algorithm/grid-item-margin-auto-columns-rows-vertical-rl-001.html` | 0 / 4 |  |
@@ -1230,8 +1208,8 @@ est le plus honnête des deux.
 | `css/css-grid/layout-algorithm/grid-minimum-contribution-baseline-shim.html` | 0 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-minmax-content-tracks-multiple-items-001.html` | 3 / 4 |  |
 | `css/css-grid/layout-algorithm/grid-minmax-spanning-items-columns-001.html` | 12 / 26 |  |
-| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-auto-track-size-001.html` | 0 / 6 |  |
-| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-track-size-001.html` | 0 / 6 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-auto-track-size-001.html` | 2 / 6 |  |
+| `css/css-grid/layout-algorithm/grid-percentage-of-indefinite-track-size-001.html` | 2 / 6 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-tracks-container-size-001.html` | 4 / 12 |  |
 | `css/css-grid/layout-algorithm/grid-percentage-tracks-intrinsic-container-001.html` | 0 / 1 |  |
 | `css/css-grid/layout-algorithm/grid-relayout-orthogonal-items-same-result-001.html` | 0 / 3 |  |
@@ -1300,7 +1278,6 @@ est le plus honnête des deux.
 | `css/css-grid/placement/grid-auto-placement-item-addition-001.html` | 18 / 20 |  |
 | `css/css-grid/placement/grid-auto-placement-item-removal-001.html` | 19 / 20 |  |
 | `css/css-grid/placement/grid-container-change-named-grid-recompute-child-positions-001.html` | 0 / 4 |  |
-| `css/css-grid/placement/grid-implicit-columns-for-items-locked-to-row-001.html` | 6 / 8 |  |
 | `css/css-grid/placement/grid-placement-dynamic-change-001.html` | 67 / 88 |  |
 | `css/css-grid/placement/grid-placement-huge-negative-indexes-001.html` | 0 / 3 |  |
 | `css/css-grid/placement/grid-placement-named-grid-area-resolution-001.html` | 1 / 2 |  |
@@ -1343,7 +1320,7 @@ est le plus honnête des deux.
 | `css/css-position/backdrop-inherit-computed.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
 | `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/backdrop-ua-style.html` | 0 / 1 |  |
-| `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 1 / 17 |  |
+| `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 10 / 17 |  |
 | `css/css-position/overlay/animation/overlay-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/overlay/overlay-computed.html` | 0 / 6 |  |
 | `css/css-position/overlay/overlay-invalid.html` | 0 / 6 |  |
@@ -1363,7 +1340,6 @@ est le plus honnête des deux.
 | `css/css-position/parsing/top-computed.html` | 3 / 5 |  |
 | `css/css-position/parsing/top-invalid.html` | 0 / 3 |  |
 | `css/css-position/parsing/z-index-invalid.html` | 0 / 4 |  |
-| `css/css-position/position-absolute-chrome-bug-002.html` | 0 / 1 |  |
 | `css/css-position/position-absolute-crash-chrome-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-position/position-absolute-dynamic-containing-block.html` | 4 / 8 |  |
 | `css/css-position/position-absolute-fit-content-auto-margin.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1378,8 +1354,7 @@ est le plus honnête des deux.
 | `css/css-position/position-fixed-dynamic-containing-block.html` | 0 / 4 |  |
 | `css/css-position/position-relative-015.html` | 19 / 20 |  |
 | `css/css-position/position-relative-016.html` | 16 / 18 |  |
-| `css/css-position/position-relative-aspect-ratio-001.html` | 1 / 4 |  |
-| `css/css-position/position-relative-aspect-ratio-002.html` | 0 / 3 |  |
+| `css/css-position/position-relative-aspect-ratio-002.html` | 2 / 3 |  |
 | `css/css-position/position-sticky-dynamic-ancestor-001.html` | 0 / 1 |  |
 | `css/css-position/sticky-dialog.html` | 0 / 1 |  |
 | `css/css-position/sticky/position-sticky-block-in-sticky-inline.html` | 0 / 1 |  |
@@ -1435,30 +1410,24 @@ est le plus honnête des deux.
 | `css/css-sizing/aspect-ratio-affects-container-width-when-height-changes.html` | 1 / 2 |  |
 | `css/css-sizing/aspect-ratio-automatic-minimum.html` | 1 / 2 |  |
 | `css/css-sizing/aspect-ratio.html` | 5 / 11 |  |
-| `css/css-sizing/aspect-ratio/abspos-aspect-ratio-border.html` | 0 / 6 |  |
-| `css/css-sizing/aspect-ratio/abspos-intrinsic-block-size.html` | 4 / 32 |  |
+| `css/css-sizing/aspect-ratio/abspos-intrinsic-block-size.html` | 24 / 32 |  |
 | `css/css-sizing/aspect-ratio/aspect-ratio-minimum-size-single-axis-scroll-container.html` | 2 / 4 |  |
-| `css/css-sizing/aspect-ratio/box-sizing-aspect-ratio-positioned.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/box-sizing-dimensions.html` | 2 / 8 |  |
-| `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 3 / 16 |  |
+| `css/css-sizing/aspect-ratio/box-sizing-dimensions.html` | 5 / 8 |  |
+| `css/css-sizing/aspect-ratio/box-sizing-squashed.html` | 5 / 16 |  |
 | `css/css-sizing/aspect-ratio/flex-aspect-ratio-orthogonal-percentage-child.html` | 0 / 4 |  |
-| `css/css-sizing/aspect-ratio/flex-aspect-ratio-row-percentage-height-child.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/fractional-aspect-ratio.html` | 0 / 2 |  |
 | `css/css-sizing/aspect-ratio/inheritance.html` | 0 / 2 |  |
-| `css/css-sizing/aspect-ratio/intrinsic-contribution-transferred-min-width-001.html` | 0 / 3 |  |
+| `css/css-sizing/aspect-ratio/intrinsic-contribution-transferred-min-width-001.html` | 1 / 3 |  |
 | `css/css-sizing/aspect-ratio/parsing/aspect-ratio-computed.html` | 0 / 13 |  |
 | `css/css-sizing/aspect-ratio/parsing/aspect-ratio-invalid.html` | 0 / 11 |  |
 | `css/css-sizing/aspect-ratio/parsing/aspect-ratio-valid.html` | 7 / 14 |  |
-| `css/css-sizing/aspect-ratio/quirks-mode-001.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/quirks-mode-002.html` | 0 / 1 |  |
 | `css/css-sizing/aspect-ratio/quirks-mode-003.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/replaced-element-036.html` | 0 / 2 |  |
+| `css/css-sizing/aspect-ratio/replaced-element-028.html` | 0 / 1 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-042.html` | 0 / 4 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-043.html` | 38 / 180 |  |
 | `css/css-sizing/aspect-ratio/replaced-element-044.html` | 0 / 4 |  |
-| `css/css-sizing/aspect-ratio/replaced-element-intrinsic-contribution-transferred-min-width-001.html` | 0 / 3 |  |
+| `css/css-sizing/aspect-ratio/replaced-element-intrinsic-contribution-transferred-min-width-001.html` | 1 / 3 |  |
 | `css/css-sizing/aspect-ratio/sign-function-aspect-ratio.html` | 0 / 1 |  |
-| `css/css-sizing/aspect-ratio/table-element-002.html` | 1 / 5 |  |
+| `css/css-sizing/aspect-ratio/table-element-002.html` | 4 / 5 |  |
 | `css/css-sizing/aspect-ratio/table-element-intrinsic-contribution-001.html` | 0 / 1 |  |
 | `css/css-sizing/available-height-for-replaced-content-001.html` | 0 / 1 |  |
 | `css/css-sizing/button-min-width.html` | 0 / 1 |  |
@@ -1468,7 +1437,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/auto-003.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-006.html` | 0 / 19 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
+| `css/css-sizing/contain-intrinsic-size/auto-006.html` | 1 / 19 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-009.html` | 0 / 2 |  |
@@ -1476,11 +1445,11 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/auto-011.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-012.html` | 0 / 7 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-013.html` | 0 / 1 |  |
-| `css/css-sizing/contain-intrinsic-size/auto-014.html` | 0 / 2 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
-| `css/css-sizing/contain-intrinsic-size/auto-015.html` | 0 / 1 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
-| `css/css-sizing/contain-intrinsic-size/auto-016.html` | 0 / 1 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
-| `css/css-sizing/contain-intrinsic-size/auto-017.html` | 0 / 1 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
-| `css/css-sizing/contain-intrinsic-size/auto-018.html` | 0 / 1 | harnais : Test named 'Basic usage' specified 1 'cleanup' function, and 1 failed. |
+| `css/css-sizing/contain-intrinsic-size/auto-014.html` | 0 / 2 |  |
+| `css/css-sizing/contain-intrinsic-size/auto-015.html` | 0 / 1 |  |
+| `css/css-sizing/contain-intrinsic-size/auto-016.html` | 0 / 1 |  |
+| `css/css-sizing/contain-intrinsic-size/auto-017.html` | 0 / 1 |  |
+| `css/css-sizing/contain-intrinsic-size/auto-018.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-009.html` | 0 / 7 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-028.html` | 0 / 48 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-029.html` | 1 / 8 |  |
@@ -1493,22 +1462,19 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-invalid.html` | 0 / 40 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-valid.html` | 24 / 27 |  |
 | `css/css-sizing/fieldset-intrinsic-size-percent.html` | 0 / 12 |  |
-| `css/css-sizing/fit-content-percentage-padding.html` | 0 / 3 |  |
-| `css/css-sizing/form-control-in-inline-content-intrinsic-size-001.html` | 0 / 9 |  |
+| `css/css-sizing/form-control-in-inline-content-intrinsic-size-001.html` | 8 / 9 |  |
 | `css/css-sizing/image-min-max-content-intrinsic-size-change-009.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `css/css-sizing/intrinsic-percent-replaced-033.html` | 0 / 9 |  |
 | `css/css-sizing/intrinsic-size-fallback-replaced.html` | 4 / 8 |  |
-| `css/css-sizing/intrinsic-size-fallback-video.html` | 0 / 4 |  |
 | `css/css-sizing/keyword-min-max-width-with-fixed-width-contribution.html` | 0 / 3 |  |
 | `css/css-sizing/keyword-sizes-for-intrinsic-contributions-002.html` | 0 / 8 |  |
-| `css/css-sizing/keyword-sizes-for-intrinsic-contributions.html` | 5 / 36 |  |
+| `css/css-sizing/keyword-sizes-for-intrinsic-contributions.html` | 9 / 36 |  |
 | `css/css-sizing/keyword-sizes-on-abspos.html` | 9 / 60 |  |
-| `css/css-sizing/keyword-sizes-on-flex-item-001.html` | 7 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-flex-item-001.html` | 10 / 74 |  |
 | `css/css-sizing/keyword-sizes-on-flex-item-002.html` | 19 / 74 |  |
-| `css/css-sizing/keyword-sizes-on-floated-element.html` | 19 / 74 |  |
-| `css/css-sizing/keyword-sizes-on-inline-block.html` | 20 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-floated-element.html` | 25 / 74 |  |
+| `css/css-sizing/keyword-sizes-on-inline-block.html` | 25 / 74 |  |
 | `css/css-sizing/keyword-sizes-on-replaced-element.html` | 39 / 84 |  |
-| `css/css-sizing/min-max-width-contribution-box-sizing.html` | 0 / 4 |  |
 | `css/css-sizing/min-width-min-content-contribution.html` | 2 / 6 |  |
 | `css/css-sizing/parsing/box-sizing-invalid.html` | 0 / 7 |  |
 | `css/css-sizing/parsing/height-invalid.html` | 0 / 4 |  |
@@ -1538,7 +1504,6 @@ est le plus honnête des deux.
 | `css/css-sizing/parsing/width-valid.html` | 9 / 10 |  |
 | `css/css-sizing/percentage-height-in-flexbox.html` | 0 / 2 |  |
 | `css/css-sizing/percentage-height-replaced-content-in-auto-cb.html` | 0 / 1 |  |
-| `css/css-sizing/percentage-min-width.html` | 0 / 1 |  |
 | `css/css-sizing/replaced-element-max-content-contribution-transferred-size.html` | 0 / 5 |  |
 | `css/css-sizing/replaced-element-transferred-size-flex.html` | 0 / 3 |  |
 | `css/css-sizing/replaced-fractional-height-from-aspect-ratio-2.html` | 0 / 1 |  |
@@ -1551,17 +1516,16 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe/responsive-iframe-request-resize-error.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/css-sizing/responsive-iframe/responsive-iframe-value.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/size-shorthand-serialization.tentative.html` | 3 / 15 |  |
-| `css/css-sizing/stretch/aspect-ratio-1.html` | 0 / 4 |  |
+| `css/css-sizing/stretch/aspect-ratio-1.html` | 3 / 4 |  |
 | `css/css-sizing/stretch/aspect-ratio-2.html` | 1 / 18 |  |
 | `css/css-sizing/stretch/auto-margins-1.html` | 1 / 2 |  |
 | `css/css-sizing/stretch/block-height-001.html` | 9 / 18 |  |
-| `css/css-sizing/stretch/block-height-002.html` | 1 / 4 |  |
+| `css/css-sizing/stretch/block-height-002.html` | 2 / 4 |  |
 | `css/css-sizing/stretch/block-height-004.html` | 0 / 8 |  |
 | `css/css-sizing/stretch/block-height-005.html` | 0 / 4 |  |
 | `css/css-sizing/stretch/block-height-007.html` | 5 / 20 |  |
 | `css/css-sizing/stretch/block-height-008.html` | 0 / 160 |  |
 | `css/css-sizing/stretch/block-height-011.html` | 0 / 8 |  |
-| `css/css-sizing/stretch/content-contribution-001.html` | 3 / 5 |  |
 | `css/css-sizing/stretch/flex-basis-1.html` | 1 / 5 |  |
 | `css/css-sizing/stretch/flex-item-height-001.html` | 0 / 2 |  |
 | `css/css-sizing/stretch/flex-item-height-002.html` | 0 / 1 |  |
@@ -1594,11 +1558,14 @@ est le plus honnête des deux.
 | `css/css-sizing/svg-intrinsic-size-003.html` | 0 / 5 |  |
 | `css/css-sizing/svg-intrinsic-size-004.html` | 1 / 5 |  |
 | `css/css-sizing/svg-intrinsic-size-008.html` | 0 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-009.html` | 0 / 12 |  |
-| `css/css-sizing/svg-intrinsic-size-010.html` | 0 / 12 |  |
+| `css/css-sizing/svg-intrinsic-size-009.html` | 2 / 12 |  |
+| `css/css-sizing/svg-intrinsic-size-010.html` | 2 / 12 |  |
 | `css/css-sizing/svg-intrinsic-size-011.html` | 0 / 4 |  |
 | `css/css-sizing/svg-intrinsic-size-zero-img-and-object.html` | 0 / 14 | harnais : délai du harnais dépassé |
 | `css/css-sizing/table-cell-definite-height-transferred-size.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-sizing/table-percentage-max-width-beside-float.html` | 0 / 1 |  |
+| `css/css-sizing/table-percentage-min-width-below-float.html` | 0 / 1 |  |
+| `css/css-sizing/table-percentage-min-width-beside-float.html` | 0 / 1 |  |
 | `css/css-tables/absolute-tables-003.html` | 2 / 4 |  |
 | `css/css-tables/absolute-tables-005.html` | 2 / 4 |  |
 | `css/css-tables/absolute-tables-height-001.html` | 10 / 11 |  |
@@ -1641,8 +1608,7 @@ est le plus honnête des deux.
 | `css/css-tables/percent-height-overflow-auto-in-restricted-block-size-cell.html` | 0 / 1 |  |
 | `css/css-tables/percent-width-ignored-002.tentative.html` | 0 / 1 |  |
 | `css/css-tables/table-cell-writing-mode-computed.html` | 0 / 1 |  |
-| `css/css-tables/table-min-max-width-intrinsic-contribution-border-padding.html` | 0 / 5 |  |
-| `css/css-tables/table-min-max-width-intrinsic-contribution.html` | 0 / 4 |  |
+| `css/css-tables/table-min-max-width-intrinsic-contribution.html` | 2 / 4 |  |
 | `css/css-tables/table-model-fixup-2.html` | 17 / 40 |  |
 | `css/css-tables/table-model-fixup.html` | 6 / 11 |  |
 | `css/css-tables/table-stretch-in-flex-and-grid.html` | 5 / 6 |  |
@@ -1654,7 +1620,7 @@ est le plus honnête des deux.
 | `css/css-tables/tentative/column-widths.html` | 22 / 33 |  |
 | `css/css-tables/tentative/position-sticky-container.html` | 0 / 3 |  |
 | `css/css-tables/tentative/rowspan-height-redistribution.html` | 4 / 24 |  |
-| `css/css-tables/tentative/table-fixed-minmax.html` | 3 / 8 |  |
+| `css/css-tables/tentative/table-fixed-minmax.html` | 4 / 8 |  |
 | `css/css-tables/tentative/table-height-redistribution.html` | 16 / 31 |  |
 | `css/css-tables/tentative/table-minmax.html` | 12 / 16 |  |
 | `css/css-tables/tentative/table-quirks.html` | 4 / 7 |  |
