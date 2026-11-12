@@ -2863,3 +2863,89 @@ fn iterator_chunks_windows_zip_includes_join() {
         "b,a"
     );
 }
+
+#[test]
+fn disposable_stacks() {
+    // Libération dans l'ordre inverse, une seule fois.
+    assert_eq!(
+        eval(
+            "var log = []; var stack = new DisposableStack(); \
+             stack.use({ [Symbol.dispose]() { log.push('a'); } }); \
+             stack.adopt('b', value => log.push(value)); \
+             stack.defer(() => log.push('c')); stack.use(null); \
+             stack.dispose(); stack.dispose(); [log.join(), stack.disposed].join(' ')"
+        ),
+        "c,b,a true"
+    );
+    // Les erreurs de libération s'empilent dans des SuppressedError.
+    assert_eq!(
+        eval(
+            "var stack = new DisposableStack(); \
+             stack.defer(() => { throw new Error('premier'); }); \
+             stack.defer(() => { throw new Error('second'); }); \
+             try { stack.dispose(); } catch (e) { \
+               [e instanceof SuppressedError, e.error.message, e.suppressed.message].join() }"
+        ),
+        "true,premier,second"
+    );
+    // `move` transfère les ressources ; la pile d'origine est libérée.
+    assert_eq!(
+        eval(
+            "var log = []; var stack = new DisposableStack(); stack.defer(() => log.push(1)); \
+             var moved = stack.move(); \
+             [stack.disposed, moved.disposed, log.length, (moved.dispose(), log.length)].join()"
+        ),
+        "true,false,0,1"
+    );
+    assert!(eval("new DisposableStack().use({})").contains("TypeError"));
+    assert!(
+        eval("var s = new DisposableStack(); s.dispose(); s.use(null)").contains("ReferenceError")
+    );
+    assert!(eval("DisposableStack.prototype.use.call({}, null)").contains("TypeError"));
+    assert!(eval("DisposableStack()").contains("TypeError"));
+    assert_eq!(
+        eval(
+            "[DisposableStack.prototype[Symbol.dispose] === DisposableStack.prototype.dispose, \
+              Object.prototype.toString.call(new AsyncDisposableStack()), \
+              DisposableStack.prototype.use.toString().includes('native code'), \
+              Iterator.prototype[Symbol.dispose].name].join()"
+        ),
+        "true,[object AsyncDisposableStack],true,[Symbol.dispose]"
+    );
+    // Version asynchrone : les libérations sont attendues l'une après l'autre.
+    let mut vm = Vm::new();
+    let run = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    assert_eq!(
+        run(
+            &mut vm,
+            "var log = []; var stack = new AsyncDisposableStack(); \
+             stack.use({ async [Symbol.asyncDispose]() { await null; log.push('a'); } }); \
+             stack.use({ [Symbol.dispose]() { log.push('b'); } }); \
+             stack.defer(async () => { log.push('c'); }); \
+             var done = stack.disposeAsync().then(() => log.push('fin')); \
+             [done instanceof Promise, stack.disposed, log.join()].join(' ')"
+        ),
+        "true true c"
+    );
+    assert_eq!(run(&mut vm, "log.join()"), "c,b,a,fin");
+    assert_eq!(
+        run(
+            &mut vm,
+            "var outcome; AsyncDisposableStack.prototype.disposeAsync.call({}) \
+               .catch(e => { outcome = e instanceof TypeError; }); typeof outcome"
+        ),
+        "undefined"
+    );
+    assert_eq!(run(&mut vm, "outcome"), "true");
+    // Un nom redéfini puis supprimé ne reparaît pas.
+    assert_eq!(
+        eval(
+            "var f = { [Symbol.iterator]() {} }[Symbol.iterator]; \
+              [f.name, delete f.name, Object.hasOwn(f, 'name')].join()"
+        ),
+        "[Symbol.iterator],true,false"
+    );
+}

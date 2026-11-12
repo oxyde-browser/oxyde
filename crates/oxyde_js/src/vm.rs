@@ -116,6 +116,8 @@ pub(crate) struct WellKnown {
     pub(crate) replace: Symbol,
     pub(crate) search: Symbol,
     pub(crate) split: Symbol,
+    pub(crate) dispose: Symbol,
+    pub(crate) async_dispose: Symbol,
 }
 
 struct Frame {
@@ -435,6 +437,8 @@ impl Vm {
             replace: known(11, "Symbol.replace"),
             search: known(12, "Symbol.search"),
             split: known(13, "Symbol.split"),
+            dispose: known(14, "Symbol.dispose"),
+            async_dispose: known(15, "Symbol.asyncDispose"),
         };
         let mut vm = Self {
             heap,
@@ -445,7 +449,7 @@ impl Vm {
             intrinsics,
             error_protos: IndexMap::new(),
             well_known,
-            next_symbol: 14,
+            next_symbol: 16,
             symbol_registry: IndexMap::new(),
             native_depth: 0,
             regex_cache: std::collections::HashMap::new(),
@@ -1658,7 +1662,14 @@ impl Vm {
                 let this = if kind == (FunctionKind::ClassConstructor { derived: true }) {
                     Value::Hole
                 } else {
-                    let proto = self.instance_proto(new_target, None)?;
+                    // Un intégré écrit en JavaScript garde son prototype
+                    // d'origine quand `new.target` n'en fournit pas.
+                    let default = if self.self_hosted.contains(&id) {
+                        self.get(callee, "prototype")?.as_object()
+                    } else {
+                        None
+                    };
+                    let proto = self.instance_proto(new_target, default)?;
                     let instance = self.heap.alloc(Object::new(Some(proto), Kind::Ordinary));
                     if let Some(fields) = fields {
                         self.call(&Value::Object(fields), &Value::Object(instance), &[])?;
@@ -2388,6 +2399,11 @@ impl Vm {
                         .get_mut(id)
                         .insert_prop(key, Property::data(value));
                 }
+            }
+            Op::NameMember { func, key } => {
+                let key = self.to_key(&self.reg(key))?;
+                let value = self.reg(func);
+                self.name_member(&value, &key, "");
             }
             Op::InitMethod { obj, key, func } => {
                 let key = self.to_key(&self.reg(key))?;

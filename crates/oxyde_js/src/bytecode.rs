@@ -363,6 +363,12 @@ pub(crate) enum Op {
         key: Reg,
         src: Reg,
     },
+    /// Nomme d'après `key` la fonction anonyme `func` (clé calculée d'un
+    /// littéral d'objet).
+    NameMember {
+        func: Reg,
+        key: Reg,
+    },
     /// Méthode de classe : propriété non énumérable.
     InitMethod {
         obj: Reg,

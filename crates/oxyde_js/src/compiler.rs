@@ -3980,6 +3980,15 @@ impl Compiler {
                         PropKey::Computed(_) => {
                             let key = self.key_reg(&prop.key)?;
                             let src = self.expr_to_temp(value)?;
+                            // Une fonction anonyme prend le nom de sa clé.
+                            let anonymous = match value {
+                                Expr::Function(func) => func.name.is_none(),
+                                Expr::Class(class) => class.name.is_none(),
+                                _ => false,
+                            };
+                            if anonymous {
+                                self.emit(Op::NameMember { func: src, key });
+                            }
                             if is_method {
                                 self.emit(Op::SetHome {
                                     func: src,

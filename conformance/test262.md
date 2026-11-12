@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 42756 réussis sur 48795 (87.6 %).**
+**Total : 42992 réussis sur 48795 (88.1 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -15,25 +15,25 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Array` | 3083 | 3033 | 98.4 % |
 | `built-ins/ArrayBuffer` | 221 | 221 | 100.0 % |
 | `built-ins/ArrayIteratorPrototype` | 27 | 24 | 88.9 % |
-| `built-ins/AsyncDisposableStack` | 104 | 0 | 0.0 % |
+| `built-ins/AsyncDisposableStack` | 104 | 104 | 100.0 % |
 | `built-ins/AsyncFromSyncIteratorPrototype` | 38 | 32 | 84.2 % |
 | `built-ins/AsyncFunction` | 18 | 18 | 100.0 % |
 | `built-ins/AsyncGeneratorFunction` | 23 | 22 | 95.7 % |
 | `built-ins/AsyncGeneratorPrototype` | 48 | 45 | 93.8 % |
-| `built-ins/AsyncIteratorPrototype` | 13 | 0 | 0.0 % |
+| `built-ins/AsyncIteratorPrototype` | 13 | 13 | 100.0 % |
 | `built-ins/Atomics` | 389 | 389 | 100.0 % |
 | `built-ins/BigInt` | 77 | 76 | 98.7 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
 | `built-ins/DataView` | 560 | 560 | 100.0 % |
 | `built-ins/Date` | 610 | 587 | 96.2 % |
-| `built-ins/DisposableStack` | 93 | 0 | 0.0 % |
+| `built-ins/DisposableStack` | 93 | 93 | 100.0 % |
 | `built-ins/Error` | 93 | 93 | 100.0 % |
 | `built-ins/FinalizationRegistry` | 47 | 47 | 100.0 % |
 | `built-ins/Function` | 509 | 504 | 99.0 % |
 | `built-ins/GeneratorFunction` | 23 | 22 | 95.7 % |
 | `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
 | `built-ins/Infinity` | 6 | 6 | 100.0 % |
-| `built-ins/Iterator` | 684 | 675 | 98.7 % |
+| `built-ins/Iterator` | 684 | 681 | 99.6 % |
 | `built-ins/JSON` | 166 | 161 | 97.0 % |
 | `built-ins/Map` | 204 | 199 | 97.5 % |
 | `built-ins/MapIteratorPrototype` | 11 | 9 | 81.8 % |
@@ -54,7 +54,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/String` | 1223 | 1186 | 97.0 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
-| `built-ins/Symbol` | 98 | 93 | 94.9 % |
+| `built-ins/Symbol` | 98 | 97 | 99.0 % |
 | `built-ins/Temporal` | 4614 | 0 | 0.0 % |
 | `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
 | `built-ins/TypedArray` | 1453 | 1453 | 100.0 % |
@@ -83,7 +83,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 342 | 98.6 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10833 | 97.1 % |
+| `language/expressions` | 11156 | 10844 | 97.2 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 42 | 100.0 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9181 | 97.7 % |
+| `language/statements` | 9399 | 9186 | 97.7 % |
 | `language/types` | 113 | 113 | 100.0 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

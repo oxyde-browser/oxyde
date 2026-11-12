@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **42 756 tests de test262 sur 48 795 (87,6 %)** ; il en reste 6 039.
+- `oxyde_js` réussit **42 992 tests de test262 sur 48 795 (88,1 %)** ; il en reste 5 803.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -134,12 +134,14 @@ aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isol
 
 ### F — Propositions récentes (938 tests)
 
-- **`using` et `DisposableStack`** (338).
+- **`using` et `DisposableStack`** (338) : les intégrés sont faits (`Symbol.dispose`,
+  `Symbol.asyncDispose`, `DisposableStack`, `AsyncDisposableStack`, libération des
+  itérateurs : 236 tests), écrits en JavaScript embarqué. Restent les déclarations
+  `using` et `await using`.
 - **`import defer`, `import source`, attributs d'importation** (320).
 - **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
-  `includes` et `join` (210 tests). Restent `Iterator.prototype[Symbol.dispose]`, qui
-  vient avec `using`, et 3 tests qui écrivent `length = 2^32 - 1` sur un tableau : les
-  tableaux d'Oxyde sont denses.
+  `includes` et `join` (210 tests). Restent 3 tests qui écrivent `length = 2^32 - 1` sur
+  un tableau : les tableaux d'Oxyde sont denses.
 - **ShadowRealm** (64) : demande plusieurs royaumes dans une même machine.
 
 ### G — Temporal (4 614 tests)

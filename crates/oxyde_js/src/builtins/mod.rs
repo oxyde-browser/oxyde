@@ -11,6 +11,7 @@ mod base64;
 pub(crate) mod bigint;
 mod collections;
 mod date;
+mod disposable;
 mod extras;
 mod generator;
 mod iterator;
@@ -152,6 +153,7 @@ pub(crate) fn install(vm: &mut Vm) {
     extras::install(vm);
     install_function_kinds(vm);
     array::install_from_async(vm);
+    disposable::install(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
     let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
     let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");

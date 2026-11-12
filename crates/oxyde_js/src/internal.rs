@@ -865,6 +865,15 @@ impl Vm {
             Some(property) if !property.configurable => false,
             Some(_) => {
                 object.props.shift_remove(&**name);
+                // Le nom ou la longueur d'une fermeture, une fois redéfinis
+                // puis supprimés, ne reparaissent pas sous leur forme d'origine.
+                if matches!(object.kind, Kind::Closure(_)) {
+                    match &**name {
+                        "name" => object.deleted_virtual |= DELETED_NAME,
+                        "length" => object.deleted_virtual |= DELETED_LENGTH,
+                        _ => {}
+                    }
+                }
                 true
             }
             None => true,
