@@ -75,6 +75,144 @@ fn background(
     p.outline(page, border, radius, 1.0);
 }
 
+/// Page « Nouvel onglet » d'une fenêtre de navigation privée : ce qui n'est
+/// pas enregistré, et ce qui reste visible d'autrui.
+fn private_tab(p: &mut Painter<'_>, state: &ChromeState<'_>, tab: usize, page: Rect, split: bool) {
+    background(p, page, split, theme::PRIVATE_PANEL, theme::PRIVATE_BORDER);
+    let column_w = (page.w - 48.0).clamp(0.0, 720.0);
+    let x = page.x + (page.w - column_w) / 2.0;
+    let mut y = page.y + 96.0f32.min(page.h * 0.12).max(32.0);
+
+    let heading = "Navigation privée";
+    p.label(
+        &Label::new(heading, 32.0, theme::TEXT)
+            .weight(600.0)
+            .family(DISPLAY_FONT)
+            .line(1.25),
+        x,
+        y,
+        40.0,
+        column_w,
+    );
+    p.describe(rect(x, y, column_w, 40.0), Role::Heading, heading);
+    y += 40.0 + 12.0;
+
+    // Champ de recherche : c'est la barre d'adresse de cet onglet.
+    let field = rect(x, y, column_w, 56.0);
+    let focused = state.editing && tab == state.active;
+    p.fill(field, theme::PRIVATE_CARD, 14.0);
+    let border = if focused {
+        theme::PRIVATE_CHIP_TEXT
+    } else {
+        theme::PRIVATE_FIELD_BORDER
+    };
+    p.outline(field, border, 14.0, 1.0);
+    p.stroke_path(
+        ICON_SEARCH,
+        field.x + 16.0,
+        field.y + 19.0,
+        theme::PRIVATE_MUTED,
+        1.5,
+    );
+    let text_x = field.x + 16.0 + 18.0 + 12.0;
+    let max_w = field.x + field.w - 16.0 - text_x;
+    let placeholder = "Rechercher ou saisir une adresse";
+    if focused {
+        edit_field(p, state, text_x, field.y, field.h, max_w, 16.0, placeholder);
+    } else {
+        p.label(
+            &Label::new(placeholder, 16.0, theme::PRIVATE_MUTED),
+            text_x,
+            field.y,
+            field.h,
+            max_w,
+        );
+    }
+    p.target(field, Hit::Address, Role::TextInput, placeholder);
+    if focused {
+        p.last_widget(|w| w.value = Some(state.address.to_owned()));
+    }
+    y += 56.0 + 32.0;
+
+    // Deux cartes côte à côte, l'une sous l'autre si la place manque.
+    let cards = [
+        (
+            "Oxyde n'enregistre pas",
+            [
+                "Votre historique de navigation",
+                "Les cookies et les données de sites",
+                "Les onglets ouverts dans cette fenêtre",
+            ],
+        ),
+        (
+            "Votre activité reste visible",
+            [
+                "Des sites que vous visitez",
+                "De votre employeur ou de votre école",
+                "De votre fournisseur d'accès à Internet",
+            ],
+        ),
+    ];
+    let side_by_side = column_w >= 576.0;
+    let card_w = if side_by_side {
+        (column_w - 16.0) / 2.0
+    } else {
+        column_w
+    };
+    // Marge, titre, trois lignes espacées de 10 px, marge.
+    let card_h = 20.0 + 22.0 + 10.0 + 3.0 * 30.0 - 10.0 + 20.0;
+    for (index, (title, lines)) in cards.into_iter().enumerate() {
+        #[expect(clippy::cast_precision_loss, reason = "deux cartes")]
+        let offset = index as f32;
+        let card = if side_by_side {
+            rect(x + offset * (card_w + 16.0), y, card_w, card_h)
+        } else {
+            rect(x, y + offset * (card_h + 16.0), card_w, card_h)
+        };
+        p.fill(card, theme::PRIVATE_CARD, 12.0);
+        let inner_w = card.w - 40.0;
+        let mut line_y = card.y + 20.0;
+        p.label(
+            &Label::new(title, 15.0, theme::WHITE).weight(600.0),
+            card.x + 20.0,
+            line_y,
+            22.0,
+            inner_w,
+        );
+        p.describe(
+            rect(card.x + 20.0, line_y, inner_w, 22.0),
+            Role::Heading,
+            title,
+        );
+        line_y += 22.0 + 10.0;
+        for line in lines {
+            p.label(
+                &Label::new(line, 14.0, theme::PRIVATE_TEXT),
+                card.x + 20.0,
+                line_y,
+                20.0,
+                inner_w,
+            );
+            p.describe(rect(card.x + 20.0, line_y, inner_w, 20.0), Role::Text, line);
+            line_y += 30.0;
+        }
+    }
+    y += if side_by_side {
+        card_h
+    } else {
+        2.0 * card_h + 16.0
+    } + 32.0;
+
+    let note = "Les favoris ajoutés sont conservés. Tout le reste est effacé à la fermeture de cette fenêtre.";
+    let height = p.paragraph(
+        &Label::new(note, 14.0, theme::PRIVATE_MUTED),
+        x,
+        y,
+        column_w,
+    );
+    p.describe(rect(x, y, column_w, height), Role::Text, note);
+}
+
 /// Titre de section en petites capitales espacées.
 fn section_title(p: &mut Painter<'_>, text: &str, x: f32, y: f32, w: f32) {
     p.label(&Label::new(text, 11.0, theme::TEXT_MUTED), x, y, 16.0, w);
@@ -89,6 +227,10 @@ pub(crate) fn new_tab(
     page: Rect,
     split: bool,
 ) {
+    if state.private {
+        private_tab(p, state, tab, page, split);
+        return;
+    }
     background(p, page, split, theme::PANEL, theme::PANEL_BORDER);
     let column_w = (page.w - 48.0).clamp(0.0, 720.0);
     let x = page.x + (page.w - column_w) / 2.0;
@@ -139,7 +281,7 @@ pub(crate) fn new_tab(
             max_w,
         );
     }
-    p.key_hint("Ctrl K", field.x + field.w - 16.0, field.y, field.h);
+    p.key_hint("Ctrl L", field.x + field.w - 16.0, field.y, field.h);
     p.target(field, Hit::Address, Role::TextInput, placeholder);
     if focused {
         p.last_widget(|w| w.value = Some(state.address.to_owned()));

@@ -101,6 +101,23 @@ fn clipboard_text() -> Option<String> {
 }
 
 impl App {
+    /// Lance un second navigateur en navigation privée. C'est un autre
+    /// processus, avec son propre processus réseau : ses cookies, gardés en
+    /// mémoire, ne se mêlent pas à ceux de cette fenêtre et disparaissent
+    /// avec lui.
+    fn spawn_private_window(&self) -> std::io::Result<()> {
+        let mut command = std::process::Command::new(std::env::current_exe()?);
+        command.arg("--private");
+        match &self.profile {
+            Some(profile) => command.arg("--profile").arg(profile.dir()),
+            None => command.arg("--no-profile"),
+        };
+        if !self.multi_process {
+            command.arg("--single-process");
+        }
+        command.spawn().map(drop)
+    }
+
     /// Écrit dans le profil ce qui a changé depuis la dernière fois.
     /// `force` : sans attendre l'intervalle (à la fermeture).
     fn persist(&mut self, force: bool) {
@@ -112,6 +129,17 @@ impl App {
             return;
         }
         self.last_persist = now;
+        // Une fenêtre privée ne laisse au profil que ses favoris, ajoutés à
+        // ceux qu'une autre fenêtre a pu écrire entre-temps.
+        if self.browser.is_private() {
+            if let Err(error) = profile.merge_bookmarks(&mut self.browser.bookmarks) {
+                eprintln!(
+                    "favoris non enregistrés ({}) : {error}",
+                    profile.dir().display()
+                );
+            }
+            return;
+        }
         let session = self.browser.session();
         let mut result = Ok(());
         if session != self.saved_session {
@@ -194,6 +222,11 @@ impl App {
                     }
                 }
                 Command::CloseWindow => event_loop.exit(),
+                Command::PrivateWindow => {
+                    if let Err(error) = self.spawn_private_window() {
+                        eprintln!("fenêtre privée non ouverte : {error}");
+                    }
+                }
                 Command::NetworkDiagnostics => {
                     // Ouvre le dépannage réseau des Paramètres de Windows. Un
                     // échec de lancement est sans conséquence pour le navigateur.

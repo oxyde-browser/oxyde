@@ -8,7 +8,8 @@
 //! Écrans couverts : « Fenêtre principale · vue scindée » (`Main`), « Nouvel
 //! onglet » (`NewTab`), « Pages d'erreur » (`Errors`), « Historique »
 //! (`History`), « Favoris » (`Bookmarks`), « Paramètres » (`Settings`) et
-//! « Palette de commandes » (`Palette`).
+//! « Palette de commandes » (`Palette`), ainsi que la fenêtre de « Navigation
+//! privée » (`Private`).
 //!
 //! Les polices de la maquette (Inter, Space Grotesk, JetBrains Mono) sont
 //! embarquées par `oxyde_text` ; Segoe UI et Consolas ne servent que de repli.
@@ -379,6 +380,8 @@ pub struct ChromeState<'a> {
     pub palette: Option<PaletteView<'a>>,
     /// Couleur d'accent.
     pub accent: Color,
+    /// Fenêtre de navigation privée.
+    pub private: bool,
 }
 
 /// Volet de page web : emplacement de la page et de son onglet.
@@ -801,7 +804,20 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
     let name = Label::new("Oxyde", 13.0, theme::TEXT)
         .weight(600.0)
         .family(DISPLAY_FONT);
-    p.label(&name, 44.0, 0.0, title_h, 120.0);
+    let name_w = p.label(&name, 44.0, 0.0, title_h, 120.0);
+    if state.private {
+        let text = "Navigation privée";
+        let label = Label::new(text, 12.0, theme::PRIVATE_CHIP_TEXT);
+        let chip = rect(
+            44.0 + name_w + 10.0,
+            (title_h - 22.0) / 2.0,
+            p.measure(&label) + 20.0,
+            22.0,
+        );
+        p.fill(chip, theme::PRIVATE_BORDER, 10.0);
+        p.label_centered(&label, chip);
+        p.describe(chip, Role::Text, text);
+    }
     let buttons = [
         (Hit::Minimize, ICON_WIN_MIN, "Réduire"),
         (Hit::Maximize, ICON_WIN_MAX, "Agrandir"),
@@ -978,7 +994,11 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
 
     // Titre de l'espace.
     let space_name = state.spaces.get(state.space).map_or("", |s| s.name);
-    let caption = format!("ESPACE · {}", space_name.to_uppercase());
+    let caption = if state.private {
+        "ONGLETS PRIVÉS".to_owned()
+    } else {
+        format!("ESPACE · {}", space_name.to_uppercase())
+    };
     p.label(
         &Label::new(&caption, 11.0, theme::TEXT_MUTED),
         side_x + 8.0,
@@ -1366,6 +1386,7 @@ mod tests {
             settings: None,
             palette: None,
             accent: theme::ACCENT,
+            private: false,
         }
     }
 
@@ -1914,5 +1935,41 @@ mod tests {
         s.height = 330.0;
         let chrome = build_chrome(&s, &mut text);
         assert!(find_hit(&chrome, Hit::PaletteRow(2)).is_none());
+    }
+
+    #[test]
+    fn private_window_says_so() {
+        let mut text = TextContext::new();
+        let mut tabs = tabs();
+        tabs[0].content = PaneContent::NewTab;
+        let mut s = state(&tabs, None);
+        let labels = |chrome: &Chrome| -> Vec<String> {
+            chrome.widgets.iter().map(|w| w.label.clone()).collect()
+        };
+        let normal = labels(&build_chrome(&s, &mut text));
+        assert!(!normal.iter().any(|label| label == "Navigation privée"));
+        s.private = true;
+        let chrome = build_chrome(&s, &mut text);
+        let private = labels(&chrome);
+        // La barre de titre et la page « Nouvel onglet » l'annoncent.
+        assert_eq!(
+            private
+                .iter()
+                .filter(|label| *label == "Navigation privée")
+                .count(),
+            2
+        );
+        assert!(
+            private
+                .iter()
+                .any(|label| label == "Oxyde n'enregistre pas")
+        );
+        // Le champ de la page reste la barre d'adresse de l'onglet.
+        let field = chrome
+            .widgets
+            .iter()
+            .find(|w| w.role == Role::TextInput && w.label == "Rechercher ou saisir une adresse")
+            .expect("champ de recherche");
+        assert_eq!(field.hit, Some(Hit::Address));
     }
 }

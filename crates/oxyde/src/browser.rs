@@ -79,10 +79,11 @@ enum PaletteCommand {
     Bookmarks,
     Settings,
     ClearData,
+    PrivateWindow,
 }
 
 /// Commandes de la palette : commande, nom, raccourci.
-const PALETTE_COMMANDS: [(PaletteCommand, &str, &str); 11] = [
+const PALETTE_COMMANDS: [(PaletteCommand, &str, &str); 12] = [
     (PaletteCommand::NewTab, "Nouvel onglet", "Ctrl T"),
     (PaletteCommand::Split, "Scinder la vue", "Ctrl Maj S"),
     (PaletteCommand::History, "Ouvrir l'historique", "Ctrl H"),
@@ -108,6 +109,11 @@ const PALETTE_COMMANDS: [(PaletteCommand, &str, &str); 11] = [
         PaletteCommand::Reopen,
         "Rouvrir le dernier onglet fermé",
         "Ctrl Maj T",
+    ),
+    (
+        PaletteCommand::PrivateWindow,
+        "Nouvelle fenêtre privée",
+        "Ctrl Maj N",
     ),
     (
         PaletteCommand::ClearData,
@@ -246,6 +252,8 @@ pub(crate) enum Command {
     CloseWindow,
     /// Ouvrir l'outil de diagnostic réseau du système.
     NetworkDiagnostics,
+    /// Ouvrir une fenêtre de navigation privée.
+    PrivateWindow,
 }
 
 /// Touche reconnue par le navigateur, indépendante de la bibliothèque de fenêtrage.
@@ -424,6 +432,8 @@ pub(crate) struct Browser {
     settings_screen: Option<SettingsScreen>,
     /// Palette de commandes, quand elle est ouverte.
     palette: Option<Palette>,
+    /// Fenêtre de navigation privée : rien n'y est noté dans l'historique.
+    private: bool,
 }
 
 /// Secondes écoulées depuis l'époque Unix.
@@ -467,6 +477,7 @@ impl Browser {
             settings: Settings::default(),
             settings_screen: None,
             palette: None,
+            private: false,
         };
         browser.refresh_address();
         browser
@@ -585,6 +596,7 @@ impl Browser {
         };
         if tab.error.is_none()
             && is_recorded(tab.page.url())
+            && !self.private
             && self.settings.flag(KEY_HISTORY, true)
         {
             self.history
@@ -640,11 +652,26 @@ impl Browser {
         self.tabs.get(index)
     }
 
+    /// Fait de cette fenêtre une fenêtre de navigation privée.
+    pub(crate) fn set_private(&mut self) {
+        self.private = true;
+    }
+
+    /// Vrai pour une fenêtre de navigation privée.
+    pub(crate) fn is_private(&self) -> bool {
+        self.private
+    }
+
     /// Titre de la fenêtre pour le système.
     pub(crate) fn window_title(&self) -> String {
+        let name = if self.private {
+            "Oxyde (navigation privée)"
+        } else {
+            "Oxyde"
+        };
         match self.tabs.get(self.active) {
-            Some(tab) if !tab.title.is_empty() => format!("{} — Oxyde", tab.title),
-            _ => "Oxyde".to_owned(),
+            Some(tab) if !tab.title.is_empty() => format!("{} — {name}", tab.title),
+            _ => name.to_owned(),
         }
     }
 
@@ -942,6 +969,7 @@ impl Browser {
             PaletteCommand::History => self.open_library(LibrarySection::History),
             PaletteCommand::Bookmarks => self.open_library(LibrarySection::Bookmarks),
             PaletteCommand::Settings => self.open_settings(),
+            PaletteCommand::PrivateWindow => return vec![Command::PrivateWindow],
             PaletteCommand::ClearData => {
                 // Le bouton d'effacement est dans la rubrique de la confidentialité.
                 self.open_settings();
@@ -1286,6 +1314,7 @@ impl Browser {
                 .get(self.accent_index())
                 .copied()
                 .unwrap_or(theme::ACCENT),
+            private: self.private,
         }
     }
 
@@ -2003,6 +2032,7 @@ impl Browser {
             KeyPress::CtrlShift('o') => self.open_library(LibrarySection::Bookmarks),
             KeyPress::Ctrl('l') => self.start_editing(),
             KeyPress::Ctrl('k') => self.open_palette(),
+            KeyPress::CtrlShift('n') => return vec![Command::PrivateWindow],
             KeyPress::CtrlShift('s') => self.toggle_split(),
             // Sans la palette, ces touches ne concernent que la page.
             KeyPress::Tab | KeyPress::Up | KeyPress::Down => {}
@@ -2097,6 +2127,7 @@ impl Browser {
                 tab.refresh_labels();
                 let title = tab.page.title();
                 if !title.is_empty()
+                    && !self.private
                     && tab.error.is_none()
                     && !tab.asleep
                     && is_recorded(tab.page.url())
@@ -2964,5 +2995,37 @@ mod tests {
         b.key(KeyPress::Ctrl('k'));
         b.key(KeyPress::Ctrl('h'));
         assert!(!b.palette_open() && b.library.is_some());
+    }
+
+    #[test]
+    fn private_window_records_nothing() {
+        let mut b = browser();
+        b.set_private();
+        assert_eq!(b.window_title(), "A — Oxyde (navigation privée)");
+        b.key(KeyPress::Ctrl('l'));
+        b.key(KeyPress::Text("b.test".into()));
+        b.key(KeyPress::Enter);
+        b.finish_load(1, page("https://b.test/", "<title>B</title>"), true);
+        assert!(b.history.visits().is_empty());
+        assert!(!b.history.is_dirty());
+        {
+            let views = b.views();
+            assert!(b.chrome_state(&views, 1440.0, 900.0).private);
+        }
+        // Les favoris, eux, restent possibles.
+        b.key(KeyPress::Ctrl('d'));
+        assert!(b.bookmarks.contains("https://b.test/"));
+
+        // Ctrl Maj N et la palette demandent une fenêtre privée.
+        assert!(matches!(
+            b.key(KeyPress::CtrlShift('n')).as_slice(),
+            [Command::PrivateWindow]
+        ));
+        b.key(KeyPress::Ctrl('k'));
+        b.key(KeyPress::Text("privée".into()));
+        assert!(matches!(
+            b.key(KeyPress::Enter).as_slice(),
+            [Command::PrivateWindow]
+        ));
     }
 }

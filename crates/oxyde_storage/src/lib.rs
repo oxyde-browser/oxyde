@@ -163,6 +163,25 @@ impl Profile {
         Ok(())
     }
 
+    /// Ajoute aux favoris du disque ceux de `bookmarks` qui n'y sont pas,
+    /// sans rien en retirer : pour une fenêtre qui n'est pas seule à écrire
+    /// ce profil (navigation privée).
+    ///
+    /// # Errors
+    /// Le fichier n'a pas pu être écrit.
+    pub fn merge_bookmarks(&self, bookmarks: &mut Bookmarks) -> io::Result<()> {
+        if !bookmarks.is_dirty() {
+            return Ok(());
+        }
+        let mut stored = self.load_bookmarks();
+        for item in bookmarks.items() {
+            stored.add(&item.url, &item.title, item.added);
+        }
+        self.save_bookmarks(&mut stored)?;
+        bookmarks.mark_saved();
+        Ok(())
+    }
+
     /// Réglages ; vides s'il n'y en a pas.
     #[must_use]
     pub fn load_settings(&self) -> Settings {
@@ -257,6 +276,38 @@ mod tests {
             .filter(|entry| entry.file_name().to_string_lossy().ends_with(".tmp"))
             .count();
         assert_eq!(leftovers, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_bookmarks_never_drops_any() -> io::Result<()> {
+        let scratch = Scratch::new("fusion");
+        let profile = Profile::open(&scratch.0)?;
+        // Deux fenêtres partent du même fichier.
+        let mut main = profile.load_bookmarks();
+        main.add("https://a.example/", "A", 1);
+        profile.save_bookmarks(&mut main)?;
+        let mut private = profile.load_bookmarks();
+        // La fenêtre principale ajoute un favori, la fenêtre privée un autre.
+        main.add("https://b.example/", "B", 2);
+        profile.save_bookmarks(&mut main)?;
+        private.add("https://c.example/", "C", 3);
+        profile.merge_bookmarks(&mut private)?;
+        assert!(!private.is_dirty());
+        let urls: Vec<String> = profile
+            .load_bookmarks()
+            .items()
+            .iter()
+            .map(|b| b.url.clone())
+            .collect();
+        assert_eq!(
+            urls,
+            [
+                "https://a.example/",
+                "https://b.example/",
+                "https://c.example/"
+            ]
+        );
         Ok(())
     }
 

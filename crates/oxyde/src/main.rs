@@ -13,6 +13,9 @@
 //!         que dans le profil de l'utilisateur
 //! oxyde --no-profile …
 //!         ne lit ni n'écrit aucun profil
+//! oxyde --private …
+//!         navigation privée : ni session, ni historique ; seuls les favoris
+//!         ajoutés rejoignent le profil
 //! oxyde --screen historique|favoris|parametres|palette …
 //!         ouvre l'historique, les favoris, les paramètres ou la palette
 //! oxyde --single-process …
@@ -75,6 +78,8 @@ struct Args {
     settings: bool,
     /// Ouvrir la palette de commandes au lancement.
     palette: bool,
+    /// Fenêtre de navigation privée.
+    private: bool,
 }
 
 fn parse_args() -> Result<Args> {
@@ -94,6 +99,7 @@ fn parse_args() -> Result<Args> {
         screen: None,
         settings: false,
         palette: false,
+        private: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -113,6 +119,7 @@ fn parse_args() -> Result<Args> {
                 args.profile = Some(PathBuf::from(dir));
             }
             "--no-profile" => args.no_profile = true,
+            "--private" => args.private = true,
             "--screen" => match it.next().as_deref() {
                 Some("historique") => args.screen = Some(LibrarySection::History),
                 Some("favoris") => args.screen = Some(LibrarySection::Bookmarks),
@@ -232,6 +239,9 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
             browser.history = profile.load_history();
             browser.bookmarks = profile.load_bookmarks();
             browser.settings = profile.load_settings();
+        }
+        if args.private {
+            browser.set_private();
         }
         if let Some(section) = args.screen {
             browser.open_screen(section);
@@ -361,7 +371,7 @@ fn run() -> Result<()> {
         .unwrap_or_default();
     let restored = profile
         .as_ref()
-        .filter(|_| settings.flag(browser::KEY_RESTORE, true))
+        .filter(|_| !args.private && settings.flag(browser::KEY_RESTORE, true))
         .and_then(|p| Browser::from_session(&p.load_session()));
     let mut browser = match restored {
         // Une session attend : elle revient, et les adresses de la ligne de
@@ -388,10 +398,16 @@ fn run() -> Result<()> {
         None => open_browser(&args, multi_process),
     };
     if let Some(profile) = &profile {
-        browser.history = profile.load_history();
+        // Une fenêtre privée ne lit pas l'historique : elle n'y écrira pas.
+        if !args.private {
+            browser.history = profile.load_history();
+        }
         browser.bookmarks = profile.load_bookmarks();
     }
     browser.settings = settings;
+    if args.private {
+        browser.set_private();
+    }
     if let Some(section) = args.screen {
         browser.open_screen(section);
     }

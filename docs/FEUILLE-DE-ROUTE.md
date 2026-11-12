@@ -420,8 +420,15 @@ Fait :
   (Tab) ; sa dernière ligne ouvre l'adresse saisie ou lance la recherche. Ctrl Maj S scinde la
   vue. La liste ne défile pas encore.
 
+- **Navigation privée** (Ctrl Maj N, ou `--private`) : une fenêtre à part, qui est un autre
+  processus avec son propre processus réseau. Ni session ni historique n'y sont lus ou écrits ;
+  ses cookies, en mémoire, ne se mêlent pas à ceux de la fenêtre principale et disparaissent
+  avec elle ; seuls les favoris ajoutés rejoignent le profil, sans écraser ceux des autres
+  fenêtres. La teinte violette de la maquette ne couvre que la barre de titre et la page
+  « Nouvel onglet ».
+
 Reste : les dossiers de favoris et l'import ; les écrans (téléchargements, infos du site,
-autorisations, recherche dans la page, navigation privée, mots de passe,
+autorisations, recherche dans la page, mots de passe,
 premier lancement, onglets horizontaux, menus contextuels, impression) ; la persistance des
 cookies ; un verrou sur le profil.
 

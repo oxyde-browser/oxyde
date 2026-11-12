@@ -39,6 +39,20 @@ pub const TEXT_SECONDARY: Color = Color::rgb(0xA3, 0xAD, 0xB9);
 pub const SWITCH_OFF: Color = Color::rgb(0x2A, 0x32, 0x3D);
 /// Fond d'un filtre de la palette de commandes.
 pub const CHIP: Color = Color::rgb(0x21, 0x28, 0x32);
+/// Navigation privée : fond de la page « Nouvel onglet ».
+pub const PRIVATE_PANEL: Color = Color::rgb(0x18, 0x12, 0x26);
+/// Navigation privée : bordure de la page, fond de la pastille de la barre de titre.
+pub const PRIVATE_BORDER: Color = Color::rgb(0x2E, 0x24, 0x45);
+/// Navigation privée : fond d'une carte et du champ de recherche.
+pub const PRIVATE_CARD: Color = Color::rgb(0x20, 0x18, 0x3A);
+/// Navigation privée : bordure du champ de recherche.
+pub const PRIVATE_FIELD_BORDER: Color = Color::rgb(0x45, 0x37, 0x6A);
+/// Navigation privée : texte de la pastille de la barre de titre.
+pub const PRIVATE_CHIP_TEXT: Color = Color::rgb(0xD9, 0xCB, 0xFA);
+/// Navigation privée : texte courant d'une carte.
+pub const PRIVATE_TEXT: Color = Color::rgb(0xD3, 0xCD, 0xE0);
+/// Navigation privée : texte secondaire.
+pub const PRIVATE_MUTED: Color = Color::rgb(0xA7, 0x9F, 0xB8);
 /// Icône.
 pub const ICON: Color = Color::rgb(0xC3, 0xCA, 0xD3);
 /// Icône désactivée.

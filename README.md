@@ -43,6 +43,7 @@ cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 | Ctrl H / Ctrl Maj O | ouvrir l'historique / les favoris |
 | Ctrl , | ouvrir les paramètres |
 | Ctrl Maj S | scinder la vue, ou la réunir |
+| Ctrl Maj N | nouvelle fenêtre de navigation privée |
 | Ctrl Tab | onglet suivant |
 | Ctrl R, F5 | actualiser |
 | Alt ← / Alt → | page précédente / suivante |
@@ -64,7 +65,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | Crate | Rôle | Équivalent Chromium | État |
 |---|---|---|---|
 | `oxyde` | exécutable : fenêtre, onglets, espaces, chargements, accessibilité | `chrome/` | fonctionne, mono-processus |
-| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur, Historique, Favoris, Paramètres, Palette de commandes |
+| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur, Historique, Favoris, Paramètres, Palette de commandes, Navigation privée |
 | `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images, DOM exposé aux scripts | `content/renderer` | fonctionne |
 | `oxyde_net` | HTTP/1.1, HTTP/2, TLS | `//net`, BoringSSL | GET, redirections ; voir limites |
 | `oxyde_html` | tokenizer + construction d'arbre WHATWG | analyseur HTML de Blink | l'essentiel du standard |
