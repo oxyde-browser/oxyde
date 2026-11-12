@@ -73,7 +73,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_bindings` | générateur de liaisons Web IDL : analyse des fichiers `.webidl`, table des interfaces du DOM | bindings de Blink | interfaces générées ; corps des opérations encore écrits à la main |
 | `oxyde_test262` | lanceur de la suite de conformité ECMAScript | `test262` de V8 | fonctionne |
 | `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
-| `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
+| `oxyde_ipc` | messages typés entre processus : codec binaire, trames, canal vers un processus enfant | Mojo | fonctionne — pas encore de mémoire partagée |
 | `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
 | `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |

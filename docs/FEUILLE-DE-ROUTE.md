@@ -180,6 +180,23 @@ Processus navigateur, réseau, rendu par site et GPU ; `oxyde_ipc` ; bac à sabl
 (AppContainer, jetons restreints) ; isolation des sites ; écran « Onglet planté ». C'est aussi
 le moment de `SharedArrayBuffer` et des workers, qui supposent plusieurs fils.
 
+Branche `jalon-5-multi-processus`, empilée sur `jalon-6-mise-en-page`.
+
+Fait :
+
+- **Messages entre processus** (`oxyde_ipc`) : codec binaire écrit sur la bibliothèque
+  standard (`Encode`, `Decode`, macros `ipc_struct!` et `ipc_enum!`), trames bornées, canal
+  avec fil de lecture, lancement d'un processus enfant relié par son entrée et sa sortie
+  standard — il ne lui faut donc aucun droit sur le système pour parler à son parent. Un
+  message reçu est tenu pour hostile : le décodage vérifie chaque longueur avant d'allouer
+  et ne panique pas.
+
+Ordre prévu : sérialisation de la liste d'affichage ; processus de rendu par onglet, qui
+charge, met en page et peint la page, le processus navigateur gardant la fenêtre, le réseau
+et la composition ; écran « Onglet planté » ; bac à sable Windows du processus de rendu ;
+processus réseau ; isolation des sites ; `SharedArrayBuffer`, `Atomics` et workers (étape D
+de test262).
+
 ### Jalon 6 — Mise en page complète et compositeur
 
 Flex, grille, tableaux, flottants, positionnement, transformations, animations et transitions,
