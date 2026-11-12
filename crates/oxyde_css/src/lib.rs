@@ -2,7 +2,9 @@
 //!
 //! - [`syntax`] : tokenizer CSS ;
 //! - [`selector`] : sélecteurs, spécificité, correspondance ;
-//! - [`values`] / [`properties`] : valeurs et déclarations ;
+//! - [`values`] / [`properties`] / [`grid`] : valeurs et déclarations ;
+//! - [`transform`] : fonctions de transformation et matrices affines ;
+//! - [`animation`] : animations et transitions ;
 //! - [`stylesheet`] : règles et requêtes média ;
 //! - [`style`] : cascade et [`style::ComputedStyle`].
 //!
@@ -16,17 +18,33 @@
 //! assert_eq!(styles.get(p).expect("style").color.g, 0xC9);
 //! ```
 
+pub mod animation;
+pub mod grid;
 pub mod properties;
 pub mod selector;
 pub mod style;
 pub mod stylesheet;
 pub mod syntax;
+pub mod transform;
 pub mod values;
 
+pub use animation::{AnimationEvent, AnimationStyle, Animator, Easing, TransitionStyle};
+pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, TrackSize};
 pub use properties::Side;
 pub use style::{
-    BorderStyle, ComputedStyle, Display, Edges, LineHeight, ListStyle, Size, StyleMap, TextAlign,
-    WhiteSpace, collect_style_elements, compute_styles,
+    Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
+    LineHeight, ListStyle, Overflow, Position, Size, SizeKeyword, StyleMap, TextAlign,
+    VerticalAlign, Visibility, WhiteSpace, collect_style_elements, compute_styles,
+    compute_styles_at,
 };
-pub use stylesheet::{Stylesheet, Viewport, parse_stylesheet};
+pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
+pub use transform::{Affine, TransformFunction};
+
+/// Vrai si le moteur de style accepte la déclaration `property: value`
+/// (`CSS.supports`).
+#[must_use]
+pub fn supports(property: &str, value: &str) -> bool {
+    let source = format!("{property}:{value}");
+    !properties::parse_declarations(&syntax::tokenize(&source)).is_empty()
+}
 pub use values::Color;

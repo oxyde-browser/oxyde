@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Défilement</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .zone { height: 120px; overflow: auto; background: white; border: 2px solid #c5ccd6; border-radius: 8px; }
+  .zone p { margin: 0; padding: 8px 12px; border-bottom: 1px solid #dfe3e8; }
+  .large { overflow: auto; background: white; border: 2px solid #c5ccd6; border-radius: 8px; }
+  .large div { width: 1400px; padding: 10px; background: #8fb4f2; }
+  .cache { height: 60px; overflow: hidden; background: #171c23; color: #e6e9ed; border-radius: 8px; }
+  .cache p { margin: 0; padding: 6px 12px; height: 28px; }
+  .fixe { position: fixed; right: 16px; bottom: 16px; padding: 8px 14px; background: #e0a458; border-radius: 8px; }
+  .haut { height: 900px; background: #dfe3e8; border-radius: 8px; padding: 12px; }
+</style>
+<h2>Zone défilante (défilée par script de 70 px)</h2>
+<div class="zone" id="zone">
+  <p>Ligne 1</p><p>Ligne 2</p><p>Ligne 3</p><p>Ligne 4</p><p>Ligne 5</p>
+  <p>Ligne 6</p><p>Ligne 7</p><p>Ligne 8</p><p>Ligne 9</p><p>Ligne 10</p>
+</div>
+<h2>Défilement horizontal (à mi-course)</h2>
+<div class="large" id="large"><div>Un contenu bien plus large que sa zone, qui ne se voit qu'en partie.</div></div>
+<h2>overflow: hidden, défilé par script jusqu'à sa dernière ligne</h2>
+<div class="cache" id="cache"><p>Première</p><p>Deuxième</p><p>Troisième</p><p id="fin">Dernière ligne</p></div>
+<h2>La fenêtre a défilé de 40 px ; le badge fixe reste en place</h2>
+<div class="haut">Contenu haut de 900 px.</div>
+<div class="fixe">position: fixed</div>
+<script>
+  document.getElementById("zone").scrollTop = 70;
+  const large = document.getElementById("large");
+  large.scrollLeft = (large.scrollWidth - large.clientWidth) / 2;
+  document.getElementById("fin").scrollIntoView(false);
+  window.scrollTo(0, 40);
+</script>

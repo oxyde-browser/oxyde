@@ -230,10 +230,13 @@ fn network_error(url: &Url, error: &NetError) -> LoadError {
     }
 }
 
-fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
-    let response = http_client()?
-        .get(url)
-        .map_err(|e| network_error(url, &e))?;
+fn fetch_http(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
+    let client = http_client()?;
+    let response = match initiator {
+        Some(document) => client.get_from(url, document),
+        None => client.get(url),
+    }
+    .map_err(|e| network_error(url, &e))?;
     if response.status >= 400 && response.body.is_empty() {
         return Err(LoadError::other(
             "La page n'a pas pu être chargée",
@@ -247,21 +250,57 @@ fn fetch_http(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
     Ok((response.url, response.body))
 }
 
-/// Exécute une requête `fetch` émise par un script. L'échec est décrit par
-/// un message destiné au script (`TypeError`).
-pub(crate) fn fetch_for_script(url: &Url) -> Result<oxyde_content::FetchResponse, String> {
+/// Demande la page `url` par `POST`, avec le corps d'un formulaire.
+fn post_http(url: &Url, form: &oxyde_content::FormPost) -> Result<(Url, Vec<u8>), LoadError> {
+    let response = http_client()?
+        .send(&oxyde_net::HttpRequest {
+            method: "POST".to_owned(),
+            url: url.clone(),
+            headers: vec![("Content-Type".to_owned(), form.content_type.clone())],
+            body: form.body.clone(),
+            initiator: None,
+        })
+        .map_err(|e| network_error(url, &e))?;
+    Ok((response.url, response.body))
+}
+
+/// Exécute une requête `fetch` émise par un script, précédée de sa
+/// pré-vérification CORS si la page la demande. L'échec est décrit par un
+/// message destiné au script (`TypeError`).
+pub(crate) fn fetch_for_script(
+    request: &oxyde_content::FetchRequest,
+) -> Result<oxyde_content::FetchResponse, String> {
     // La page ne demande que du http(s) ; on le revérifie avant d'ouvrir une connexion.
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err(format!("protocole « {} » refusé", url.scheme()));
+    if !matches!(request.url.scheme(), "http" | "https") {
+        return Err(format!("protocole « {} » refusé", request.url.scheme()));
     }
     let client = http_client().map_err(|e| e.message)?;
-    let response = client.get(url).map_err(|e| e.to_string())?;
-    Ok(oxyde_content::FetchResponse {
-        url: response.url,
-        status: response.status,
-        headers: response.headers,
-        body: response.body,
-    })
+    let send = |method: &str, headers: Vec<(String, String)>, body: Vec<u8>| {
+        client
+            .send(&oxyde_net::HttpRequest {
+                method: method.to_owned(),
+                url: request.url.clone(),
+                headers,
+                body,
+                initiator: Some(request.initiator.clone()),
+            })
+            .map(|response| oxyde_content::FetchResponse {
+                url: response.url,
+                status: response.status,
+                headers: response.headers,
+                body: response.body,
+            })
+            .map_err(|e| e.to_string())
+    };
+    if request.needs_preflight {
+        let answer = send("OPTIONS", request.preflight_headers(), Vec::new())?;
+        oxyde_content::preflight_allows(request, &answer)?;
+    }
+    let mut headers = request.headers.clone();
+    if let Some(origin) = &request.origin {
+        headers.push(("Origin".to_owned(), origin.clone()));
+    }
+    send(&request.method, headers, request.body.clone())
 }
 
 /// Exécute, l'une après l'autre, les requêtes `fetch` en attente de `page`
@@ -276,7 +315,7 @@ pub(crate) fn settle_fetches(page: &mut Page) {
             break;
         }
         for request in requests {
-            page.complete_fetch(request.id, fetch_for_script(&request.url));
+            page.complete_fetch(request.id, fetch_for_script(&request));
         }
     }
     report_console(page);
@@ -285,12 +324,19 @@ pub(crate) fn settle_fetches(page: &mut Page) {
 /// Récupère la ressource `url` ; renvoie son adresse finale (après
 /// redirections) et ses octets.
 pub(crate) fn fetch(url: &Url) -> Result<(Url, Vec<u8>), LoadError> {
+    fetch_from(url, None)
+}
+
+/// Comme [`fetch`], pour une ressource demandée par le document
+/// `initiator` (feuille de style, image, script) : les cookies d'un autre
+/// site ne l'accompagnent pas.
+fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), LoadError> {
     match url.scheme() {
         "file" => read_file(url).map(|bytes| (url.clone(), bytes)),
         // Les pages internes (nouvel onglet) sont dessinées par l'interface.
         "about" => Ok((url.clone(), Vec::new())),
         "data" => read_data_url(url).map(|bytes| (url.clone(), bytes)),
-        "http" | "https" => fetch_http(url),
+        "http" | "https" => fetch_http(url, initiator),
         other => Err(LoadError::other(
             "Protocole non pris en charge",
             format!("Le chargement en « {other}: » n'est pas disponible ({url})."),
@@ -313,7 +359,39 @@ pub(crate) fn decode(bytes: &[u8]) -> String {
 const MAX_MODULE_ROUNDS: usize = 64;
 
 pub(crate) fn load(url: Url) -> Loaded {
-    let (url, html) = match fetch(&url) {
+    load_with(url, None)
+}
+
+/// Taille de la zone où les pages s'affichent, telle que la dernière image
+/// l'a établie : les scripts d'une page qui se charge la voient avant sa
+/// première mise en page.
+static VIEWPORT_HINT: std::sync::Mutex<Option<(f32, f32)>> = std::sync::Mutex::new(None);
+
+/// Note la taille de la zone où les pages s'affichent.
+pub(crate) fn set_viewport_hint(width: f32, height: f32) {
+    if width > 0.0 && height > 0.0 {
+        // Un verrou empoisonné ne protège qu'une taille : on la remplace.
+        *VIEWPORT_HINT
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((width, height));
+    }
+}
+
+fn viewport_hint() -> Option<oxyde_css::Viewport> {
+    let (width, height) = (*VIEWPORT_HINT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner))?;
+    Some(oxyde_css::Viewport { width, height })
+}
+
+/// Comme [`load`] ; `post` : la page est demandée par `POST` avec ce corps
+/// (soumission d'un formulaire).
+pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Loaded {
+    let first = match &post {
+        Some(form) if matches!(url.scheme(), "http" | "https") => post_http(&url, form),
+        _ => fetch(&url),
+    };
+    let (url, html) = match first {
         Ok((final_url, bytes)) => (final_url, decode(&bytes)),
         Err(error) => {
             return Loaded {
@@ -323,6 +401,11 @@ pub(crate) fn load(url: Url) -> Loaded {
         }
     };
     let mut page = Page::from_html(url, &html);
+    let document = page.url().clone();
+    let fetch = |resource: &Url| fetch_from(resource, Some(&document));
+    if let Ok(client) = http_client() {
+        page.set_cookies(&client.cookies_for_script(&document));
+    }
     for sheet_url in page.pending_stylesheets() {
         // Une feuille indisponible est remplacée par une feuille vide : la page reste lisible.
         let css = fetch(&sheet_url)
@@ -330,12 +413,22 @@ pub(crate) fn load(url: Url) -> Loaded {
             .unwrap_or_default();
         page.set_stylesheet(&sheet_url, &css);
     }
+    for font_url in page.pending_fonts() {
+        // Une police indisponible laisse place aux polices du système.
+        let data = fetch(&font_url).ok().map(|(_, bytes)| bytes);
+        page.set_font(&font_url, data);
+    }
     for image_url in page.pending_images() {
         // Une image indisponible ou illisible laisse place à son texte alternatif.
         let image = fetch(&image_url)
             .ok()
             .and_then(|(_, bytes)| decode_image(&bytes));
         page.set_image(&image_url, image);
+    }
+    for frame_url in page.pending_frames() {
+        // Un cadre indisponible reste vide.
+        let html = fetch(&frame_url).ok().map(|(_, bytes)| decode(&bytes));
+        page.set_frame(&frame_url, html.as_deref());
     }
     for script_url in page.pending_scripts() {
         // Un script indisponible est sauté ; les suivants s'exécutent quand même.
@@ -353,16 +446,40 @@ pub(crate) fn load(url: Url) -> Loaded {
             page.set_module(&module_url, source);
         }
     }
+    if let Some(viewport) = viewport_hint() {
+        page.set_viewport(viewport);
+    }
     page.run_scripts();
     report_console(&mut page);
     Loaded { page, error: None }
 }
 
+/// Soumet au pot du client HTTP les cookies écrits par les scripts de la
+/// page, puis rend à la page la vue à jour de `document.cookie`.
+fn sync_cookies(page: &mut Page) {
+    let writes = page.take_cookie_writes();
+    let Ok(client) = http_client() else {
+        return;
+    };
+    let document = page.url().clone();
+    if !matches!(document.scheme(), "http" | "https") {
+        return;
+    }
+    for text in &writes {
+        client.set_cookie_from_script(&document, text);
+    }
+    page.set_cookies(&client.cookies_for_script(&document));
+}
+
 /// Écrit sur la sortie d'erreur les messages de console de la page.
+///
+/// C'est aussi le point où les cookies de la page et ceux du client HTTP
+/// sont accordés : il est appelé après chaque tâche de script.
 ///
 /// LIMITE : en attendant les outils de développement (jalon 9), la console
 /// des pages n'est visible que depuis le terminal qui a lancé Oxyde.
 pub(crate) fn report_console(page: &mut Page) {
+    sync_cookies(page);
     for message in page.take_console() {
         eprintln!("[console.{}] {}", message.level, message.text);
     }

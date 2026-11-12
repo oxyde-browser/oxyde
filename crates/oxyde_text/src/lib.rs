@@ -6,7 +6,7 @@ pub use parley;
 
 use std::sync::Arc;
 
-use parley::fontique::Blob;
+use parley::fontique::{Blob, FontInfoOverride};
 use parley::{FontContext, LayoutContext};
 
 /// Polices de la maquette embarquées dans l'exécutable (licence OFL 1.1, voir
@@ -51,6 +51,8 @@ pub struct TextContext {
     pub fonts: FontContext,
     /// Tampons de mise en page.
     pub layouts: LayoutContext<TextBrush>,
+    /// Polices de pages déjà enregistrées : (famille, clé).
+    web_fonts: std::collections::HashSet<(String, String)>,
 }
 
 impl Default for TextContext {
@@ -72,7 +74,50 @@ impl TextContext {
         Self {
             fonts,
             layouts: LayoutContext::new(),
+            web_fonts: std::collections::HashSet::new(),
         }
+    }
+
+    /// Enregistre une police téléchargée par une page (`@font-face`) sous le
+    /// nom de famille `family`. `key` identifie le fichier (son adresse) : le
+    /// même fichier n'est enregistré qu'une fois sous un même nom. Renvoie
+    /// `false` si les données ne sont pas une police TrueType ou OpenType.
+    ///
+    /// LIMITES CONNUES : les formats compressés WOFF et WOFF2 ne sont pas
+    /// lus ; la police reste enregistrée pour toutes les pages du processus.
+    pub fn register_web_font(&mut self, family: &str, key: &str, data: &Arc<Vec<u8>>) -> bool {
+        let sfnt = matches!(
+            data.get(..4),
+            Some(
+                [0, 1, 0, 0]
+                    | [b'O', b'T', b'T', b'O']
+                    | [b't', b'r', b'u', b'e']
+                    | [b't', b't', b'c', b'f']
+            )
+        );
+        if !sfnt {
+            return false;
+        }
+        let entry = (family.to_owned(), key.to_owned());
+        if self.web_fonts.contains(&entry) {
+            return true;
+        }
+        let info = FontInfoOverride {
+            family_name: Some(family),
+            width: None,
+            style: None,
+            weight: None,
+            axes: None,
+        };
+        let added = self
+            .fonts
+            .collection
+            .register_fonts(Blob::new(Arc::clone(data) as _), Some(info));
+        if added.is_empty() {
+            return false;
+        }
+        self.web_fonts.insert(entry);
+        true
     }
 }
 

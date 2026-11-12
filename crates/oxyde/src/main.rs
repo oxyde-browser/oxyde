@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use oxyde_css::Viewport;
-use oxyde_gpu::{Gpu, GpuScene, Transform, append_display_list};
+use oxyde_gpu::{Gpu, GpuScene, Transform, append_scrolled};
 use oxyde_text::TextContext;
 use oxyde_ui::theme;
 
@@ -116,6 +116,8 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
     let (w, h) = (width as f32, height as f32);
     let mut text = TextContext::new();
     let mut scene = GpuScene::new();
+    // Les scripts de la page voient la taille de la fenêtre dès le chargement.
+    loader::set_viewport_hint(w, h);
     let clear = if args.page_only {
         let mut page = loader::load_input(args.target.as_deref().unwrap_or("about:newtab")).page;
         loader::settle_fetches(&mut page);
@@ -126,7 +128,14 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
                 height: h,
             },
         );
-        append_display_list(&mut scene, page.display_list(), Transform::IDENTITY);
+        // Une capture montre la page telle que ses scripts l'ont fait défiler.
+        let (scroll_x, scroll_y) = page.scroll_offset();
+        append_scrolled(
+            &mut scene,
+            page.display_list(),
+            Transform::translate((-f64::from(scroll_x), -f64::from(scroll_y))),
+            &|id| page.scroll_of(id),
+        );
         page.background()
     } else {
         let mut browser = open_browser(args);

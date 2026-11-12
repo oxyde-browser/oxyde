@@ -11,9 +11,12 @@ use std::sync::{Arc, LazyLock};
 
 use oxyde_dom::{Document, ElementData, NodeId};
 
+use crate::animation::{AnimationStyle, Animator, Direction, FillMode, TransitionStyle};
+use crate::grid::{GridAreas, GridLine, TrackList, TrackSize};
 use crate::properties::{Declaration, Longhand, Side, Value, parse_declarations};
 use crate::stylesheet::{Stylesheet, Viewport, parse_stylesheet};
 use crate::syntax::tokenize;
+use crate::transform::{Affine, TransformFunction};
 use crate::values::{Color, Length};
 
 /// Valeurs par côté.
@@ -50,7 +53,7 @@ impl<T: Copy> Edges<T> {
         }
     }
 
-    fn set(&mut self, side: Side, v: T) {
+    pub(crate) fn set(&mut self, side: Side, v: T) {
         match side {
             Side::Top => self.top = v,
             Side::Right => self.right = v,
@@ -70,6 +73,13 @@ pub enum Size {
     Px(f32),
     /// Pourcentage du bloc conteneur.
     Percent(f32),
+    /// Pixels plus un pourcentage du bloc conteneur (`calc(50% - 10px)`).
+    Calc {
+        /// Part fixe, en pixels.
+        px: f32,
+        /// Part relative, en pourcentage du bloc conteneur.
+        percent: f32,
+    },
 }
 
 impl Size {
@@ -80,6 +90,7 @@ impl Size {
             Self::Auto => None,
             Self::Px(v) => Some(v),
             Self::Percent(p) => Some(base * p / 100.0),
+            Self::Calc { px, percent } => Some(px + base * percent / 100.0),
         }
     }
 }
@@ -101,6 +112,182 @@ pub enum Display {
     TableCell,
     TableCaption,
     Contents,
+}
+
+/// Valeur calculée de `position`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Position {
+    #[default]
+    Static,
+    Relative,
+    Absolute,
+    Fixed,
+    Sticky,
+}
+
+/// Valeur calculée de `float`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
+/// Valeur calculée de `clear`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Clear {
+    #[default]
+    None,
+    Left,
+    Right,
+    Both,
+}
+
+/// Valeur calculée de `overflow-x` ou `overflow-y`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Overflow {
+    #[default]
+    Visible,
+    Hidden,
+    Clip,
+    Scroll,
+    Auto,
+}
+
+/// Valeur calculée de `visibility`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Visibility {
+    #[default]
+    Visible,
+    Hidden,
+    Collapse,
+}
+
+/// Largeur définie par le contenu (`width: min-content`…).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum SizeKeyword {
+    /// Aucun mot-clé : la largeur est une longueur ou `auto`.
+    #[default]
+    None,
+    /// `min-content`
+    MinContent,
+    /// `max-content`
+    MaxContent,
+    /// `fit-content`
+    FitContent,
+}
+
+impl SizeKeyword {
+    fn parse(ident: &str) -> Self {
+        match ident {
+            "min-content" => Self::MinContent,
+            "max-content" => Self::MaxContent,
+            "fit-content" => Self::FitContent,
+            _ => Self::None,
+        }
+    }
+}
+
+/// Valeur calculée de `vertical-align`.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum VerticalAlign {
+    /// `baseline`
+    #[default]
+    Baseline,
+    /// `top`, `text-top`
+    Top,
+    /// `middle`
+    Middle,
+    /// `bottom`, `text-bottom`
+    Bottom,
+    /// `sub`
+    Sub,
+    /// `super`
+    Super,
+    /// Décalage vers le haut, en pixels.
+    Offset(f32),
+}
+
+/// Valeur calculée de `flex-direction`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum FlexDirection {
+    #[default]
+    Row,
+    RowReverse,
+    Column,
+    ColumnReverse,
+}
+
+impl FlexDirection {
+    /// Vrai si l'axe principal est horizontal.
+    #[must_use]
+    pub fn is_row(self) -> bool {
+        matches!(self, Self::Row | Self::RowReverse)
+    }
+
+    /// Vrai si l'axe principal est parcouru à rebours.
+    #[must_use]
+    pub fn is_reverse(self) -> bool {
+        matches!(self, Self::RowReverse | Self::ColumnReverse)
+    }
+}
+
+/// Valeur calculée de `flex-wrap`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum FlexWrap {
+    #[default]
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+/// Alignement (`justify-content`, `align-content`, `align-items`,
+/// `align-self`), une fois les synonymes réunis.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Alignment {
+    /// `normal` ou `auto` : le comportement par défaut du conteneur.
+    #[default]
+    Normal,
+    /// `stretch`
+    Stretch,
+    /// `flex-start`, `start`, `self-start`, `left`
+    Start,
+    /// `flex-end`, `end`, `self-end`, `right`
+    End,
+    /// `center`
+    Center,
+    /// `baseline`
+    Baseline,
+    /// `space-between`
+    SpaceBetween,
+    /// `space-around`
+    SpaceAround,
+    /// `space-evenly`
+    SpaceEvenly,
+}
+
+impl Alignment {
+    fn parse(word: &str) -> Self {
+        match word {
+            "stretch" => Self::Stretch,
+            "flex-start" | "start" | "self-start" | "left" => Self::Start,
+            "flex-end" | "end" | "self-end" | "right" => Self::End,
+            "center" => Self::Center,
+            "baseline" => Self::Baseline,
+            "space-between" => Self::SpaceBetween,
+            "space-around" => Self::SpaceAround,
+            "space-evenly" => Self::SpaceEvenly,
+            _ => Self::Normal,
+        }
+    }
 }
 
 /// Valeur calculée de `line-height`.
@@ -233,6 +420,102 @@ pub struct ComputedStyle {
     pub border_box: bool,
     /// `list-style-type`
     pub list_style: ListStyle,
+    /// `position`
+    pub position: Position,
+    /// `top`, `right`, `bottom`, `left`
+    pub inset: Edges<Size>,
+    /// `float`
+    pub float: Float,
+    /// `clear`
+    pub clear: Clear,
+    /// `z-index` ; `None` : `auto`.
+    pub z_index: Option<i32>,
+    /// `overflow-x`
+    pub overflow_x: Overflow,
+    /// `overflow-y`
+    pub overflow_y: Overflow,
+    /// `visibility`
+    pub visibility: Visibility,
+    /// `opacity`
+    pub opacity: f32,
+    /// `flex-direction`
+    pub flex_direction: FlexDirection,
+    /// `flex-wrap`
+    pub flex_wrap: FlexWrap,
+    /// `flex-grow`
+    pub flex_grow: f32,
+    /// `flex-shrink`
+    pub flex_shrink: f32,
+    /// `flex-basis` ; `None` : `content`, et [`Size::Auto`] : `auto`.
+    pub flex_basis: Option<Size>,
+    /// `justify-content`
+    pub justify_content: Alignment,
+    /// `align-items`
+    pub align_items: Alignment,
+    /// `align-self` ; [`Alignment::Normal`] : celui du conteneur.
+    pub align_self: Alignment,
+    /// `align-content`
+    pub align_content: Alignment,
+    /// `order`
+    pub order: i32,
+    /// `row-gap` (`Auto` : `normal`)
+    pub row_gap: Size,
+    /// `column-gap` (`Auto` : `normal`)
+    pub column_gap: Size,
+    /// Vrai si `display` vaut `flex` ou `inline-flex` : le contenu suit la
+    /// mise en page flexible, que la boîte soit de niveau bloc ou en ligne.
+    pub flex_container: bool,
+    /// Vrai si `display` vaut `grid` ou `inline-grid`.
+    pub grid_container: bool,
+    /// `grid-template-columns`
+    pub grid_template_columns: Arc<TrackList<Size>>,
+    /// `grid-template-rows`
+    pub grid_template_rows: Arc<TrackList<Size>>,
+    /// `grid-auto-columns` ; vide : `auto`.
+    pub grid_auto_columns: Arc<[TrackSize<Size>]>,
+    /// `grid-auto-rows` ; vide : `auto`.
+    pub grid_auto_rows: Arc<[TrackSize<Size>]>,
+    /// `grid-auto-flow: column`
+    pub grid_auto_flow_column: bool,
+    /// `grid-auto-flow: dense`
+    pub grid_auto_flow_dense: bool,
+    /// `grid-row-start`
+    pub grid_row_start: GridLine,
+    /// `grid-row-end`
+    pub grid_row_end: GridLine,
+    /// `grid-column-start`
+    pub grid_column_start: GridLine,
+    /// `grid-column-end`
+    pub grid_column_end: GridLine,
+    /// `grid-template-areas`
+    pub grid_template_areas: Arc<GridAreas>,
+    /// `justify-items`
+    pub justify_items: Alignment,
+    /// `justify-self` ; [`Alignment::Normal`] : celui du conteneur.
+    pub justify_self: Alignment,
+    /// `border-spacing` : horizontal, vertical, en pixels.
+    pub border_spacing: (f32, f32),
+    /// `border-collapse: collapse`
+    pub border_collapse: bool,
+    /// `table-layout: fixed`
+    pub table_layout_fixed: bool,
+    /// `caption-side: bottom`
+    pub caption_bottom: bool,
+    /// `vertical-align`
+    pub vertical_align: VerticalAlign,
+    /// Mot-clé de `width`, quand la largeur est définie par le contenu ;
+    /// [`ComputedStyle::width`] vaut alors [`Size::Auto`].
+    pub width_keyword: SizeKeyword,
+    /// `aspect-ratio` : largeur rapportée à la hauteur ; `None` : `auto`.
+    pub aspect_ratio: Option<f32>,
+    /// `transform` ; `None` : `none`.
+    pub transform: Option<Arc<[TransformFunction<Size>]>>,
+    /// `transform-origin`, rapporté à la boîte de bordure.
+    pub transform_origin: (Size, Size),
+    /// Propriétés `animation-*` ; `None` : aucune n'est déclarée.
+    pub animation: Option<Arc<AnimationStyle>>,
+    /// Propriétés `transition-*` ; `None` : aucune n'est déclarée.
+    pub transition: Option<Arc<TransitionStyle>>,
 }
 
 impl ComputedStyle {
@@ -240,6 +523,12 @@ impl ComputedStyle {
     #[must_use]
     pub fn initial() -> Self {
         static SERIF: LazyLock<Arc<[String]>> = LazyLock::new(|| Arc::from(["serif".to_owned()]));
+        // Valeurs vides partagées : la plupart des éléments n'ont pas de grille.
+        static NO_TRACKS: LazyLock<Arc<TrackList<Size>>> =
+            LazyLock::new(|| Arc::new(TrackList::default()));
+        static NO_SIZES: LazyLock<Arc<[TrackSize<Size>]>> = LazyLock::new(|| Arc::from([]));
+        static NO_AREAS: LazyLock<Arc<GridAreas>> =
+            LazyLock::new(|| Arc::new(GridAreas::default()));
         Self {
             display: Display::Inline,
             color: Color::BLACK,
@@ -267,6 +556,115 @@ impl ComputedStyle {
             max_height: Size::Auto,
             border_box: false,
             list_style: ListStyle::Disc,
+            position: Position::Static,
+            inset: Edges::all(Size::Auto),
+            float: Float::None,
+            clear: Clear::None,
+            z_index: None,
+            overflow_x: Overflow::Visible,
+            overflow_y: Overflow::Visible,
+            visibility: Visibility::Visible,
+            opacity: 1.0,
+            flex_direction: FlexDirection::Row,
+            flex_wrap: FlexWrap::NoWrap,
+            flex_grow: 0.0,
+            flex_shrink: 1.0,
+            flex_basis: Some(Size::Auto),
+            justify_content: Alignment::Normal,
+            align_items: Alignment::Normal,
+            align_self: Alignment::Normal,
+            align_content: Alignment::Normal,
+            order: 0,
+            row_gap: Size::Auto,
+            column_gap: Size::Auto,
+            flex_container: false,
+            grid_container: false,
+            grid_template_columns: Arc::clone(&NO_TRACKS),
+            grid_template_rows: Arc::clone(&NO_TRACKS),
+            grid_auto_columns: Arc::clone(&NO_SIZES),
+            grid_auto_rows: Arc::clone(&NO_SIZES),
+            grid_auto_flow_column: false,
+            grid_auto_flow_dense: false,
+            grid_row_start: GridLine::Auto,
+            grid_row_end: GridLine::Auto,
+            grid_column_start: GridLine::Auto,
+            grid_column_end: GridLine::Auto,
+            grid_template_areas: Arc::clone(&NO_AREAS),
+            justify_items: Alignment::Normal,
+            justify_self: Alignment::Normal,
+            border_spacing: (0.0, 0.0),
+            border_collapse: false,
+            table_layout_fixed: false,
+            caption_bottom: false,
+            vertical_align: VerticalAlign::Baseline,
+            width_keyword: SizeKeyword::None,
+            aspect_ratio: None,
+            transform: None,
+            transform_origin: (Size::Percent(50.0), Size::Percent(50.0)),
+            animation: None,
+            transition: None,
+        }
+    }
+
+    /// Vrai si la boîte est positionnée (`position` autre que `static`).
+    #[must_use]
+    pub fn is_positioned(&self) -> bool {
+        self.position != Position::Static
+    }
+
+    /// Produit des fonctions de `transform`, sans égard pour
+    /// `transform-origin` : la valeur calculée de la propriété. Les
+    /// pourcentages se rapportent à une boîte de bordure `width` × `height`.
+    #[must_use]
+    pub fn transform_functions_matrix(&self, width: f32, height: f32) -> Option<Affine> {
+        let list = self.transform.as_ref()?;
+        let mut matrix = Affine::IDENTITY;
+        for function in list.iter() {
+            let step = match *function {
+                TransformFunction::Translate(x, y) => Affine::translate(
+                    x.resolve(width).unwrap_or(0.0),
+                    y.resolve(height).unwrap_or(0.0),
+                ),
+                TransformFunction::Scale(x, y) => Affine::scale(x, y),
+                TransformFunction::Rotate(angle) => Affine::rotate(angle),
+                TransformFunction::Skew(x, y) => Affine::skew(x, y),
+                TransformFunction::Matrix(m) => Affine(m),
+            };
+            matrix = matrix.then_inner(step);
+        }
+        Some(matrix)
+    }
+
+    /// Transformation de la boîte, dans le repère dont l'origine est le coin
+    /// supérieur gauche de sa boîte de bordure de taille `width` × `height` ;
+    /// `None` sans `transform`.
+    #[must_use]
+    pub fn transform_matrix(&self, width: f32, height: f32) -> Option<Affine> {
+        let matrix = self.transform_functions_matrix(width, height)?;
+        let origin_x = self.transform_origin.0.resolve(width).unwrap_or(0.0);
+        let origin_y = self.transform_origin.1.resolve(height).unwrap_or(0.0);
+        Some(
+            Affine::translate(origin_x, origin_y)
+                .then_inner(matrix)
+                .then_inner(Affine::translate(-origin_x, -origin_y)),
+        )
+    }
+
+    /// Vrai si la boîte sort du flux (`position: absolute` ou `fixed`).
+    #[must_use]
+    pub fn is_out_of_flow(&self) -> bool {
+        matches!(self.position, Position::Absolute | Position::Fixed)
+    }
+
+    /// Nom CSS de la valeur de `position`.
+    #[must_use]
+    pub fn position_name(&self) -> &'static str {
+        match self.position {
+            Position::Static => "static",
+            Position::Relative => "relative",
+            Position::Absolute => "absolute",
+            Position::Fixed => "fixed",
+            Position::Sticky => "sticky",
         }
     }
 
@@ -288,6 +686,10 @@ impl ComputedStyle {
             underline: parent.underline,
             line_through: parent.line_through,
             list_style: parent.list_style,
+            visibility: parent.visibility,
+            border_spacing: parent.border_spacing,
+            border_collapse: parent.border_collapse,
+            caption_bottom: parent.caption_bottom,
             ..Self::initial()
         }
     }
@@ -327,10 +729,20 @@ impl ComputedStyle {
     }
 }
 
-struct Context<'a> {
-    parent: &'a ComputedStyle,
-    root_font_size: f32,
-    viewport: Viewport,
+pub(crate) struct Context<'a> {
+    pub(crate) parent: &'a ComputedStyle,
+    pub(crate) root_font_size: f32,
+    pub(crate) viewport: Viewport,
+}
+
+/// Propriétés `animation-*` de `style`, créées au besoin.
+fn animation_mut(style: &mut ComputedStyle) -> &mut AnimationStyle {
+    Arc::make_mut(style.animation.get_or_insert_with(Arc::default))
+}
+
+/// Propriétés `transition-*` de `style`, créées au besoin.
+fn transition_mut(style: &mut ComputedStyle) -> &mut TransitionStyle {
+    Arc::make_mut(style.transition.get_or_insert_with(Arc::default))
 }
 
 fn length_px(length: Length, font_size: f32, cx: &Context<'_>) -> Size {
@@ -341,6 +753,21 @@ fn length_px(length: Length, font_size: f32, cx: &Context<'_>) -> Size {
         Length::Vw(v) => Size::Px(v * cx.viewport.width / 100.0),
         Length::Vh(v) => Size::Px(v * cx.viewport.height / 100.0),
         Length::Percent(v) => Size::Percent(v),
+        Length::Calc(l) => {
+            let px = l.px
+                + l.em * font_size
+                + l.rem * cx.root_font_size
+                + l.vw * cx.viewport.width / 100.0
+                + l.vh * cx.viewport.height / 100.0;
+            if !l.has_percent {
+                Size::Px(px)
+            } else {
+                Size::Calc {
+                    px,
+                    percent: l.percent,
+                }
+            }
+        }
     }
 }
 
@@ -356,13 +783,40 @@ fn is_inherited(property: Longhand) -> bool {
             | Longhand::TextAlign
             | Longhand::WhiteSpace
             | Longhand::ListStyleType
+            | Longhand::Visibility
+            | Longhand::BorderSpacingH
+            | Longhand::BorderSpacingV
+            | Longhand::BorderCollapse
+            | Longhand::CaptionSide
     )
 }
 
 /// Copie la propriété `property` de `from` vers `style`.
-fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Longhand) {
+pub(crate) fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Longhand) {
+    let animation = || from.animation.as_deref().cloned().unwrap_or_default();
+    let transition = || from.transition.as_deref().cloned().unwrap_or_default();
     match property {
-        Longhand::Display => style.display = from.display,
+        Longhand::AnimationName => animation_mut(style).names = animation().names,
+        Longhand::AnimationDuration => animation_mut(style).durations = animation().durations,
+        Longhand::AnimationDelay => animation_mut(style).delays = animation().delays,
+        Longhand::AnimationTimingFunction => animation_mut(style).easings = animation().easings,
+        Longhand::AnimationIterationCount => {
+            animation_mut(style).iterations = animation().iterations;
+        }
+        Longhand::AnimationDirection => animation_mut(style).directions = animation().directions,
+        Longhand::AnimationFillMode => animation_mut(style).fill_modes = animation().fill_modes,
+        Longhand::AnimationPlayState => animation_mut(style).paused = animation().paused,
+        Longhand::TransitionProperty => transition_mut(style).properties = transition().properties,
+        Longhand::TransitionDuration => transition_mut(style).durations = transition().durations,
+        Longhand::TransitionDelay => transition_mut(style).delays = transition().delays,
+        Longhand::TransitionTimingFunction => {
+            transition_mut(style).easings = transition().easings;
+        }
+        Longhand::Display => {
+            style.display = from.display;
+            style.flex_container = from.flex_container;
+            style.grid_container = from.grid_container;
+        }
         Longhand::Color => style.color = from.color,
         Longhand::BackgroundColor => style.background_color = from.background_color,
         Longhand::FontSize => style.font_size = from.font_size,
@@ -382,7 +836,14 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::BorderColor(s) => style.border_color.set(s, from.border_color.get(s)),
         Longhand::BorderStyle(s) => style.border_style.set(s, from.border_style.get(s)),
         Longhand::BorderRadius => style.border_radius = from.border_radius,
-        Longhand::Width => style.width = from.width,
+        Longhand::Width => {
+            style.width = from.width;
+            style.width_keyword = from.width_keyword;
+        }
+        Longhand::AspectRatio => style.aspect_ratio = from.aspect_ratio,
+        Longhand::Transform => style.transform = from.transform.clone(),
+        Longhand::TransformOriginX => style.transform_origin.0 = from.transform_origin.0,
+        Longhand::TransformOriginY => style.transform_origin.1 = from.transform_origin.1,
         Longhand::Height => style.height = from.height,
         Longhand::MinWidth => style.min_width = from.min_width,
         Longhand::MaxWidth => style.max_width = from.max_width,
@@ -390,6 +851,54 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         Longhand::MaxHeight => style.max_height = from.max_height,
         Longhand::BoxSizing => style.border_box = from.border_box,
         Longhand::ListStyleType => style.list_style = from.list_style,
+        Longhand::Position => style.position = from.position,
+        Longhand::Inset(s) => style.inset.set(s, from.inset.get(s)),
+        Longhand::Float => style.float = from.float,
+        Longhand::Clear => style.clear = from.clear,
+        Longhand::ZIndex => style.z_index = from.z_index,
+        Longhand::OverflowX => style.overflow_x = from.overflow_x,
+        Longhand::OverflowY => style.overflow_y = from.overflow_y,
+        Longhand::Visibility => style.visibility = from.visibility,
+        Longhand::Opacity => style.opacity = from.opacity,
+        Longhand::FlexDirection => style.flex_direction = from.flex_direction,
+        Longhand::FlexWrap => style.flex_wrap = from.flex_wrap,
+        Longhand::FlexGrow => style.flex_grow = from.flex_grow,
+        Longhand::FlexShrink => style.flex_shrink = from.flex_shrink,
+        Longhand::FlexBasis => style.flex_basis = from.flex_basis,
+        Longhand::JustifyContent => style.justify_content = from.justify_content,
+        Longhand::AlignItems => style.align_items = from.align_items,
+        Longhand::AlignSelf => style.align_self = from.align_self,
+        Longhand::AlignContent => style.align_content = from.align_content,
+        Longhand::Order => style.order = from.order,
+        Longhand::RowGap => style.row_gap = from.row_gap,
+        Longhand::ColumnGap => style.column_gap = from.column_gap,
+        Longhand::GridTemplateColumns => {
+            style.grid_template_columns = Arc::clone(&from.grid_template_columns);
+        }
+        Longhand::GridTemplateRows => {
+            style.grid_template_rows = Arc::clone(&from.grid_template_rows);
+        }
+        Longhand::GridAutoColumns => style.grid_auto_columns = Arc::clone(&from.grid_auto_columns),
+        Longhand::GridAutoRows => style.grid_auto_rows = Arc::clone(&from.grid_auto_rows),
+        Longhand::GridAutoFlow => {
+            style.grid_auto_flow_column = from.grid_auto_flow_column;
+            style.grid_auto_flow_dense = from.grid_auto_flow_dense;
+        }
+        Longhand::GridRowStart => style.grid_row_start = from.grid_row_start.clone(),
+        Longhand::GridRowEnd => style.grid_row_end = from.grid_row_end.clone(),
+        Longhand::GridColumnStart => style.grid_column_start = from.grid_column_start.clone(),
+        Longhand::GridColumnEnd => style.grid_column_end = from.grid_column_end.clone(),
+        Longhand::GridTemplateAreas => {
+            style.grid_template_areas = Arc::clone(&from.grid_template_areas);
+        }
+        Longhand::JustifyItems => style.justify_items = from.justify_items,
+        Longhand::JustifySelf => style.justify_self = from.justify_self,
+        Longhand::BorderSpacingH => style.border_spacing.0 = from.border_spacing.0,
+        Longhand::BorderSpacingV => style.border_spacing.1 = from.border_spacing.1,
+        Longhand::BorderCollapse => style.border_collapse = from.border_collapse,
+        Longhand::TableLayout => style.table_layout_fixed = from.table_layout_fixed,
+        Longhand::CaptionSide => style.caption_bottom = from.caption_bottom,
+        Longhand::VerticalAlign => style.vertical_align = from.vertical_align,
     }
 }
 
@@ -426,7 +935,7 @@ fn size_of(value: &Value, font_size: f32, cx: &Context<'_>) -> Size {
     }
 }
 
-fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
+pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
     let property = decl.property;
     match &decl.value {
         Value::Inherit => return copy_property(style, cx.parent, property),
@@ -448,6 +957,8 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
     };
     match property {
         Longhand::Display => {
+            style.flex_container = matches!(ident, "flex" | "inline-flex");
+            style.grid_container = matches!(ident, "grid" | "inline-grid");
             style.display = match ident {
                 "none" => Display::None,
                 "block" | "flow-root" => Display::Block,
@@ -586,13 +1097,314 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
                 style.border_radius = v;
             }
         }
-        Longhand::Width => style.width = size_of(&decl.value, fs, cx),
+        Longhand::Width => {
+            style.width = size_of(&decl.value, fs, cx);
+            style.width_keyword = SizeKeyword::parse(ident);
+        }
+        Longhand::AnimationName => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).names.clone_from(names);
+            }
+        }
+        Longhand::AnimationDuration => {
+            if let Value::Times(times) = &decl.value {
+                animation_mut(style).durations.clone_from(times);
+            }
+        }
+        Longhand::AnimationDelay => {
+            if let Value::Times(times) = &decl.value {
+                animation_mut(style).delays.clone_from(times);
+            }
+        }
+        Longhand::AnimationTimingFunction => {
+            if let Value::Easings(easings) = &decl.value {
+                animation_mut(style).easings.clone_from(easings);
+            }
+        }
+        Longhand::AnimationIterationCount => {
+            if let Value::Numbers(counts) = &decl.value {
+                animation_mut(style).iterations.clone_from(counts);
+            }
+        }
+        Longhand::AnimationDirection => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).directions = names
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "reverse" => Direction::Reverse,
+                        "alternate" => Direction::Alternate,
+                        "alternate-reverse" => Direction::AlternateReverse,
+                        _ => Direction::Normal,
+                    })
+                    .collect();
+            }
+        }
+        Longhand::AnimationFillMode => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).fill_modes = names
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "forwards" => FillMode::Forwards,
+                        "backwards" => FillMode::Backwards,
+                        "both" => FillMode::Both,
+                        _ => FillMode::None,
+                    })
+                    .collect();
+            }
+        }
+        Longhand::AnimationPlayState => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).paused = names.iter().map(|name| name == "paused").collect();
+            }
+        }
+        Longhand::TransitionProperty => {
+            if let Value::Names(names) = &decl.value {
+                transition_mut(style).properties.clone_from(names);
+            }
+        }
+        Longhand::TransitionDuration => {
+            if let Value::Times(times) = &decl.value {
+                transition_mut(style).durations.clone_from(times);
+            }
+        }
+        Longhand::TransitionDelay => {
+            if let Value::Times(times) = &decl.value {
+                transition_mut(style).delays.clone_from(times);
+            }
+        }
+        Longhand::TransitionTimingFunction => {
+            if let Value::Easings(easings) = &decl.value {
+                transition_mut(style).easings.clone_from(easings);
+            }
+        }
+        Longhand::Transform => {
+            if let Value::Transform(list) = &decl.value {
+                style.transform = if list.is_empty() {
+                    None
+                } else {
+                    Some(
+                        list.iter()
+                            .map(|function| function.map(|length| length_px(length, fs, cx)))
+                            .collect(),
+                    )
+                };
+            }
+        }
+        Longhand::TransformOriginX | Longhand::TransformOriginY => {
+            if let Value::Length(l) = &decl.value {
+                let size = length_px(*l, fs, cx);
+                if property == Longhand::TransformOriginX {
+                    style.transform_origin.0 = size;
+                } else {
+                    style.transform_origin.1 = size;
+                }
+            }
+        }
+        Longhand::AspectRatio => {
+            style.aspect_ratio = match &decl.value {
+                Value::Number(ratio) if *ratio > 0.0 => Some(*ratio),
+                _ => None,
+            };
+        }
         Longhand::Height => style.height = size_of(&decl.value, fs, cx),
         Longhand::MinWidth => style.min_width = size_of(&decl.value, fs, cx),
         Longhand::MaxWidth => style.max_width = size_of(&decl.value, fs, cx),
         Longhand::MinHeight => style.min_height = size_of(&decl.value, fs, cx),
         Longhand::MaxHeight => style.max_height = size_of(&decl.value, fs, cx),
         Longhand::BoxSizing => style.border_box = ident == "border-box",
+        Longhand::Position => {
+            style.position = match ident {
+                "relative" => Position::Relative,
+                "absolute" => Position::Absolute,
+                "fixed" => Position::Fixed,
+                "sticky" => Position::Sticky,
+                _ => Position::Static,
+            };
+        }
+        Longhand::Inset(side) => style.inset.set(side, size_of(&decl.value, fs, cx)),
+        Longhand::Float => {
+            style.float = match ident {
+                "left" | "inline-start" => Float::Left,
+                "right" | "inline-end" => Float::Right,
+                _ => Float::None,
+            };
+        }
+        Longhand::Clear => {
+            style.clear = match ident {
+                "left" | "inline-start" => Clear::Left,
+                "right" | "inline-end" => Clear::Right,
+                "both" => Clear::Both,
+                _ => Clear::None,
+            };
+        }
+        Longhand::ZIndex => {
+            style.z_index = match &decl.value {
+                #[expect(clippy::cast_possible_truncation, reason = "entier validé à l'analyse")]
+                Value::Number(n) => Some(*n as i32),
+                _ => None,
+            };
+        }
+        Longhand::Order => {
+            if let Value::Number(n) = &decl.value {
+                #[expect(clippy::cast_possible_truncation, reason = "entier validé à l'analyse")]
+                {
+                    style.order = *n as i32;
+                }
+            }
+        }
+        Longhand::OverflowX | Longhand::OverflowY => {
+            let overflow = match ident {
+                "hidden" => Overflow::Hidden,
+                "clip" => Overflow::Clip,
+                "scroll" => Overflow::Scroll,
+                "auto" => Overflow::Auto,
+                _ => Overflow::Visible,
+            };
+            if property == Longhand::OverflowX {
+                style.overflow_x = overflow;
+            } else {
+                style.overflow_y = overflow;
+            }
+        }
+        Longhand::Visibility => {
+            style.visibility = match ident {
+                "hidden" => Visibility::Hidden,
+                "collapse" => Visibility::Collapse,
+                _ => Visibility::Visible,
+            };
+        }
+        Longhand::Opacity => {
+            if let Value::Number(n) = &decl.value {
+                style.opacity = *n;
+            }
+        }
+        Longhand::FlexDirection => {
+            style.flex_direction = match ident {
+                "row-reverse" => FlexDirection::RowReverse,
+                "column" => FlexDirection::Column,
+                "column-reverse" => FlexDirection::ColumnReverse,
+                _ => FlexDirection::Row,
+            };
+        }
+        Longhand::FlexWrap => {
+            style.flex_wrap = match ident {
+                "wrap" => FlexWrap::Wrap,
+                "wrap-reverse" => FlexWrap::WrapReverse,
+                _ => FlexWrap::NoWrap,
+            };
+        }
+        Longhand::FlexGrow => {
+            if let Value::Number(n) = &decl.value {
+                style.flex_grow = *n;
+            }
+        }
+        Longhand::FlexShrink => {
+            if let Value::Number(n) = &decl.value {
+                style.flex_shrink = *n;
+            }
+        }
+        Longhand::FlexBasis => {
+            style.flex_basis = match ident {
+                "content" => None,
+                _ => Some(size_of(&decl.value, fs, cx)),
+            };
+        }
+        Longhand::JustifyContent => style.justify_content = Alignment::parse(ident),
+        Longhand::AlignItems => style.align_items = Alignment::parse(ident),
+        Longhand::AlignSelf => style.align_self = Alignment::parse(ident),
+        Longhand::AlignContent => style.align_content = Alignment::parse(ident),
+        Longhand::RowGap => style.row_gap = size_of(&decl.value, fs, cx),
+        Longhand::ColumnGap => style.column_gap = size_of(&decl.value, fs, cx),
+        Longhand::GridTemplateColumns | Longhand::GridTemplateRows => {
+            if let Value::Tracks(list) = &decl.value {
+                let computed = Arc::new(list.map(|l| length_px(l, fs, cx)));
+                if property == Longhand::GridTemplateColumns {
+                    style.grid_template_columns = computed;
+                } else {
+                    style.grid_template_rows = computed;
+                }
+            }
+        }
+        Longhand::GridAutoColumns | Longhand::GridAutoRows => {
+            if let Value::TrackSizes(sizes) = &decl.value {
+                let list = TrackList {
+                    entries: sizes
+                        .iter()
+                        .map(|t| crate::grid::TrackEntry::Track(*t))
+                        .collect(),
+                }
+                .map(|l| length_px(l, fs, cx));
+                let computed: Arc<[TrackSize<Size>]> = list
+                    .entries
+                    .into_iter()
+                    .filter_map(|entry| match entry {
+                        crate::grid::TrackEntry::Track(track) => Some(track),
+                        _ => None,
+                    })
+                    .collect();
+                if property == Longhand::GridAutoColumns {
+                    style.grid_auto_columns = computed;
+                } else {
+                    style.grid_auto_rows = computed;
+                }
+            }
+        }
+        Longhand::GridAutoFlow => {
+            style.grid_auto_flow_column = ident.starts_with("column");
+            style.grid_auto_flow_dense = ident.ends_with("dense");
+        }
+        Longhand::GridRowStart
+        | Longhand::GridRowEnd
+        | Longhand::GridColumnStart
+        | Longhand::GridColumnEnd => {
+            if let Value::Line(line) = &decl.value {
+                let target = match property {
+                    Longhand::GridRowStart => &mut style.grid_row_start,
+                    Longhand::GridRowEnd => &mut style.grid_row_end,
+                    Longhand::GridColumnStart => &mut style.grid_column_start,
+                    _ => &mut style.grid_column_end,
+                };
+                *target = line.clone();
+            }
+        }
+        Longhand::GridTemplateAreas => {
+            if let Value::Areas(areas) = &decl.value {
+                style.grid_template_areas = Arc::new(areas.clone());
+            }
+        }
+        Longhand::JustifyItems => style.justify_items = Alignment::parse(ident),
+        Longhand::JustifySelf => style.justify_self = Alignment::parse(ident),
+        Longhand::BorderSpacingH | Longhand::BorderSpacingV => {
+            if let Value::Length(l) = &decl.value
+                && let Size::Px(v) = length_px(*l, fs, cx)
+            {
+                if property == Longhand::BorderSpacingH {
+                    style.border_spacing.0 = v;
+                } else {
+                    style.border_spacing.1 = v;
+                }
+            }
+        }
+        Longhand::BorderCollapse => style.border_collapse = ident == "collapse",
+        Longhand::TableLayout => style.table_layout_fixed = ident == "fixed",
+        Longhand::CaptionSide => style.caption_bottom = ident == "bottom",
+        Longhand::VerticalAlign => {
+            style.vertical_align = match (ident, &decl.value) {
+                ("top" | "text-top", _) => VerticalAlign::Top,
+                ("middle", _) => VerticalAlign::Middle,
+                ("bottom" | "text-bottom", _) => VerticalAlign::Bottom,
+                ("sub", _) => VerticalAlign::Sub,
+                ("super", _) => VerticalAlign::Super,
+                (_, Value::Length(l)) => match length_px(*l, fs, cx) {
+                    Size::Px(v) => VerticalAlign::Offset(v),
+                    // Un pourcentage se rapporte à la hauteur de ligne.
+                    other => {
+                        VerticalAlign::Offset(other.resolve(style.line_height_px()).unwrap_or(0.0))
+                    }
+                },
+                _ => VerticalAlign::Baseline,
+            };
+        }
         Longhand::ListStyleType => {
             style.list_style = match ident {
                 "none" => ListStyle::None,
@@ -608,7 +1420,10 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
 static UA_SHEET: LazyLock<Stylesheet> = LazyLock::new(|| parse_stylesheet(include_str!("ua.css")));
 
 /// Indications de présentation issues des attributs HTML (`bgcolor`, `align`…).
-fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
+///
+/// `table` : le tableau auquel appartient une cellule, dont dépend sa marge
+/// intérieure (`cellpadding`).
+fn presentational_hints(el: &ElementData, table: Option<&ElementData>) -> Vec<Declaration> {
     let mut css = String::new();
     let mut push = |property: &str, value: &str| {
         // Les valeurs passent par l'analyseur CSS : rien d'invalide n'est accepté.
@@ -650,6 +1465,44 @@ fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
             }
         }
         _ => {}
+    }
+    if el.name == "table" {
+        if let Some(v) = el.attr("cellspacing") {
+            push("border-spacing", &dimension(v));
+        }
+        if let Some(v) = el.attr("border") {
+            // `border` sans valeur vaut 1.
+            let width = v.trim().parse::<f32>().unwrap_or(1.0).max(0.0);
+            push("border-width", &format!("{width}px"));
+            push("border-style", "outset");
+        }
+        if el
+            .attr("align")
+            .is_some_and(|v| v.eq_ignore_ascii_case("center"))
+        {
+            push("margin-left", "auto");
+            push("margin-right", "auto");
+        }
+    }
+    if matches!(el.name.as_str(), "td" | "th") {
+        if let Some(v) = table.and_then(|t| t.attr("cellpadding")) {
+            push("padding", &dimension(v));
+        }
+        if el.attr("nowrap").is_some() {
+            push("white-space", "nowrap");
+        }
+    }
+    if el.name == "tr"
+        && let Some(v) = el.attr("height")
+    {
+        push("height", &dimension(v));
+    }
+    if matches!(
+        el.name.as_str(),
+        "td" | "th" | "tr" | "tbody" | "thead" | "tfoot"
+    ) && let Some(v) = el.attr("valign")
+    {
+        push("vertical-align", &v.to_ascii_lowercase());
     }
     if matches!(
         el.name.as_str(),
@@ -734,6 +1587,32 @@ pub fn compute_styles(
     author_sheets: &[Stylesheet],
     viewport: Viewport,
 ) -> StyleMap {
+    cascade(doc, author_sheets, viewport, None)
+}
+
+/// Comme [`compute_styles`], animations et transitions comprises : le style
+/// rendu est celui de l'instant `now` (en millisecondes), et `animator`
+/// garde l'état des effets d'un calcul à l'autre.
+#[must_use]
+pub fn compute_styles_at(
+    doc: &Document,
+    author_sheets: &[Stylesheet],
+    viewport: Viewport,
+    animator: &mut Animator,
+    now: f64,
+) -> StyleMap {
+    animator.begin(doc.len());
+    let map = cascade(doc, author_sheets, viewport, Some((animator, now)));
+    animator.end();
+    map
+}
+
+fn cascade(
+    doc: &Document,
+    author_sheets: &[Stylesheet],
+    viewport: Viewport,
+    mut animation: Option<(&mut Animator, f64)>,
+) -> StyleMap {
     let initial = ComputedStyle::initial();
     let mut map = StyleMap {
         styles: vec![None; doc.len()],
@@ -773,7 +1652,16 @@ pub fn compute_styles(
             &mut order,
             &mut matched,
         );
-        let hints = presentational_hints(el);
+        // Tableau d'une cellule : au plus trois niveaux au-dessus d'elle.
+        let table = matches!(el.name.as_str(), "td" | "th")
+            .then(|| {
+                doc.ancestors(node)
+                    .take(3)
+                    .filter_map(|a| doc.element(a))
+                    .find(|a| a.name == "table")
+            })
+            .flatten();
+        let hints = presentational_hints(el, table);
         let hint_base = order;
         for (sheet, rules) in author_sheets.iter().zip(&author_active) {
             collect_matching(
@@ -831,8 +1719,21 @@ pub fn compute_styles(
         {
             apply(&mut style, d, &cx);
         }
+        // Le style d'un élément sans `animation` ni `transition` n'a pas
+        // d'entrée dans ces listes : les mots-clés seuls n'en créent pas.
+        let style = match animation.as_mut() {
+            Some((animator, now)) => {
+                let important: Vec<Longhand> = matched
+                    .iter()
+                    .filter(|(rank, ..)| *rank >= 2)
+                    .map(|(.., declaration)| declaration.property)
+                    .collect();
+                animator.animate(node, style, author_sheets, &cx, &important, *now)
+            }
+            None => Arc::new(style),
+        };
         if let Some(slot) = map.styles.get_mut(node.index()) {
-            *slot = Some(Arc::new(style));
+            *slot = Some(style);
         }
     }
     map
@@ -925,6 +1826,47 @@ mod tests {
         assert_eq!(em.color, Color::BLACK);
         assert_eq!(em.font_size, 32.0);
         assert!(em.italic);
+    }
+
+    #[test]
+    fn calc_and_new_properties() {
+        let (doc, map) = styled(
+            "<style>
+               p { width: calc(100% - 20px); margin-left: calc(2 * 5px + 1em);
+                   padding-top: calc((10px + 6px) / 4); height: calc(1px + ); }
+               div { position: absolute; inset: 1px 2px; float: right; flex: 2 1 0;
+                     z-index: 3; overflow: hidden auto; gap: 4px 8px; }
+             </style><p>a</p><div>b</div>",
+        );
+        let p = style_of(&doc, &map, "p");
+        assert_eq!(
+            p.width,
+            Size::Calc {
+                px: -20.0,
+                percent: 100.0
+            }
+        );
+        assert_eq!(p.width.resolve(300.0), Some(280.0));
+        assert_eq!(p.margin.left, Size::Px(26.0));
+        assert_eq!(p.padding.top, Size::Px(4.0));
+        // Une expression invalide écarte la déclaration.
+        assert_eq!(p.height, Size::Auto);
+        let div = style_of(&doc, &map, "div");
+        assert_eq!(div.position, Position::Absolute);
+        assert_eq!(div.inset.top, Size::Px(1.0));
+        assert_eq!(div.inset.left, Size::Px(2.0));
+        assert_eq!(div.float, Float::Right);
+        assert_eq!((div.flex_grow, div.flex_shrink), (2.0, 1.0));
+        assert_eq!(div.flex_basis, Some(Size::Px(0.0)));
+        assert_eq!(div.z_index, Some(3));
+        assert_eq!(
+            (div.overflow_x, div.overflow_y),
+            (Overflow::Hidden, Overflow::Auto)
+        );
+        assert_eq!(
+            (div.row_gap, div.column_gap),
+            (Size::Px(4.0), Size::Px(8.0))
+        );
     }
 
     #[test]

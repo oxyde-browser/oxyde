@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **40 660 tests de test262 sur 48 795 (83,3 %)** ; il en reste 8 135.
+- `oxyde_js` réussit **40 768 tests de test262 sur 48 795 (83,5 %)** ; il en reste 8 027.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -20,7 +20,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
-| Royaumes (`$262.createRealm`) | — | 141 | à faire |
+| Royaumes (`$262.createRealm`) | — | 33 | fait pour l'essentiel (108 tests gagnés) |
 
 Ce qui reste dans A, B et C tient à quelques limites de fond :
 
@@ -130,13 +130,49 @@ Le plan d'origine reste la référence. Ce qui suit le précise à la lumière d
 ### Finir le jalon 4 côté web
 
 Le moteur n'est qu'une moitié du jalon ; l'autre est ce que les pages peuvent en faire.
+Branche `jalon-4-web`, empilée sur `test262-conformite`.
 
-- **DOM** : 125 membres disponibles sur 283 décrits par l'IDL d'Oxyde (44,2 %), et l'IDL ne
-  décrit pas encore `Window`, les éléments HTML particuliers, les observateurs ni les plages.
-- **Manquent pour les sites réels** : `XMLHttpRequest`, les formulaires, `fetch` autre que
-  `GET`, les événements clavier et de saisie, `localStorage`, `history`, `location` complet.
-- **Web Platform Tests** : écrire le lanceur (il n'existe pas encore) pour mesurer le DOM comme
-  test262 mesure le langage. Sans cette mesure, « ça marche » reste une impression.
+Fait :
+
+- **DOM** : 241 membres disponibles sur 291 décrits par l'IDL d'Oxyde (82,8 %) ; événements
+  conformes (`Event`, `CustomEvent`, capture et bouillonnement, `dispatchEvent`),
+  `MutationObserver`, fragments de document, collections, `dataset`, une interface par balise
+  (`HTMLInputElement`, `HTMLAnchorElement`…).
+- **Réseau des pages** : `fetch` avec méthode, en-têtes et corps sous contrôle CORS
+  (pré-vérification comprise), `XMLHttpRequest`, `URL`, `URLSearchParams`, `Headers`.
+- **Navigation** : `location` complet, `history` (`pushState`, `popstate`), soumission des
+  formulaires en GET et en POST.
+- **Divers** : `localStorage`, événements clavier, `AbortController`, `TextEncoder`,
+  `structuredClone`, `matchMedia`, `FormData`.
+
+Reste :
+
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 286 fichiers de test entièrement réussis sur 693 (41,3 %).
+  La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
+  documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
+  `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
+  les écouteurs passifs, l'accès nommé sur `window`, `moveBefore`, puis les cadres. Restent,
+  par gain décroissant : un analyseur XML (documents XML des cadres, `DOMParser`), les tests
+  pilotés par WebDriver (`testdriver.js`), `Observable`, `customElements`, puis `url/` et
+  `encoding/`.
+- **Cadres (`<iframe>`)** : chaque cadre a son royaume JavaScript (objet global et
+  interfaces du DOM à lui) et son document, dans la même arène que la page ;
+  `contentWindow`, `contentDocument`, `parent`, `top`, `frameElement`, chargement de `src`
+  et de `srcdoc`, gestionnaires en attribut (`onload="…"`). Limites : un cadre n'est pas
+  dessiné (jalon 6) ; faute d'isolation entre processus (jalon 5), seul un cadre de même
+  origine que la page est chargé ; dans le navigateur, seuls les cadres présents dans le
+  HTML reçu sont chargés, pas ceux qu'un script crée ensuite.
+- **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
+  `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
+  `ResizeObserver`.
+- **Stockage et réseau** : faits — `Blob`, `File`, `FileReader`, `Request` et `Response`
+  constructibles ; cookies (pot RFC 6265 dans `oxyde_net`, `Secure`, `HttpOnly`,
+  `SameSite`, préfixes `__Host-` et `__Secure-`, pas de cookies tiers implicites,
+  `document.cookie`). Restent : l'écriture du pot et de `localStorage` sur disque (jalon 7,
+  avec l'historique et les favoris) et la liste des suffixes publics.
+- **Royaumes** : faits dans `oxyde_js` (108 tests de test262 gagnés) et utilisés par les
+  cadres ; restent `ShadowRealm` et les quelques tests qui lisent le royaume d'une fonction
+  liée ou d'un `Proxy`.
 
 ### Jalon 5 — Multi-processus
 
@@ -149,6 +185,72 @@ le moment de `SharedArrayBuffer` et des workers, qui supposent plusieurs fils.
 Flex, grille, tableaux, flottants, positionnement, transformations, animations et transitions,
 calques composités, défilement hors du fil principal. C'est le jalon qui fait passer la plupart
 des sites de « lisible » à « fidèle ». Tableau de bord WPT pour le CSS et la mise en page.
+
+Branche `jalon-6-mise-en-page`, empilée sur `jalon-4-web`.
+
+Fait :
+
+- **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
+  `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
+  `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
+  (9,4 %), aujourd'hui 538 (23,7 %); une lecture force la
+  mise en page si le document a changé.
+- **Positionnement** : `position: relative`, `absolute`, `fixed`, décalages `inset`, blocs
+  conteneurs, hauteurs en pourcentage, `calc()`, police de test Ahem (`@font-face`).
+- **Flex et grille** (`oxyde_layout::flex`, `oxyde_layout::grid`) : algorithme flexible
+  complet (lignes, retours à la ligne, `flex-grow`/`shrink`/`basis`, alignements, `order`,
+  `gap`) ; grille avec pistes explicites et implicites, `fr`, `minmax()`, `repeat()`,
+  placement automatique, zones nommées, alignement des éléments.
+- **Peinture** : ordre d'empilement (`z-index`), découpe (`overflow`), `opacity`,
+  `visibility`.
+
+- **Tableaux** (`oxyde_layout::table`) : grille des cellules avec `colspan`/`rowspan`,
+  en-tête et pied réordonnés, rangées et tableaux anonymes ; disposition automatique
+  (largeurs minimale et maximale du contenu, largeurs en pixels et en pourcentage) et
+  `table-layout: fixed` ; `border-spacing`, `border-collapse` (approché : une seule bordure
+  par arête), `caption-side`, `vertical-align` des cellules ; attributs HTML `cellspacing`,
+  `cellpadding`, `border`, `valign`, `nowrap`. Restent : `<col>`, l'alignement sur la ligne
+  de base, l'arbitrage complet des bordures fusionnées.
+
+- **Flottants** (`oxyde_layout::floats`) : `float`, `clear`, lignes de texte raccourcies le
+  long des flottants, boîtes à contexte propre rangées à côté, contextes de formatage qui
+  contiennent leurs flottants. Restent : les flottants imbriqués dans un élément en ligne,
+  `shape-outside`.
+- **Tailles définies par le contenu** : `width: min-content`, `max-content`, `fit-content` ;
+  `aspect-ratio` pour les boîtes en bloc, flottantes et positionnées. Restent : ces mots-clés
+  sur `height`, `min-*` et `max-*`, `aspect-ratio` sur les éléments flex et de grille.
+
+- **Transformations** : `transform` (fonctions du plan ; les fonctions 3D sont ramenées à leur
+  effet dans le plan) et `transform-origin` ; peinture par groupes transformés, test
+  d'atteinte par transformation inverse, `getBoundingClientRect` transformé ; une boîte
+  transformée est un bloc conteneur et s'empile comme une boîte positionnée. Mesure à part
+  ([wpt-animations.md](../conformance/wpt-animations.md)) : 27 fichiers sur 363 au départ.
+- **Animations et transitions** (`oxyde_css::animation`) : `@keyframes`, propriétés
+  `animation-*` et `transition-*` et leurs raccourcis, fonctions de temporisation
+  (`cubic-bezier()`, `steps()`), interpolation des longueurs, couleurs, nombres et
+  transformations ; les valeurs animées s'héritent, `!important` l'emporte sur une
+  animation. La page et son moteur de script partagent un même animateur et une même
+  horloge ; les événements `animationstart`/`iteration`/`end`/`cancel` et
+  `transitionrun`/`start`/`end`/`cancel` sont distribués, et une animation en cours demande
+  une image toutes les 16 ms. Les minuteurs suivent désormais l'horloge de la page, ce qui
+  donne aux tests un temps virtuel cohérent. Mesure : 50 fichiers sur 363 (13,8 %). Restent :
+  l'API Web Animations, dont dépendent la plupart des tests, et l'interpolation des
+  transformations par décomposition de matrice.
+
+- **Défilement composité** (`oxyde_compositor`) : la peinture désigne chaque zone défilante
+  (`overflow` autre que `visible`) par un identifiant et n'en fige pas la position ; le
+  décalage est appliqué à la composition, si bien que faire défiler la fenêtre ou un élément
+  ne redemande ni style, ni mise en page, ni peinture. L'arbre de défilement borne les
+  décalages, route la molette vers la zone sous le pointeur puis vers celles qui la
+  contiennent, et dessine les barres de défilement ; `position: fixed` ne suit plus la
+  fenêtre. Côté script : `scrollTop`/`scrollLeft`, `scrollTo`/`scrollBy`/`scroll` (éléments
+  et fenêtre), `scrollIntoView`, `scrollX`/`scrollY`, `document.scrollingElement`, événement
+  `scroll`. Restent : la composition hors du fil principal, les calques mis en cache, les
+  animations jouées par le compositeur, le défilement fluide, `position: sticky`.
+
+Reste du jalon : l'API Web Animations ; les tests de référence WPT (comparaison d'images),
+qui couvrent la peinture que les tests `testharness.js` ne voient pas ; `<col>`, la ligne de
+base dans les tableaux, les modes d'écriture verticaux.
 
 ### Jalon 7 — Fonctions du navigateur
 
@@ -189,5 +291,5 @@ Le point 3 inverse l'ordre du plan d'origine (5 puis 6) : c'est une proposition,
 - Un fil du pilote graphique AMD occupe un cœur au repos après quelques images ; cause non élucidée.
 - Les méthodes de `Array.prototype` qui modifient le tableau directement ignorent une longueur figée.
 - Un module avec `await` de premier niveau bloque aussi ses modules frères.
-- La branche `test262-conformite` n'a pas de PR, et repose sur un commit de `jalon-4-javascript`
-  qui n'est pas dans `main`.
+- Les branches `test262-conformite` (PR n° 3) et `jalon-4-web` (PR n° 4, empilée sur la
+  précédente) attendent leur relecture.

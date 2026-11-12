@@ -450,6 +450,9 @@ pub(crate) struct Object {
     /// Propriétés virtuelles d'une fonction (`name`, `length`) supprimées ;
     /// voir [`crate::internal::DELETED_NAME`].
     pub(crate) deleted_virtual: u8,
+    /// Royaume dans lequel l'objet a été créé ; pour une fonction, celui
+    /// dans lequel elle s'exécute.
+    pub(crate) realm: u16,
 }
 
 impl Object {
@@ -461,6 +464,7 @@ impl Object {
             kind,
             extensible: true,
             deleted_virtual: 0,
+            realm: 0,
         }
     }
 
@@ -512,6 +516,8 @@ pub(crate) struct Heap {
     threshold: usize,
     /// Nombre de passages du ramasse-miettes (pour les tests et le diagnostic).
     pub(crate) collections: usize,
+    /// Royaume courant, inscrit dans chaque objet créé.
+    pub(crate) realm: u16,
 }
 
 impl Heap {
@@ -526,10 +532,12 @@ impl Heap {
             allocated_since_gc: 0,
             threshold: GC_MIN_THRESHOLD,
             collections: 0,
+            realm: 0,
         }
     }
 
-    pub(crate) fn alloc(&mut self, object: Object) -> ObjId {
+    pub(crate) fn alloc(&mut self, mut object: Object) -> ObjId {
+        object.realm = self.realm;
         self.allocated_since_gc += 1;
         if let Some(index) = self.free.pop()
             && let Some(slot) = self.objects.get_mut(index as usize)

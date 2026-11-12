@@ -40,6 +40,19 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "CustomEvent",
+        parent: Some("Event"),
+        constructor: Some(1),
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "detail", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "initCustomEvent", length: 1, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
         name: "EventTarget",
         parent: None,
         constructor: Some(0),
@@ -217,6 +230,32 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "XMLDocument",
+        parent: Some("Document"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "DOMImplementation",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+            OperationDescriptor { name: "createDocumentType", length: 3, is_static: false },
+            OperationDescriptor { name: "createDocument", length: 2, is_static: false },
+            OperationDescriptor { name: "createHTMLDocument", length: 0, is_static: false },
+            OperationDescriptor { name: "hasFeature", length: 0, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
         name: "DocumentType",
         parent: Some("Node"),
         constructor: None,
@@ -336,6 +375,43 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "NamedNodeMap",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "length", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "item", length: 1, is_static: false },
+            OperationDescriptor { name: "getNamedItem", length: 1, is_static: false },
+            OperationDescriptor { name: "getNamedItemNS", length: 2, is_static: false },
+            OperationDescriptor { name: "setNamedItem", length: 1, is_static: false },
+            OperationDescriptor { name: "setNamedItemNS", length: 1, is_static: false },
+            OperationDescriptor { name: "removeNamedItem", length: 1, is_static: false },
+            OperationDescriptor { name: "removeNamedItemNS", length: 2, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
+        name: "Attr",
+        parent: Some("Node"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "namespaceURI", readonly: true, is_static: false },
+            AttributeDescriptor { name: "prefix", readonly: true, is_static: false },
+            AttributeDescriptor { name: "localName", readonly: true, is_static: false },
+            AttributeDescriptor { name: "name", readonly: true, is_static: false },
+            AttributeDescriptor { name: "value", readonly: false, is_static: false },
+            AttributeDescriptor { name: "ownerElement", readonly: true, is_static: false },
+            AttributeDescriptor { name: "specified", readonly: true, is_static: false },
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
         name: "CharacterData",
         parent: Some("Node"),
         constructor: None,
@@ -373,6 +449,29 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         ],
     },
     InterfaceDescriptor {
+        name: "CDATASection",
+        parent: Some("Text"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "ProcessingInstruction",
+        parent: Some("CharacterData"),
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "target", readonly: true, is_static: false },
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
         name: "Comment",
         parent: Some("CharacterData"),
         constructor: Some(0),
@@ -381,6 +480,59 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
         attributes: &[
         ],
         operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "AbstractRange",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "startContainer", readonly: true, is_static: false },
+            AttributeDescriptor { name: "startOffset", readonly: true, is_static: false },
+            AttributeDescriptor { name: "endContainer", readonly: true, is_static: false },
+            AttributeDescriptor { name: "endOffset", readonly: true, is_static: false },
+            AttributeDescriptor { name: "collapsed", readonly: true, is_static: false },
+        ],
+        operations: &[
+        ],
+    },
+    InterfaceDescriptor {
+        name: "Range",
+        parent: Some("AbstractRange"),
+        constructor: Some(0),
+        constants: &[
+            ("START_TO_START", 0.0),
+            ("START_TO_END", 1.0),
+            ("END_TO_END", 2.0),
+            ("END_TO_START", 3.0),
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "commonAncestorContainer", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "setStart", length: 2, is_static: false },
+            OperationDescriptor { name: "setEnd", length: 2, is_static: false },
+            OperationDescriptor { name: "setStartBefore", length: 1, is_static: false },
+            OperationDescriptor { name: "setStartAfter", length: 1, is_static: false },
+            OperationDescriptor { name: "setEndBefore", length: 1, is_static: false },
+            OperationDescriptor { name: "setEndAfter", length: 1, is_static: false },
+            OperationDescriptor { name: "collapse", length: 0, is_static: false },
+            OperationDescriptor { name: "selectNode", length: 1, is_static: false },
+            OperationDescriptor { name: "selectNodeContents", length: 1, is_static: false },
+            OperationDescriptor { name: "compareBoundaryPoints", length: 2, is_static: false },
+            OperationDescriptor { name: "deleteContents", length: 0, is_static: false },
+            OperationDescriptor { name: "extractContents", length: 0, is_static: false },
+            OperationDescriptor { name: "cloneContents", length: 0, is_static: false },
+            OperationDescriptor { name: "insertNode", length: 1, is_static: false },
+            OperationDescriptor { name: "surroundContents", length: 1, is_static: false },
+            OperationDescriptor { name: "cloneRange", length: 0, is_static: false },
+            OperationDescriptor { name: "detach", length: 0, is_static: false },
+            OperationDescriptor { name: "isPointInRange", length: 2, is_static: false },
+            OperationDescriptor { name: "comparePoint", length: 2, is_static: false },
+            OperationDescriptor { name: "intersectsNode", length: 1, is_static: false },
+            OperationDescriptor { name: "toString", length: 0, is_static: false },
         ],
     },
     InterfaceDescriptor {
@@ -452,6 +604,23 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
             OperationDescriptor { name: "getPropertyPriority", length: 1, is_static: false },
             OperationDescriptor { name: "setProperty", length: 2, is_static: false },
             OperationDescriptor { name: "removeProperty", length: 1, is_static: false },
+        ],
+    },
+    InterfaceDescriptor {
+        name: "Storage",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "length", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "key", length: 1, is_static: false },
+            OperationDescriptor { name: "getItem", length: 1, is_static: false },
+            OperationDescriptor { name: "setItem", length: 2, is_static: false },
+            OperationDescriptor { name: "removeItem", length: 1, is_static: false },
+            OperationDescriptor { name: "clear", length: 0, is_static: false },
         ],
     },
 ];

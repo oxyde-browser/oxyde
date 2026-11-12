@@ -6,12 +6,15 @@
 //! qui donne un seul chemin de rendu vers le GPU.
 //!
 //! LIMITES CONNUES : bordures pointillées ou tiretées peintes pleines, pas
-//! d'images, d'ombres ni de dégradés, pas d'ordre d'empilement (`z-index`).
+//! d'ombres ni de dégradés ; l'ordre d'empilement (`z-index`) est établi
+//! entre les enfants directs d'une boîte ; une boîte à `overflow` autre que
+//! `visible` découpe son contenu ; le décalage d'une zone défilante n'est
+//! pas dans la liste, il est appliqué à la composition.
 
 pub use kurbo::BezPath;
 pub use oxyde_layout::Rect;
 
-use oxyde_css::{Color, Side, Size, Viewport};
+use oxyde_css::{Color, Overflow, Position, Side, Size, Viewport, Visibility};
 use oxyde_dom::NodeId;
 use oxyde_layout::{BoxFragment, Fragment, LayoutTree, TextFragment};
 use oxyde_text::TextLayout;
@@ -90,8 +93,48 @@ pub enum DisplayItem {
         /// Rayon des coins.
         radius: f32,
     },
-    /// Fin de la zone de découpe la plus récente.
+    /// Début d'un calque translucide : tout ce qui suit, jusqu'au
+    /// [`DisplayItem::PopClip`] correspondant, est composé avec `alpha`.
+    PushOpacity {
+        /// Zone couverte par le calque.
+        rect: Rect,
+        /// Opacité, de 0 à 1.
+        alpha: f32,
+    },
+    /// Fin de la zone de découpe ou du calque le plus récent.
     PopClip,
+    /// Début d'un groupe transformé : tout ce qui suit, jusqu'au
+    /// [`DisplayItem::PopTransform`] correspondant, subit la transformation
+    /// affine `matrix`, notée comme `matrix(a, b, c, d, e, f)` en CSS.
+    PushTransform {
+        /// Coefficients de la transformation, en coordonnées de page.
+        matrix: [f32; 6],
+    },
+    /// Fin du groupe transformé, défilant ou fixe le plus récent.
+    PopTransform,
+    /// Début du contenu d'une zone défilante : tout ce qui suit, jusqu'au
+    /// [`DisplayItem::PopTransform`] correspondant, est décalé du défilement
+    /// de la zone `id`, connu à la composition seulement.
+    PushScroll {
+        /// Identifiant de la zone (voir [`Scroller::id`]).
+        id: u32,
+    },
+    /// Début d'un groupe fixe (`position: fixed`) : son contenu ne suit pas
+    /// le défilement de la fenêtre.
+    PushFixed,
+    /// Barre de défilement de la zone `id`, dessinée à la composition.
+    Scrollbar {
+        /// Identifiant de la zone.
+        id: u32,
+        /// Glissière.
+        track: Rect,
+        /// Vrai pour la barre verticale.
+        vertical: bool,
+        /// Longueur visible du contenu.
+        visible: f32,
+        /// Longueur totale du contenu.
+        total: f32,
+    },
     /// Image matricielle étirée dans `rect`.
     Image {
         /// Zone de destination.
@@ -150,11 +193,36 @@ impl Image {
 /// Image associée à un élément remplacé (`<img>`), si elle est chargée.
 pub type ImageSource<'a> = &'a dyn Fn(NodeId) -> Option<Image>;
 
+/// Identifiant du défilement de la fenêtre.
+pub const ROOT_SCROLLER: u32 = u32::MAX;
+
+/// Zone défilante relevée à la peinture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Scroller {
+    /// Index du nœud qui porte la zone.
+    pub id: u32,
+    /// Rang, dans [`DisplayList::scrollers`], de la zone défilante qui la
+    /// contient ; `None` si c'est la fenêtre.
+    pub parent: Option<usize>,
+    /// Partie visible : la boîte de marge intérieure, en coordonnées de la
+    /// page (sans le défilement des zones qui la contiennent).
+    pub port: Rect,
+    /// Largeur et hauteur du contenu.
+    pub content: (f32, f32),
+    /// Axes que l'utilisateur peut faire défiler (`overflow: scroll` ou
+    /// `auto`) ; `overflow: hidden` ne défile que par script.
+    pub wheel: (bool, bool),
+}
+
 /// Liste d'affichage : primitives dans l'ordre de peinture.
 #[derive(Clone, Debug, Default)]
 pub struct DisplayList {
     /// Primitives.
     pub items: Vec<DisplayItem>,
+    /// Zones défilantes, chacune après celle qui la contient.
+    pub scrollers: Vec<Scroller>,
+    /// Zones défilantes ouvertes pendant la peinture.
+    open_scrollers: Vec<usize>,
 }
 
 impl DisplayList {
@@ -296,7 +364,125 @@ fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSour
     }
 }
 
+/// Peint une boîte : son fond et ses bordures si elle est visible, puis ses
+/// enfants dans l'ordre d'empilement, découpés si elle ne laisse pas
+/// déborder son contenu ; le tout dans un calque si elle est translucide,
+/// et dans un groupe transformé si elle porte un `transform`.
 fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
+    let style = &b.style;
+    if style.opacity <= 0.0 {
+        return;
+    }
+    let fixed = style.position == Position::Fixed;
+    if fixed {
+        list.items.push(DisplayItem::PushFixed);
+    }
+    let transform = oxyde_layout::box_transform(b);
+    if let Some(matrix) = transform {
+        list.items
+            .push(DisplayItem::PushTransform { matrix: matrix.0 });
+    }
+    let translucent = style.opacity < 1.0;
+    if translucent {
+        // Le calque couvre largement la boîte : son contenu peut en déborder.
+        let margin = 100_000.0;
+        list.items.push(DisplayItem::PushOpacity {
+            rect: Rect {
+                x: b.border_box.x - margin,
+                y: b.border_box.y - margin,
+                w: b.border_box.w + 2.0 * margin,
+                h: b.border_box.h + 2.0 * margin,
+            },
+            alpha: style.opacity,
+        });
+    }
+    if style.visibility == Visibility::Visible {
+        paint_decorations(list, b, images);
+    }
+    let clips = oxyde_layout::clips_content(style);
+    let port = oxyde_layout::padding_box(b);
+    // Zone défilante : `overflow: clip` découpe sans défiler.
+    let scrollable = |overflow: Overflow| !matches!(overflow, Overflow::Visible | Overflow::Clip);
+    let scroller = b
+        .node
+        .filter(|_| clips && (scrollable(style.overflow_x) || scrollable(style.overflow_y)))
+        .map(|node| u32::try_from(node.index()).unwrap_or(ROOT_SCROLLER - 1));
+    let content = oxyde_layout::scrollable_extent(b);
+    if clips {
+        // Découpe à la boîte de marge intérieure.
+        let bw = style.border_widths();
+        list.items.push(DisplayItem::PushClip {
+            rect: port,
+            radius: (style.border_radius - bw.top).max(0.0),
+        });
+    }
+    if let Some(id) = scroller {
+        let by_user = |overflow: Overflow| matches!(overflow, Overflow::Scroll | Overflow::Auto);
+        let index = list.scrollers.len();
+        list.scrollers.push(Scroller {
+            id,
+            parent: list.open_scrollers.last().copied(),
+            port,
+            content,
+            wheel: (by_user(style.overflow_x), by_user(style.overflow_y)),
+        });
+        list.open_scrollers.push(index);
+        list.items.push(DisplayItem::PushScroll { id });
+    }
+    for child in oxyde_layout::paint_order(&b.children) {
+        paint_fragment(list, child, images);
+    }
+    if let Some(id) = scroller {
+        list.items.push(DisplayItem::PopTransform);
+        list.open_scrollers.pop();
+        // Barres de défilement, par-dessus le contenu, là où il déborde.
+        let thickness = 8.0_f32.min(port.w).min(port.h);
+        let by_user = |overflow: Overflow| matches!(overflow, Overflow::Scroll | Overflow::Auto);
+        if by_user(style.overflow_y) && content.1 > port.h + 0.5 {
+            list.items.push(DisplayItem::Scrollbar {
+                id,
+                track: Rect {
+                    x: port.x + port.w - thickness,
+                    y: port.y,
+                    w: thickness,
+                    h: port.h,
+                },
+                vertical: true,
+                visible: port.h,
+                total: content.1,
+            });
+        }
+        if by_user(style.overflow_x) && content.0 > port.w + 0.5 {
+            list.items.push(DisplayItem::Scrollbar {
+                id,
+                track: Rect {
+                    x: port.x,
+                    y: port.y + port.h - thickness,
+                    w: port.w,
+                    h: thickness,
+                },
+                vertical: false,
+                visible: port.w,
+                total: content.0,
+            });
+        }
+    }
+    if clips {
+        list.items.push(DisplayItem::PopClip);
+    }
+    if translucent {
+        list.items.push(DisplayItem::PopClip);
+    }
+    if transform.is_some() {
+        list.items.push(DisplayItem::PopTransform);
+    }
+    if fixed {
+        list.items.push(DisplayItem::PopTransform);
+    }
+}
+
+/// Fond, bordures et image d'une boîte.
+fn paint_decorations(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
     let r = b.border_box;
     let style = &b.style;
     list.rect(r, style.background_color, style.border_radius);
@@ -390,9 +576,6 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
             }
         }
     }
-    for child in &b.children {
-        paint_fragment(list, child, images);
-    }
 }
 
 fn paint_text(list: &mut DisplayList, t: &TextFragment, images: ImageSource<'_>) {
@@ -417,6 +600,46 @@ mod tests {
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
         paint(&tree, viewport, &|_| None)
+    }
+
+    #[test]
+    fn stacking_order_clipping_and_opacity() {
+        let list = paint_html(
+            "<style>body{margin:0}
+               #c{position:relative; overflow:hidden; width:50px; height:50px; opacity:0.5}
+               #c div{width:10px; height:10px}
+               #front{position:absolute; z-index:2; background:#030303}
+               #back{position:absolute; z-index:-1; background:#010101}
+               #flow{background:#020202}
+               #hidden{visibility:hidden; background:#040404}
+             </style>
+             <div id=c><div id=front></div><div id=back></div><div id=flow></div>\
+             <div id=hidden></div></div>",
+        );
+        // Les petits carrés, dans l'ordre de peinture : dessous, flux, dessus ;
+        // le carré invisible n'est pas peint.
+        let squares: Vec<u8> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::Rect { rect, color, .. } if rect.w == 10.0 => Some(color.r),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(squares, [1, 2, 3]);
+        let layers: Vec<&str> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::PushOpacity { alpha, .. } if (*alpha - 0.5).abs() < 1.0e-6 => {
+                    Some("calque")
+                }
+                DisplayItem::PushClip { rect, .. } if rect.w == 50.0 => Some("découpe"),
+                DisplayItem::PopClip => Some("fin"),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(layers, ["calque", "découpe", "fin", "fin"]);
     }
 
     #[test]
