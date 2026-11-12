@@ -2784,3 +2784,82 @@ fn regexp_escape_compile_indices_and_legacy_statics() {
     );
     assert_eq!(eval("var r = /x/; RegExp(r) === r"), "true");
 }
+
+#[test]
+fn iterator_chunks_windows_zip_includes_join() {
+    let show = |source: &str| eval(&format!("JSON.stringify({source})"));
+    assert_eq!(
+        show("[1, 2, 3, 4, 5].values().chunks(2).toArray()"),
+        "[[1,2],[3,4],[5]]"
+    );
+    assert_eq!(
+        show("[1, 2, 3, 4].values().windows(3).toArray()"),
+        "[[1,2,3],[2,3,4]]"
+    );
+    assert_eq!(show("[1, 2].values().windows(3).toArray()"), "[]");
+    assert_eq!(
+        show("[1, 2].values().windows(3, 'allow-partial').toArray()"),
+        "[[1,2]]"
+    );
+    assert!(eval("[].values().chunks(0)").contains("RangeError"));
+    assert!(eval("[].values().chunks('2')").contains("TypeError"));
+    assert!(eval("[].values().windows(2, 'partial')").contains("TypeError"));
+    // `includes` : comparaison SameValueZero, éléments sautés, fermeture.
+    assert_eq!(
+        eval(
+            "[[1, NaN].values().includes(NaN), [1, 2].values().includes(1, 1), \
+              [0].values().includes(-0)].join()"
+        ),
+        "true,false,true"
+    );
+    assert_eq!(
+        eval(
+            "var closed = 0; var it = { __proto__: Iterator.prototype, i: 0, \
+              next() { return { done: false, value: this.i++ }; }, \
+              return() { closed++; return {}; } }; [it.includes(3), closed, it.i].join()"
+        ),
+        "true,1,4"
+    );
+    assert!(eval("[].values().includes(1, -1)").contains("RangeError"));
+    assert_eq!(
+        eval("['a', null, 'b', undefined].values().join('-')"),
+        "a--b-"
+    );
+    assert_eq!(eval("[1, 2, 3].values().join()"), "1,2,3");
+    // `zip` : les trois modes, le remplissage, et `zipKeyed`.
+    assert_eq!(
+        show("Iterator.zip([[1, 2, 3], 'ab'.split('')]).toArray()"),
+        r#"[[1,"a"],[2,"b"]]"#
+    );
+    assert_eq!(
+        show("Iterator.zip([[1, 2, 3], ['a']], { mode: 'longest', padding: [0, '?'] }).toArray()"),
+        r#"[[1,"a"],[2,"?"],[3,"?"]]"#
+    );
+    assert_eq!(
+        show("Iterator.zip([[1], [2]], { mode: 'strict' }).toArray()"),
+        "[[1,2]]"
+    );
+    assert!(
+        eval("Iterator.zip([[1], [2, 3]], { mode: 'strict' }).toArray()").contains("TypeError")
+    );
+    assert!(eval("Iterator.zip([[1]], { mode: 'other' })").contains("TypeError"));
+    assert_eq!(
+        show("Iterator.zipKeyed({ n: [1, 2], s: ['a', 'b', 'c'], skip: undefined }).toArray()"),
+        r#"[{"n":1,"s":"a"},{"n":2,"s":"b"}]"#
+    );
+    assert_eq!(
+        eval("Object.getPrototypeOf(Iterator.zipKeyed({ a: [1] }).next().value) === null"),
+        "true"
+    );
+    // Un arrêt prématuré ferme les itérateurs ouverts, du dernier au premier.
+    assert_eq!(
+        eval(
+            "var log = []; var make = name => ({ __proto__: Iterator.prototype, \
+              next() { return { done: false, value: name }; }, \
+              return() { log.push(name); return {}; } }); \
+              var zipped = Iterator.zip([make('a'), make('b')]); zipped.next(); zipped.return(); \
+              log.join()"
+        ),
+        "b,a"
+    );
+}

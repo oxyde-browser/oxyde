@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **42 546 tests de test262 sur 48 795 (87,2 %)** ; il en reste 6 249.
+- `oxyde_js` réussit **42 756 tests de test262 sur 48 795 (87,6 %)** ; il en reste 6 039.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -123,21 +123,23 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   `&&`, chaînes `\q{…}`, propriétés de chaînes (`Basic_Emoji`, `Emoji_Keycap_Sequence`,
   `RGI_Emoji_Modifier_Sequence`, `RGI_Emoji_Tag_Sequence`). `RGI_Emoji` et ses séquences
   de drapeaux et à liant manquent, faute de tables (14 tests).
-
-Il reste 115 échecs dans `RegExp` : 91 tiennent à la version d'Unicode de la suite, 14
-aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isolés).
 - **Reste** (170) : faits, `RegExp.escape`, `RegExp.prototype.compile`, les propriétés
   statiques héritées (`RegExp.$1`, `lastMatch`…), le drapeau `d` (indices) et le
   constructeur pour les objets qui se disent expressions rationnelles (93 tests), puis
   les groupes nommés en double (permis dans des alternatives distinctes) et les noms de
   groupe en Unicode, échappements compris (27 tests).
 
+Il reste 115 échecs dans `RegExp` : 91 tiennent à la version d'Unicode de la suite, 14
+aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isolés).
+
 ### F — Propositions récentes (938 tests)
 
 - **`using` et `DisposableStack`** (338).
 - **`import defer`, `import source`, attributs d'importation** (320).
-- **Aides d'`Iterator` restantes** (216) : `zip`, `zipKeyed`, `chunks`, `windows`, `includes`,
-  `join`.
+- **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
+  `includes` et `join` (210 tests). Restent `Iterator.prototype[Symbol.dispose]`, qui
+  vient avec `using`, et 3 tests qui écrivent `length = 2^32 - 1` sur un tableau : les
+  tableaux d'Oxyde sont denses.
 - **ShadowRealm** (64) : demande plusieurs royaumes dans une même machine.
 
 ### G — Temporal (4 614 tests)

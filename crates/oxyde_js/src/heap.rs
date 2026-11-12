@@ -780,11 +780,42 @@ pub(crate) enum HelperKind {
     FlatMap,
     /// `Iterator.concat` : parcourt `sources` l'une après l'autre.
     Concat,
+    /// `chunks` : paquets de `remaining` valeurs.
+    Chunks,
+    /// `windows` : fenêtres glissantes de `remaining` valeurs.
+    Windows,
+    /// `Iterator.zip` et `zipKeyed` : état dans `zip`.
+    Zip,
     /// Enveloppe de `Iterator.from` autour d'un itérateur étranger.
     Wrap,
     /// Itérateur de `String.prototype.matchAll` : `iterator` est
     /// l'expression, `next` le texte, `func` le drapeau global.
     RegExpString,
+}
+
+/// Ce que fait `Iterator.zip` quand ses itérateurs n'ont pas la même longueur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ZipMode {
+    /// S'arrête au premier épuisé.
+    Shortest,
+    /// Continue jusqu'au dernier, en complétant par le remplissage.
+    Longest,
+    /// Exige des longueurs égales.
+    Strict,
+}
+
+/// État de `Iterator.zip` et `Iterator.zipKeyed`.
+#[derive(Clone, Debug)]
+pub(crate) struct ZipState {
+    /// Itérateurs et leur `next` ; `None` : épuisé, le remplissage le remplace.
+    pub(crate) iters: Vec<Option<(Value, Value)>>,
+    /// Pour chaque rang, l'itérateur s'il est encore ouvert : c'est ce
+    /// qu'il faut fermer si l'on s'arrête.
+    pub(crate) open: Vec<Option<Value>>,
+    pub(crate) mode: ZipMode,
+    pub(crate) padding: Vec<Value>,
+    /// `zipKeyed` : clés des résultats ; `None` : résultats en tableaux.
+    pub(crate) keys: Option<Vec<crate::value::PropertyKey>>,
 }
 
 /// État d'une aide d'itérateur.
@@ -804,6 +835,10 @@ pub(crate) struct IteratorHelper {
     pub(crate) inner: Option<(Value, Value)>,
     /// `concat` : (méthode d'itération, itérable) restant à parcourir.
     pub(crate) sources: Vec<(Value, Value)>,
+    /// Valeurs en attente (`chunks`, `windows`).
+    pub(crate) buffer: Vec<Value>,
+    /// État de `Iterator.zip` et `zipKeyed`.
+    pub(crate) zip: Option<Box<ZipState>>,
     pub(crate) started: bool,
     pub(crate) running: bool,
     pub(crate) done: bool,
@@ -1080,6 +1115,18 @@ impl Heap {
                     for (a, b) in helper.inner.iter().chain(&helper.sources) {
                         push(a, &mut pending);
                         push(b, &mut pending);
+                    }
+                    for value in &helper.buffer {
+                        push(value, &mut pending);
+                    }
+                    if let Some(zip) = &helper.zip {
+                        for (a, b) in zip.iters.iter().flatten() {
+                            push(a, &mut pending);
+                            push(b, &mut pending);
+                        }
+                        for value in zip.open.iter().flatten().chain(&zip.padding) {
+                            push(value, &mut pending);
+                        }
                     }
                 }
                 Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),

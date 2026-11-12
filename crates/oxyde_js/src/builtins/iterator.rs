@@ -1,20 +1,21 @@
 //! `Iterator` et ses aides (ECMA-262 §27.1) : `map`, `filter`, `take`, `drop`,
 //! `flatMap`, `reduce`, `toArray`, `forEach`, `some`, `every`, `find`,
-//! `Iterator.from` et `Iterator.concat`.
+//! `includes`, `join`, `chunks`, `windows`, `Iterator.from`, `Iterator.concat`,
+//! `Iterator.zip` et `Iterator.zipKeyed`.
 //!
 //! Une aide paresseuse rend un objet `Kind::IteratorHelper` qui garde
 //! l'itérateur sous-jacent et avance d'un pas à chaque `next()`.
-//!
-//! LIMITES CONNUES : pas de `Iterator.zip`, `zipKeyed`, `chunks`, `windows`,
-//! `includes` ni `join`.
 
 use std::sync::Arc;
 
 use super::{arg, is_callable};
-use crate::heap::{HelperKind, IteratorHelper, Kind, Object, Property, Slot};
+use crate::heap::{HelperKind, IteratorHelper, Kind, Object, Property, Slot, ZipMode, ZipState};
 use crate::internal::Descriptor;
 use crate::value::{ObjId, PropertyKey, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
+
+/// Longueur maximale de la chaîne que produit `join`.
+const MAX_JOINED: usize = 1 << 28;
 
 // ---- Protocole ---------------------------------------------------------------
 
@@ -61,6 +62,45 @@ fn close_quiet(vm: &mut Vm, iterator: &Value) {
 fn fail<T>(vm: &mut Vm, iterator: &Value, error: Value) -> JsResult<T> {
     close_quiet(vm, iterator);
     Err(error)
+}
+
+/// `IteratorStep` : avance d'un pas sans lire la valeur ; vrai à la fin.
+fn step_done(vm: &mut Vm, iterator: &Value, next: &Value) -> JsResult<bool> {
+    vm.tick(1)?;
+    let result = vm.call(next, iterator, &[])?;
+    if result.as_object().is_none() {
+        return Err(vm.type_error("le résultat d'un itérateur doit être un objet"));
+    }
+    Ok(vm.get(&result, "done")?.truthy())
+}
+
+/// `IteratorCloseAll` : ferme `iterators` du dernier au premier. L'exception
+/// en cours (`error`) l'emporte ; sinon c'est la première que lève un
+/// `return()`.
+fn close_all(vm: &mut Vm, iterators: &[Value], mut error: Option<Value>) -> JsResult<()> {
+    for iterator in iterators.iter().rev() {
+        if error.is_some() {
+            close_quiet(vm, iterator);
+        } else if let Err(raised) = close(vm, iterator) {
+            error = Some(raised);
+        }
+    }
+    error.map_or(Ok(()), Err)
+}
+
+/// `GetIterator(valeur, sync)` : itérateur de `value` et sa méthode `next`.
+fn get_iterator(vm: &mut Vm, value: &Value) -> JsResult<(Value, Value)> {
+    let key = PropertyKey::Symbol(vm.well_known.iterator.clone());
+    let method = vm.get_key(value, &key)?;
+    if !is_callable(vm, &method) {
+        return Err(vm.type_error("la valeur n'est pas itérable"));
+    }
+    let iterator = vm.call(&method, value, &[])?;
+    if iterator.as_object().is_none() {
+        return Err(vm.type_error("un itérateur doit être un objet"));
+    }
+    let next = vm.get(&iterator, "next")?;
+    Ok((iterator, next))
 }
 
 /// `this` d'une méthode de `Iterator.prototype` : doit être un objet.
@@ -120,6 +160,8 @@ fn new_helper(kind: HelperKind, iterator: Value, next: Value) -> IteratorHelper 
         remaining: 0.0,
         inner: None,
         sources: Vec::new(),
+        buffer: Vec::new(),
+        zip: None,
         started: false,
         running: false,
         done: false,
@@ -274,8 +316,168 @@ fn advance(vm: &mut Vm, id: ObjId) -> JsResult<Option<Value>> {
                 helper.inner = Some((inner_iterator, inner_next));
             }
         },
+        HelperKind::Chunks | HelperKind::Windows => {
+            // Taille nulle : l'itérateur sous-jacent est déjà épuisé.
+            if helper.remaining < 1.0 {
+                return Ok(None);
+            }
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "taille validée dans [1, 2^32 - 1]"
+            )]
+            let size = helper.remaining as usize;
+            let partial = helper.counter != 0.0;
+            loop {
+                let value = step(vm, &iterator, &next)?;
+                let Some(helper) = helper_mut(vm, id) else {
+                    return Ok(None);
+                };
+                let ready = match value {
+                    None => {
+                        helper.remaining = 0.0;
+                        let rest = std::mem::take(&mut helper.buffer);
+                        // Un reste incomplet : toujours rendu par `chunks`,
+                        // et par `windows` si on l'a demandé.
+                        let wanted = !rest.is_empty()
+                            && (kind == HelperKind::Chunks || (partial && rest.len() < size));
+                        if !wanted {
+                            return Ok(None);
+                        }
+                        rest
+                    }
+                    Some(value) => {
+                        if kind == HelperKind::Windows && helper.buffer.len() == size {
+                            helper.buffer.remove(0);
+                        }
+                        helper.buffer.push(value);
+                        if helper.buffer.len() < size {
+                            continue;
+                        }
+                        if kind == HelperKind::Chunks {
+                            std::mem::take(&mut helper.buffer)
+                        } else {
+                            helper.buffer.clone()
+                        }
+                    }
+                };
+                return Ok(Some(vm.new_array(ready)));
+            }
+        }
+        HelperKind::Zip => {
+            // L'état quitte l'aide le temps du pas : `running` interdit d'y
+            // revenir entre-temps.
+            let Some(mut state) = helper.zip.take() else {
+                return Ok(None);
+            };
+            let outcome = zip_step(vm, &mut state);
+            if let Some(helper) = helper_mut(vm, id) {
+                helper.zip = Some(state);
+            }
+            outcome
+        }
         HelperKind::Wrap | HelperKind::RegExpString => Ok(None),
     }
+}
+
+/// Ferme les itérateurs encore ouverts de `state`, du dernier au premier.
+fn zip_close(vm: &mut Vm, state: &mut ZipState, error: Option<Value>) -> JsResult<()> {
+    let open: Vec<Value> = state.open.iter_mut().filter_map(Option::take).collect();
+    close_all(vm, &open, error)
+}
+
+/// Un pas de `Iterator.zip` : le prochain groupe de valeurs, ou `None`.
+fn zip_step(vm: &mut Vm, state: &mut ZipState) -> JsResult<Option<Value>> {
+    let count = state.iters.len();
+    if count == 0 {
+        return Ok(None);
+    }
+    let padding =
+        |state: &ZipState, i: usize| state.padding.get(i).cloned().unwrap_or(Value::Undefined);
+    let mut results = Vec::with_capacity(count);
+    for i in 0..count {
+        let Some((iterator, next)) = state.iters.get(i).cloned().flatten() else {
+            results.push(padding(state, i));
+            continue;
+        };
+        let value = match step(vm, &iterator, &next) {
+            Ok(value) => value,
+            Err(error) => {
+                // Un itérateur qui lève n'est pas fermé ; les autres le sont.
+                if let Some(slot) = state.open.get_mut(i) {
+                    *slot = None;
+                }
+                zip_close(vm, state, Some(error))?;
+                return Ok(None);
+            }
+        };
+        let Some(value) = value else {
+            if let Some(slot) = state.open.get_mut(i) {
+                *slot = None;
+            }
+            match state.mode {
+                ZipMode::Shortest => {
+                    zip_close(vm, state, None)?;
+                    return Ok(None);
+                }
+                ZipMode::Strict => {
+                    if i != 0 {
+                        let error =
+                            vm.type_error("Iterator.zip : itérateurs de longueurs inégales");
+                        zip_close(vm, state, Some(error))?;
+                        return Ok(None);
+                    }
+                    // Le premier est épuisé : tous les autres doivent l'être.
+                    for k in 1..count {
+                        let Some((other, other_next)) = state.iters.get(k).cloned().flatten()
+                        else {
+                            continue;
+                        };
+                        // Épuisé ou en erreur, il n'est plus à fermer ; encore
+                        // en cours, il l'est avec les autres.
+                        let error = match step_done(vm, &other, &other_next) {
+                            Ok(true) => None,
+                            Ok(false) => {
+                                let error = vm
+                                    .type_error("Iterator.zip : itérateurs de longueurs inégales");
+                                zip_close(vm, state, Some(error))?;
+                                return Ok(None);
+                            }
+                            Err(error) => Some(error),
+                        };
+                        if let Some(slot) = state.open.get_mut(k) {
+                            *slot = None;
+                        }
+                        if let Some(error) = error {
+                            zip_close(vm, state, Some(error))?;
+                            return Ok(None);
+                        }
+                    }
+                    return Ok(None);
+                }
+                ZipMode::Longest => {
+                    if state.open.iter().all(Option::is_none) {
+                        return Ok(None);
+                    }
+                    if let Some(slot) = state.iters.get_mut(i) {
+                        *slot = None;
+                    }
+                    results.push(padding(state, i));
+                    continue;
+                }
+            }
+        };
+        results.push(value);
+    }
+    let Some(keys) = &state.keys else {
+        return Ok(Some(vm.new_array(results)));
+    };
+    // `zipKeyed` : un objet sans prototype, une propriété par clé.
+    let object = vm.heap.alloc(Object::new(None, Kind::Ordinary));
+    for (key, value) in keys.clone().iter().zip(results) {
+        vm.create_data_property(object, key, value)?;
+    }
+    Ok(Some(Value::Object(object)))
 }
 
 /// `%IteratorHelperPrototype%.next`.
@@ -314,13 +516,26 @@ fn helper_return(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     }
     if !std::mem::replace(&mut helper.done, true) {
         let (iterator, inner) = (helper.iterator.clone(), helper.inner.take());
-        // L'itérateur interne (`flatMap`, `concat`) est fermé le premier.
-        if let Some((inner_iterator, _)) = inner
-            && let Err(error) = close(vm, &inner_iterator)
-        {
-            return fail(vm, &iterator, error);
+        let zip = helper.zip.take();
+        // Une aide déjà entamée est en cours d'exécution tant qu'elle ferme
+        // ses itérateurs ; une aide jamais entamée est simplement terminée.
+        helper.running = helper.started;
+        let closed = (|| {
+            if let Some(mut state) = zip {
+                return zip_close(vm, &mut state, None);
+            }
+            // L'itérateur interne (`flatMap`, `concat`) est fermé le premier.
+            if let Some((inner_iterator, _)) = inner
+                && let Err(error) = close(vm, &inner_iterator)
+            {
+                return fail(vm, &iterator, error);
+            }
+            close(vm, &iterator)
+        })();
+        if let Some(helper) = helper_mut(vm, id) {
+            helper.running = false;
         }
-        close(vm, &iterator)?;
+        closed?;
     }
     Ok(vm.iter_result(Value::Undefined, true))
 }
@@ -354,7 +569,10 @@ fn limited(vm: &mut Vm, this: &Value, args: &[Value], kind: HelperKind, name: &s
         Ok(limit) => limit,
         Err(error) => return fail(vm, &iterator, error),
     };
-    if limit.is_nan() || limit.trunc() < 0.0 {
+    if limit.is_nan()
+        || limit.trunc() < 0.0
+        || (limit.is_finite() && limit.trunc() > 9_007_199_254_740_991.0)
+    {
         let error = vm.error(
             "RangeError",
             &format!("Iterator.prototype.{name} : limite invalide"),
@@ -375,7 +593,122 @@ fn iterator_drop(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     limited(vm, this, args, HelperKind::Drop, "drop")
 }
 
+/// `chunks` et `windows` : la taille est un entier de 1 à 2^32 - 1, sans
+/// conversion ; `windows` accepte en plus `"only-full"` ou `"allow-partial"`.
+fn sized(vm: &mut Vm, this: &Value, args: &[Value], kind: HelperKind, name: &str) -> JsResult {
+    let iterator = receiver(vm, this, name)?;
+    let size = match arg(args, 0) {
+        Value::Number(size) if size.is_finite() && size.fract() == 0.0 => size,
+        _ => {
+            let error = vm.type_error(&format!(
+                "Iterator.prototype.{name} : la taille doit être un nombre entier"
+            ));
+            return fail(vm, &iterator, error);
+        }
+    };
+    if !(1.0..=4_294_967_295.0).contains(&size) {
+        let error = vm.error(
+            "RangeError",
+            &format!("Iterator.prototype.{name} : taille hors de l'intervalle permis"),
+        );
+        return fail(vm, &iterator, error);
+    }
+    let partial = match arg(args, 1) {
+        _ if kind != HelperKind::Windows => false,
+        Value::Undefined => false,
+        Value::String(mode) if &*mode == "only-full" => false,
+        Value::String(mode) if &*mode == "allow-partial" => true,
+        _ => {
+            let error = vm.type_error(
+                "Iterator.prototype.windows : « only-full » ou « allow-partial » attendu",
+            );
+            return fail(vm, &iterator, error);
+        }
+    };
+    let next = vm.get(&iterator, "next")?;
+    let mut helper = new_helper(kind, iterator, next);
+    helper.remaining = size;
+    helper.counter = f64::from(u8::from(partial));
+    Ok(alloc_helper(vm, helper))
+}
+
+fn iterator_chunks(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    sized(vm, this, args, HelperKind::Chunks, "chunks")
+}
+
+fn iterator_windows(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    sized(vm, this, args, HelperKind::Windows, "windows")
+}
+
 // ---- Aides immédiates ----------------------------------------------------------
+
+/// `includes(valeur, sautés)` : vrai si `valeur` paraît après les `sautés`
+/// premiers éléments ; l'itérateur est alors fermé.
+fn iterator_includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let iterator = receiver(vm, this, "includes")?;
+    let to_skip = match arg(args, 1) {
+        Value::Undefined => 0.0,
+        Value::Number(count) if count.is_infinite() || count.fract() == 0.0 => count,
+        _ => {
+            let error = vm.type_error(
+                "Iterator.prototype.includes : le nombre d'éléments à sauter doit être entier",
+            );
+            return fail(vm, &iterator, error);
+        }
+    };
+    if to_skip < 0.0 || (to_skip.is_finite() && to_skip > 9_007_199_254_740_991.0) {
+        let error = vm.error(
+            "RangeError",
+            "Iterator.prototype.includes : nombre d'éléments à sauter invalide",
+        );
+        return fail(vm, &iterator, error);
+    }
+    let target = arg(args, 0);
+    let next = vm.get(&iterator, "next")?;
+    let mut skipped = 0.0;
+    loop {
+        let Some(value) = step(vm, &iterator, &next)? else {
+            return Ok(Value::Bool(false));
+        };
+        if skipped < to_skip {
+            skipped += 1.0;
+        } else if Vm::same_value_zero(&value, &target) {
+            close(vm, &iterator)?;
+            return Ok(Value::Bool(true));
+        }
+    }
+}
+
+/// `join(séparateur)` : les éléments convertis en chaînes et réunis.
+fn iterator_join(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let iterator = receiver(vm, this, "join")?;
+    let separator = match arg(args, 0) {
+        Value::Undefined => Arc::from(","),
+        other => match vm.to_string(&other) {
+            Ok(separator) => separator,
+            Err(error) => return fail(vm, &iterator, error),
+        },
+    };
+    let next = vm.get(&iterator, "next")?;
+    let mut out = String::new();
+    let mut first = true;
+    while let Some(value) = step(vm, &iterator, &next)? {
+        if !std::mem::replace(&mut first, false) {
+            out.push_str(&separator);
+        }
+        if !value.is_nullish() {
+            match vm.to_string(&value) {
+                Ok(text) => out.push_str(&text),
+                Err(error) => return fail(vm, &iterator, error),
+            }
+        }
+        if out.len() > MAX_JOINED {
+            let error = vm.error("RangeError", "chaîne trop longue");
+            return fail(vm, &iterator, error);
+        }
+    }
+    Ok(Value::string(&out))
+}
 
 /// Ce que fait une aide immédiate du résultat de sa fonction de rappel.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -546,6 +879,179 @@ fn iterator_concat(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(alloc_helper(vm, helper))
 }
 
+/// Options de `Iterator.zip` : le mode, et l'option `padding` si le mode est
+/// `"longest"` (`undefined` sinon).
+fn zip_options(vm: &mut Vm, options: &Value) -> JsResult<(ZipMode, Value)> {
+    let options = match options {
+        Value::Undefined => None,
+        Value::Object(_) => Some(options.clone()),
+        _ => return Err(vm.type_error("Iterator.zip : les options doivent être un objet")),
+    };
+    let mode = match &options {
+        Some(options) => vm.get(options, "mode")?,
+        None => Value::Undefined,
+    };
+    let mode = match &mode {
+        Value::Undefined => ZipMode::Shortest,
+        Value::String(mode) if &**mode == "shortest" => ZipMode::Shortest,
+        Value::String(mode) if &**mode == "longest" => ZipMode::Longest,
+        Value::String(mode) if &**mode == "strict" => ZipMode::Strict,
+        _ => {
+            return Err(vm.type_error(
+                "Iterator.zip : mode « shortest », « longest » ou « strict » attendu",
+            ));
+        }
+    };
+    let padding = match (&options, mode) {
+        (Some(options), ZipMode::Longest) => {
+            let padding = vm.get(options, "padding")?;
+            if padding != Value::Undefined && padding.as_object().is_none() {
+                return Err(vm.type_error("Iterator.zip : « padding » doit être un objet"));
+            }
+            padding
+        }
+        _ => Value::Undefined,
+    };
+    Ok((mode, padding))
+}
+
+/// Ferme les itérateurs déjà obtenus, puis rend `error`.
+fn zip_abort<T>(vm: &mut Vm, iters: &[(Value, Value)], error: Value) -> JsResult<T> {
+    let iterators: Vec<Value> = iters.iter().map(|(iterator, _)| iterator.clone()).collect();
+    // Avec une exception en cours, `close_all` la rend toujours.
+    match close_all(vm, &iterators, Some(error)) {
+        Err(error) => Err(error),
+        Ok(()) => Err(vm.type_error("Iterator.zip : itérateurs fermés")),
+    }
+}
+
+/// Crée l'aide de `zip` ou de `zipKeyed`.
+fn zip_helper(
+    vm: &mut Vm,
+    iters: Vec<(Value, Value)>,
+    mode: ZipMode,
+    padding: Vec<Value>,
+    keys: Option<Vec<PropertyKey>>,
+) -> Value {
+    let mut helper = new_helper(HelperKind::Zip, Value::Undefined, Value::Undefined);
+    helper.zip = Some(Box::new(ZipState {
+        open: iters
+            .iter()
+            .map(|(iterator, _)| Some(iterator.clone()))
+            .collect(),
+        iters: iters.into_iter().map(Some).collect(),
+        mode,
+        padding,
+        keys,
+    }));
+    alloc_helper(vm, helper)
+}
+
+/// `Iterator.zip(itérables, options)` : des tableaux réunissant, pas à pas,
+/// la valeur de chaque itérable.
+fn iterator_zip(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let iterables = arg(args, 0);
+    if iterables.as_object().is_none() {
+        return Err(vm.type_error("Iterator.zip : un objet itérable est attendu"));
+    }
+    let (mode, padding_option) = zip_options(vm, &arg(args, 1))?;
+    let (input, input_next) = get_iterator(vm, &iterables)?;
+    let mut iters: Vec<(Value, Value)> = Vec::new();
+    loop {
+        let item = match step(vm, &input, &input_next) {
+            Ok(Some(item)) => item,
+            Ok(None) => break,
+            Err(error) => return zip_abort(vm, &iters, error),
+        };
+        match flattenable(vm, &item, false) {
+            Ok(pair) => iters.push(pair),
+            Err(error) => {
+                // L'itérateur des itérables est fermé le dernier.
+                let mut all = vec![(input, input_next)];
+                all.extend(iters);
+                return zip_abort(vm, &all, error);
+            }
+        }
+    }
+    let mut padding = Vec::new();
+    if mode == ZipMode::Longest {
+        if padding_option == Value::Undefined {
+            padding = vec![Value::Undefined; iters.len()];
+        } else {
+            let (source, source_next) = match get_iterator(vm, &padding_option) {
+                Ok(pair) => pair,
+                Err(error) => return zip_abort(vm, &iters, error),
+            };
+            let mut using = true;
+            for _ in 0..iters.len() {
+                if using {
+                    match step(vm, &source, &source_next) {
+                        Ok(Some(value)) => padding.push(value),
+                        Ok(None) => using = false,
+                        Err(error) => return zip_abort(vm, &iters, error),
+                    }
+                }
+                if !using {
+                    padding.push(Value::Undefined);
+                }
+            }
+            if using && let Err(error) = close(vm, &source) {
+                return zip_abort(vm, &iters, error);
+            }
+        }
+    }
+    Ok(zip_helper(vm, iters, mode, padding, None))
+}
+
+/// `Iterator.zipKeyed(itérables, options)` : comme `zip`, pour un objet
+/// dont chaque propriété énumérable est un itérable ; les résultats sont
+/// des objets aux mêmes clés.
+fn iterator_zip_keyed(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let iterables = arg(args, 0);
+    let Some(id) = iterables.as_object() else {
+        return Err(vm.type_error("Iterator.zipKeyed : un objet est attendu"));
+    };
+    let (mode, padding_option) = zip_options(vm, &arg(args, 1))?;
+    let all_keys = vm.own_property_keys(id)?;
+    let mut keys = Vec::new();
+    let mut iters: Vec<(Value, Value)> = Vec::new();
+    for key in all_keys {
+        let descriptor = match vm.get_own_property(id, &key) {
+            Ok(descriptor) => descriptor,
+            Err(error) => return zip_abort(vm, &iters, error),
+        };
+        if !descriptor.is_some_and(|d| d.enumerable == Some(true)) {
+            continue;
+        }
+        let value = match vm.get_key(&iterables, &key) {
+            Ok(value) => value,
+            Err(error) => return zip_abort(vm, &iters, error),
+        };
+        if value == Value::Undefined {
+            continue;
+        }
+        keys.push(key);
+        match flattenable(vm, &value, false) {
+            Ok(pair) => iters.push(pair),
+            Err(error) => return zip_abort(vm, &iters, error),
+        }
+    }
+    let mut padding = Vec::new();
+    if mode == ZipMode::Longest {
+        for key in &keys {
+            if padding_option == Value::Undefined {
+                padding.push(Value::Undefined);
+                continue;
+            }
+            match vm.get_key(&padding_option, key) {
+                Ok(value) => padding.push(value),
+                Err(error) => return zip_abort(vm, &iters, error),
+            }
+        }
+    }
+    Ok(zip_helper(vm, iters, mode, padding, Some(keys)))
+}
+
 // ---- Accesseurs de `Iterator.prototype` -------------------------------------------
 
 fn tag_getter(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
@@ -612,6 +1118,8 @@ pub(super) fn install(vm: &mut Vm) {
     vm.define_hidden(vm.global, "Iterator", Value::Object(ctor));
     vm.define_method(ctor, "from", 1, iterator_from);
     vm.define_method(ctor, "concat", 0, iterator_concat);
+    vm.define_method(ctor, "zip", 1, iterator_zip);
+    vm.define_method(ctor, "zipKeyed", 1, iterator_zip_keyed);
 
     let methods: &[(&str, u32, NativeFn)] = &[
         ("map", 1, iterator_map),
@@ -625,6 +1133,10 @@ pub(super) fn install(vm: &mut Vm) {
         ("some", 1, iterator_some),
         ("every", 1, iterator_every),
         ("find", 1, iterator_find),
+        ("includes", 1, iterator_includes),
+        ("join", 1, iterator_join),
+        ("chunks", 1, iterator_chunks),
+        ("windows", 1, iterator_windows),
     ];
     for (name, arity, func) in methods {
         vm.define_method(root, name, *arity, *func);

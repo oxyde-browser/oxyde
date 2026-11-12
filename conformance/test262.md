@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 42546 réussis sur 48795 (87.2 %).**
+**Total : 42756 réussis sur 48795 (87.6 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -33,7 +33,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/GeneratorFunction` | 23 | 22 | 95.7 % |
 | `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
 | `built-ins/Infinity` | 6 | 6 | 100.0 % |
-| `built-ins/Iterator` | 684 | 465 | 68.0 % |
+| `built-ins/Iterator` | 684 | 675 | 98.7 % |
 | `built-ins/JSON` | 166 | 161 | 97.0 % |
 | `built-ins/Map` | 204 | 199 | 97.5 % |
 | `built-ins/MapIteratorPrototype` | 11 | 9 | 81.8 % |
