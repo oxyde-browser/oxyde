@@ -33,11 +33,18 @@ cargo run -p oxyde -- --dump-dom tests/pages/demo.html
 
 | Raccourci | Action |
 |---|---|
-| Ctrl L, Ctrl K | saisir une adresse ou une recherche |
+| Ctrl L | saisir une adresse ou une recherche |
+| Ctrl K | palette de commandes : onglets, historique, favoris, commandes |
+| Ctrl F | chercher dans la page ; Entrée et Maj Entrée parcourent les occurrences |
 | Ctrl V, Ctrl A | coller, tout sélectionner (pendant la saisie) |
 | Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
 | Ctrl Maj T | rouvrir le dernier onglet fermé |
 | Ctrl Maj P | épingler ou désépingler l'onglet |
+| Ctrl D | ajouter la page aux favoris, ou l'en retirer |
+| Ctrl H / Ctrl Maj O | ouvrir l'historique / les favoris |
+| Ctrl , | ouvrir les paramètres |
+| Ctrl Maj S | scinder la vue, ou la réunir |
+| Ctrl Maj N | nouvelle fenêtre de navigation privée |
 | Ctrl Tab | onglet suivant |
 | Ctrl R, F5 | actualiser |
 | Alt ← / Alt → | page précédente / suivante |
@@ -59,7 +66,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | Crate | Rôle | Équivalent Chromium | État |
 |---|---|---|---|
 | `oxyde` | exécutable : fenêtre, onglets, espaces, chargements, accessibilité | `chrome/` | fonctionne, mono-processus |
-| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur |
+| `oxyde_ui` | interface dessinée d'après la maquette | Views | écrans Fenêtre principale, Nouvel onglet, Pages d'erreur, Historique, Favoris, Paramètres, Palette de commandes, Navigation privée, Premier lancement, Onglets horizontaux |
 | `oxyde_content` | page : du HTML à la liste d'affichage, décodage d'images, DOM exposé aux scripts | `content/renderer` | fonctionne |
 | `oxyde_net` | HTTP/1.1, HTTP/2, TLS | `//net`, BoringSSL | GET, redirections ; voir limites |
 | `oxyde_html` | tokenizer + construction d'arbre WHATWG | analyseur HTML de Blink | l'essentiel du standard |
@@ -69,15 +76,16 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_text` | polices, mise en forme, coupure de lignes | HarfBuzz, ICU | via Parley / HarfRust / ICU4X |
 | `oxyde_paint` | liste d'affichage | paint de Blink | rectangles, bordures, texte, images |
 | `oxyde_gpu` | rastérisation | Skia, Dawn | Vello sur wgpu |
-| `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes, modules, expressions rationnelles | V8 (Ignition, Irregexp) | 83,5 % de test262 ; voir limites |
+| `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes, modules, expressions rationnelles | V8 (Ignition, Irregexp) | 98,6 % de test262 ; voir limites |
 | `oxyde_bindings` | générateur de liaisons Web IDL : analyse des fichiers `.webidl`, table des interfaces du DOM | bindings de Blink | interfaces générées ; corps des opérations encore écrits à la main |
 | `oxyde_test262` | lanceur de la suite de conformité ECMAScript | `test262` de V8 | fonctionne |
 | `oxyde_wpt` | lanceur des Web Platform Tests (`testharness.js`) | `wptrunner` | fonctionne pour `dom/` |
-| `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
-| `oxyde_sandbox` | bac à sable Windows | `//sandbox/win` | **réservé — jalon 5** |
+| `oxyde_ipc` | messages typés entre processus : codec binaire, trames, canal vers un processus enfant | Mojo | fonctionne — pas encore de mémoire partagée |
+| `oxyde_sandbox` | bac à sable Windows des processus de rendu : jeton restreint, intégrité basse, objet de travail | `//sandbox/win` | fonctionne — pas encore d'`AppContainer` |
+| `oxyde_storage` | profil sur disque : session, historique, favoris, réglages | `//components/sessions`, `history`, `bookmarks`, `prefs` | fonctionne — fichiers texte, sans verrou ni chiffrement |
 | `oxyde_compositor` | arbre de défilement : décalages appliqués à la composition, molette | cc, Viz | fonctionne — calques et animations hors du fil principal à faire |
 | `oxyde_bench` | bancs d'essai et rapport publié | Telemetry, perf bots | fonctionne |
-| `oxyde_platform` | abstraction du système | `//ui/base`, `//base` | **réservé — jalon 10** |
+| `oxyde_platform` | abstraction du système : heure locale | `//ui/base`, `//base` | heure locale sous Windows ; le reste au jalon 10 |
 
 ## Avertissements
 
@@ -92,7 +100,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   `click`, poser des minuteurs, appeler `fetch` (`GET` seulement) et charger des modules
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
-  pas encore. Conformité mesurée : 83,5 % de test262
+  pas encore. Conformité mesurée : 98,6 % de test262
   ([conformance/test262.md](conformance/test262.md)) ; 96,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
   dossier `dom/` des Web Platform Tests, 286 fichiers de test entièrement réussis sur 693 (41,3 %)
@@ -101,8 +109,12 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en
   permanence après quelques images présentées. Le code d'Oxyde, lui, dort entre deux
   événements ; cause exacte non élucidée.
-- **Rien n'est conservé d'une session à l'autre** : onglets épinglés, espaces et onglets fermés
-  sont perdus à la fermeture (persistance prévue au jalon 7).
+- **Profil** : les onglets (épinglés, espaces, onglets fermés), l'historique et les favoris sont
+  conservés dans `%LOCALAPPDATA%\Oxyde\Profil` (`--profile DOSSIER` pour un autre dossier,
+  `--no-profile` pour ne rien conserver). Au retour, seul l'onglet affiché est rechargé ; les
+  autres attendent d'être ouverts. Les favoris n'ont ni dossiers ni import ; les cookies, eux,
+  vivent toujours en mémoire. Deux fenêtres sur le même profil s'écrasent l'une
+  l'autre.
 
 Les écarts connus par rapport aux standards sont listés dans [conformance/README.md](conformance/README.md)
 et en tête de chaque crate (« LIMITES CONNUES »).

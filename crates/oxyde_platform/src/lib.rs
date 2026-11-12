@@ -1,5 +1,14 @@
-//! Abstraction du système d'exploitation (fenêtres, presse-papiers, magasin de secrets).
+//! Abstraction du système d'exploitation.
 //!
-//! Tout ce qui dépend du système passera par les traits de ce crate, afin que les portages Linux, macOS, Android et iOS/iPadOS (jalon 10) n'aient pas à toucher au reste du navigateur. Pour l'instant, la fenêtre est gérée directement par `winit` dans le crate `oxyde`.
+//! Tout ce qui dépend du système passera par ce crate, afin que les portages
+//! Linux, macOS, Android et iOS/iPadOS (jalon 10) n'aient pas à toucher au
+//! reste du navigateur. Pour l'instant il ne porte que l'heure locale ; la
+//! fenêtre est gérée directement par `winit` dans le crate `oxyde`.
 //!
-//! Ce crate est un emplacement réservé : il ne contient encore aucun code.
+//! LIMITES CONNUES : hors de Windows, l'heure locale est l'heure UTC.
+
+mod time;
+#[cfg(windows)]
+mod windows;
+
+pub use time::{CivilTime, local_time, utc_time};

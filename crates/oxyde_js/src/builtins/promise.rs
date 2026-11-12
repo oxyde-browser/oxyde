@@ -37,6 +37,9 @@ pub(crate) enum Job {
         promise: ObjId,
         specifier: JsStr,
         referrer: JsStr,
+        /// Phase : 1 `import.source(…)`, chargement seul puis rejet ; 2
+        /// `import.defer(…)`, espace de noms différé.
+        source: u8,
     },
 }
 
@@ -278,6 +281,7 @@ impl Vm {
         if !self.at_top_level() {
             return;
         }
+        self.settle_async_waits();
         while let Some(job) = self.jobs.pop_front() {
             if self.is_interrupted() {
                 // Budget épuisé : plus rien ne peut s'exécuter.
@@ -320,7 +324,8 @@ impl Vm {
                 promise,
                 specifier,
                 referrer,
-            } => self.run_import(promise, &specifier, &referrer),
+                source,
+            } => self.run_import(promise, &specifier, &referrer, source),
             Job::Reaction {
                 handler,
                 argument,

@@ -13,6 +13,7 @@ oxyde_bindings.workspace = true
 oxyde_css.workspace = true
 oxyde_dom.workspace = true
 oxyde_html.workspace = true
+oxyde_ipc.workspace = true
 oxyde_js.workspace = true
 oxyde_layout.workspace = true
 oxyde_compositor.workspace = true

@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+icu_properties = "2.4"
 indexmap = "2"
 unicode-ident = "1"
 

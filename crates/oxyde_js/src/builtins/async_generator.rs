@@ -368,7 +368,10 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(proto, name, *arity, *func);
     }
     let known = vm.well_known.clone();
+    // `%AsyncIteratorPrototype%` : dont hérite celui des générateurs async.
+    let async_root = vm.new_object();
+    vm.heap.get_mut(proto).proto = Some(async_root);
     let this_fn = vm.new_function("[Symbol.asyncIterator]", 0, async_iterator_self);
-    vm.define_hidden_symbol(proto, &known.async_iterator, Value::Object(this_fn));
+    vm.define_hidden_symbol(async_root, &known.async_iterator, Value::Object(this_fn));
     vm.define_hidden_symbol(proto, &known.to_string_tag, Value::string("AsyncGenerator"));
 }

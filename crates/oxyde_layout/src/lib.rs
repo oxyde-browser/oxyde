@@ -17,10 +17,13 @@
 //! - une hauteur en pourcentage n'est résolue que si la hauteur du bloc
 //!   conteneur est imposée (sinon elle vaut `auto`).
 
+mod find;
 mod flex;
 mod floats;
 mod grid;
 mod table;
+
+pub use find::{MAX_MATCHES, find_text};
 
 use std::sync::Arc;
 
@@ -88,6 +91,9 @@ pub struct TextFragment {
     pub y: f32,
     /// Lignes coupées et alignées.
     pub layout: TextLayout,
+    /// Texte mis en forme, dans les indices d'octets de `layout` ; vide pour
+    /// un texte qui n'appartient pas au document (puce de liste).
+    pub text: String,
     /// Boîtes en ligne-bloc placées dans ce texte.
     pub boxes: Vec<Fragment>,
 }
@@ -1500,6 +1506,7 @@ impl Engine<'_> {
             x: marker_x,
             y,
             layout,
+            text: String::new(),
             boxes: Vec::new(),
         })))
     }
@@ -1619,13 +1626,17 @@ impl Engine<'_> {
             .text
             .layouts
             .tree_builder(&mut self.text.fonts, 1.0, true, &root);
+        let mut source = String::new();
         for (item, family) in items.iter().zip(&families) {
             match item {
                 InlineItem::Start { style, node } => {
                     builder.push_style_span(text_style(style, family, brush(style, *node, true)));
                 }
                 InlineItem::End => builder.pop_style_span(),
-                InlineItem::Text(text) => builder.push_text(text),
+                InlineItem::Text(text) => {
+                    source.push_str(text);
+                    builder.push_text(text);
+                }
                 InlineItem::Anchor(index) => builder.push_inline_box(InlineBox {
                     id: ANCHOR_BASE + *index as u64,
                     kind: InlineBoxKind::InFlow,
@@ -1699,6 +1710,7 @@ impl Engine<'_> {
             x,
             y,
             layout,
+            text: source,
             boxes,
         }
     }

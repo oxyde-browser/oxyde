@@ -319,6 +319,9 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_get_own_property(id, key);
         }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
+        }
         // Objet hôte : une clé que l'hôte annonce est une propriété propre,
         // en lecture seule, dont il sert la valeur.
         if let PropertyKey::String(name) = key
@@ -389,9 +392,14 @@ impl Vm {
                 }
                 Kind::TypedArray(_) => {
                     if let Some(index) = canonical_numeric_index(name) {
-                        return index
-                            .and_then(|i| self.typed_get(id, i))
-                            .map(Descriptor::plain);
+                        let immutable = self.typed_immutable(id);
+                        return index.and_then(|i| self.typed_get(id, i)).map(|value| {
+                            if immutable {
+                                Descriptor::data(value, false, true, false)
+                            } else {
+                                Descriptor::plain(value)
+                            }
+                        });
                     }
                 }
                 Kind::Closure(c) => {
@@ -425,6 +433,9 @@ impl Vm {
     ) -> JsResult<bool> {
         if self.is_proxy(id) {
             return self.proxy_define_own_property(id, key, desc);
+        }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
         }
         if let PropertyKey::String(name) = key
             && let Some(cell) = self.mapped_argument(id, name)
@@ -651,6 +662,19 @@ impl Vm {
         desc: &Descriptor,
     ) -> JsResult<bool> {
         let valid = index.is_some_and(|i| self.typed_length(id).is_some_and(|len| i < len));
+        if valid && self.typed_immutable(id) {
+            // Élément figé : seule une redéfinition à l'identique passe.
+            let current = index.and_then(|i| self.typed_get(id, i));
+            let same = match (&desc.value, &current) {
+                (Some(wanted), Some(current)) => same_value(wanted, current),
+                _ => true,
+            };
+            return Ok(same
+                && desc.configurable != Some(true)
+                && desc.enumerable != Some(false)
+                && !desc.is_accessor()
+                && desc.writable != Some(true));
+        }
         if !valid
             || desc.configurable == Some(false)
             || desc.enumerable == Some(false)
@@ -669,11 +693,21 @@ impl Vm {
 
     /// `[[HasProperty]]` : propriété propre ou héritée.
     pub(crate) fn has_property_op(&mut self, id: ObjId, key: &PropertyKey) -> JsResult<bool> {
+        if let PropertyKey::Symbol(symbol) = key
+            && symbol.is_private()
+        {
+            // Un membre privé appartient à l'objet lui-même et ne passe par
+            // aucune trappe.
+            return Ok(self.heap.get(id).symbols.contains_key(symbol));
+        }
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
             if self.is_proxy(obj) {
                 return self.proxy_has(obj, key);
+            }
+            if let PropertyKey::String(name) = key {
+                self.touch_deferred(obj, Some(name))?;
             }
             if let PropertyKey::String(name) = key
                 && matches!(self.heap.get(obj).kind, Kind::TypedArray(_))
@@ -715,6 +749,10 @@ impl Vm {
         let mut current = Some(id);
         for _ in 0..10_000 {
             let Some(obj) = current else { break };
+            // Un espace de noms différé refuse l'écriture sans rien évaluer.
+            if !self.deferred_namespaces.is_empty() && self.deferred_namespaces.contains_key(&obj) {
+                return Ok(false);
+            }
             match &self.heap.get(obj).kind {
                 Kind::Proxy(_) => return self.proxy_set(obj, key, value, receiver),
                 Kind::TypedArray(_) => {
@@ -722,6 +760,9 @@ impl Vm {
                         && let Some(index) = canonical_numeric_index(name)
                     {
                         if receiver.as_object() == Some(obj) {
+                            if self.typed_immutable(obj) {
+                                return Ok(false);
+                            }
                             self.typed_store(obj, index, &value)?;
                             return Ok(true);
                         }
@@ -778,6 +819,9 @@ impl Vm {
     pub(crate) fn delete_property(&mut self, id: ObjId, key: &PropertyKey) -> JsResult<bool> {
         if self.is_proxy(id) {
             return self.proxy_delete(id, key);
+        }
+        if let PropertyKey::String(name) = key {
+            self.touch_deferred(id, Some(name))?;
         }
         let name = match key {
             PropertyKey::String(name) => name,
@@ -844,6 +888,15 @@ impl Vm {
             Some(property) if !property.configurable => false,
             Some(_) => {
                 object.props.shift_remove(&**name);
+                // Le nom ou la longueur d'une fermeture, une fois redéfinis
+                // puis supprimés, ne reparaissent pas sous leur forme d'origine.
+                if matches!(object.kind, Kind::Closure(_)) {
+                    match &**name {
+                        "name" => object.deleted_virtual |= DELETED_NAME,
+                        "length" => object.deleted_virtual |= DELETED_LENGTH,
+                        _ => {}
+                    }
+                }
                 true
             }
             None => true,
@@ -858,6 +911,7 @@ impl Vm {
         if self.is_proxy(id) {
             return self.proxy_own_keys(id);
         }
+        self.touch_deferred(id, None)?;
         let own = self.ordinary_own_keys(id);
         // Objet hôte : les clés que l'hôte ajoute viennent en tête.
         if let Kind::Host { class, data } = &self.heap.get(id).kind {
@@ -924,6 +978,7 @@ impl Vm {
     /// `for…in`), dans l'ordre de `[[OwnPropertyKeys]]`.
     pub(crate) fn enumerable_own_keys(&mut self, id: ObjId) -> JsResult<Vec<JsStr>> {
         if !self.is_proxy(id) {
+            self.touch_deferred(id, None)?;
             return Ok(self.own_keys(id, true));
         }
         let mut keys = Vec::new();

@@ -16,11 +16,15 @@ oxyde_html = { path = "crates/oxyde_html" }
 oxyde_css = { path = "crates/oxyde_css" }
 oxyde_layout = { path = "crates/oxyde_layout" }
 oxyde_compositor = { path = "crates/oxyde_compositor" }
+oxyde_ipc = { path = "crates/oxyde_ipc" }
+oxyde_sandbox = { path = "crates/oxyde_sandbox" }
 oxyde_paint = { path = "crates/oxyde_paint" }
 oxyde_text = { path = "crates/oxyde_text" }
 oxyde_net = { path = "crates/oxyde_net" }
 oxyde_gpu = { path = "crates/oxyde_gpu" }
 oxyde_ui = { path = "crates/oxyde_ui" }
+oxyde_storage = { path = "crates/oxyde_storage" }
+oxyde_platform = { path = "crates/oxyde_platform" }
 oxyde_content = { path = "crates/oxyde_content" }
 oxyde_js = { path = "crates/oxyde_js" }
 oxyde_bindings = { path = "crates/oxyde_bindings" }

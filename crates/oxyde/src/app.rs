@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use oxyde_content::Url;
 use oxyde_gpu::{Gpu, GpuScene, Surface};
+use oxyde_storage::{Profile, Session};
 use oxyde_text::TextContext;
 use oxyde_ui::{Chrome, Hit, theme};
 use winit::application::ApplicationHandler;
@@ -40,6 +41,9 @@ pub(crate) enum UserEvent {
         loaded: Box<Loaded>,
         push_history: bool,
     },
+    /// Un processus de rendu a quelque chose à dire : la boucle se réveille
+    /// et le lit avant de se rendormir.
+    Renderer,
     /// Réponse à une requête `fetch` d'un script.
     Fetched {
         tab: u64,
@@ -60,6 +64,8 @@ struct App {
     text: TextContext,
     browser: Browser,
     proxy: EventLoopProxy<UserEvent>,
+    /// Vrai si les pages du web vont chacune dans un processus de rendu.
+    multi_process: bool,
     window: Option<Arc<Window>>,
     surface: Option<Surface>,
     accessibility: Option<accesskit_winit::Adapter>,
@@ -74,7 +80,17 @@ struct App {
     last_title_click: Option<Instant>,
     /// Première erreur fatale rencontrée dans la boucle d'événements.
     error: Option<anyhow::Error>,
+    /// Profil où le navigateur range sa session, son historique et ses
+    /// favoris ; `None` : rien n'est conservé.
+    profile: Option<Profile>,
+    /// Dernière session écrite sur disque.
+    saved_session: Session,
+    /// Dernier passage de [`App::persist`].
+    last_persist: Instant,
 }
+
+/// Intervalle minimal entre deux écritures du profil.
+const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Texte du presse-papiers, borné ; `None` s'il est vide ou inaccessible.
 fn clipboard_text() -> Option<String> {
@@ -85,6 +101,63 @@ fn clipboard_text() -> Option<String> {
 }
 
 impl App {
+    /// Lance un second navigateur en navigation privée. C'est un autre
+    /// processus, avec son propre processus réseau : ses cookies, gardés en
+    /// mémoire, ne se mêlent pas à ceux de cette fenêtre et disparaissent
+    /// avec lui.
+    fn spawn_private_window(&self) -> std::io::Result<()> {
+        let mut command = std::process::Command::new(std::env::current_exe()?);
+        command.arg("--private");
+        match &self.profile {
+            Some(profile) => command.arg("--profile").arg(profile.dir()),
+            None => command.arg("--no-profile"),
+        };
+        if !self.multi_process {
+            command.arg("--single-process");
+        }
+        command.spawn().map(drop)
+    }
+
+    /// Écrit dans le profil ce qui a changé depuis la dernière fois.
+    /// `force` : sans attendre l'intervalle (à la fermeture).
+    fn persist(&mut self, force: bool) {
+        let Some(profile) = &self.profile else {
+            return;
+        };
+        let now = Instant::now();
+        if !force && now.duration_since(self.last_persist) < PERSIST_INTERVAL {
+            return;
+        }
+        self.last_persist = now;
+        // Une fenêtre privée ne laisse au profil que ses favoris, ajoutés à
+        // ceux qu'une autre fenêtre a pu écrire entre-temps.
+        if self.browser.is_private() {
+            if let Err(error) = profile.merge_bookmarks(&mut self.browser.bookmarks) {
+                eprintln!(
+                    "favoris non enregistrés ({}) : {error}",
+                    profile.dir().display()
+                );
+            }
+            return;
+        }
+        let session = self.browser.session();
+        let mut result = Ok(());
+        if session != self.saved_session {
+            result = profile.save_session(&session);
+            self.saved_session = session;
+        }
+        let result = result
+            .and_then(|()| profile.save_history(&mut self.browser.history))
+            .and_then(|()| profile.save_bookmarks(&mut self.browser.bookmarks))
+            .and_then(|()| profile.save_settings(&mut self.browser.settings));
+        if let Err(error) = result {
+            eprintln!(
+                "profil non enregistré ({}) : {error}",
+                profile.dir().display()
+            );
+        }
+    }
+
     fn request_redraw(&self) {
         if let Some(window) = &self.window {
             window.request_redraw();
@@ -149,6 +222,15 @@ impl App {
                     }
                 }
                 Command::CloseWindow => event_loop.exit(),
+                Command::PrivateWindow => {
+                    if let Err(error) = self.spawn_private_window() {
+                        eprintln!("fenêtre privée non ouverte : {error}");
+                    }
+                }
+                Command::ImportBookmarks(file) => {
+                    let found = crate::import_bookmarks(&file);
+                    self.browser.finish_import(&found);
+                }
                 Command::NetworkDiagnostics => {
                     // Ouvre le dépannage réseau des Paramètres de Windows. Un
                     // échec de lancement est sans conséquence pour le navigateur.
@@ -164,14 +246,28 @@ impl App {
         self.request_redraw();
     }
 
-    /// Charge `url` sur un fil dédié : l'interface reste réactive.
+    /// Charge `url` : dans un processus de rendu pour une page du web, sinon
+    /// sur un fil dédié. Dans les deux cas l'interface reste réactive.
     fn spawn_load(
-        &self,
+        &mut self,
         tab: u64,
         url: Url,
         push_history: bool,
         post: Option<oxyde_content::FormPost>,
     ) {
+        if self.multi_process && crate::renderer::host::is_remote(&url) {
+            let proxy = self.proxy.clone();
+            let wake = move || {
+                // La boucle d'événements peut s'être arrêtée entre-temps.
+                let _ = proxy.send_event(UserEvent::Renderer);
+            };
+            if self
+                .browser
+                .load_remote(tab, &url, post.as_ref(), push_history, wake)
+            {
+                return;
+            }
+        }
         let proxy = self.proxy.clone();
         let failed_url = url.clone();
         let spawned = std::thread::Builder::new()
@@ -232,6 +328,7 @@ impl App {
         if size.width <= 0.0 || size.height <= 0.0 {
             return Ok(());
         }
+        let found = self.browser.find_status();
         self.chrome = frame::compose(
             &mut self.browser,
             &mut self.text,
@@ -240,6 +337,24 @@ impl App {
             size.height,
             scale,
         );
+        // La mise en page de cette image a changé le compte des occurrences
+        // cherchées : la barre, dessinée avant, le dira à l'image suivante.
+        if self.browser.find_status() != found {
+            window.request_redraw();
+        }
+        // Les paramètres viennent de sauter à une rubrique : le défilement
+        // retenu par l'interface devient celui du navigateur.
+        if let Some(scroll) = self.chrome.settings_scroll {
+            self.browser.settle_settings_scroll(scroll);
+        }
+        // Une liste raccourcie (ligne retirée, fenêtre agrandie) peut laisser le
+        // défilement trop loin : il revient dans ses bornes à l'image suivante.
+        if self
+            .browser
+            .scroll_library(0.0, self.chrome.library_scroll_max)
+        {
+            window.request_redraw();
+        }
         self.gpu.render(surface, &self.scene, theme::WINDOW)?;
         // La liste a pu raccourcir (onglet fermé, fenêtre agrandie) : le défilement suit.
         self.browser.tab_scroll = self
@@ -272,10 +387,11 @@ impl App {
         } else {
             match hit {
                 Some(Hit::Pane(tab)) => {
-                    let over_link = self
-                        .page_point(tab)
-                        .and_then(|(x, y)| self.browser.tab(tab)?.page.link_at(x, y))
-                        .is_some();
+                    let over_link = self.page_point(tab).is_some_and(|(x, y)| {
+                        self.browser
+                            .tab(tab)
+                            .is_some_and(|tab| tab.page.over_link(x, y))
+                    });
                     if over_link {
                         CursorIcon::Pointer
                     } else {
@@ -345,11 +461,15 @@ impl App {
         let alt = self.modifiers.alt_key();
         let shift = self.modifiers.shift_key();
         let press = match key {
+            Key::Named(NamedKey::Enter) if shift => Some(KeyPress::ShiftEnter),
             Key::Named(NamedKey::Enter) => Some(KeyPress::Enter),
             Key::Named(NamedKey::Escape) => Some(KeyPress::Escape),
             Key::Named(NamedKey::Backspace) => Some(KeyPress::Backspace),
             Key::Named(NamedKey::F5) => Some(KeyPress::F5),
             Key::Named(NamedKey::Tab) if ctrl => Some(KeyPress::CtrlTab),
+            Key::Named(NamedKey::Tab) => Some(KeyPress::Tab),
+            Key::Named(NamedKey::ArrowUp) => Some(KeyPress::Up),
+            Key::Named(NamedKey::ArrowDown) => Some(KeyPress::Down),
             Key::Named(NamedKey::ArrowLeft) if alt => Some(KeyPress::AltLeft),
             Key::Named(NamedKey::ArrowRight) if alt => Some(KeyPress::AltRight),
             Key::Named(NamedKey::ArrowLeft) => Some(KeyPress::Left),
@@ -421,6 +541,11 @@ impl ApplicationHandler<UserEvent> for App {
             Err(e) => return self.fail(event_loop, e.into()),
         }
         self.window = Some(window);
+        // Les onglets ouverts au démarrage attendent leur page.
+        let commands = self.browser.initial_loads();
+        if !commands.is_empty() {
+            self.execute(event_loop, commands);
+        }
     }
 
     /// Avant de s'endormir : exécute les minuteurs des pages et programme le
@@ -434,16 +559,23 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
-        // Navigations demandées par les scripts depuis le dernier passage.
-        let navigations = self.browser.drain_navigations();
+        // Navigations demandées par les scripts depuis le dernier passage, et
+        // onglets d'une session reprise qui viennent d'apparaître.
+        let mut navigations = self.browser.drain_navigations();
+        navigations.extend(self.browser.wake_visible());
         if !navigations.is_empty() {
             self.execute(event_loop, navigations);
         }
+        self.persist(false);
         event_loop.set_control_flow(match self.browser.next_wake() {
             // Jamais plus tôt que dans 4 ms : un minuteur en boucle ne monopolise pas le fil.
             Some(wake) => ControlFlow::WaitUntil(wake.max(now + MIN_TIMER_SLEEP)),
             None => ControlFlow::Wait,
         });
+    }
+
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.persist(true);
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
@@ -456,6 +588,9 @@ impl ApplicationHandler<UserEvent> for App {
                 self.browser.finish_load(tab, *loaded, push_history);
                 self.execute(event_loop, Vec::new());
             }
+            // Rien à faire ici : `about_to_wait` lit les messages des
+            // processus de rendu avant que la boucle ne se rendorme.
+            UserEvent::Renderer => {}
             UserEvent::Fetched { tab, id, result } => {
                 if self.browser.complete_fetch(tab, id, *result) {
                     if let Some(window) = &self.window {
@@ -545,8 +680,22 @@ impl ApplicationHandler<UserEvent> for App {
                 let Some((x, y)) = self.cursor_logical() else {
                     return;
                 };
+                // La palette est posée sur les pages : la molette ne les atteint pas.
+                if self.browser.palette_open() {
+                    return;
+                }
+                // La bibliothèque occupe la fenêtre : la molette fait défiler sa liste.
+                if self.browser.library_open() {
+                    if self
+                        .browser
+                        .scroll_library(-dy, self.chrome.library_scroll_max)
+                    {
+                        self.request_redraw();
+                    }
+                    return;
+                }
                 // Au-dessus de la barre latérale, la molette fait défiler la liste d'onglets.
-                if x < theme::SIDEBAR + 8.0 && y > theme::TITLE_BAR {
+                if !self.browser.horizontal() && x < theme::SIDEBAR + 8.0 && y > theme::TITLE_BAR {
                     let max = self.chrome.tab_scroll_max;
                     let target = (self.browser.tab_scroll - dy).clamp(0.0, max);
                     if (target - self.browser.tab_scroll).abs() > f32::EPSILON {
@@ -587,7 +736,10 @@ impl ApplicationHandler<UserEvent> for App {
 }
 
 /// Ouvre la fenêtre sur `browser` et fait tourner la boucle d'événements.
-pub(crate) fn run(browser: Browser) -> Result<()> {
+/// `multi_process` : les pages du web sont chargées chacune dans un
+/// processus de rendu. `profile` : où conserver la session, l'historique et
+/// les favoris.
+pub(crate) fn run(browser: Browser, multi_process: bool, profile: Option<Profile>) -> Result<()> {
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let mut app = App {
         gpu: Gpu::new(),
@@ -604,6 +756,12 @@ pub(crate) fn run(browser: Browser) -> Result<()> {
         pressed: None,
         last_title_click: None,
         error: None,
+        multi_process,
+        // La session du disque est celle dont le navigateur vient de renaître,
+        // ou une autre : dans le doute, la première comparaison l'écrira.
+        saved_session: Session::default(),
+        last_persist: Instant::now(),
+        profile,
     };
     event_loop.run_app(&mut app)?;
     app.error.map_or(Ok(()), Err)

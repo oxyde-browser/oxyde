@@ -42,6 +42,7 @@ pub(crate) fn tree_update(chrome: &Chrome, scale: f64, title: &str, editing: boo
             UiRole::Document => Role::Document,
             UiRole::Heading => Role::Heading,
             UiRole::Text => Role::Label,
+            UiRole::Switch => Role::Switch,
         });
         node.set_label(widget.label.as_str());
         let r = widget.rect;

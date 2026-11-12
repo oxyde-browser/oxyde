@@ -149,6 +149,9 @@ struct Parser {
     no_return: bool,
     /// Vrai pendant l'analyse de paramètres : `yield` et `await` y sont interdits.
     in_params: bool,
+    /// Vrai là où une déclaration `using` est interdite : au premier niveau
+    /// d'un script et directement dans une clause de `switch`.
+    no_using: bool,
     /// Étiquettes des instructions englobantes de la fonction courante.
     labels: Vec<Arc<str>>,
     /// Corps de classes en cours d'analyse, du plus externe au plus interne.
@@ -251,6 +254,23 @@ pub(crate) fn parse_module(source: &str) -> PResult<(Vec<Stmt>, ModuleInfo)> {
         parser.module_item(&mut body, &mut info)?;
     }
     info.has_top_level_await = parser.top_level_await;
+    // Un nom exporté par `export { x }` doit être déclaré dans le module.
+    let mut declared: Vec<Arc<str>> = Vec::new();
+    crate::compiler::var_names(&body, &mut declared);
+    crate::compiler::lexical_names(&body, &mut declared);
+    for stmt in &body {
+        if let Stmt::Function(func) = stmt {
+            declared.extend(func.name.clone());
+        }
+    }
+    declared.extend(info.imports.iter().map(|import| Arc::clone(&import.local)));
+    for (_, local) in &info.local_exports {
+        if !declared.contains(local) {
+            return Err(parser
+                .lexer
+                .error_at(0, format!("« {local} » est exporté sans être déclaré")));
+        }
+    }
     Ok((body, info))
 }
 
@@ -327,6 +347,7 @@ impl Parser {
             in_static_block: false,
             no_return: false,
             in_params: false,
+            no_using: !module,
             labels: Vec::new(),
             private_scopes: Vec::new(),
             cover_init: None,
@@ -390,11 +411,45 @@ impl Parser {
         let Tok::Str(specifier) = &self.tok.tok else {
             return self.error("nom de module attendu (chaîne)");
         };
-        let request = info.request(specifier);
+        let specifier = specifier.clone();
         self.advance()?;
-        if self.is_kw("with") {
-            return self.unsupported("les attributs d'importation");
+        // Attributs d'importation : seul `type` est reconnu ; il fait
+        // partie de la demande (voir `module::split_request`).
+        let mut kind: Option<String> = None;
+        if self.eat_kw("with")? {
+            self.expect_punct("{")?;
+            let mut seen: Vec<String> = Vec::new();
+            while !self.eat_punct("}")? {
+                let key = match &self.tok.tok {
+                    Tok::Ident(name) | Tok::Str(name) => name.clone(),
+                    _ => return self.error("nom d'attribut d'importation attendu"),
+                };
+                self.advance()?;
+                if seen.contains(&key) {
+                    return self.error(format!("attribut d'importation « {key} » répété"));
+                }
+                self.expect_punct(":")?;
+                let Tok::Str(value) = &self.tok.tok else {
+                    return self.error("valeur d'attribut d'importation attendue (chaîne)");
+                };
+                if key == "type" {
+                    kind = Some(value.clone());
+                } else {
+                    return self.error(format!(
+                        "attribut d'importation « {key} » non pris en charge"
+                    ));
+                }
+                self.advance()?;
+                seen.push(key);
+                if !self.is_punct("}") {
+                    self.expect_punct(",")?;
+                }
+            }
         }
+        let request = match kind {
+            Some(kind) => info.request(&crate::module::typed_request(&specifier, &kind)),
+            None => info.request(&specifier),
+        };
         Ok(request)
     }
 
@@ -427,10 +482,31 @@ impl Parser {
             self.module_request(info)?;
             return self.semicolon();
         }
+        // `import defer * as ns from …` et `import source x from …`.
+        let mut phase = 0u8;
+        if !self.tok.escaped {
+            let mut probe = self.lexer.clone();
+            let next = probe.next()?;
+            if self.is_kw("defer") && next.tok == Tok::Punct("*") {
+                phase = 2;
+            } else if self.is_kw("source")
+                && let Tok::Ident(word) = &next.tok
+                && (word != "from" || matches!(&probe.next()?.tok, Tok::Ident(w) if w == "from"))
+            {
+                phase = 1;
+            }
+            if phase != 0 {
+                self.advance()?;
+            }
+        }
         // (nom dans la source ; `None` : espace de noms, liaison locale).
         let mut bindings: Vec<(Option<Arc<str>>, Arc<str>)> = Vec::new();
         let mut more = true;
-        if matches!(self.tok.tok, Tok::Ident(_)) {
+        if phase == 1 {
+            // Une seule liaison, qui reçoit la source du module.
+            bindings.push((Some(Arc::from("default")), self.binding_ident()?));
+            more = false;
+        } else if phase == 0 && matches!(self.tok.tok, Tok::Ident(_)) {
             bindings.push((Some(Arc::from("default")), self.binding_ident()?));
             more = self.eat_punct(",")?;
         }
@@ -461,6 +537,11 @@ impl Parser {
         }
         let request = self.from_clause(info)?;
         self.semicolon()?;
+        if phase == 2
+            && let Some(count) = info.deferred.get_mut(request)
+        {
+            *count += 1;
+        }
         for (name, local) in bindings {
             if info.imports.iter().any(|i| i.local == local) {
                 return self.error(format!("« {local} » est importé deux fois"));
@@ -469,6 +550,7 @@ impl Parser {
                 request,
                 name,
                 local,
+                phase,
             });
         }
         Ok(())
@@ -552,7 +634,13 @@ impl Parser {
             let declaration = self.is_kw("function")
                 || self.is_kw("class")
                 || (self.is_kw("async") && self.async_function_follows()?);
-            let value = self.assignment()?;
+            // Une déclaration s'arrête à son accolade : `function () {}()`
+            // n'est pas un appel.
+            let value = if declaration {
+                self.primary()?
+            } else {
+                self.assignment()?
+            };
             let local = match value {
                 // Fonction ou classe nommée : c'est une déclaration ordinaire.
                 Expr::Function(func) if declaration && func.name.is_some() => {
@@ -931,6 +1019,7 @@ impl Parser {
     /// Le booléen dit si le corps porte la directive `"use strict"`.
     fn function_body(&mut self) -> PResult<(Vec<Stmt>, bool)> {
         self.expect_punct("{")?;
+        let no_using = std::mem::replace(&mut self.no_using, false);
         let mut body = Vec::new();
         let directive = self.directives(&mut body)?;
         while !self.is_punct("}") {
@@ -939,7 +1028,79 @@ impl Parser {
             }
             body.push(self.statement()?);
         }
+        self.no_using = no_using;
         Ok((body, directive))
+    }
+
+    /// Vrai si `import` (jeton courant) est suivi de `.source(` ou `.defer(`.
+    fn import_phase_follows(&self) -> PResult<bool> {
+        let mut probe = self.lexer.clone();
+        if probe.next()?.tok != Tok::Punct(".") {
+            return Ok(false);
+        }
+        let word = probe.next()?;
+        let phase = matches!(&word.tok, Tok::Ident(w) if w == "source" || w == "defer");
+        Ok(phase && !word.escaped && probe.next()?.tok == Tok::Punct("("))
+    }
+
+    /// Vrai si le jeton courant ouvre une déclaration `using` : le mot
+    /// `using`, suivi sur la même ligne d'un nom de liaison.
+    fn using_follows(&self) -> PResult<bool> {
+        if !self.is_kw("using") || self.tok.escaped {
+            return Ok(false);
+        }
+        let next = self.lexer.clone().next()?;
+        Ok(!next.newline_before
+            && matches!(&next.tok, Tok::Ident(word) if word != "in" && word != "instanceof"))
+    }
+
+    /// Vrai si le jeton courant ouvre une déclaration `await using`, là où
+    /// `await` est un opérateur.
+    /// Comme [`Self::using_follows`], dans la tête d'un `for` : `using of`
+    /// n'y ouvre pas une déclaration.
+    fn for_using_follows(&self) -> PResult<bool> {
+        if !self.using_follows()? {
+            return Ok(false);
+        }
+        let mut probe = self.lexer.clone();
+        if !matches!(&probe.next()?.tok, Tok::Ident(word) if word == "of") {
+            return Ok(true);
+        }
+        // `using of = …` déclare une liaison nommée `of`.
+        Ok(probe.next()?.tok == Tok::Punct("="))
+    }
+
+    fn await_using_follows(&self) -> PResult<bool> {
+        if !self.is_kw("await") || self.tok.escaped || !self.in_async {
+            return Ok(false);
+        }
+        let mut probe = self.lexer.clone();
+        let using = probe.next()?;
+        if using.newline_before
+            || using.escaped
+            || !matches!(&using.tok, Tok::Ident(word) if word == "using")
+        {
+            return Ok(false);
+        }
+        let name = probe.next()?;
+        Ok(!name.newline_before
+            && matches!(&name.tok, Tok::Ident(word) if word != "in" && word != "instanceof"))
+    }
+
+    /// `using x = …;` ou `await using x = …;` ; le jeton courant est `using`
+    /// ou `await`.
+    fn using_declaration(&mut self, kind: VarKind) -> PResult<Stmt> {
+        if self.no_using {
+            return self.error("déclaration « using » interdite ici");
+        }
+        if kind == VarKind::AwaitUsing {
+            self.top_level_await |= self.module && !self.in_function;
+            self.advance()?;
+        }
+        self.advance()?;
+        let decls = self.declarators(kind)?;
+        self.semicolon()?;
+        Ok(Stmt::VarDecl(kind, decls))
     }
 
     /// Instruction en position de corps (`if`, boucle) : les déclarations y
@@ -957,6 +1118,12 @@ impl Parser {
                 }
                 "async" if self.async_function_follows()? => {
                     return self.error("déclaration de fonction interdite ici");
+                }
+                "using" if self.using_follows()? => {
+                    return self.error("déclaration interdite ici");
+                }
+                "await" if self.await_using_follows()? => {
+                    return self.error("déclaration interdite ici");
                 }
                 "let" => {
                     let next = self.peek()?;
@@ -1002,6 +1169,8 @@ impl Parser {
         let lexical = self.is_kw("const")
             || self.is_kw("class")
             || (self.is_kw("async") && self.async_function_follows()?)
+            || self.using_follows()?
+            || self.await_using_follows()?
             || (self.is_kw("let") && {
                 let next = self.peek()?;
                 matches!(next.tok, Tok::Punct("["))
@@ -1018,6 +1187,7 @@ impl Parser {
 
     fn block(&mut self) -> PResult<Vec<Stmt>> {
         self.expect_punct("{")?;
+        let no_using = std::mem::replace(&mut self.no_using, false);
         let mut body = Vec::new();
         while !self.is_punct("}") {
             if self.tok.tok == Tok::Eof {
@@ -1025,6 +1195,7 @@ impl Parser {
             }
             body.push(self.statement()?);
         }
+        self.no_using = no_using;
         self.advance()?;
         Ok(body)
     }
@@ -1064,6 +1235,8 @@ impl Parser {
                 self.semicolon()?;
                 Ok(Stmt::VarDecl(VarKind::Let, decls))
             }
+            "using" if self.using_follows()? => self.using_declaration(VarKind::Using),
+            "await" if self.await_using_follows()? => self.using_declaration(VarKind::AwaitUsing),
             "function" => {
                 let start = self.tok.start;
                 self.advance()?;
@@ -1212,6 +1385,9 @@ impl Parser {
         let mut decls = Vec::new();
         loop {
             let pattern = self.binding_pattern()?;
+            if kind.is_using() && !matches!(pattern, Pattern::Ident(_)) {
+                return self.error("« using » ne lie que des identifiants");
+            }
             if kind != VarKind::Var {
                 let mut names = Vec::new();
                 crate::compiler::pattern_names(&pattern, &mut names);
@@ -1225,7 +1401,7 @@ impl Parser {
                 None
             };
             if init.is_none() && !self.no_in {
-                if kind == VarKind::Const {
+                if kind == VarKind::Const || kind.is_using() {
                     return self.error("une constante doit être initialisée");
                 }
                 if !matches!(pattern, Pattern::Ident(_)) {
@@ -1263,6 +1439,11 @@ impl Parser {
                 {
                     Some(VarKind::Let)
                 }
+                // `for (using of …)` : `using` y reste un identifiant.
+                Tok::Ident(w) if w == "using" && self.for_using_follows()? => Some(VarKind::Using),
+                Tok::Ident(w) if w == "await" && self.await_using_follows()? => {
+                    Some(VarKind::AwaitUsing)
+                }
                 _ => None,
             };
             // `for (async of …)` est interdit : il se lirait comme le début
@@ -1278,6 +1459,10 @@ impl Parser {
             self.no_in = true;
             let parsed = match decl_kind {
                 Some(kind) => {
+                    if kind == VarKind::AwaitUsing {
+                        self.top_level_await |= self.module && !self.in_function;
+                        self.advance()?;
+                    }
                     self.advance()?;
                     self.declarators(kind).map(|d| ForInit::Decl(kind, d))
                 }
@@ -1290,7 +1475,7 @@ impl Parser {
                 self.advance()?;
                 let target = match parsed {
                     ForInit::Decl(kind, mut decls) => {
-                        if decls.len() != 1 {
+                        if decls.len() != 1 || (kind.is_using() && !of) {
                             return self.error("déclaration invalide dans for…in / for…of");
                         }
                         let (pattern, init) = decls.remove(0);
@@ -1336,7 +1521,9 @@ impl Parser {
                     return self.error("« for await » exige la forme « of »");
                 }
                 let body = self.substatement(false)?;
-                if let ForTarget::Decl(VarKind::Let | VarKind::Const, pattern) = &target {
+                if let ForTarget::Decl(kind, pattern) = &target
+                    && *kind != VarKind::Var
+                {
                     let mut names = Vec::new();
                     crate::compiler::pattern_names(pattern, &mut names);
                     self.check_loop_names(&names, &body)?;
@@ -1359,7 +1546,9 @@ impl Parser {
             if let ForInit::Decl(kind, decls) = &parsed {
                 for (pattern, value) in decls {
                     if value.is_none()
-                        && (*kind == VarKind::Const || !matches!(pattern, Pattern::Ident(_)))
+                        && (*kind == VarKind::Const
+                            || kind.is_using()
+                            || !matches!(pattern, Pattern::Ident(_)))
                     {
                         return self.error("déclaration sans initialisation");
                     }
@@ -1469,6 +1658,8 @@ impl Parser {
                 Some(self.expression()?)
             };
             self.expect_punct(":")?;
+            // Pas de `using` directement dans une clause.
+            let no_using = std::mem::replace(&mut self.no_using, true);
             let mut body = Vec::new();
             while !self.is_kw("case") && !self.is_kw("default") && !self.is_punct("}") {
                 if self.tok.tok == Tok::Eof {
@@ -1476,6 +1667,7 @@ impl Parser {
                 }
                 body.push(self.statement()?);
             }
+            self.no_using = no_using;
             cases.push((test, body));
         }
         Ok(Stmt::Switch {
@@ -2505,7 +2697,9 @@ impl Parser {
                 // Le constructeur est une expression membre sans appel.
                 let mut callee = if self.is_kw("new") {
                     self.left_hand_side()?
-                } else if self.is_kw("import") && self.peek_is_punct("(")? {
+                } else if self.is_kw("import")
+                    && (self.peek_is_punct("(")? || self.import_phase_follows()?)
+                {
                     return self.error("« new import() » est interdit");
                 } else {
                     self.primary()?
@@ -2792,12 +2986,34 @@ impl Parser {
                     let parsed = self.import_arguments();
                     self.no_in = saved_no_in;
                     let (specifier, options) = parsed?;
-                    Ok(Expr::ImportCall(Box::new(specifier), options.map(Box::new)))
+                    Ok(Expr::ImportCall(
+                        Box::new(specifier),
+                        options.map(Box::new),
+                        0,
+                    ))
                 }
-                "import" if self.module && self.peek_is_punct(".")? => {
+                "import" if self.peek_is_punct(".")? => {
                     self.advance()?;
                     self.advance()?;
-                    if !self.eat_kw("meta")? {
+                    // `import.source(x)` et `import.defer(x)` : un seul argument.
+                    let phase = match &self.tok.tok {
+                        Tok::Ident(word) if !self.tok.escaped && word == "source" => Some(1),
+                        Tok::Ident(word) if !self.tok.escaped && word == "defer" => Some(2),
+                        _ => None,
+                    };
+                    if let Some(source) = phase
+                        && self.peek_is_punct("(")?
+                    {
+                        self.advance()?;
+                        self.advance()?;
+                        let saved_no_in = std::mem::replace(&mut self.no_in, false);
+                        let specifier = self.assignment();
+                        self.no_in = saved_no_in;
+                        let specifier = specifier?;
+                        self.expect_punct(")")?;
+                        return Ok(Expr::ImportCall(Box::new(specifier), None, source));
+                    }
+                    if !self.module || !self.eat_kw("meta")? {
                         return self.error("« meta » attendu après « import. »");
                     }
                     // Lu comme une liaison de la portée du module (voir `module.rs`).

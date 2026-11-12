@@ -21,6 +21,8 @@ pub const HOVER: Color = Color::rgb(0x1A, 0x20, 0x28);
 pub const HOVER_STRONG: Color = Color::rgb(0x2E, 0x37, 0x43);
 /// Fond d'une pastille (espace actif, bascule activée).
 pub const PILL: Color = Color::rgb(0x1C, 0x22, 0x2B);
+/// Bordure d'un champ ou d'un panneau flottant.
+pub const BORDER: Color = Color::rgb(0x2A, 0x31, 0x3B);
 /// Bordure discrète.
 pub const BORDER_SOFT: Color = Color::rgb(0x26, 0x2D, 0x37);
 /// Bordure d'une indication de raccourci.
@@ -31,6 +33,26 @@ pub const TEXT: Color = Color::rgb(0xE6, 0xE9, 0xED);
 pub const TEXT_TAB: Color = Color::rgb(0xD5, 0xDA, 0xE1);
 /// Texte secondaire.
 pub const TEXT_MUTED: Color = Color::rgb(0x9A, 0xA3, 0xAE);
+/// Explication sous le titre d'un réglage.
+pub const TEXT_SECONDARY: Color = Color::rgb(0xA3, 0xAD, 0xB9);
+/// Fond d'un interrupteur éteint, et du choix retenu dans un groupe.
+pub const SWITCH_OFF: Color = Color::rgb(0x2A, 0x32, 0x3D);
+/// Fond d'un filtre de la palette de commandes.
+pub const CHIP: Color = Color::rgb(0x21, 0x28, 0x32);
+/// Navigation privée : fond de la page « Nouvel onglet ».
+pub const PRIVATE_PANEL: Color = Color::rgb(0x18, 0x12, 0x26);
+/// Navigation privée : bordure de la page, fond de la pastille de la barre de titre.
+pub const PRIVATE_BORDER: Color = Color::rgb(0x2E, 0x24, 0x45);
+/// Navigation privée : fond d'une carte et du champ de recherche.
+pub const PRIVATE_CARD: Color = Color::rgb(0x20, 0x18, 0x3A);
+/// Navigation privée : bordure du champ de recherche.
+pub const PRIVATE_FIELD_BORDER: Color = Color::rgb(0x45, 0x37, 0x6A);
+/// Navigation privée : texte de la pastille de la barre de titre.
+pub const PRIVATE_CHIP_TEXT: Color = Color::rgb(0xD9, 0xCB, 0xFA);
+/// Navigation privée : texte courant d'une carte.
+pub const PRIVATE_TEXT: Color = Color::rgb(0xD3, 0xCD, 0xE0);
+/// Navigation privée : texte secondaire.
+pub const PRIVATE_MUTED: Color = Color::rgb(0xA7, 0x9F, 0xB8);
 /// Icône.
 pub const ICON: Color = Color::rgb(0xC3, 0xCA, 0xD3);
 /// Icône désactivée.
