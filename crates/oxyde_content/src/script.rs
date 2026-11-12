@@ -1857,8 +1857,17 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     // qui reçoit le `fetch` d'origine.
     let factory = vm.eval_script(include_str!("script/xhr.js"))?;
     let original_fetch = vm.get(&window, "fetch")?;
-    let xhr = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    let xhr = vm.call(
+        &factory,
+        &Value::Undefined,
+        std::slice::from_ref(&original_fetch),
+    )?;
     vm.define_hidden(global, "XMLHttpRequest", xhr);
+    // `Blob`, `Request`, `Response` et le `fetch` du standard, bâti sur
+    // celui du moteur.
+    let factory = vm.eval_script(include_str!("script/fetch.js"))?;
+    let fetch = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    vm.define_hidden(global, "fetch", fetch);
     Ok(())
 }
 
@@ -2359,6 +2368,21 @@ fn outgoing(vm: &mut Vm, args: &[Value]) -> JsResult<Result<Outgoing, String>> {
             text.as_bytes().to_vec()
         }
     };
+    // Corps binaire : une chaîne d'un caractère (0 à 255) par octet.
+    let body = match member(vm, "binaryBody")? {
+        Value::String(binary) => {
+            if matches!(method.as_str(), "GET" | "HEAD") {
+                return Ok(Err(format!(
+                    "une requête {method} ne peut pas avoir de corps"
+                )));
+            }
+            binary
+                .chars()
+                .map(|c| u8::try_from(u32::from(c)).unwrap_or(b'?'))
+                .collect()
+        }
+        _ => body,
+    };
     Ok(Ok(Outgoing {
         address,
         method,
@@ -2532,6 +2556,10 @@ fn make_response(
     let json_fn = vm.new_native_data(response_json, vec![text]);
     vm.define_hidden(id, "text", text_fn);
     vm.define_hidden(id, "json", json_fn);
+    // Octets du corps, un caractère par octet (voir `fetch.js`).
+    let binary: String = response.body.iter().map(|byte| char::from(*byte)).collect();
+    let binary_fn = vm.new_native_data(response_binary, vec![Value::string(&binary)]);
+    vm.define_hidden(id, "binary", binary_fn);
     Ok(object)
 }
 
@@ -2572,6 +2600,10 @@ fn headers_for_each(vm: &mut Vm, data: &[Value], this: &Value, args: &[Value]) -
         }
     }
     Ok(Value::Undefined)
+}
+
+fn response_binary(_vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {
+    Ok(data.first().cloned().unwrap_or(Value::Undefined))
 }
 
 fn response_text(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {

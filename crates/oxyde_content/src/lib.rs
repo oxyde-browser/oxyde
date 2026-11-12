@@ -1402,8 +1402,9 @@ mod tests {
              </script>",
         );
         p.run_scripts();
-        // Les refus immédiats n'atteignent jamais l'embarqueur.
-        assert_eq!(body_text(&p), "fichier refusé;TRACE refusé;");
+        // Les refus immédiats n'atteignent jamais l'embarqueur. La méthode
+        // est refusée la première : `Request` la contrôle avant tout envoi.
+        assert_eq!(body_text(&p), "TRACE refusé;fichier refusé;");
         let requests = p.take_fetches();
         let urls: Vec<&str> = requests.iter().map(|r| r.url.as_str()).collect();
         assert_eq!(
@@ -1460,7 +1461,7 @@ mod tests {
         assert!(!p.complete_fetch(u64::MAX, Err("perdu".to_owned())));
         assert_eq!(
             body_text(&p),
-            "fichier refusé;TRACE refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
+            "TRACE refusé;fichier refusé;200 true application/json false;json 1+2;ouvert cors bonjour;\
              bloqué TypeError;absent 404 false;panne fetch : connexion impossible;"
         );
         assert!(!body_text(&p).contains("secret"));
@@ -1688,10 +1689,8 @@ mod tests {
              </script>",
         );
         p.run_scripts();
-        assert_eq!(
-            body_text(&p),
-            "fetch : une requête GET ne peut pas avoir de corps"
-        );
+        // Le refus vient du constructeur `Request`, que `fetch` appelle.
+        assert_eq!(body_text(&p), "une requête GET ne peut pas avoir de corps");
         let requests = p.take_fetches();
         assert_eq!(requests.len(), 3);
         let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
@@ -1700,8 +1699,8 @@ mod tests {
         assert_eq!(
             requests[0].headers,
             [
-                pair("X-Jeton", "1"),
-                pair("Content-Type", "application/json")
+                pair("content-type", "application/json"),
+                pair("x-jeton", "1")
             ]
         );
         assert_eq!(requests[0].body, b"{}");
@@ -1710,7 +1709,7 @@ mod tests {
         // Autre origine, requête simple : type de contenu par défaut.
         assert_eq!(
             requests[1].headers,
-            [pair("Content-Type", "text/plain;charset=UTF-8")]
+            [pair("content-type", "text/plain;charset=UTF-8")]
         );
         assert!(!requests[1].needs_preflight);
         // Autre origine, méthode et en-tête hors liste : pré-vérification.
@@ -1722,6 +1721,34 @@ mod tests {
                 pair("Access-Control-Request-Headers", "x-a"),
                 pair("Origin", "https://exemple.test"),
             ]
+        );
+    }
+
+    #[test]
+    fn blobs_requests_and_responses_are_constructible() {
+        let mut p = page(
+            "<script>
+               const out = [];
+               const blob = new Blob(['bon', 'jour'], { type: 'Text/Plain' });
+               out.push(blob.size, blob.type, blob.slice(3).size);
+               const request = new Request('/a?b=1', { method: 'post', body: 'x' });
+               out.push(request.method, request.url.endsWith('/a?b=1'),
+                        request.headers.get('content-type'));
+               const response = new Response('{\"n\":2}', { status: 201, headers: { 'X-A': '1' } });
+               out.push(response.status, response.ok, response.headers.get('x-a'));
+               let refused = '';
+               try { new Response('x', { status: 204 }); } catch (e) { refused = e.name; }
+               Promise.all([blob.text(), response.json(), Response.json([1]).text()])
+                 .then(([text, json, serialized]) => {
+                   out.push(text, json.n, serialized, response.bodyUsed, refused);
+                   document.body.textContent = out.join('|');
+                 });
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "7|text/plain|4|POST|true|text/plain;charset=UTF-8|201|true|1|bonjour|2|[1]|true|TypeError"
         );
     }
 
@@ -1806,13 +1833,14 @@ mod tests {
         let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
         assert_eq!(
             requests[0].headers,
+            // `Headers` rend ses noms en minuscules, triés.
             [
-                pair("x-a", "2"),
-                pair("x-b", "1, 3"),
                 pair(
-                    "Content-Type",
+                    "content-type",
                     "application/x-www-form-urlencoded;charset=UTF-8"
                 ),
+                pair("x-a", "2"),
+                pair("x-b", "1, 3"),
             ]
         );
     }
