@@ -373,7 +373,9 @@ impl Engine<'_> {
         }
         let unbounded = 1.0e6;
         let waiting = self.out_of_flow.len();
+        let outer_floats = std::mem::take(&mut self.floats);
         let (children, _) = self.layout_children(node, style, 0.0, 0.0, unbounded, None, depth + 1);
+        self.floats = outer_floats;
         self.out_of_flow.truncate(waiting);
         let max = self.max_content_of(style, &children, unbounded).ceil();
         let min = children

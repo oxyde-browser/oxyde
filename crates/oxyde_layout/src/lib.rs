@@ -18,6 +18,7 @@
 //!   conteneur est imposée (sinon elle vaut `auto`).
 
 mod flex;
+mod floats;
 mod grid;
 mod table;
 
@@ -187,6 +188,7 @@ pub fn layout_document(
         out_of_flow: Vec::new(),
         inline_origin: (0.0, 0.0),
         grids: std::collections::HashMap::new(),
+        floats: Vec::new(),
         tables: std::collections::HashMap::new(),
         table_sizes: std::collections::HashMap::new(),
         cell_sizes: std::collections::HashMap::new(),
@@ -383,6 +385,8 @@ struct Engine<'a> {
     inline_origin: (f32, f32),
     /// Pistes des conteneurs en grille déjà mis en page.
     grids: std::collections::HashMap<NodeId, GridTracks>,
+    /// Flottants du contexte de formatage de blocs en cours.
+    floats: Vec<floats::FloatBox>,
     /// Tableaux planifiés, en attente de leur mise en page.
     tables: std::collections::HashMap<NodeId, table::TablePlan>,
     /// Largeurs de contenu minimale et maximale des tableaux planifiés.
@@ -671,6 +675,10 @@ impl Engine<'_> {
         let definite_h = fixed_h.or_else(|| resolve_height(style.height, cb_h).map(to_content_h));
         // Les boîtes hors flux rencontrées plus bas attendent ce bloc conteneur.
         let out_of_flow_start = self.out_of_flow.len();
+        // Contexte de formatage de blocs : ses flottants lui sont propres.
+        let outer_floats = self
+            .establishes_bfc(node, style, mode)
+            .then(|| std::mem::take(&mut self.floats));
         let (mut children, mut content_h) = self.layout_children(
             node,
             style,
@@ -692,8 +700,10 @@ impl Engine<'_> {
             if fitted < content_w - 0.5 {
                 self.shrink_depth += 1;
                 content_w = fitted;
-                // La seconde passe remet en attente les mêmes boîtes hors flux.
+                // La seconde passe remet en attente les mêmes boîtes hors flux
+                // et replace les mêmes flottants.
                 self.out_of_flow.truncate(out_of_flow_start);
+                self.floats.clear();
                 (children, content_h) = self.layout_children(
                     node,
                     style,
@@ -707,6 +717,13 @@ impl Engine<'_> {
             }
         }
 
+        if let Some(outer) = outer_floats {
+            // La boîte s'étend jusqu'au bas de ses flottants.
+            if let Some(bottom) = self.float_bottom() {
+                content_h = content_h.max(bottom - content_y);
+            }
+            self.floats = outer;
+        }
         let specified_h = definite_h.or_else(|| {
             intrinsic.map(|(iw, ih)| {
                 if iw > 0.0 && keeps_ratio {
@@ -897,7 +914,6 @@ impl Engine<'_> {
     /// les enfants sont `children` : la plus large des boîtes empilées, ou
     /// la somme des éléments d'une rangée flexible.
     fn max_content_of(&self, style: &ComputedStyle, children: &[Fragment], available: f32) -> f32 {
-        let widths = children.iter().map(|c| self.max_content(c, available));
         if style.flex_container && style.flex_direction.is_row() {
             let in_flow = children
                 .iter()
@@ -916,7 +932,22 @@ impl Engine<'_> {
                 .sum::<f32>()
                 + gaps
         } else {
-            widths.fold(0.0_f32, f32::max)
+            // Les flottants se rangent côte à côte, à côté du reste.
+            let is_float = |c: &Fragment| {
+                matches!(c, Fragment::Box(b)
+                    if b.style.float != oxyde_css::Float::None && !b.style.is_out_of_flow())
+            };
+            let floats: f32 = children
+                .iter()
+                .filter(|c| is_float(c))
+                .map(|c| self.max_content(c, available))
+                .sum();
+            let others = children
+                .iter()
+                .filter(|c| !is_float(c))
+                .map(|c| self.max_content(c, available))
+                .fold(0.0_f32, f32::max);
+            floats + others
         }
     }
 
@@ -1083,6 +1114,18 @@ impl Engine<'_> {
                 self.out_of_flow.push(item);
                 continue;
             }
+            if let Some(child_style) = self
+                .style(child)
+                .filter(|s| s.float != oxyde_css::Float::None)
+                .cloned()
+            {
+                // Flottant : placé au niveau du flux en cours — en haut de la
+                // suite en ligne s'il y en a une —, il ne prend pas de place.
+                let top = cursor + pending_margin.max(0.0);
+                let placed = self.place_float(child, &child_style, x, width, top, height, depth);
+                fragments.push(placed);
+                continue;
+            }
             if !self.is_block_level(child, depth) {
                 run.push(child);
                 continue;
@@ -1105,10 +1148,30 @@ impl Engine<'_> {
             let margin_bottom = px(child_style.margin.bottom, width);
             // Fusion des marges entre frères adjacents.
             let gap = collapse(pending_margin, margin_top);
+            let mut top = cursor + gap;
+            let (mut band_x, mut band_w) = (x, width);
+            if !self.floats.is_empty() {
+                // `clear` : la boîte passe sous les flottants désignés.
+                if let Some(clear) = self.float_clearance(child_style.clear) {
+                    top = top.max(clear);
+                }
+                // Une boîte qui établit son propre contexte se range à côté
+                // des flottants, ou dessous si elle n'y tient pas.
+                if self.avoids_floats(child, &child_style) {
+                    let needed = match child_style.width {
+                        Size::Px(w) => w,
+                        _ => 0.0,
+                    };
+                    let (fit_top, left, right) = self.float_fit(top, 1.0, needed, x, width);
+                    top = fit_top;
+                    band_x = left;
+                    band_w = (right - left).max(0.0);
+                }
+            }
             let space = Space {
-                cb_w: width,
-                cb_x: x,
-                y: cursor + gap,
+                cb_w: band_w,
+                cb_x: band_x,
+                y: top,
                 mode: Width::Stretch,
                 cb_h: height,
                 fixed_h: None,
@@ -1405,7 +1468,11 @@ impl Engine<'_> {
             }
         }
         let (mut layout, _) = builder.build();
-        layout.break_all_lines(Some(width));
+        if self.floats.is_empty() {
+            layout.break_all_lines(Some(width));
+        } else {
+            self.break_lines_around_floats(&mut layout, x, y, width, style.line_height_px());
+        }
         let alignment = match style.text_align {
             TextAlign::Start => Alignment::Start,
             TextAlign::End => Alignment::End,
@@ -1836,6 +1903,104 @@ mod tests {
         assert_eq!(b.x, a.x + a.w, "pas d'espacement en mode fusionné");
         assert_eq!(b.w, 32.0, "la bordure commune n'est comptée qu'une fois");
         assert_eq!(i.y - b.y, 2.0 + 40.0, "contenu centré verticalement");
+    }
+
+    #[test]
+    fn floats_stack_side_by_side_and_wrap() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0} .f{float:left;width:100px;height:40px}</style>\
+             <div id=c style='width:250px'><div class=f id=a></div><div class=f id=b></div>\
+             <div class=f id=d></div><div id=r style='float:right;width:30px;height:10px'></div></div>",
+            800.0,
+        );
+        let (a, b, d, r) = (
+            rect(&doc, &tree, "a"),
+            rect(&doc, &tree, "b"),
+            rect(&doc, &tree, "d"),
+            rect(&doc, &tree, "r"),
+        );
+        assert_eq!((a.x, a.y), (0.0, 0.0));
+        assert_eq!((b.x, b.y), (100.0, 0.0));
+        assert_eq!(
+            (d.x, d.y),
+            (0.0, 40.0),
+            "le troisième flottant passe à la ligne"
+        );
+        assert_eq!(
+            (r.x, r.y),
+            (220.0, 40.0),
+            "à droite, pas plus haut que le précédent"
+        );
+        assert_eq!(
+            rect(&doc, &tree, "c").h,
+            0.0,
+            "un bloc ordinaire ne contient pas ses flottants"
+        );
+        assert_eq!(
+            tree.height, 80.0,
+            "la racine s'étend jusqu'au bas des flottants"
+        );
+    }
+
+    #[test]
+    fn clear_and_flow_root_contain_floats() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=c style='overflow:hidden'><div style='float:left;width:50px;height:70px'></div></div>\
+             <div style='float:right;width:20px;height:30px'></div>\
+             <div id=n style='clear:both;height:10px'></div>",
+            400.0,
+        );
+        assert_eq!(
+            rect(&doc, &tree, "c").h,
+            70.0,
+            "overflow: hidden contient ses flottants"
+        );
+        assert_eq!(
+            rect(&doc, &tree, "n").y,
+            100.0,
+            "clear passe sous le flottant"
+        );
+    }
+
+    #[test]
+    fn text_and_flow_roots_avoid_floats() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0;font-size:10px;line-height:20px}</style>\
+             <div style='float:left;width:100px;height:30px'></div>\
+             <p id=p style='margin:0'>un deux trois quatre cinq six sept huit neuf dix onze douze</p>\
+             <div id=o style='overflow:hidden;height:10px'></div>",
+            200.0,
+        );
+        let root = tree.root.as_ref().expect("racine");
+        // La première ligne commence à droite du flottant.
+        let hit = hit_test(&doc, root, 105.0, 10.0).expect("texte à côté du flottant");
+        let in_paragraph = doc
+            .ancestors(hit)
+            .chain([hit])
+            .any(|n| doc.element(n).is_some_and(|e| e.id() == Some("p")));
+        assert!(in_paragraph, "du texte à droite du flottant");
+        let p = rect(&doc, &tree, "p");
+        assert_eq!(p.x, 0.0, "le bloc lui-même passe sous le flottant");
+        assert!(p.h >= 60.0, "le texte est coupé plus court : {}", p.h);
+        let o = rect(&doc, &tree, "o");
+        assert_eq!(
+            o.x, 0.0,
+            "sous le flottant, la boîte retrouve toute la largeur"
+        );
+        assert_eq!(o.w, 200.0);
+    }
+
+    #[test]
+    fn shrink_to_fit_sums_floats() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=c style='float:left'><div style='float:left;width:60px;height:10px'></div>\
+             <div style='float:left;width:40px;height:10px'></div></div>",
+            400.0,
+        );
+        let c = rect(&doc, &tree, "c");
+        assert_eq!((c.w, c.h), (100.0, 10.0));
     }
 
     #[test]

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Flottants</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; line-height: 22px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; clear: both; }
+  .vignette { float: left; width: 90px; height: 70px; margin: 0 12px 6px 0; background: #4cc9a8; border-radius: 8px; }
+  .encart { float: right; width: 150px; margin: 0 0 6px 12px; padding: 8px; background: #171c23; color: #e6e9ed; border-radius: 8px; }
+  .menu { background: #dfe3e8; overflow: hidden; border-radius: 8px; padding: 6px; }
+  .menu a { float: left; padding: 4px 12px; margin-right: 6px; background: #8fb4f2; border-radius: 6px; color: #0e1116; text-decoration: none; }
+  .menu .droite { float: right; margin-right: 0; background: #e0a458; }
+  .colonnes .cote { float: left; width: 120px; height: 80px; background: #c9a4e8; }
+  .colonnes .corps { overflow: hidden; background: white; padding: 8px; }
+  .suite { clear: both; background: #e0a458; padding: 4px 8px; margin-top: 8px; }
+</style>
+<h2>Texte autour d'une vignette et d'un encart</h2>
+<div class="vignette"></div>
+<div class="encart">Encart flottant à droite, de largeur fixe.</div>
+<p style="margin: 0">Le texte s'écoule à côté des flottants : ses lignes sont plus courtes tant
+qu'elles longent la vignette de gauche et l'encart de droite, puis reprennent toute la largeur
+une fois passées dessous. Assez de mots sont nécessaires ici pour que le paragraphe dépasse le
+bas des deux flottants et montre le retour à la pleine largeur, ce qui demande quelques lignes
+de plus que d'ordinaire, d'où ce texte volontairement un peu long.</p>
+<h2>Barre de menu flottante, contenue par overflow: hidden</h2>
+<div class="menu"><a>Accueil</a><a>Articles</a><a>Contact</a><a class="droite">Connexion</a></div>
+<h2>Deux colonnes : un flottant et un contexte de formatage</h2>
+<div class="colonnes">
+  <div class="cote"></div>
+  <div class="corps">Le corps établit son propre contexte : il se range à côté du flottant au lieu
+  de passer dessous, et son texte ne revient jamais sous la colonne de gauche, quelle que soit sa
+  longueur ; c'est la mise en page à deux colonnes d'avant flexbox.</div>
+</div>
+<div class="suite">clear: both — sous les flottants</div>
