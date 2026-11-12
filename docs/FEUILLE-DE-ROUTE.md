@@ -1,11 +1,17 @@
 # Feuille de route d'Oxyde
 
-État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
+État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
 - `oxyde_js` réussit **48 128 tests de test262 sur 48 795 (98,6 %)** ; il en reste 667.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
-- Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
-- Les jalons 5 à 10 ne sont pas commencés.
+- Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
+  navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
+  repris dans la partie 3.
+- Les jalons 8 à 10 ne sont pas commencés.
+
+**Oxyde n'est pas encore un navigateur de tous les jours.** La partie 3 est la liste de ce
+qu'il faut pour qu'il le devienne, dans l'ordre où le faire ; c'est elle qui tient lieu de
+liste de tâches.
 
 Les nombres de tests des étapes, plus bas, datent de la mesure initiale (77,4 %) ; ce sont des
 ordres de grandeur, car corriger un domaine fait souvent passer des tests rangés dans un autre.
@@ -467,21 +473,190 @@ protocole DevTools et son écran, extensions, PDF, installateur et mises à jour
 Linux, macOS, Android, iOS et iPadOS, par `oxyde_platform`. iOS restreint les moteurs tiers et
 le JIT : à trancher le moment venu.
 
-### Ordre proposé
+### Ordre suivi jusqu'ici
 
-1. Étapes A à C de test262 (jusqu'à environ 85 %) : elles profitent directement aux sites.
-2. Fin du jalon 4 côté web et branchement des Web Platform Tests.
-3. Jalon 6 avant le jalon 5 : la mise en page est ce qui manque le plus à l'œil, et
-   l'isolation des processus ne change rien à ce qu'une page affiche.
-4. Jalon 5, avec `SharedArrayBuffer` et Atomics (étape D).
-5. Étapes E à G de test262 en tâche de fond, puis jalons 7 à 10 dans l'ordre.
-
-Le point 3 inverse l'ordre du plan d'origine (5 puis 6) : c'est une proposition, à confirmer.
+Étapes A à C de test262, fin du jalon 4 côté web et Web Platform Tests, jalon 6 avant le
+jalon 5, puis étapes D à G de test262 et début du jalon 7. La suite est l'objet de la partie 3.
 
 ## Dettes connues à ne pas oublier
 
 - Un fil du pilote graphique AMD occupe un cœur au repos après quelques images ; cause non élucidée.
 - Les méthodes de `Array.prototype` qui modifient le tableau directement ignorent une longueur figée.
 - Un module avec `await` de premier niveau bloque aussi ses modules frères.
-- Les branches `test262-conformite` (PR n° 3) et `jalon-4-web` (PR n° 4, empilée sur la
-  précédente) attendent leur relecture.
+- Deux fenêtres ouvertes sur le même profil s'écrasent l'une l'autre : il manque un verrou.
+- `Temporal` n'a que le calendrier `iso8601` et les fuseaux `UTC` et à décalage fixe.
+- Les PR empilées se fusionnent dans l'ordre, de la base vers le sommet ; sinon, viser `main`.
+
+## Partie 3 — Vers une version pleinement utilisable
+
+But : qu'une personne puisse faire d'Oxyde son navigateur de tous les jours sous Windows.
+« Pleinement utilisable » a une définition vérifiable, donnée étape par étape ; tant qu'une
+case n'est pas cochée **et mesurée**, elle n'est pas faite.
+
+Trois paliers, à franchir dans l'ordre :
+
+| Palier | Ce qu'il permet | Étapes |
+|---|---|---|
+| **Alpha** | lire et utiliser les sites courants, sans y passer la journée | H, I, J |
+| **Bêta** | s'en servir tous les jours, le confier à des testeurs | K, L, M, N |
+| **1.0** | le recommander à quelqu'un | O, P, Q |
+
+L'ordre met d'abord ce sans quoi rien d'autre ne se voit : tant que les sites courants ne se
+chargent pas et qu'on ne peut pas y taper, ni les écrans restants ni la vitesse ne comptent.
+
+### H — Les sites courants se chargent (alpha)
+
+Le manque le plus lourd. Mesure : une **liste de 50 sites de référence**, rangée dans
+`conformance/sites.md`, essayée à la main et par capture à chaque palier ; pour chacun, la
+page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principale ?
+
+- [ ] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
+      banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ.
+- [ ] **Saisie dans les pages** : focus (`focus()`, `blur()`, `:focus`, tabulation), champs de
+      texte éditables (curseur, sélection, presse-papiers), cases, boutons radio, listes
+      déroulantes, `<textarea>`, bouton d'envoi, événements `input` et `change`.
+      Aujourd'hui une page reçoit les touches, mais on ne peut pas taper dans un champ.
+- [ ] Sélection de texte à la souris et copie ; menu contextuel de la page (jalon 7).
+- [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
+- [ ] `customElements` et Shadow DOM : une grande part des sites récents en dépend.
+- [ ] `IntersectionObserver`, `ResizeObserver`, `requestIdleCallback`.
+- [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.
+- [ ] `WebSocket` et `EventSource`.
+- [ ] Liste des suffixes publics (frontière des sites, cookies).
+- [ ] Les 667 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
+      isolés), tableaux denses, objet de type `document.all`.
+
+Terminé quand 40 des 50 sites s'affichent correctement et que 25 permettent leur action
+principale.
+
+### I — La page est fidèle (alpha)
+
+Fin du jalon 6. Mesure : les tests de référence WPT (comparaison d'images), à brancher.
+
+- [ ] Lanceur des tests de référence WPT ; point de départ publié dans `conformance/`.
+- [ ] Dessin des cadres (`<iframe>`), et cadres d'un autre site dans leur propre processus.
+- [ ] `position: sticky`, modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
+- [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
+      fil principal ; calques mis en cache.
+- [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers.
+- [ ] SVG (formes, tracés, texte, dégradés) : presque tous les sites en affichent.
+- [ ] Polices : repli par écriture, emoji en couleur, `font-display`, `unicode-range`.
+- [ ] Images : GIF animé, AVIF, `srcset` et `<picture>`, chargement paresseux.
+- [ ] `<canvas>` 2D.
+
+Terminé quand les 50 sites de référence sont visuellement proches de leur rendu dans
+Chromium, écarts notés un par un.
+
+### J — Rien ne se perd (alpha)
+
+- [ ] **Cookies sur disque** (pot du processus réseau), `localStorage` et `sessionStorage`
+      sur disque : sans eux, aucune connexion à un site ne survit à la fermeture.
+- [ ] **Téléchargements** : reconnaître une réponse à enregistrer (`Content-Disposition`,
+      type non affichable), annuler la navigation sans perdre la page affichée, écrire dans
+      le dossier Téléchargements sous un nom assaini et jamais écrasé, panneau et rubrique
+      de la bibliothèque (maquette `Panels`), progression et annulation — ce qui demande à
+      `oxyde_net` de rendre le corps au fil de l'eau.
+- [ ] Cache HTTP sur disque (validation, expiration, quota).
+- [ ] Verrou sur le profil : une seule fenêtre normale y écrit.
+- [ ] Reprise après un arrêt brutal : la session écrite est toujours relisible.
+- [ ] Dossiers de favoris ; import depuis Firefox.
+
+### K — On peut lui faire confiance (bêta)
+
+Fin du jalon 5. Un navigateur lit du contenu hostile : sans ce bloc, pas de testeurs.
+
+- [ ] Bac à sable **`AppContainer`** pour les processus de rendu ; `win32k` verrouillé ;
+      le processus réseau privé de ce dont il n'a pas besoin.
+- [ ] Processus GPU séparé.
+- [ ] Un processus par site, cadres compris ; deux onglets d'un même site partagent le leur.
+- [ ] Erreurs de certificat complètes (révocation, HSTS, liste de préchargement) ; contenu
+      mixte bloqué ; mode « HTTPS seulement ».
+- [ ] CSP, `X-Frame-Options`, `Referrer-Policy`, CORP, COOP et COEP.
+- [ ] Autorisations par site (localisation, notifications, caméra, micro, presse-papiers),
+      avec l'écran « Infos du site » de la maquette.
+- [ ] **Fuzzing** des analyseurs qui lisent le réseau (HTML, CSS, JavaScript, images,
+      polices, HTTP, IPC) ; Miri sur les crates qui ont du code `unsafe`.
+- [ ] Audit des dépendances (`cargo audit`, `cargo vet`) dans le contrôle de chaque commit.
+- [ ] Intégration continue sur le dépôt : le contrôle n'est aujourd'hui lancé qu'à la main.
+
+### L — Il est assez rapide (bêta)
+
+Jalon 8. Mesure : `oxyde_bench`, à compléter par des bancs publics (Speedometer, JetStream)
+dès que le moteur les fait tourner ; chiffres publiés, jamais en régression.
+
+- [ ] Caches en ligne pour les accès aux propriétés ; formes cachées des objets.
+- [ ] Chaînes UTF-16 ou à double représentation (règle aussi une cause d'échec de test262).
+- [ ] JIT de base, puis JIT optimisant.
+- [ ] Ramasse-miettes générationnel, puis concurrent.
+- [ ] WebAssembly.
+- [ ] Style, mise en page et peinture incrémentaux : ne refaire que ce qui a changé.
+- [ ] Analyse du HTML au fil de l'eau ; chargement des ressources en parallèle ; HTTP/2 et
+      HTTP/3 vérifiés sur les sites de référence.
+- [ ] Mémoire : mise en veille des onglets inactifs, plafond par processus de rendu.
+- [ ] Élucider le cœur occupé au repos avec le pilote AMD.
+
+Terminé quand les 50 sites de référence se chargent en moins de deux fois le temps de
+Chromium sur la même machine.
+
+### M — Le reste du navigateur (bêta)
+
+Fin du jalon 7 : les écrans de la maquette qui manquent.
+
+- [ ] Infos du site et autorisations (avec K).
+- [ ] Menus contextuels (page, lien, image, onglet) et invites (`alert`, `confirm`,
+      `prompt`, `beforeunload`, sélecteur de fichier).
+- [ ] Mots de passe : enregistrement à la connexion, remplissage, écran de gestion,
+      chiffrement par DPAPI.
+- [ ] Impression : pagination, aperçu, envoi au spouleur Windows, export PDF.
+- [ ] Réglages encore absents : thème clair et « comme Windows », zoom par site, langue,
+      police par défaut, page d'accueil.
+- [ ] Zoom (Ctrl +, Ctrl −), plein écran (F11), glisser-déposer des onglets, défilement de
+      la bande d'onglets et de la palette.
+- [ ] Teinte violette complète de la fenêtre privée.
+- [ ] Accessibilité du contenu des pages (arbre AccessKit des pages distantes), contraste
+      et navigation au clavier de toute l'interface.
+- [ ] Fuseaux horaires IANA et calendriers pour `Temporal`, `Date` à l'heure locale, `Intl`.
+
+### N — On peut le distribuer (bêta)
+
+- [ ] **Installateur** Windows signé ; désinstallation propre.
+- [ ] **Mises à jour automatiques** signées, avec retour en arrière : sans elles, une faille
+      découverte chez les testeurs ne peut pas être corrigée.
+- [ ] Devenir le navigateur par défaut (associations de fichiers et de protocoles).
+- [ ] Rapports de plantage, envoyés seulement avec l'accord de l'utilisateur.
+- [ ] Canaux (nocturne, bêta, stable) et numéro de version réel.
+- [ ] Politique de confidentialité et page « À propos » avec les licences des dépendances.
+
+**Bêta** quand H à N sont cochés et qu'une personne a tenu une semaine avec Oxyde seul.
+
+### O — Médias (1.0)
+
+- [ ] `<audio>` et `<video>` : conteneurs MP4 et WebM, AV1 et VP9 (décodeurs Rust), H.264
+      par le décodeur de Windows, AAC et Opus, sous-titres, plein écran.
+- [ ] Web Audio ; `MediaSource` (lecture adaptative) ; capture (`getUserMedia`).
+- [ ] WebGL, puis WebGPU.
+- [ ] WebRTC.
+- [ ] Contenu protégé (EME) : à trancher, il n'existe pas de module libre.
+
+### P — Plateforme étendue (1.0)
+
+- [ ] IndexedDB, Cache API, quotas ; service workers et notifications.
+- [ ] Protocole DevTools et écran DevTools de la maquette.
+- [ ] Extensions (WebExtensions, Manifest V3) et leur écran.
+- [ ] Lecteur PDF.
+- [ ] Synchronisation des favoris et des onglets entre appareils (« Onglets d'autres
+      appareils » de la maquette).
+
+### Q — Autres systèmes (1.0 et après)
+
+Jalon 10, par `oxyde_platform` : Linux, macOS, puis Android ; iOS et iPadOS restreignent les
+moteurs tiers et le JIT, à trancher le moment venu.
+
+### Règles tenues jusqu'au bout
+
+- Une case n'est cochée qu'avec sa mesure : suite publique, site de référence, ou test.
+- Aucune suite ne régresse ; le contrôle (`fmt`, `clippy`, tests, `cargo deny`) reste vert.
+- Chaque palier se termine par un essai à la main, noté dans `conformance/` : ce que les
+  tests ne voient pas se voit là.
+- Ce qui n'agit pas n'est pas montré : pas de réglage ni de bouton sans effet.
