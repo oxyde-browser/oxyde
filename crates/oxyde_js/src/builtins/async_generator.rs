@@ -144,6 +144,12 @@ impl Vm {
         if iterator.as_object().is_none() {
             return Err(self.type_error("Symbol.iterator doit renvoyer un objet itérateur"));
         }
+        self.async_from_sync(iterator)
+    }
+
+    /// `CreateAsyncFromSyncIterator` : habille l'itérateur synchrone
+    /// `iterator` pour qu'il rende des promesses.
+    pub(crate) fn async_from_sync(&mut self, iterator: Value) -> JsResult {
         let next = self.get(&iterator, "next")?;
         let wrapper = self.new_object();
         for (name, function) in [

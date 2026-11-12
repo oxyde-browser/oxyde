@@ -86,6 +86,11 @@ pub(crate) struct Intrinsics {
     /// Le constructeur `Iterator` (provisoire jusqu'à son installation).
     pub(crate) iterator_ctor: ObjId,
     pub(crate) generator_proto: ObjId,
+    /// `GeneratorFunction.prototype`, `AsyncFunction.prototype` et
+    /// `AsyncGeneratorFunction.prototype` : prototypes des fonctions de ces genres.
+    pub(crate) generator_function_proto: ObjId,
+    pub(crate) async_function_proto: ObjId,
+    pub(crate) async_generator_function_proto: ObjId,
     pub(crate) promise_proto: ObjId,
     pub(crate) regexp_proto: ObjId,
     pub(crate) async_generator_proto: ObjId,
@@ -204,6 +209,11 @@ pub struct Vm {
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
+    /// Intégrés écrits en JavaScript : `toString` les montre comme natifs.
+    pub(crate) self_hosted: Vec<ObjId>,
+    /// Le constructeur `Array` d'origine : un résultat qu'il bâtirait est
+    /// un tableau ordinaire, créé directement.
+    pub(crate) array_ctor: Option<ObjId>,
     /// La fonction `eval` d'origine : un appel écrit `eval(…)` qui la
     /// désigne est un « eval direct ».
     pub(crate) eval_function: Option<ObjId>,
@@ -277,6 +287,9 @@ impl Vm {
             regexp_string_iterator_proto: proto(&mut heap, Kind::Ordinary),
             iterator_ctor: object_proto,
             generator_proto: proto(&mut heap, Kind::Ordinary),
+            generator_function_proto: proto(&mut heap, Kind::Ordinary),
+            async_function_proto: proto(&mut heap, Kind::Ordinary),
+            async_generator_function_proto: proto(&mut heap, Kind::Ordinary),
             promise_proto: proto(&mut heap, Kind::Ordinary),
             regexp_proto: proto(&mut heap, Kind::Ordinary),
             async_generator_proto: proto(&mut heap, Kind::Ordinary),
@@ -333,6 +346,8 @@ impl Vm {
             constructing: false,
             native_new_target: Value::Undefined,
             has_instance_function: None,
+            self_hosted: Vec::new(),
+            array_ctor: None,
             eval_function: None,
             roots: Vec::new(),
             host: None,
@@ -445,6 +460,9 @@ impl Vm {
             intr.regexp_string_iterator_proto,
             intr.iterator_ctor,
             intr.generator_proto,
+            intr.generator_function_proto,
+            intr.async_function_proto,
+            intr.async_generator_function_proto,
             intr.promise_proto,
             intr.regexp_proto,
             intr.async_generator_proto,
@@ -542,10 +560,10 @@ impl Vm {
         };
         object
             .props
-            .insert(Arc::from("name"), hidden(Value::string(name)));
+            .insert(Arc::from("length"), hidden(Value::Number(f64::from(arity))));
         object
             .props
-            .insert(Arc::from("length"), hidden(Value::Number(f64::from(arity))));
+            .insert(Arc::from("name"), hidden(Value::string(name)));
         self.heap.alloc(object)
     }
 
@@ -826,6 +844,12 @@ impl Vm {
             (Kind::Closure(c), true) => c.home,
             _ => None,
         };
+        let function_proto = match (proto.is_async, proto.is_generator) {
+            (false, false) => self.intrinsics.function_proto,
+            (false, true) => self.intrinsics.generator_function_proto,
+            (true, false) => self.intrinsics.async_function_proto,
+            (true, true) => self.intrinsics.async_generator_function_proto,
+        };
         let closure = Closure {
             proto,
             upvalues,
@@ -835,10 +859,10 @@ impl Vm {
             fields: None,
             scope,
         };
-        Some(self.heap.alloc(Object::new(
-            Some(self.intrinsics.function_proto),
-            Kind::Closure(closure),
-        )))
+        Some(
+            self.heap
+                .alloc(Object::new(Some(function_proto), Kind::Closure(closure))),
+        )
     }
 
     /// `eval` direct (ECMA-262 §19.2.1.1) : évalue `source` dans la portée
@@ -2298,9 +2322,15 @@ impl Vm {
             // jusqu'au `yield` initial que le compilateur place après eux, et
             // une erreur levée par un paramètre remonte à l'appelant.
             self.enter_native()?;
-            let started = self.resume(generator, Resume::Next(Value::Undefined));
+            // Le prototype de l'objet est lu ensuite : `prototype` de la
+            // fonction, tel que les paramètres l'ont peut-être modifié.
+            let started = self
+                .resume(generator, Resume::Next(Value::Undefined))
+                .and_then(|_| self.get(&Value::Object(closure), "prototype"));
             self.native_depth -= 1;
-            started?;
+            if let Some(proto) = started?.as_object() {
+                self.heap.get_mut(generator).proto = Some(proto);
+            }
             return Ok(Value::Object(generator));
         }
         let promise = self.new_promise();

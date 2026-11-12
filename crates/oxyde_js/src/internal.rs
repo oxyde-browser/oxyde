@@ -779,11 +779,11 @@ impl Vm {
 
     /// `[[OwnPropertyKeys]]` d'un objet qui n'est pas un `Proxy`.
     pub(crate) fn ordinary_own_keys(&mut self, id: ObjId) -> Vec<PropertyKey> {
-        let is_constructor = match &self.heap.get(id).kind {
-            Kind::Closure(c) => c.proto.is_constructor(),
+        let has_prototype = match &self.heap.get(id).kind {
+            Kind::Closure(c) => c.proto.has_prototype(),
             _ => false,
         };
-        if is_constructor {
+        if has_prototype {
             // Matérialise `prototype`, créé à la première demande.
             let _ = self.get_with_receiver(id, "prototype", &Value::Object(id));
         }

@@ -118,6 +118,7 @@ struct JumpTarget {
 struct FuncState {
     kind: FunctionKind,
     name: JsStr,
+    source: Option<crate::ast::SourceSpan>,
     is_script: bool,
     code: Vec<Op>,
     constants: Vec<Value>,
@@ -695,6 +696,7 @@ impl Compiler {
             global_lexical: None,
             is_async: false,
             is_generator: false,
+            source: None,
         });
     }
 
@@ -703,6 +705,7 @@ impl Compiler {
             return error("pile de fonctions vide");
         };
         Ok(FunctionProto {
+            source: state.source,
             name: state.name,
             param_count: state.param_count,
             length: state.length,
@@ -1323,6 +1326,7 @@ impl Compiler {
         self.f().is_async = func.is_async;
         self.f().is_generator = func.is_generator;
         self.f().strict = func.strict;
+        self.f().source = func.source.clone();
         // Le nom d'une expression de fonction vit dans une portée à part,
         // que les paramètres et les `var` du corps peuvent masquer.
         if bind_self {
@@ -1572,12 +1576,14 @@ impl Compiler {
                     is_method: true,
                     strict: true,
                     has_direct_eval: false,
+                    source: None,
                 };
                 &synthesized
             }
         };
         let mut ctor_ast = constructor.clone();
         ctor_ast.name = class.name.clone().or(name_hint);
+        ctor_ast.source = class.source.clone();
         let ctor = self.alloc()?;
         let index = self.function(&ctor_ast, FunctionKind::ClassConstructor { derived }, false)?;
         self.emit(Op::Closure { dst: ctor, index });
@@ -1671,6 +1677,7 @@ impl Compiler {
                         is_generator: false,
                         strict: true,
                         has_direct_eval: false,
+                        source: None,
                     };
                     statics.push((computed.then_some(key), Arc::new(initializer)));
                     if computed {
@@ -1704,6 +1711,7 @@ impl Compiler {
                 is_generator: false,
                 strict: true,
                 has_direct_eval: false,
+                source: None,
             };
             let reg = self.alloc()?;
             let index = self.function(&initializer, FunctionKind::Method, false)?;

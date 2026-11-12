@@ -143,6 +143,8 @@ pub(crate) fn install(vm: &mut Vm) {
     reflect::install(vm);
     proxy::install(vm);
     extras::install(vm);
+    install_function_kinds(vm);
+    array::install_from_async(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
     let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
     let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");
@@ -765,7 +767,10 @@ fn install_object(vm: &mut Vm) {
 
 /// `new Function(p1, p2, …, corps)` : la fonction est créée dans la portée
 /// globale, comme le veut le langage.
-fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+/// `CreateDynamicFunction` (ECMA-262 §20.2.1.1.1) : la fonction dont les
+/// derniers arguments donnent les paramètres puis le corps ; `prefix` est
+/// `function`, `function*`, `async function` ou `async function*`.
+fn dynamic_function(vm: &mut Vm, prefix: &str, args: &[Value]) -> JsResult {
     let mut texts = Vec::with_capacity(args.len());
     for value in args {
         texts.push(vm.to_string(value)?);
@@ -773,7 +778,114 @@ fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let body = texts.pop().unwrap_or_else(|| Arc::from(""));
     let params = texts.join(",");
     // Les sauts de ligne isolent un éventuel commentaire en fin de paramètres ou de corps.
-    vm.eval_global(&format!("(function anonymous({params}\n) {{\n{body}\n}})"))
+    vm.eval_global(&format!("({prefix} anonymous({params}\n) {{\n{body}\n}})"))
+}
+
+fn function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    dynamic_function(vm, "function", args)
+}
+
+fn generator_function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    dynamic_function(vm, "function*", args)
+}
+
+fn async_function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    dynamic_function(vm, "async function", args)
+}
+
+fn async_generator_function_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    dynamic_function(vm, "async function*", args)
+}
+
+/// `Function.prototype` est une fonction qui accepte tout et rend `undefined`.
+fn function_proto_call(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    Ok(Value::Undefined)
+}
+
+/// Accesseur de `Function.prototype.caller` et `.arguments` : `TypeError`,
+/// sauf pour une fonction ordinaire non stricte, où il rend `undefined`
+/// (aucune pile d'appels n'est exposée).
+fn restricted_property(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let lenient = this
+        .as_object()
+        .is_some_and(|id| match &vm.heap.get(id).kind {
+            Kind::Closure(closure) => {
+                let proto = &closure.proto;
+                !proto.strict && proto.is_constructor()
+            }
+            _ => false,
+        });
+    if lenient {
+        Ok(Value::Undefined)
+    } else {
+        Err(vm.type_error("« caller » et « arguments » ne sont pas accessibles sur cette fonction"))
+    }
+}
+
+/// `GeneratorFunction`, `AsyncFunction` et `AsyncGeneratorFunction` : des
+/// constructeurs sans nom global, atteints par le prototype de leurs fonctions.
+fn install_function_kinds(vm: &mut Vm) {
+    let function_ctor = vm
+        .get(&Value::Object(vm.global), "Function")
+        .ok()
+        .and_then(|ctor| ctor.as_object());
+    let tag = vm.well_known.to_string_tag.clone();
+    let intr = &vm.intrinsics;
+    let kinds: [(&str, NativeFn, ObjId, Option<ObjId>); 3] = [
+        (
+            "GeneratorFunction",
+            generator_function_ctor,
+            intr.generator_function_proto,
+            Some(intr.generator_proto),
+        ),
+        (
+            "AsyncFunction",
+            async_function_ctor,
+            intr.async_function_proto,
+            None,
+        ),
+        (
+            "AsyncGeneratorFunction",
+            async_generator_function_ctor,
+            intr.async_generator_function_proto,
+            Some(intr.async_generator_proto),
+        ),
+    ];
+    let fixed = |value: Value| Property {
+        slot: Slot::Data(value),
+        writable: false,
+        enumerable: false,
+        configurable: true,
+    };
+    for (name, func, proto, instances) in kinds {
+        let ctor = vm.new_native(name, 1, func, true);
+        vm.heap.get_mut(ctor).proto = function_ctor;
+        vm.heap.get_mut(ctor).props.insert(
+            Arc::from("prototype"),
+            Property {
+                configurable: false,
+                ..fixed(Value::Object(proto))
+            },
+        );
+        let function_proto = vm.intrinsics.function_proto;
+        let object = vm.heap.get_mut(proto);
+        object.proto = Some(function_proto);
+        object
+            .props
+            .insert(Arc::from("constructor"), fixed(Value::Object(ctor)));
+        object
+            .symbols
+            .insert(tag.clone(), fixed(Value::string(name)));
+        if let Some(instances) = instances {
+            object
+                .props
+                .insert(Arc::from("prototype"), fixed(Value::Object(instances)));
+            vm.heap
+                .get_mut(instances)
+                .props
+                .insert(Arc::from("constructor"), fixed(Value::Object(proto)));
+        }
+    }
 }
 
 /// `eval(code)`.
@@ -834,26 +946,97 @@ fn function_bind(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let Some(target) = func.as_object() else {
         return Ok(Value::Undefined);
     };
-    let name = vm.get(&func, "name")?;
-    let name = vm.to_string(&name)?;
+    let bound_args = args.get(1..).unwrap_or(&[]).to_vec();
+    let proto = vm.get_prototype_of(target)?;
+    // Longueur : celle de la cible, diminuée des arguments déjà liés.
+    let mut length = 0.0;
+    let length_key = PropertyKey::String(Arc::from("length"));
+    if vm.get_own_property(target, &length_key)?.is_some()
+        && let Value::Number(n) = vm.get(&func, "length")?
+    {
+        #[expect(clippy::cast_precision_loss, reason = "nombre d'arguments, petit")]
+        let bound_count = bound_args.len() as f64;
+        length = if n == f64::INFINITY {
+            n
+        } else if n.is_nan() || n == f64::NEG_INFINITY {
+            0.0
+        } else {
+            (n.trunc() - bound_count).max(0.0)
+        };
+    }
+    let name = match vm.get(&func, "name")? {
+        Value::String(name) => name,
+        _ => Arc::from(""),
+    };
     let bound = Object::new(
-        Some(vm.intrinsics.function_proto),
+        proto,
         Kind::Bound {
             target,
             this: arg(args, 0),
-            args: args.get(1..).unwrap_or(&[]).to_vec(),
+            args: bound_args,
         },
     );
     let id = vm.heap.alloc(bound);
-    vm.define_hidden(id, "name", Value::string(&format!("bound {name}")));
+    for (key, value) in [
+        ("length", Value::Number(length)),
+        ("name", Value::string(&format!("bound {name}"))),
+    ] {
+        vm.heap.get_mut(id).props.insert(
+            Arc::from(key),
+            Property {
+                slot: Slot::Data(value),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
     Ok(Value::Object(id))
 }
 
+/// Vrai si `name` peut suivre `function` dans l'écriture d'une fonction
+/// native : identifiant, `[Symbol.x]`, éventuellement précédé de `get` ou `set`.
+fn printable_name(name: &str) -> bool {
+    let name = name
+        .strip_prefix("get ")
+        .or_else(|| name.strip_prefix("set "))
+        .unwrap_or(name);
+    let word = |text: &str| {
+        !text.is_empty()
+            && !text.starts_with(|c: char| c.is_ascii_digit())
+            && text
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    };
+    match name.strip_prefix('[').and_then(|n| n.strip_suffix(']')) {
+        Some(inner) => inner.split('.').all(word),
+        None => word(name),
+    }
+}
+
+/// `Function.prototype.toString` (ECMA-262 §20.2.3.5) : le texte source
+/// d'une fonction du script, la forme `function nom() { [native code] }`
+/// pour les autres.
 fn function_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let name = vm.get(this, "name")?;
-    let name = vm.to_string(&name)?;
+    let Some(id) = this.as_object().filter(|id| vm.heap.get(*id).is_callable()) else {
+        return Err(vm.type_error("Function.prototype.toString attend une fonction"));
+    };
+    if let Kind::Closure(closure) = &vm.heap.get(id).kind
+        && let Some(source) = &closure.proto.source
+        && !vm.self_hosted.contains(&id)
+    {
+        return Ok(Value::string(&source.text()));
+    }
+    let name = match &vm.heap.get(id).kind {
+        Kind::Proxy(_) | Kind::Bound { .. } => None,
+        _ => match vm.heap.get(id).props.get("name").map(|p| &p.slot) {
+            Some(Slot::Data(Value::String(name))) if printable_name(name) => Some(name.clone()),
+            _ => None,
+        },
+    };
     Ok(Value::string(&format!(
-        "function {name}() {{ [code natif] }}"
+        "function {}() {{ [native code] }}",
+        name.as_deref().unwrap_or("")
     )))
 }
 
@@ -864,6 +1047,26 @@ fn install_function(vm: &mut Vm) {
     vm.define_method(proto, "apply", 2, function_apply);
     vm.define_method(proto, "bind", 1, function_bind);
     vm.define_method(proto, "toString", 0, function_to_string);
+    vm.heap.get_mut(proto).kind = Kind::Native {
+        func: function_proto_call,
+        constructor: false,
+    };
+    // `caller` et `arguments` : un même accesseur, en lecture et en écriture.
+    let thrower = vm.new_function("", 0, restricted_property);
+    for name in ["caller", "arguments"] {
+        vm.heap.get_mut(proto).props.insert(
+            Arc::from(name),
+            Property {
+                slot: Slot::Accessor {
+                    get: Some(thrower),
+                    set: Some(thrower),
+                },
+                writable: true,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
     // `Function.prototype` est lui-même une fonction : longueur 0, nom vide.
     for (name, value) in [("length", Value::Number(0.0)), ("name", Value::string(""))] {
         vm.heap.get_mut(proto).props.insert(

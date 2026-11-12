@@ -69,7 +69,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
 | `oxyde_text` | polices, mise en forme, coupure de lignes | HarfBuzz, ICU | via Parley / HarfRust / ICU4X |
 | `oxyde_paint` | liste d'affichage | paint de Blink | rectangles, bordures, texte, images |
 | `oxyde_gpu` | rastérisation | Skia, Dawn | Vello sur wgpu |
-| `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes, modules, expressions rationnelles | V8 (Ignition, Irregexp) | 79,8 % de test262 ; voir limites |
+| `oxyde_js` | moteur JavaScript : analyseur, bytecode à registres, interpréteur, ramasse-miettes, modules, expressions rationnelles | V8 (Ignition, Irregexp) | 80,7 % de test262 ; voir limites |
 | `oxyde_bindings` | générateur de liaisons Web IDL : analyse des fichiers `.webidl`, table des interfaces du DOM | bindings de Blink | interfaces générées ; corps des opérations encore écrits à la main |
 | `oxyde_test262` | lanceur de la suite de conformité ECMAScript | `test262` de V8 | fonctionne |
 | `oxyde_ipc` | messages entre processus | Mojo | **réservé — jalon 5** |
@@ -91,7 +91,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   `click`, poser des minuteurs, appeler `fetch` (`GET` seulement) et charger des modules
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
-  pas encore. Conformité mesurée : 79,8 % de test262
+  pas encore. Conformité mesurée : 80,7 % de test262
   ([conformance/test262.md](conformance/test262.md)) ; 44,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du

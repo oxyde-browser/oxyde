@@ -113,6 +113,10 @@ struct FnState {
 struct Parser {
     lexer: Lexer,
     tok: Token,
+    /// Fin du dernier jeton consommé.
+    prev_end: usize,
+    /// Début du texte source de la prochaine fonction analysée.
+    fn_start: Option<usize>,
     depth: usize,
     /// Vrai pendant l'analyse de l'initialisation d'un `for` : `in` n'y est pas un opérateur.
     no_in: bool,
@@ -287,6 +291,7 @@ fn assign_op(p: &str) -> Option<AssignOp> {
 impl Parser {
     fn new(source: &str, module: bool) -> PResult<Self> {
         let mut lexer = Lexer::new(source);
+        lexer.html_comments = !module;
         let tok = lexer.next()?;
         Ok(Self {
             lexer,
@@ -311,6 +316,8 @@ impl Parser {
             labels: Vec::new(),
             private_scopes: Vec::new(),
             cover_init: None,
+            prev_end: 0,
+            fn_start: None,
         })
     }
 
@@ -591,7 +598,17 @@ impl Parser {
         ))
     }
 
+    /// Texte source qui va de `start` à la fin du dernier jeton consommé.
+    fn span(&self, start: Option<usize>) -> Option<crate::ast::SourceSpan> {
+        start.map(|start| crate::ast::SourceSpan {
+            text: self.lexer.source(),
+            start,
+            end: self.prev_end.max(start),
+        })
+    }
+
     fn advance(&mut self) -> PResult<Token> {
+        self.prev_end = self.lexer.pos;
         let next = self.lexer.next()?;
         if self.strict && next.legacy_octal {
             return Err(self
@@ -1021,9 +1038,11 @@ impl Parser {
                 Ok(Stmt::VarDecl(VarKind::Let, decls))
             }
             "function" => {
+                let start = self.tok.start;
                 self.advance()?;
                 let is_generator = self.eat_punct("*")?;
                 let name = self.binding_ident()?;
+                self.fn_start = Some(start);
                 Ok(Stmt::Function(Arc::new(self.function_with(
                     Some(name),
                     false,
@@ -1032,10 +1051,12 @@ impl Parser {
                 )?)))
             }
             "async" if self.async_function_follows()? => {
+                let start = self.tok.start;
                 self.advance()?;
                 self.advance()?;
                 let is_generator = self.eat_punct("*")?;
                 let name = self.binding_ident()?;
+                self.fn_start = Some(start);
                 Ok(Stmt::Function(Arc::new(self.function_with(
                     Some(name),
                     false,
@@ -1044,8 +1065,9 @@ impl Parser {
                 )?)))
             }
             "class" => {
+                let start = self.tok.start;
                 self.advance()?;
-                Ok(Stmt::Class(Box::new(self.class_rest(true)?)))
+                Ok(Stmt::Class(Box::new(self.class_rest(true, start)?)))
             }
             "if" => {
                 self.advance()?;
@@ -1426,6 +1448,7 @@ impl Parser {
         is_async: bool,
         is_generator: bool,
     ) -> PResult<Function> {
+        let start = self.fn_start.take();
         let super_call = std::mem::take(&mut self.derived_ctor);
         let saved = self.take_state();
         let was_strict = saved.strict;
@@ -1449,6 +1472,7 @@ impl Parser {
         // L'accolade fermante, lue hors du mode strict éventuel du corps.
         self.advance()?;
         Ok(Function {
+            source: self.span(start),
             name,
             params,
             rest,
@@ -1566,6 +1590,7 @@ impl Parser {
         let (body, _) = body?;
         self.advance()?;
         Ok(Function {
+            source: None,
             name: None,
             params: Vec::new(),
             rest: None,
@@ -1651,14 +1676,15 @@ impl Parser {
         }
     }
 
-    fn class_rest(&mut self, name_required: bool) -> PResult<Class> {
+    fn class_rest(&mut self, name_required: bool, start: usize) -> PResult<Class> {
         // Une définition de classe est toujours du code strict.
         let was_strict = std::mem::replace(&mut self.strict, true);
         let parsed = self.class_tail(name_required);
         self.strict = was_strict;
-        let class = parsed?;
+        let mut class = parsed?;
         // L'accolade fermante, lue hors du mode strict de la classe.
         self.advance()?;
+        class.source = self.span(Some(start));
         Ok(class)
     }
 
@@ -1681,6 +1707,7 @@ impl Parser {
         let (constructor, members) = body?;
         self.close_private_scope(scope)?;
         Ok(Class {
+            source: None,
             name,
             parent,
             constructor,
@@ -1709,6 +1736,7 @@ impl Parser {
             if is_static {
                 self.advance()?;
             }
+            let member_start = self.tok.start;
             let (is_async, is_generator) = self.method_modifiers()?;
             let accessor = match &self.tok.tok {
                 Tok::Ident(w)
@@ -1748,6 +1776,7 @@ impl Parser {
                     return self.error("le constructeur est une méthode ordinaire");
                 }
                 self.derived_ctor = is_constructor && derived;
+                self.fn_start = Some(member_start);
                 let func = Arc::new(self.function_with(
                     Self::method_name(&key),
                     true,
@@ -1944,6 +1973,7 @@ impl Parser {
         rest: Option<Pattern>,
         is_async: bool,
     ) -> PResult<Expr> {
+        let start = self.fn_start.take();
         // Une fonction fléchée hérite de `super`, `new.target` et du mode
         // strict de la fonction qui l'entoure.
         let saved = self.take_state();
@@ -1972,6 +2002,7 @@ impl Parser {
             self.advance()?;
         }
         Ok(Expr::Function(Arc::new(Function {
+            source: self.span(start),
             name: None,
             params,
             rest,
@@ -1992,6 +2023,7 @@ impl Parser {
             return Ok(None);
         }
         let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
+        let start = self.tok.start;
         self.advance()?;
         let outer_eval = std::mem::replace(&mut self.saw_eval, false);
         let attempt: PResult<Option<(Vec<Param>, Option<Pattern>)>> = match &self.tok.tok {
@@ -2018,6 +2050,7 @@ impl Parser {
         match attempt {
             Ok(Some((params, rest))) => {
                 self.advance()?;
+                self.fn_start = Some(start);
                 let arrow = self.arrow_body(params, rest, true);
                 self.saw_eval = outer_eval;
                 arrow.map(Some)
@@ -2053,6 +2086,7 @@ impl Parser {
     /// Tente de lire `(params) =>` ; restaure l'état et renvoie `None` si ce n'en est pas un.
     fn try_arrow(&mut self) -> PResult<Option<Expr>> {
         let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
+        let start = self.tok.start;
         // Un `eval(…)` lu dans les paramètres ou le corps est celui de la
         // fonction fléchée, pas de la fonction qui l'entoure.
         let outer_eval = std::mem::replace(&mut self.saw_eval, false);
@@ -2062,6 +2096,7 @@ impl Parser {
         match attempt {
             Ok(Some((params, rest))) => {
                 self.advance()?;
+                self.fn_start = Some(start);
                 let arrow = self.arrow_body(params, rest, false);
                 self.saw_eval = outer_eval;
                 arrow.map(Some)
@@ -2096,11 +2131,13 @@ impl Parser {
             Tok::Ident(name)
                 if !RESERVED.contains(&name.as_str()) && self.peek_is_punct("=>")? =>
             {
+                let start = self.tok.start;
                 let name = self.binding_ident()?;
                 if self.tok.newline_before {
                     return self.error("saut de ligne interdit avant « => »");
                 }
                 self.advance()?;
+                self.fn_start = Some(start);
                 let outer_eval = std::mem::replace(&mut self.saw_eval, false);
                 let arrow = self.arrow_body(
                     vec![Param {
@@ -2611,9 +2648,11 @@ impl Parser {
                     Ok(Expr::This)
                 }
                 "function" => {
+                    let start = self.tok.start;
                     self.advance()?;
                     let is_generator = self.eat_punct("*")?;
                     let name = self.function_expression_name(false, is_generator)?;
+                    self.fn_start = Some(start);
                     Ok(Expr::Function(Arc::new(self.function_with(
                         name,
                         false,
@@ -2622,10 +2661,12 @@ impl Parser {
                     )?)))
                 }
                 "async" if self.async_function_follows()? => {
+                    let start = self.tok.start;
                     self.advance()?;
                     self.advance()?;
                     let is_generator = self.eat_punct("*")?;
                     let name = self.function_expression_name(true, is_generator)?;
+                    self.fn_start = Some(start);
                     Ok(Expr::Function(Arc::new(self.function_with(
                         name,
                         false,
@@ -2634,8 +2675,9 @@ impl Parser {
                     )?)))
                 }
                 "class" => {
+                    let start = self.tok.start;
                     self.advance()?;
-                    Ok(Expr::Class(Box::new(self.class_rest(false)?)))
+                    Ok(Expr::Class(Box::new(self.class_rest(false, start)?)))
                 }
                 "import" if self.peek_is_punct("(")? => {
                     self.advance()?;
@@ -2723,6 +2765,7 @@ impl Parser {
     }
 
     fn object_property(&mut self) -> PResult<Property> {
+        let start = self.tok.start;
         let (is_async, is_generator) = self.method_modifiers()?;
         let accessor = match &self.tok.tok {
             Tok::Ident(w)
@@ -2735,6 +2778,7 @@ impl Parser {
         if let Some(is_getter) = accessor {
             self.advance()?;
             let key = self.property_key()?;
+            self.fn_start = Some(start);
             let func = Arc::new(self.function_rest(Self::method_name(&key), true)?);
             self.check_accessor(&func, is_getter)?;
             let kind = if is_getter {
@@ -2756,6 +2800,7 @@ impl Parser {
         }
         let key = self.property_key()?;
         if self.is_punct("(") {
+            self.fn_start = Some(start);
             let func = Arc::new(self.function_with(
                 Self::method_name(&key),
                 true,

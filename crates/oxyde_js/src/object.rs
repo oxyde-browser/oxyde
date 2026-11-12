@@ -68,14 +68,24 @@ impl Vm {
         let Kind::Closure(c) = &self.heap.get(func).kind else {
             return None;
         };
-        if !c.proto.is_constructor() {
+        if !c.proto.has_prototype() {
             return None;
         }
+        let (is_generator, is_async) = (c.proto.is_generator, c.proto.is_async);
         let proto = self.new_object();
-        self.heap.get_mut(proto).props.insert(
-            Arc::from("constructor"),
-            Property::hidden(Value::Object(func)),
-        );
+        if is_generator {
+            // Prototype des objets générateurs : sans `constructor`.
+            self.heap.get_mut(proto).proto = Some(if is_async {
+                self.intrinsics.async_generator_proto
+            } else {
+                self.intrinsics.generator_proto
+            });
+        } else {
+            self.heap.get_mut(proto).props.insert(
+                Arc::from("constructor"),
+                Property::hidden(Value::Object(func)),
+            );
+        }
         let value = Value::Object(proto);
         self.heap.get_mut(func).props.insert(
             Arc::from("prototype"),
@@ -456,7 +466,7 @@ impl Vm {
                 key == "length" || array_index(key).is_some_and(|i| i < utf16_len(s))
             }
             Kind::Closure(c) => {
-                self.closure_virtual(id, key) || (key == "prototype" && c.proto.is_constructor())
+                self.closure_virtual(id, key) || (key == "prototype" && c.proto.has_prototype())
             }
             _ => false,
         }
@@ -812,23 +822,7 @@ impl Vm {
                         let shown = self.display(source);
                         return Err(self.type_error(&format!("{shown} n'est pas itérable")));
                     }
-                    let iterator = self.call(&method, source, &[])?;
-                    let Some(iterator_id) = iterator.as_object() else {
-                        return Err(
-                            self.type_error("Symbol.iterator doit renvoyer un objet itérateur")
-                        );
-                    };
-                    if matches!(self.heap.get(iterator_id).kind, Kind::Iterator(_))
-                        && self.iterator_next_intact()
-                    {
-                        return Ok(iterator);
-                    }
-                    let next = self.get(&iterator, "next")?;
-                    IterState::Protocol {
-                        iterator,
-                        next,
-                        done: false,
-                    }
+                    return self.iterator_from_method(source, &method);
                 }
             },
             _ => {
@@ -837,6 +831,26 @@ impl Vm {
             }
         };
         Ok(self.new_iterator(state))
+    }
+
+    /// `GetIteratorFromMethod` : itérateur interne sur l'objet que rend
+    /// `method` appelée sur `source`.
+    pub(crate) fn iterator_from_method(&mut self, source: &Value, method: &Value) -> JsResult {
+        let iterator = self.call(method, source, &[])?;
+        let Some(iterator_id) = iterator.as_object() else {
+            return Err(self.type_error("Symbol.iterator doit renvoyer un objet itérateur"));
+        };
+        if matches!(self.heap.get(iterator_id).kind, Kind::Iterator(_))
+            && self.iterator_next_intact()
+        {
+            return Ok(iterator);
+        }
+        let next = self.get(&iterator, "next")?;
+        Ok(self.new_iterator(IterState::Protocol {
+            iterator,
+            next,
+            done: false,
+        }))
     }
 
     /// Vrai si `next` des itérateurs internes est la fonction d'origine.
@@ -853,7 +867,7 @@ impl Vm {
     /// Vrai si itérer le tableau `id` par le protocole donnerait exactement
     /// ses éléments : ni lui ni `Array.prototype` ne redéfinissent
     /// `Symbol.iterator`, et `next` est d'origine.
-    fn array_iteration_intact(&self, id: ObjId) -> bool {
+    pub(crate) fn array_iteration_intact(&self, id: ObjId) -> bool {
         let Some((values, _)) = self.iteration_intrinsics else {
             return true;
         };

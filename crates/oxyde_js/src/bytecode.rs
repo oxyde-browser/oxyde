@@ -534,6 +534,8 @@ pub(crate) type TemplateSite = (Vec<Option<JsStr>>, Vec<JsStr>);
 /// Fonction compilée, partagée par toutes les fermetures créées à partir d'elle.
 #[derive(Debug)]
 pub(crate) struct FunctionProto {
+    /// Texte source (`Function.prototype.toString`).
+    pub(crate) source: Option<crate::ast::SourceSpan>,
     pub(crate) name: JsStr,
     /// Nombre de paramètres formels.
     pub(crate) param_count: u16,
@@ -570,6 +572,12 @@ impl FunctionProto {
             FunctionKind::Normal | FunctionKind::ClassConstructor { .. }
         ) && !self.is_async
             && !self.is_generator
+    }
+
+    /// Vrai si la fonction porte une propriété `prototype` : constructeurs
+    /// et générateurs (prototype de leurs objets générateurs).
+    pub(crate) fn has_prototype(&self) -> bool {
+        self.is_constructor() || self.is_generator
     }
 
     /// Vrai si l'appel crée une coroutine (générateur ou fonction async) au

@@ -219,8 +219,35 @@ pub(crate) struct Param {
     pub(crate) default: Option<Expr>,
 }
 
+/// Texte source d'une fonction ou d'une classe, que rend
+/// `Function.prototype.toString` : un intervalle du source analysé.
+#[derive(Clone)]
+pub(crate) struct SourceSpan {
+    pub(crate) text: Arc<[char]>,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+}
+
+impl SourceSpan {
+    /// Le texte de l'intervalle.
+    pub(crate) fn text(&self) -> String {
+        self.text
+            .get(self.start..self.end)
+            .map(|chars| chars.iter().collect())
+            .unwrap_or_default()
+    }
+}
+
+impl std::fmt::Debug for SourceSpan {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SourceSpan({}..{})", self.start, self.end)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Function {
+    /// Texte source, absent d'une fonction synthétisée par le compilateur.
+    pub(crate) source: Option<SourceSpan>,
     pub(crate) name: Option<Arc<str>>,
     pub(crate) params: Vec<Param>,
     pub(crate) rest: Option<Pattern>,
@@ -260,6 +287,8 @@ pub(crate) enum ClassMemberKind {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Class {
+    /// Texte source de la classe entière.
+    pub(crate) source: Option<SourceSpan>,
     pub(crate) name: Option<Arc<str>>,
     pub(crate) parent: Option<Expr>,
     pub(crate) constructor: Option<Arc<Function>>,

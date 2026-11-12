@@ -138,6 +138,10 @@ pub(crate) struct Lexer {
     escaped: bool,
     /// Le jeton en cours de lecture contient une forme octale héritée.
     octal: bool,
+    /// Les commentaires `<!--` et `-->` sont reconnus (scripts, pas modules).
+    pub(crate) html_comments: bool,
+    /// Un jeton a déjà été lu : on n'est plus au début du source.
+    started: bool,
 }
 
 impl Lexer {
@@ -147,7 +151,14 @@ impl Lexer {
             pos: 0,
             escaped: false,
             octal: false,
+            html_comments: true,
+            started: false,
         }
+    }
+
+    /// Le source analysé, partagé.
+    pub(crate) fn source(&self) -> std::sync::Arc<[char]> {
+        std::sync::Arc::clone(&self.src)
     }
 
     pub(crate) fn error_at(&self, index: usize, message: impl Into<String>) -> SyntaxError {
@@ -174,7 +185,9 @@ impl Lexer {
 
     /// Saute blancs et commentaires ; renvoie vrai si un saut de ligne a été franchi.
     fn skip_trivia(&mut self) -> Result<bool, SyntaxError> {
+        // `-->` n'ouvre un commentaire qu'en début de ligne ou de source.
         let mut newline = false;
+        let at_start = !std::mem::replace(&mut self.started, true);
         // Ligne « hashbang » (`#!/usr/bin/env node`), permise en tête de source.
         if self.pos == 0 && self.peek(0) == Some('#') && self.peek(1) == Some('!') {
             while self.peek(0).is_some_and(|c| !is_line_terminator(c)) {
@@ -189,6 +202,26 @@ impl Lexer {
                 }
                 Some(c) if c.is_whitespace() || c == '\u{feff}' => self.pos += 1,
                 Some('/') if self.peek(1) == Some('/') => {
+                    while self.peek(0).is_some_and(|c| !is_line_terminator(c)) {
+                        self.pos += 1;
+                    }
+                }
+                Some('<')
+                    if self.html_comments
+                        && self.peek(1) == Some('!')
+                        && self.peek(2) == Some('-')
+                        && self.peek(3) == Some('-') =>
+                {
+                    while self.peek(0).is_some_and(|c| !is_line_terminator(c)) {
+                        self.pos += 1;
+                    }
+                }
+                Some('-')
+                    if self.html_comments
+                        && (newline || at_start)
+                        && self.peek(1) == Some('-')
+                        && self.peek(2) == Some('>') =>
+                {
                     while self.peek(0).is_some_and(|c| !is_line_terminator(c)) {
                         self.pos += 1;
                     }
