@@ -6,7 +6,7 @@
 //! pixels CSS, depuis le coin supérieur gauche de la page.
 //!
 //! LIMITES CONNUES (suivies dans `conformance/`) :
-//! - `flex` et `grid` sont mis en page comme des blocs ;
+//! - `grid` est mis en page comme un bloc ; pour `flex`, voir [`flex`] ;
 //! - tableaux : cellules de largeur égale, pas d'algorithme de tableau automatique ;
 //! - pas de flottants (`float`) ; `position: sticky` vaut `relative` sans décalage ;
 //! - une boîte positionnée est peinte après le contenu de son bloc conteneur,
@@ -16,6 +16,8 @@
 //! - les boîtes en ligne n'ont ni bordure ni marge interne (seul leur fond est peint) ;
 //! - une hauteur en pourcentage n'est résolue que si la hauteur du bloc
 //!   conteneur est imposée (sinon elle vaut `auto`).
+
+mod flex;
 
 use std::sync::Arc;
 
@@ -511,12 +513,14 @@ impl Engine<'_> {
                 outer
             }
         };
-        let intrinsic = (self.intrinsic)(node);
+        let intrinsic = self.intrinsic_size(node, style);
+        // Une image garde ses proportions ; un champ de formulaire, non.
+        let keeps_ratio = (self.intrinsic)(node).is_some();
         let specified = style.width.resolve(cb_w).map(to_content_w).or_else(|| {
             // Élément remplacé : largeur intrinsèque, ou déduite de la hauteur imposée.
             let (iw, ih) = intrinsic?;
             Some(match style.height {
-                Size::Px(h) if ih > 0.0 => iw * h / ih,
+                Size::Px(h) if ih > 0.0 && keeps_ratio => iw * h / ih,
                 _ => iw,
             })
         });
@@ -581,10 +585,7 @@ impl Engine<'_> {
 
         let mut content_w = content_w;
         if shrink && self.shrink_depth < MAX_SHRINK_DEPTH {
-            let wanted = children
-                .iter()
-                .map(|c| self.max_content(c, content_w))
-                .fold(0.0_f32, f32::max);
+            let wanted = self.max_content_of(style, &children, content_w);
             let fitted = clamp_w(wanted.ceil().min(content_w));
             if fitted < content_w - 0.5 {
                 self.shrink_depth += 1;
@@ -604,8 +605,15 @@ impl Engine<'_> {
             }
         }
 
-        let specified_h = definite_h
-            .or_else(|| intrinsic.map(|(iw, ih)| if iw > 0.0 { ih * content_w / iw } else { ih }));
+        let specified_h = definite_h.or_else(|| {
+            intrinsic.map(|(iw, ih)| {
+                if iw > 0.0 && keeps_ratio {
+                    ih * content_w / iw
+                } else {
+                    ih
+                }
+            })
+        });
         let mut height = specified_h.unwrap_or(content_h);
         if fixed_h.is_none() {
             if let Some(max) = resolve_height(style.max_height, cb_h) {
@@ -655,9 +663,20 @@ impl Engine<'_> {
         }
     }
 
+    /// Décale de (`dx`, `dy`) la position statique des boîtes hors flux mises
+    /// en attente depuis le rang `from` : elles suivent la boîte qui les
+    /// contient quand celle-ci est déplacée après sa mise en page.
+    fn shift_out_of_flow(&mut self, from: usize, dx: f32, dy: f32) {
+        for waiting in self.out_of_flow.iter_mut().skip(from) {
+            waiting.static_x += dx;
+            waiting.static_y += dy;
+        }
+    }
+
     /// Met en page une boîte hors flux dans son bloc conteneur `cb` (CSS 2
     /// §10.3.7 et §10.6.4).
     fn layout_out_of_flow(&mut self, item: OutOfFlow, cb: Rect) -> Fragment {
+        let waiting = self.out_of_flow.len();
         let style = &item.style;
         let inset = style.inset;
         let (left, right) = (inset.left.resolve(cb.w), inset.right.resolve(cb.w));
@@ -760,8 +779,58 @@ impl Engine<'_> {
         if let Fragment::Box(b) = &fragment {
             let (dx, dy) = (x - b.border_box.x, y - b.border_box.y);
             fragment.translate(dx, dy);
+            self.shift_out_of_flow(waiting, dx, dy);
         }
         fragment
+    }
+
+    /// Largeur de contenu la plus grande d'une boîte de style `style` dont
+    /// les enfants sont `children` : la plus large des boîtes empilées, ou
+    /// la somme des éléments d'une rangée flexible.
+    fn max_content_of(&self, style: &ComputedStyle, children: &[Fragment], available: f32) -> f32 {
+        let widths = children.iter().map(|c| self.max_content(c, available));
+        if style.flex_container && style.flex_direction.is_row() {
+            let in_flow = children
+                .iter()
+                .filter(|c| !matches!(c, Fragment::Box(b) if b.style.is_out_of_flow()))
+                .count();
+            let gap = style.column_gap.resolve(available).unwrap_or(0.0);
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "nombre d'éléments petit devant 2^24"
+            )]
+            let gaps = gap * in_flow.saturating_sub(1) as f32;
+            children
+                .iter()
+                .filter(|c| !matches!(c, Fragment::Box(b) if b.style.is_out_of_flow()))
+                .map(|c| self.max_content(c, available))
+                .sum::<f32>()
+                + gaps
+        } else {
+            widths.fold(0.0_f32, f32::max)
+        }
+    }
+
+    /// Taille intrinsèque de `node` : celle de son image, ou la taille par
+    /// défaut d'un champ de formulaire.
+    fn intrinsic_size(&self, node: NodeId, style: &ComputedStyle) -> Option<(f32, f32)> {
+        if let Some(size) = (self.intrinsic)(node) {
+            return Some(size);
+        }
+        let element = self.doc.element(node)?;
+        if !element.is_html("input") && !element.is_html("select") && !element.is_html("textarea") {
+            return None;
+        }
+        let line = style.line_height_px();
+        Some(match element.name.as_str() {
+            "input" => match element.attr("type").map(str::to_ascii_lowercase).as_deref() {
+                Some("checkbox" | "radio") => (13.0, 13.0),
+                Some("hidden") => (0.0, 0.0),
+                _ => (150.0, line),
+            },
+            "select" => (80.0, line),
+            _ => (150.0, line * 2.0),
+        })
     }
 
     /// Largeur extérieure qu'occuperait `fragment` sans contrainte de largeur.
@@ -776,17 +845,14 @@ impl Engine<'_> {
                 let margins =
                     px(b.style.margin.left, available) + px(b.style.margin.right, available);
                 if b.style.width != Size::Auto
-                    || b.node.is_some_and(|n| (self.intrinsic)(n).is_some())
+                    || b.node
+                        .is_some_and(|n| self.intrinsic_size(n, &b.style).is_some())
                 {
                     return b.border_box.w + margins;
                 }
                 let pad = edges_px(b.style.padding, available);
                 let bw = b.style.border_widths();
-                let inner = b
-                    .children
-                    .iter()
-                    .map(|c| self.max_content(c, available))
-                    .fold(0.0_f32, f32::max);
+                let inner = self.max_content_of(&b.style, &b.children, available);
                 inner + pad.left + pad.right + bw.left + bw.right + margins
             }
         }
@@ -815,6 +881,9 @@ impl Engine<'_> {
 
         if style.display == Display::TableRow {
             return self.layout_row(&children, x, y, width, depth);
+        }
+        if style.flex_container {
+            return self.layout_flex(style, node, &children, x, y, width, height, depth);
         }
 
         if style.display == Display::ListItem
@@ -876,6 +945,7 @@ impl Engine<'_> {
                 cb_h: height,
                 fixed_h: None,
             };
+            let waiting = self.out_of_flow.len();
             let fragment = self.layout_box(child, &child_style, space, depth);
             if fragment.border_box.h == 0.0 && fragment.children.is_empty() {
                 // Bloc vide de hauteur nulle : ses marges haute et basse se
@@ -899,6 +969,7 @@ impl Engine<'_> {
                     .or_else(|| resolve_height(inset.bottom, height).map(|b| -b))
                     .unwrap_or(0.0);
                 fragment.translate(dx, dy);
+                self.shift_out_of_flow(waiting, dx, dy);
             }
             fragments.push(fragment);
         }
@@ -1131,18 +1202,7 @@ impl Engine<'_> {
                 cb_h: None,
                 fixed_h: None,
             };
-            let mut fragment = self.layout_box(node, &style, space, depth);
-            // Champs de formulaire sans contenu : taille par défaut.
-            if fragment.children.is_empty()
-                && style.width == Size::Auto
-                && matches!(el.name.as_str(), "input" | "select" | "textarea")
-            {
-                let rows = if el.name == "textarea" { 2.0 } else { 1.0 };
-                fragment.border_box.w += if el.name == "select" { 80.0 } else { 150.0 };
-                if style.height == Size::Auto {
-                    fragment.border_box.h += style.line_height_px() * rows;
-                }
-            }
+            let fragment = self.layout_box(node, &style, space, depth);
             // La boîte en ligne réservée inclut les marges. `layout_box` a déjà
             // décalé le fragment de la marge gauche ; reste la marge haute.
             let mut fragment = Fragment::Box(fragment);
@@ -1402,6 +1462,56 @@ mod tests {
         assert_eq!(at("after"), (15.0, 25.0, 200.0, 10.0));
         // Fixe : par rapport à la fenêtre (400 × 600).
         assert_eq!(at("fixed"), (350.0, 0.0, 50.0, 20.0));
+    }
+
+    #[test]
+    fn flex_row_grows_stretches_and_aligns() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0} #f{display:flex; width:300px; height:100px}
+               #a{flex:1; height:20px} #b{flex:2} #c{width:60px; height:40px; align-self:center}
+             </style>
+             <div id=f><div id=a></div><div id=b></div><div id=c></div></div>",
+            800.0,
+        );
+        let at = |id: &str| {
+            let r = rect(&doc, &tree, id);
+            (r.x, r.y, r.w, r.h)
+        };
+        // 240 px libres partagés 1 : 2 ; #b, sans hauteur, s'étire sur la ligne.
+        assert_eq!(at("a"), (0.0, 0.0, 80.0, 20.0));
+        assert_eq!(at("b"), (80.0, 0.0, 160.0, 100.0));
+        assert_eq!(at("c"), (240.0, 30.0, 60.0, 40.0));
+    }
+
+    #[test]
+    fn flex_column_wrap_and_justify() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}
+               #col{display:flex; flex-direction:column; width:100px; height:200px}
+               #top{height:50px} #rest{flex:1}
+               #wrap{display:flex; flex-wrap:wrap; justify-content:space-between; width:100px}
+               #wrap div{width:40px; height:10px}
+               #shrink{display:flex; width:100px}
+               #shrink div{width:80px; height:10px}
+             </style>
+             <div id=col><div id=top></div><div id=rest></div></div>
+             <div id=wrap><div id=w1></div><div id=w2></div><div id=w3></div></div>
+             <div id=shrink><div id=s1></div><div id=s2></div></div>",
+            800.0,
+        );
+        let at = |id: &str| {
+            let r = rect(&doc, &tree, id);
+            (r.x, r.y, r.w, r.h)
+        };
+        assert_eq!(at("top"), (0.0, 0.0, 100.0, 50.0));
+        assert_eq!(at("rest"), (0.0, 50.0, 100.0, 150.0));
+        // Deux éléments par ligne, écartés ; le troisième passe à la ligne.
+        assert_eq!(at("w1"), (0.0, 200.0, 40.0, 10.0));
+        assert_eq!(at("w2"), (60.0, 200.0, 40.0, 10.0));
+        assert_eq!(at("w3"), (0.0, 210.0, 40.0, 10.0));
+        // Trop larges pour le conteneur : chacun rétrécit de moitié du dépassement.
+        assert_eq!(at("s1"), (0.0, 220.0, 50.0, 10.0));
+        assert_eq!(at("s2"), (50.0, 220.0, 50.0, 10.0));
     }
 
     #[test]

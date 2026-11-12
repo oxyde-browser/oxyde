@@ -414,6 +414,9 @@ pub struct ComputedStyle {
     pub row_gap: Size,
     /// `column-gap` (`Auto` : `normal`)
     pub column_gap: Size,
+    /// Vrai si `display` vaut `flex` ou `inline-flex` : le contenu suit la
+    /// mise en page flexible, que la boîte soit de niveau bloc ou en ligne.
+    pub flex_container: bool,
 }
 
 impl ComputedStyle {
@@ -469,6 +472,7 @@ impl ComputedStyle {
             order: 0,
             row_gap: Size::Auto,
             column_gap: Size::Auto,
+            flex_container: false,
         }
     }
 
@@ -605,7 +609,10 @@ fn is_inherited(property: Longhand) -> bool {
 /// Copie la propriété `property` de `from` vers `style`.
 fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Longhand) {
     match property {
-        Longhand::Display => style.display = from.display,
+        Longhand::Display => {
+            style.display = from.display;
+            style.flex_container = from.flex_container;
+        }
         Longhand::Color => style.color = from.color,
         Longhand::BackgroundColor => style.background_color = from.background_color,
         Longhand::FontSize => style.font_size = from.font_size,
@@ -712,6 +719,7 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
     };
     match property {
         Longhand::Display => {
+            style.flex_container = matches!(ident, "flex" | "inline-flex");
             style.display = match ident {
                 "none" => Display::None,
                 "block" | "flow-root" => Display::Block,

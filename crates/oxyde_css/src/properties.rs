@@ -815,7 +815,9 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             }
             let parts = components(tokens);
             let auto = || Value::Ident("auto".to_owned());
-            let zero = || Value::Length(Length::Px(0.0));
+            // Base omise : 0 %, qui vaut `content` quand la taille principale
+            // du conteneur n'est pas imposée.
+            let zero = || Value::Length(Length::Percent(0.0));
             let (grow, shrink, basis) = match parts.as_slice() {
                 [Token::Ident(word)] if word.eq_ignore_ascii_case("none") => {
                     (Value::Number(0.0), Value::Number(0.0), auto())
@@ -848,7 +850,7 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
                     non_negative_number(second)?,
                     // Une base nulle peut s'écrire `0`, sans unité.
                     match third {
-                        Token::Number(v) if *v == 0.0 => zero(),
+                        Token::Number(v) if *v == 0.0 => Value::Length(Length::Px(0.0)),
                         other => length_or_keywords(other, &["auto", "content"], false)?,
                     },
                 ),
