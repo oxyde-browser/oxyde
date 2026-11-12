@@ -1885,6 +1885,42 @@ impl ScriptEngine {
         });
     }
 
+    /// Touche enfoncée (`down`) ou relâchée : distribue `keydown` (et
+    /// `keypress`) ou `keyup`. Renvoie `true` si un script a annulé l'action
+    /// par défaut.
+    pub(crate) fn key_event(
+        &mut self,
+        doc: &mut Document,
+        down: bool,
+        input: &crate::KeyInput<'_>,
+    ) -> bool {
+        self.run(doc, |vm| {
+            let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
+                return false;
+            };
+            let args = [
+                Value::Bool(down),
+                Value::string(input.key),
+                Value::string(input.code),
+                Value::Bool(input.ctrl),
+                Value::Bool(input.shift),
+                Value::Bool(input.alt),
+                Value::Bool(input.meta),
+                Value::Bool(input.repeat),
+            ];
+            match vm
+                .get(&hooks, "key")
+                .and_then(|f| vm.call(&f, &hooks, &args))
+            {
+                Ok(proceed) => !proceed.truthy(),
+                Err(thrown) => {
+                    report(vm, &thrown);
+                    false
+                }
+            }
+        })
+    }
+
     /// Requêtes `fetch` émises par les scripts depuis le dernier appel.
     pub(crate) fn take_fetches(&mut self) -> Vec<crate::FetchRequest> {
         host(&mut self.vm)

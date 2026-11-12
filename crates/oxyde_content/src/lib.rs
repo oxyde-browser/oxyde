@@ -64,6 +64,25 @@ pub struct FetchRequest {
     pub needs_preflight: bool,
 }
 
+/// Touche du clavier, telle que la décrivent les UI Events.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeyInput<'a> {
+    /// Valeur de la touche (`"a"`, `"Enter"`, `"ArrowLeft"`…).
+    pub key: &'a str,
+    /// Touche physique (`"KeyA"`, `"Enter"`…).
+    pub code: &'a str,
+    /// Touche Ctrl enfoncée.
+    pub ctrl: bool,
+    /// Touche Maj enfoncée.
+    pub shift: bool,
+    /// Touche Alt enfoncée.
+    pub alt: bool,
+    /// Touche Méta (Windows) enfoncée.
+    pub meta: bool,
+    /// Répétition automatique d'une touche maintenue.
+    pub repeat: bool,
+}
+
 /// Navigation demandée par un script, à exécuter par l'embarqueur.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Navigation {
@@ -583,6 +602,21 @@ impl Page {
             .as_mut()
             .map(|e| e.take_console())
             .unwrap_or_default()
+    }
+
+    /// Touche enfoncée (`down`) ou relâchée : les scripts reçoivent
+    /// `keydown` (puis `keypress` pour un caractère) ou `keyup`. Renvoie
+    /// (action par défaut annulée, page à redessiner).
+    pub fn key_event(&mut self, down: bool, input: &KeyInput<'_>) -> (bool, bool) {
+        let Some(engine) = self.engine.as_mut() else {
+            return (false, false);
+        };
+        let prevented = engine.key_event(&mut self.doc, down, input);
+        let redraw = engine.take_dirty();
+        if redraw {
+            self.dom_changed();
+        }
+        (prevented, redraw)
     }
 
     /// Navigations demandées par les scripts depuis le dernier appel. Un
@@ -1685,6 +1719,45 @@ mod tests {
         assert_eq!(
             body_text(&p),
             "/dossier/page2?x=1|2|1|true|#autre|SecurityError|pop null #frag|fragment #frag"
+        );
+    }
+
+    #[test]
+    fn keyboard_events_reach_the_page() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               for (const type of ['keydown', 'keypress', 'keyup']) {
+                 document.addEventListener(type, e => {
+                   log.push(type + ' ' + e.key + ' ' + e.code + ' ' + e.keyCode + ' ' + e.ctrlKey);
+                   if (e.key === 'Enter') e.preventDefault();
+                   document.body.textContent = log.join('|');
+                 });
+               }
+             </script>",
+        );
+        p.run_scripts();
+        let key = |key: &'static str, code: &'static str, ctrl: bool| KeyInput {
+            key,
+            code,
+            ctrl,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        assert_eq!(p.key_event(true, &key("a", "KeyA", false)), (false, true));
+        assert_eq!(p.key_event(false, &key("a", "KeyA", false)), (false, true));
+        assert_eq!(
+            p.key_event(true, &key("Enter", "Enter", true)),
+            (true, true)
+        );
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "keydown a KeyA 65 false|keypress a KeyA 97 false|keyup a KeyA 65 false|",
+                "keydown Enter Enter 13 true"
+            )
         );
     }
 

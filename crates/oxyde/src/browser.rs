@@ -885,6 +885,25 @@ impl Browser {
         }
     }
 
+    /// Transmet une touche à la page de l'onglet actif, sauf pendant la
+    /// saisie dans la barre d'adresse. Renvoie (action par défaut annulée,
+    /// page à redessiner).
+    pub(crate) fn page_key(
+        &mut self,
+        down: bool,
+        input: &oxyde_content::KeyInput<'_>,
+    ) -> (bool, bool) {
+        if self.editing.is_some() {
+            return (false, false);
+        }
+        let Some(tab) = self.tabs.get_mut(self.active) else {
+            return (false, false);
+        };
+        let outcome = tab.page.key_event(down, input);
+        loader::report_console(&mut tab.page);
+        outcome
+    }
+
     /// Exécute les navigations que les scripts des onglets ont demandées
     /// (`location`, `history`) ; renvoie les chargements à lancer.
     pub(crate) fn drain_navigations(&mut self) -> Vec<Command> {

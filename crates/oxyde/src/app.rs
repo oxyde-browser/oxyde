@@ -493,8 +493,35 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
-            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
-                self.key_pressed(event_loop, &event.logical_key, event.text.as_deref());
+            WindowEvent::KeyboardInput { event, .. } => {
+                let down = event.state == ElementState::Pressed;
+                // La page reçoit d'abord la touche (`keydown`, `keyup`).
+                let key = match &event.logical_key {
+                    Key::Character(text) => text.to_string(),
+                    Key::Named(NamedKey::Space) => " ".to_owned(),
+                    Key::Named(named) => format!("{named:?}"),
+                    _ => "Unidentified".to_owned(),
+                };
+                let code = match event.physical_key {
+                    winit::keyboard::PhysicalKey::Code(code) => format!("{code:?}"),
+                    winit::keyboard::PhysicalKey::Unidentified(_) => String::new(),
+                };
+                let input = oxyde_content::KeyInput {
+                    key: &key,
+                    code: &code,
+                    ctrl: self.modifiers.control_key(),
+                    shift: self.modifiers.shift_key(),
+                    alt: self.modifiers.alt_key(),
+                    meta: self.modifiers.super_key(),
+                    repeat: event.repeat,
+                };
+                let (_prevented, redraw) = self.browser.page_key(down, &input);
+                if redraw {
+                    self.request_redraw();
+                }
+                if down {
+                    self.key_pressed(event_loop, &event.logical_key, event.text.as_deref());
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let Some(window) = self.window.as_ref() else {

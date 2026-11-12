@@ -6,7 +6,7 @@
 //   observe, disconnect, takeRecords -> observateurs de mutation ;
 //   locationHref()               -> adresse courante du document ;
 //   navigate(nature, valeur)     -> demande de navigation à l'embarqueur.
-// Elle rend les fonctions que le moteur appelle en retour (`traverse`).
+// Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
 //
@@ -989,7 +989,45 @@
   };
   expose("history", historyObject);
 
+  // LIMITE : pas encore de gestion du focus ; l'élément actif est `<body>`.
+  define(Document.prototype, "activeElement", {
+    get() { return this.body ?? this.documentElement; },
+    enumerable: true,
+    configurable: true,
+  });
+  // Codes hérités (`keyCode`, `which`) des touches courantes.
+  const legacyCodes = {
+    Backspace: 8, Tab: 9, Enter: 13, Shift: 16, Control: 17, Alt: 18, Escape: 27, " ": 32,
+    PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38,
+    ArrowRight: 39, ArrowDown: 40, Delete: 46,
+  };
+  function legacyCode(key) {
+    if (key in legacyCodes) return legacyCodes[key];
+    if (key.length === 1) return key.toUpperCase().charCodeAt(0);
+    const functionKey = /^F(\d{1,2})$/.exec(key);
+    return functionKey ? 111 + Number(functionKey[1]) : 0;
+  }
+
   return {
+    // Touche enfoncée (`down`) ou relâchée : `keydown` (puis `keypress` pour
+    // un caractère) ou `keyup`, sur l'élément actif. Rend `false` si
+    // l'action par défaut a été annulée.
+    key(down, key, code, ctrlKey, shiftKey, altKey, metaKey, repeat) {
+      const target = document.activeElement ?? document;
+      const keyCode = legacyCode(key);
+      const init = {
+        key, code, ctrlKey, shiftKey, altKey, metaKey, repeat, keyCode, which: keyCode,
+        bubbles: true, cancelable: true, view: global,
+      };
+      let proceed = target.dispatchEvent(new global.KeyboardEvent(down ? "keydown" : "keyup", init));
+      if (down && proceed && key.length === 1 && !ctrlKey && !altKey && !metaKey) {
+        const charCode = key.charCodeAt(0);
+        proceed = target.dispatchEvent(new global.KeyboardEvent("keypress", {
+          ...init, keyCode: charCode, charCode, which: charCode,
+        }));
+      }
+      return proceed;
+    },
     // L'embarqueur a parcouru l'historique de `delta` entrées sans quitter
     // ce document : `popstate`, et `hashchange` si seul le fragment change.
     traverse(delta, before) {
