@@ -1657,6 +1657,13 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     for (name, arity, func) in window_methods {
         vm.define_method(global, name, *arity, *func);
     }
+    // Prélude : `URL`, `URLSearchParams`, `Headers`… écrits en JavaScript.
+    let prelude = vm.eval_script(include_str!("script/prelude.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("parseUrl", 2, parse_url)),
+        Value::Object(vm.new_function("changeUrl", 3, change_url)),
+    ];
+    vm.call(&prelude, &Value::Undefined, &helpers)?;
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
     // qui reçoit le `fetch` d'origine.
     let factory = vm.eval_script(include_str!("script/xhr.js"))?;
@@ -1949,12 +1956,20 @@ fn request_headers(vm: &mut Vm, source: &Value) -> JsResult<Result<Vec<(String, 
     }
     let global = Value::Object(vm.global());
     let array = vm.get(&global, "Array")?;
-    let is_array = vm.get(&array, "isArray")?;
-    let pairs = if vm
-        .call(&is_array, &array, std::slice::from_ref(source))?
-        .truthy()
-    {
-        source.clone()
+    // Itérable (tableau de paires, `Headers`, `Map`) : `Array.from` en tire
+    // les paires ; sinon ce sont les propriétés de l'objet.
+    let symbol = vm.get(&global, "Symbol")?;
+    let iterator = vm.get(&symbol, "iterator")?;
+    let iterable = match vm.to_key(&iterator) {
+        Ok(key) => {
+            let method = vm.get_key(source, &key)?;
+            vm.type_of(&method) == "function"
+        }
+        Err(_) => false,
+    };
+    let pairs = if iterable {
+        let from = vm.get(&array, "from")?;
+        vm.call(&from, &array, std::slice::from_ref(source))?
     } else {
         let object = vm.get(&global, "Object")?;
         let entries = vm.get(&object, "entries")?;
@@ -2036,7 +2051,16 @@ fn outgoing(vm: &mut Vm, args: &[Value]) -> JsResult<Result<Outgoing, String>> {
                     "une requête {method} ne peut pas avoir de corps"
                 )));
             }
-            // LIMITE : le corps est pris pour du texte.
+            // LIMITE : le corps est pris pour du texte ; des paramètres
+            // d'URL partent comme un formulaire.
+            let form = match &other {
+                Value::Object(_) => {
+                    let constructor = vm.get(&other, "constructor")?;
+                    let name = vm.get(&constructor, "name")?;
+                    name == Value::string("URLSearchParams")
+                }
+                _ => false,
+            };
             let text = vm.to_string(&other)?;
             if !headers
                 .iter()
@@ -2044,7 +2068,11 @@ fn outgoing(vm: &mut Vm, args: &[Value]) -> JsResult<Result<Outgoing, String>> {
             {
                 headers.push((
                     "Content-Type".to_owned(),
-                    "text/plain;charset=UTF-8".to_owned(),
+                    if form {
+                        "application/x-www-form-urlencoded;charset=UTF-8".to_owned()
+                    } else {
+                        "text/plain;charset=UTF-8".to_owned()
+                    },
                 ));
             }
             text.as_bytes().to_vec()
@@ -2278,6 +2306,89 @@ fn response_json(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) ->
         Ok(value) => vm.promise_resolved(value),
         Err(thrown) => vm.promise_rejected(thrown),
     })
+}
+
+// ---- URL -------------------------------------------------------------------------
+
+/// Composants de `url`, dans l'ordre attendu par le prélude : href, protocol,
+/// username, password, host, hostname, port, pathname, search, hash, origin.
+fn url_parts(vm: &mut Vm, url: &Url) -> Value {
+    use url::quirks;
+    let origin = quirks::origin(url);
+    let items = [
+        quirks::href(url),
+        quirks::protocol(url),
+        quirks::username(url),
+        quirks::password(url),
+        quirks::host(url),
+        quirks::hostname(url),
+        quirks::port(url),
+        quirks::pathname(url),
+        quirks::search(url),
+        quirks::hash(url),
+        origin.as_str(),
+    ]
+    .map(Value::string)
+    .to_vec();
+    vm.new_array(items)
+}
+
+/// `parseUrl(texte, base)` : les composants de l'adresse, ou `null`.
+fn parse_url(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let input = vm.to_string(&arg(args, 0))?;
+    let parsed = match arg(args, 1) {
+        Value::Undefined => Url::parse(&input),
+        base => {
+            let base = vm.to_string(&base)?;
+            Url::parse(&base).and_then(|base| base.join(&input))
+        }
+    };
+    Ok(match parsed {
+        Ok(url) => url_parts(vm, &url),
+        Err(_) => Value::Null,
+    })
+}
+
+/// `changeUrl(href, rang, valeur)` : applique le mutateur du composant de
+/// rang `rang` (URL Standard §6.1) et rend les nouveaux composants. Une
+/// valeur refusée laisse l'adresse telle quelle.
+fn change_url(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    use url::quirks;
+    let href = vm.to_string(&arg(args, 0))?;
+    let rank = vm.to_number(&arg(args, 1))?;
+    let value = vm.to_string(&arg(args, 2))?;
+    let Ok(mut url) = Url::parse(&href) else {
+        return Ok(Value::Null);
+    };
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "rang choisi par le prélude, entre 1 et 9"
+    )]
+    let rank = rank as u8;
+    // Les mutateurs faillibles signalent un refus, sans autre effet.
+    let _refused = match rank {
+        1 => quirks::set_protocol(&mut url, &value),
+        2 => quirks::set_username(&mut url, &value),
+        3 => quirks::set_password(&mut url, &value),
+        4 => quirks::set_host(&mut url, &value),
+        5 => quirks::set_hostname(&mut url, &value),
+        6 => quirks::set_port(&mut url, &value),
+        7 => {
+            quirks::set_pathname(&mut url, &value);
+            Ok(())
+        }
+        8 => {
+            quirks::set_search(&mut url, &value);
+            Ok(())
+        }
+        9 => {
+            quirks::set_hash(&mut url, &value);
+            Ok(())
+        }
+        _ => Ok(()),
+    };
+    Ok(url_parts(vm, &url))
 }
 
 // ---- Couverture du DOM -----------------------------------------------------------

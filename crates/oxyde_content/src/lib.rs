@@ -1411,6 +1411,56 @@ mod tests {
     }
 
     #[test]
+    fn url_search_params_and_headers() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const url = new URL('../a b/c?x=1&y=deux mots#h', 'https://Exemple.test:8443/d/e/');
+               log.push(url.href, url.origin, url.pathname, url.searchParams.get('y'));
+               url.searchParams.append('z', 'é&=');
+               url.port = '443';
+               url.hash = '';
+               log.push(url.search, url.host, String(url), URL.canParse('pas une url'));
+               const params = new URLSearchParams({ a: '1', b: 'x y' });
+               params.set('a', '2');
+               log.push(params.toString(), [...params.keys()].join(','), params.size);
+               const headers = new Headers([['X-B', '1'], ['x-a', ' 2 ']]);
+               headers.append('X-B', '3');
+               log.push([...headers].join(';'), headers.get('x-b'), headers.has('X-C'));
+               try { new URL('::'); } catch (e) { log.push(e.name); }
+               fetch('/form', { method: 'POST', headers, body: params });
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            concat!(
+                "https://exemple.test:8443/d/a%20b/c?x=1&y=deux%20mots#h|",
+                "https://exemple.test:8443|/d/a%20b/c|deux mots|",
+                "?x=1&y=deux+mots&z=%C3%A9%26%3D|exemple.test|",
+                "https://exemple.test/d/a%20b/c?x=1&y=deux+mots&z=%C3%A9%26%3D|false|",
+                "a=2&b=x+y|a,b|2|x-a,2;x-b,1, 3|1, 3|false|TypeError"
+            )
+        );
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].body, b"a=2&b=x+y");
+        let pair = |n: &str, v: &str| (n.to_owned(), v.to_owned());
+        assert_eq!(
+            requests[0].headers,
+            [
+                pair("x-a", "2"),
+                pair("x-b", "1, 3"),
+                pair(
+                    "Content-Type",
+                    "application/x-www-form-urlencoded;charset=UTF-8"
+                ),
+            ]
+        );
+    }
+
+    #[test]
     fn storage_fragments_collections_and_dataset() {
         let mut p = page(
             "<p id=a data-user-id=7 name=n>x</p><p>y</p>
