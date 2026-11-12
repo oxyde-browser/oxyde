@@ -53,7 +53,7 @@ moteur au lieu de reprendre Chromium. C'est face à eux que la comparaison est l
 | [Gosub](https://gosub.io/) | Rust | moteur complet, à un stade précoce |
 | [Ladybird](https://ladybird.org/) | C++ | moteur entièrement indépendant ; pas du Rust, mais la même ambition |
 
-Oxyde est, à ma connaissance, le seul de ces projets dont le moteur JavaScript est lui aussi
+Oxyde semble être le seul de ces projets dont le moteur JavaScript est lui aussi
 écrit en Rust et sans dépendance C ou C++ ; c'est à vérifier projet par projet avant de
 l'écrire ailleurs que dans ce document. L'état de ces projets change vite : la liste est à
 revoir à chaque mesure, et un projet abandonné sort du tableau.
