@@ -3514,7 +3514,7 @@ impl Compiler {
                 self.emit(Op::LoadNewTarget { dst });
                 Ok(dst)
             }
-            Expr::ImportCall(specifier, options) => {
+            Expr::ImportCall(specifier, options, source) => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
                 let src = self.alloc()?;
@@ -3524,7 +3524,11 @@ impl Compiler {
                     let ignored = self.alloc()?;
                     self.expr(options, Some(ignored))?;
                 }
-                self.emit(Op::ImportCall { dst, src });
+                self.emit(Op::ImportCall {
+                    dst,
+                    src,
+                    source: *source,
+                });
                 self.free_to(mark);
                 Ok(dst)
             }

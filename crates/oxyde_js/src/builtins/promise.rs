@@ -37,6 +37,8 @@ pub(crate) enum Job {
         promise: ObjId,
         specifier: JsStr,
         referrer: JsStr,
+        /// `import.source(…)` : chargement seul, puis rejet.
+        source: bool,
     },
 }
 
@@ -321,7 +323,8 @@ impl Vm {
                 promise,
                 specifier,
                 referrer,
-            } => self.run_import(promise, &specifier, &referrer),
+                source,
+            } => self.run_import(promise, &specifier, &referrer, source),
             Job::Reaction {
                 handler,
                 argument,

@@ -105,6 +105,8 @@ pub(crate) enum Op {
     ImportCall {
         dst: Reg,
         src: Reg,
+        /// `import.source(…)` : la source du module, non son espace de noms.
+        source: bool,
     },
     /// Fonction en cours d'exécution (nom d'une expression de fonction nommée).
     LoadCallee {

@@ -948,6 +948,17 @@ impl Parser {
         Ok((body, directive))
     }
 
+    /// Vrai si `import` (jeton courant) est suivi de `.source(` ou `.defer(`.
+    fn import_phase_follows(&self) -> PResult<bool> {
+        let mut probe = self.lexer.clone();
+        if probe.next()?.tok != Tok::Punct(".") {
+            return Ok(false);
+        }
+        let word = probe.next()?;
+        let phase = matches!(&word.tok, Tok::Ident(w) if w == "source" || w == "defer");
+        Ok(phase && !word.escaped && probe.next()?.tok == Tok::Punct("("))
+    }
+
     /// Vrai si le jeton courant ouvre une déclaration `using` : le mot
     /// `using`, suivi sur la même ligne d'un nom de liaison.
     fn using_follows(&self) -> PResult<bool> {
@@ -2602,7 +2613,9 @@ impl Parser {
                 // Le constructeur est une expression membre sans appel.
                 let mut callee = if self.is_kw("new") {
                     self.left_hand_side()?
-                } else if self.is_kw("import") && self.peek_is_punct("(")? {
+                } else if self.is_kw("import")
+                    && (self.peek_is_punct("(")? || self.import_phase_follows()?)
+                {
                     return self.error("« new import() » est interdit");
                 } else {
                     self.primary()?
@@ -2889,12 +2902,34 @@ impl Parser {
                     let parsed = self.import_arguments();
                     self.no_in = saved_no_in;
                     let (specifier, options) = parsed?;
-                    Ok(Expr::ImportCall(Box::new(specifier), options.map(Box::new)))
+                    Ok(Expr::ImportCall(
+                        Box::new(specifier),
+                        options.map(Box::new),
+                        false,
+                    ))
                 }
-                "import" if self.module && self.peek_is_punct(".")? => {
+                "import" if self.peek_is_punct(".")? => {
                     self.advance()?;
                     self.advance()?;
-                    if !self.eat_kw("meta")? {
+                    // `import.source(x)` et `import.defer(x)` : un seul argument.
+                    let phase = match &self.tok.tok {
+                        Tok::Ident(word) if !self.tok.escaped && word == "source" => Some(true),
+                        Tok::Ident(word) if !self.tok.escaped && word == "defer" => Some(false),
+                        _ => None,
+                    };
+                    if let Some(source) = phase
+                        && self.peek_is_punct("(")?
+                    {
+                        self.advance()?;
+                        self.advance()?;
+                        let saved_no_in = std::mem::replace(&mut self.no_in, false);
+                        let specifier = self.assignment();
+                        self.no_in = saved_no_in;
+                        let specifier = specifier?;
+                        self.expect_punct(")")?;
+                        return Ok(Expr::ImportCall(Box::new(specifier), None, source));
+                    }
+                    if !self.module || !self.eat_kw("meta")? {
                         return self.error("« meta » attendu après « import. »");
                     }
                     // Lu comme une liaison de la portée du module (voir `module.rs`).

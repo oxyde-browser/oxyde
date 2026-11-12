@@ -149,7 +149,12 @@ impl Vm {
     /// `import(specifier)` depuis du code dont la portée de module est
     /// `scope` (`None` : script classique). Rend la promesse de l'espace de
     /// noms ; le chargement se fait dans une microtâche.
-    pub(crate) fn dynamic_import(&mut self, specifier: &Value, scope: Option<ObjId>) -> Value {
+    pub(crate) fn dynamic_import(
+        &mut self,
+        specifier: &Value,
+        scope: Option<ObjId>,
+        source: bool,
+    ) -> Value {
         let promise = self.new_promise();
         let meta = scope.and_then(|scope| {
             match self
@@ -176,6 +181,7 @@ impl Vm {
                 promise,
                 specifier,
                 referrer,
+                source,
             }),
             Err(thrown) => self.settle(promise, true, thrown),
         }
@@ -184,11 +190,58 @@ impl Vm {
 
     /// Microtâche d'un `import()` : règle `promise` avec l'espace de noms du
     /// module, ou la rejette avec l'erreur de chargement ou d'évaluation.
-    pub(crate) fn run_import(&mut self, promise: ObjId, specifier: &JsStr, referrer: &JsStr) {
+    ///
+    /// `source` : `import.source(…)`. Le module est chargé, puis la promesse
+    /// est rejetée : un module écrit en JavaScript n'a pas de source à
+    /// rendre (ECMA-262, `GetModuleSource`).
+    pub(crate) fn run_import(
+        &mut self,
+        promise: ObjId,
+        specifier: &JsStr,
+        referrer: &JsStr,
+        source: bool,
+    ) {
+        if source {
+            let thrown = match self.load_only(specifier, referrer) {
+                Ok(()) => self.error(
+                    "SyntaxError",
+                    "import.source : ce module n'a pas de source à fournir",
+                ),
+                Err(thrown) => thrown,
+            };
+            self.settle(promise, true, thrown);
+            return;
+        }
         match self.import_namespace(specifier, referrer) {
             Ok(namespace) => self.resolve_promise(promise, Value::Object(namespace)),
             Err(thrown) => self.settle(promise, true, thrown),
         }
+    }
+
+    /// Charge et lie le module `specifier`, sans l'évaluer.
+    fn load_only(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<()> {
+        let Some(loader) = self.module_loader else {
+            return Err(self.type_error(&format!(
+                "module « {specifier} » introuvable : aucun chargeur de modules"
+            )));
+        };
+        let (id, source) = match loader(self, specifier, referrer) {
+            Ok(loaded) => loaded,
+            Err(message) => {
+                return Err(
+                    self.type_error(&format!("module « {specifier} » introuvable : {message}"))
+                );
+            }
+        };
+        let id: JsStr = Arc::from(id);
+        let before = self.modules.len();
+        let loaded = self
+            .load_module(&id, &source, 0)
+            .and_then(|()| self.link_modules());
+        if loaded.is_err() {
+            self.modules.truncate(before);
+        }
+        loaded
     }
 
     fn import_namespace(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<ObjId> {
