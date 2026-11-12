@@ -493,7 +493,7 @@ fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr], strict: bool) -
 }
 
 /// Noms liés par les déclarations `let`, `const` et `class` directes de `body`.
-fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
+pub(crate) fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
     for stmt in body {
         match stmt {
             Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
@@ -601,7 +601,7 @@ fn block_functions_in(stmt: &Stmt, nested: bool, shadow: &mut Vec<JsStr>, out: &
     }
 }
 
-fn var_names(stmts: &[Stmt], out: &mut Vec<JsStr>) {
+pub(crate) fn var_names(stmts: &[Stmt], out: &mut Vec<JsStr>) {
     for stmt in stmts {
         var_names_in(stmt, out);
     }
@@ -2011,6 +2011,86 @@ impl Compiler {
     }
 
     /// Émet le code qui défait les zones protégées au-dessus de `down_to`.
+    /// Évalue dans `reg` la valeur d'un `return`, en marquant comme terminaux
+    /// les appels qui la produisent directement : `f()`, `c ? f() : g()`,
+    /// `a && f()`, `(x, f())`.
+    fn tail_expr(&mut self, expr: &Expr, reg: Reg) -> CResult<()> {
+        match expr {
+            Expr::Cond {
+                test,
+                then,
+                otherwise,
+            } => {
+                let mark = self.mark();
+                let cond = self.expr(test, None)?;
+                let to_else = self.emit(Op::JumpIfFalse {
+                    src: cond,
+                    target: 0,
+                });
+                self.free_to(mark);
+                self.tail_expr(then, reg)?;
+                let end = self.emit(Op::Jump { target: 0 });
+                self.patch(to_else);
+                self.tail_expr(otherwise, reg)?;
+                self.patch(end);
+            }
+            Expr::Logical { op, left, right } => {
+                self.expr(left, Some(reg))?;
+                let skip = self.emit(match op {
+                    LogicalOp::And => Op::JumpIfFalse {
+                        src: reg,
+                        target: 0,
+                    },
+                    LogicalOp::Or => Op::JumpIfTrue {
+                        src: reg,
+                        target: 0,
+                    },
+                    LogicalOp::Nullish => Op::JumpIfNotNullish {
+                        src: reg,
+                        target: 0,
+                    },
+                });
+                self.tail_expr(right, reg)?;
+                self.patch(skip);
+            }
+            Expr::Sequence(items) => {
+                if let Some((last, first)) = items.split_last() {
+                    for item in first {
+                        let mark = self.mark();
+                        self.expr(item, None)?;
+                        self.free_to(mark);
+                    }
+                    self.tail_expr(last, reg)?;
+                }
+            }
+            Expr::Call { .. } => {
+                self.expr(expr, Some(reg))?;
+                if let Some(last) = self.f().code.last_mut()
+                    && let Op::Call {
+                        dst,
+                        callee,
+                        this,
+                        first,
+                        argc,
+                    } = *last
+                    && dst == reg
+                {
+                    *last = Op::TailCall {
+                        dst,
+                        callee,
+                        this,
+                        first,
+                        argc,
+                    };
+                }
+            }
+            _ => {
+                self.expr(expr, Some(reg))?;
+            }
+        }
+        Ok(())
+    }
+
     fn unwind_exits(&mut self, down_to: usize) -> CResult<()> {
         let mut index = self.f().exits.len();
         while index > down_to {
@@ -2237,7 +2317,20 @@ impl Compiler {
                 let reg = self.alloc()?;
                 match value {
                     Some(value) => {
-                        self.expr(value, Some(reg))?;
+                        // Appel terminal : en mode strict, dans une fonction
+                        // ordinaire, hors de tout `try` et de toute boucle
+                        // d'itération à fermer.
+                        let state = self.f();
+                        let tail = state.strict
+                            && !state.is_generator
+                            && !state.is_async
+                            && state.exits.is_empty()
+                            && !matches!(state.kind, FunctionKind::ClassConstructor { .. });
+                        if tail {
+                            self.tail_expr(value, reg)?;
+                        } else {
+                            self.expr(value, Some(reg))?;
+                        }
                     }
                     None => {
                         self.emit(Op::LoadUndefined { dst: reg });

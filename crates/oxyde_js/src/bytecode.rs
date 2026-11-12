@@ -283,6 +283,16 @@ pub(crate) enum Op {
         dst: Reg,
         key: Reg,
     },
+    /// Appel en position terminale (`return f(…)` en mode strict) : comme
+    /// `Call`, mais le cadre courant est remplacé par celui de la fonction
+    /// appelée quand c'est possible (ECMA-262 §15.10, appels terminaux).
+    TailCall {
+        dst: Reg,
+        callee: Reg,
+        this: Reg,
+        first: Reg,
+        argc: u16,
+    },
     /// Champ de classe : définit `obj[key]` (un champ privé ne se définit
     /// qu'une fois ; un champ public refusé lève `TypeError`).
     DefineField {

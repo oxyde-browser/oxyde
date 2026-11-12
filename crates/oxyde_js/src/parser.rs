@@ -115,6 +115,10 @@ struct Parser {
     tok: Token,
     /// Fin du dernier jeton consommé.
     prev_end: usize,
+    /// Position d'un `...x` suivi d'une virgule dans un littéral tableau ou
+    /// objet : permis dans une expression, interdit si le littéral se
+    /// révèle être un motif d'affectation.
+    rest_comma: Option<usize>,
     /// Début du texte source de la prochaine fonction analysée.
     fn_start: Option<usize>,
     depth: usize,
@@ -327,6 +331,7 @@ impl Parser {
             private_scopes: Vec::new(),
             cover_init: None,
             prev_end: 0,
+            rest_comma: None,
             fn_start: None,
         })
     }
@@ -993,6 +998,18 @@ impl Parser {
         if self.is_kw("function") && (self.strict || self.peek_is_punct("*")?) {
             return self.error("déclaration de fonction interdite ici");
         }
+        // Une étiquette précède une instruction, jamais une déclaration.
+        let lexical = self.is_kw("const")
+            || self.is_kw("class")
+            || (self.is_kw("async") && self.async_function_follows()?)
+            || (self.is_kw("let") && {
+                let next = self.peek()?;
+                matches!(next.tok, Tok::Punct("["))
+                    || (!next.newline_before && matches!(next.tok, Tok::Ident(_) | Tok::Punct("{")))
+            });
+        if lexical && !self.tok.escaped {
+            return self.error("déclaration interdite après une étiquette");
+        }
         self.labels.push(Arc::clone(&label));
         let body = self.statement();
         self.labels.pop();
@@ -1248,6 +1265,16 @@ impl Parser {
                 }
                 _ => None,
             };
+            // `for (async of …)` est interdit : il se lirait comme le début
+            // d'une fonction fléchée (`async of => …` reste permis).
+            if decl_kind.is_none() && !is_await && self.is_kw("async") && !self.tok.escaped {
+                let mut probe = self.lexer.clone();
+                let of = matches!(probe.next()?.tok, Tok::Ident(w) if w == "of");
+                if of && probe.next()?.tok != Tok::Punct("=>") {
+                    return self.error("« for (async of » est interdit");
+                }
+            }
+            self.rest_comma = None;
             self.no_in = true;
             let parsed = match decl_kind {
                 Some(kind) => {
@@ -1289,6 +1316,12 @@ impl Parser {
                         // `for ({ a = 1 } of xs)` : l'objet est bien un motif.
                         if matches!(expr, Expr::Object(_) | Expr::Array(_)) {
                             self.cover_init = None;
+                            if let Some(position) = self.rest_comma.take() {
+                                return Err(self.lexer.error_at(
+                                    position,
+                                    "l'élément de reste doit être le dernier du motif",
+                                ));
+                            }
                         }
                         ForTarget::Pattern(self.to_pattern(expr)?)
                     }
@@ -1302,10 +1335,16 @@ impl Parser {
                 if is_await && !of {
                     return self.error("« for await » exige la forme « of »");
                 }
+                let body = self.substatement(false)?;
+                if let ForTarget::Decl(VarKind::Let | VarKind::Const, pattern) = &target {
+                    let mut names = Vec::new();
+                    crate::compiler::pattern_names(pattern, &mut names);
+                    self.check_loop_names(&names, &body)?;
+                }
                 let looped = Stmt::ForIn {
                     target,
                     object,
-                    body: Box::new(self.substatement(false)?),
+                    body: Box::new(body),
                     of,
                     is_await,
                 };
@@ -1349,6 +1388,19 @@ impl Parser {
         })
     }
 
+    /// Noms liés par la tête `let` ou `const` d'une boucle : sans doublon,
+    /// et distincts des `var` que déclare le corps.
+    fn check_loop_names(&self, names: &[Arc<str>], body: &Stmt) -> PResult<()> {
+        let mut vars = Vec::new();
+        crate::compiler::var_names(std::slice::from_ref(body), &mut vars);
+        for (i, name) in names.iter().enumerate() {
+            if names.get(..i).is_some_and(|seen| seen.contains(name)) || vars.contains(name) {
+                return self.error(format!("« {name} » est déjà déclaré"));
+            }
+        }
+        Ok(())
+    }
+
     fn try_statement(&mut self) -> PResult<Stmt> {
         self.advance()?;
         let block = self.block()?;
@@ -1359,7 +1411,28 @@ impl Parser {
                 param = Some(self.binding_pattern()?);
                 self.expect_punct(")")?;
             }
-            handler = Some(self.block()?);
+            let body = self.block()?;
+            if let Some(pattern) = &param {
+                // Le paramètre ne peut pas être redéclaré par une liaison
+                // lexicale du bloc, ni lier deux fois le même nom.
+                let mut names = Vec::new();
+                crate::compiler::pattern_names(pattern, &mut names);
+                let mut lexical = Vec::new();
+                crate::compiler::lexical_names(&body, &mut lexical);
+                for stmt in &body {
+                    if let Stmt::Function(func) = stmt {
+                        lexical.extend(func.name.clone());
+                    }
+                }
+                for (i, name) in names.iter().enumerate() {
+                    if names.get(..i).is_some_and(|seen| seen.contains(name))
+                        || lexical.contains(name)
+                    {
+                        return self.error(format!("« {name} » est déjà déclaré"));
+                    }
+                }
+            }
+            handler = Some(body);
         }
         let finalizer = if self.eat_kw("finally")? {
             Some(self.block()?)
@@ -2198,6 +2271,7 @@ impl Parser {
         // Un `{ a = 1 }` lu ici n'est valide que si l'expression se révèle
         // être un motif d'affectation ; sinon il reste en attente d'une erreur.
         let outer_cover = self.cover_init.take();
+        let outer_rest = self.rest_comma.take();
         let left = self.conditional()?;
         let op = match &self.tok.tok {
             Tok::Punct(p) => assign_op(p),
@@ -2205,11 +2279,18 @@ impl Parser {
         };
         let Some(op) = op else {
             self.cover_init = outer_cover.or(self.cover_init);
+            self.rest_comma = outer_rest.or(self.rest_comma);
             return Ok(left);
         };
         if op == AssignOp::Assign && matches!(left, Expr::Object(_) | Expr::Array(_)) {
             self.cover_init = None;
+            if let Some(position) = self.rest_comma {
+                return Err(self
+                    .lexer
+                    .error_at(position, "l'élément de reste doit être le dernier du motif"));
+            }
         }
+        self.rest_comma = None;
         self.cover_init = outer_cover.or(self.cover_init);
         let target = match (op, left) {
             (AssignOp::Assign, left) => self.to_pattern(left)?,
@@ -2231,6 +2312,8 @@ impl Parser {
         };
         self.advance()?;
         let value = self.assignment()?;
+        // La valeur affectée n'est pas un motif : ses littéraux sont libres.
+        self.rest_comma = outer_rest;
         Ok(Expr::Assign {
             op,
             target: Box::new(target),
@@ -2750,6 +2833,9 @@ impl Parser {
             }
             if self.eat_punct("...")? {
                 items.push(Some(Expr::Spread(Box::new(self.assignment()?))));
+                if self.is_punct(",") {
+                    self.rest_comma.get_or_insert(self.tok.start);
+                }
             } else {
                 items.push(Some(self.assignment()?));
             }
@@ -2766,6 +2852,9 @@ impl Parser {
         while !self.eat_punct("}")? {
             if self.eat_punct("...")? {
                 let value = self.assignment()?;
+                if self.is_punct(",") {
+                    self.rest_comma.get_or_insert(self.tok.start);
+                }
                 props.push(Property {
                     key: PropKey::Name(Arc::from("")),
                     kind: PropKind::Spread(value),

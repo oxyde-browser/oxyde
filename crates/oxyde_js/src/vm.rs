@@ -56,7 +56,7 @@ pub(crate) enum CoOutcome {
 }
 
 /// Profondeur maximale de la pile d'appels JavaScript.
-const MAX_FRAMES: usize = 2_000;
+const MAX_FRAMES: usize = 10_000;
 /// Profondeur maximale de réentrance native → JavaScript.
 const MAX_NATIVE_DEPTH: usize = 120;
 /// Taille maximale de la pile de registres.
@@ -2154,6 +2154,37 @@ impl Vm {
                 let (callee, this) = (self.reg(callee), self.reg(this));
                 let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
                 self.check_callable(&callee)?;
+                self.call_from_loop(dst, &callee, this, args)?;
+            }
+            Op::TailCall {
+                dst,
+                callee,
+                this,
+                first,
+                argc,
+            } => {
+                let (callee, this) = (self.reg(callee), self.reg(this));
+                let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
+                self.check_callable(&callee)?;
+                // Fonction ordinaire appelée depuis un cadre ordinaire, sans
+                // gestionnaire d'exception actif : le cadre est remplacé.
+                let target = callee.as_object().filter(|id| {
+                    matches!(
+                        &self.heap.get(*id).kind,
+                        Kind::Closure(c) if !c.proto.is_coroutine()
+                            && !matches!(c.proto.kind, FunctionKind::ClassConstructor { .. })
+                    )
+                });
+                let replaceable = self.frames.last().is_some_and(|f| {
+                    !f.construct && f.handlers.is_empty() && f.generator.is_none()
+                });
+                if let Some(id) = target
+                    && replaceable
+                    && let Some(frame) = self.pop_frame()
+                {
+                    self.push_frame(id, this, args, Value::Undefined, frame.ret, false)?;
+                    return Ok(None);
+                }
                 self.call_from_loop(dst, &callee, this, args)?;
             }
             Op::DirectEval {
