@@ -371,6 +371,8 @@ pub(crate) enum Kind {
     /// `WeakRef` : sa cible.
     WeakRef(Value),
     FinalizationRegistry(Box<Registry>),
+    /// Objet rendu par `JSON.rawJSON` : son texte est émis tel quel.
+    RawJson,
     /// Objet rendu par une aide d'itérateur (`map`, `filter`, `Iterator.from`…).
     IteratorHelper(Box<IteratorHelper>),
 }
@@ -640,6 +642,7 @@ impl Heap {
                 | Kind::Arguments
                 | Kind::Native { .. }
                 | Kind::Error
+                | Kind::RawJson
                 | Kind::Host { .. }
                 | Kind::Date(_)
                 | Kind::ArrayBuffer(_)

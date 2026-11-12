@@ -225,15 +225,36 @@ fn from_code_point(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     string(&out)
 }
 
+/// Index d'une unité de code : `ToIntegerOrInfinity(value)`, ou `None` s'il
+/// sort de `[0, len[`.
+fn unit_index(vm: &mut Vm, value: &Value, len: usize) -> JsResult<Option<usize>> {
+    let n = vm.to_number(value)?;
+    let n = if n.is_nan() { 0.0 } else { n.trunc() };
+    #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
+    if n < 0.0 || n >= len as f64 {
+        return Ok(None);
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "dans [0, len["
+    )]
+    Ok(Some(n as usize))
+}
+
 fn char_at_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return string("");
+    };
     string(&char_at(&s, index).unwrap_or_default())
 }
 
 fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return Ok(Value::Number(f64::NAN));
+    };
     Ok(s.encode_utf16()
         .nth(index)
         .map_or(Value::Number(f64::NAN), |u| Value::Number(f64::from(u))))
@@ -241,7 +262,9 @@ fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn code_point_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let index = position(vm, &arg(args, 0), usize::MAX >> 12, 0)?;
+    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+        return Ok(Value::Undefined);
+    };
     let byte = byte_of_unit(&s, index);
     Ok(s.get(byte..)
         .and_then(|rest| rest.chars().next())
@@ -251,6 +274,7 @@ fn code_point_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
     let n = vm.to_number(&arg(args, 0))?;
+    let n = if n.is_nan() { 0.0 } else { n };
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     let index = if n < 0.0 {
         utf16_len(&s) as f64 + n.trunc()
@@ -289,6 +313,9 @@ fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("includes : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
     Ok(Value::Bool(
@@ -299,6 +326,9 @@ fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn starts_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("startsWith : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
     Ok(Value::Bool(
@@ -309,6 +339,9 @@ fn starts_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn ends_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
+    if is_regexp(vm, &arg(args, 0))? {
+        return Err(vm.type_error("endsWith : une expression rationnelle n'est pas acceptée"));
+    }
     let needle = vm.to_string(&arg(args, 0))?;
     let len = utf16_len(&s);
     let end = position(vm, &arg(args, 1), len, len)?;
@@ -1189,7 +1222,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("NaN", f64::NAN),
     ];
     for (name, value) in constants {
-        vm.define_hidden(ctor, name, Value::Number(*value));
+        vm.define_constant(ctor, name, Value::Number(*value));
     }
 
     let math = vm.new_object();
@@ -1245,7 +1278,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("SQRT1_2", std::f64::consts::FRAC_1_SQRT_2),
     ];
     for (name, value) in constants {
-        vm.define_hidden(math, name, Value::Number(*value));
+        vm.define_constant(math, name, Value::Number(*value));
     }
     vm.define_hidden(vm.global, "Math", Value::Object(math));
 }

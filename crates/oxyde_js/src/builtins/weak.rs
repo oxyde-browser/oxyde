@@ -34,7 +34,7 @@ fn proto_of(vm: &mut Vm, name: &str) -> JsResult<Option<ObjId>> {
     Ok(vm.get(&ctor, "prototype")?.as_object())
 }
 
-fn require_new(vm: &mut Vm, name: &str) -> JsResult<()> {
+pub(super) fn require_new(vm: &mut Vm, name: &str) -> JsResult<()> {
     if vm.constructing {
         Ok(())
     } else {
@@ -44,7 +44,13 @@ fn require_new(vm: &mut Vm, name: &str) -> JsResult<()> {
 
 /// Remplit une collection neuve à partir d'un itérable, en appelant sa
 /// méthode `adder` (`set` ou `add`) pour chaque élément.
-fn fill(vm: &mut Vm, collection: &Value, source: &Value, adder: &str, pairs: bool) -> JsResult<()> {
+pub(super) fn fill(
+    vm: &mut Vm,
+    collection: &Value,
+    source: &Value,
+    adder: &str,
+    pairs: bool,
+) -> JsResult<()> {
     if source.is_nullish() {
         return Ok(());
     }

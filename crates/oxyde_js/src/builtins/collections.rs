@@ -39,42 +39,26 @@ fn set_mut(vm: &mut Vm, id: ObjId) -> Option<&mut IndexMap<MapKey, Value>> {
     }
 }
 
-fn build_map(vm: &mut Vm, proto: ObjId, source: &Value) -> JsResult {
-    let mut map = IndexMap::new();
-    if !source.is_nullish() {
-        for entry in vm.iterate_to_vec(source)? {
-            if entry.as_object().is_none() {
-                return Err(vm.type_error("Map : chaque entrée doit être une paire [clé, valeur]"));
-            }
-            let (key, value) = (vm.get(&entry, "0")?, vm.get(&entry, "1")?);
-            map.insert(MapKey::from_value(&key), (key, value));
-        }
-    }
-    Ok(Value::Object(
-        vm.heap.alloc(Object::new(Some(proto), Kind::Map(map))),
-    ))
-}
-
-fn build_set(vm: &mut Vm, proto: ObjId, source: &Value) -> JsResult {
-    let mut set = IndexMap::new();
-    if !source.is_nullish() {
-        for value in vm.iterate_to_vec(source)? {
-            set.insert(MapKey::from_value(&value), value);
-        }
-    }
-    Ok(Value::Object(
-        vm.heap.alloc(Object::new(Some(proto), Kind::Set(set))),
-    ))
-}
-
 fn map_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    super::weak::require_new(vm, "Map")?;
     let proto = vm.intrinsics.map_proto;
-    build_map(vm, proto, &arg(args, 0))
+    let map = Value::Object(
+        vm.heap
+            .alloc(Object::new(Some(proto), Kind::Map(IndexMap::new()))),
+    );
+    super::weak::fill(vm, &map, &arg(args, 0), "set", true)?;
+    Ok(map)
 }
 
 fn set_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    super::weak::require_new(vm, "Set")?;
     let proto = vm.intrinsics.set_proto;
-    build_set(vm, proto, &arg(args, 0))
+    let set = Value::Object(
+        vm.heap
+            .alloc(Object::new(Some(proto), Kind::Set(IndexMap::new()))),
+    );
+    super::weak::fill(vm, &set, &arg(args, 0), "add", false)?;
+    Ok(set)
 }
 
 fn map_get(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -574,6 +558,8 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(map_proto, name, *arity, *func);
     }
     getter(vm, map_proto, "size", map_size);
+    let tag = vm.well_known.to_string_tag.clone();
+    vm.define_hidden_symbol(map_proto, &tag, Value::string("Map"));
 
     let set_proto = vm.intrinsics.set_proto;
     constructor(vm, "Set", 0, set_ctor, set_proto);
@@ -581,4 +567,5 @@ pub(super) fn install(vm: &mut Vm) {
         vm.define_method(set_proto, name, *arity, *func);
     }
     getter(vm, set_proto, "size", set_size);
+    vm.define_hidden_symbol(set_proto, &tag, Value::string("Set"));
 }

@@ -162,6 +162,11 @@ impl Vm {
     pub fn to_key(&mut self, value: &Value) -> JsResult<PropertyKey> {
         match value {
             Value::Symbol(s) => Ok(PropertyKey::Symbol(s.clone())),
+            // Un objet est d'abord réduit à une primitive, qui peut être un symbole.
+            Value::Object(_) => match self.to_primitive_hint(value, Hint::String)? {
+                Value::Symbol(s) => Ok(PropertyKey::Symbol(s)),
+                primitive => self.to_property_key(&primitive).map(PropertyKey::String),
+            },
             other => self.to_property_key(other).map(PropertyKey::String),
         }
     }

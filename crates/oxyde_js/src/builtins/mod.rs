@@ -104,7 +104,7 @@ pub(crate) fn constructor(
 
 /// Définit un accesseur natif (lecture seule) non énumérable.
 pub(crate) fn getter(vm: &mut Vm, target: ObjId, name: &str, func: NativeFn) {
-    let get = vm.new_function(name, 0, func);
+    let get = vm.new_function(&format!("get {name}"), 0, func);
     vm.heap.get_mut(target).props.insert(
         Arc::from(name),
         Property {
@@ -526,6 +526,12 @@ fn object_has_own(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     }))
 }
 
+/// `Object.prototype.toLocaleString` : `this.toString()`.
+fn object_proto_to_locale_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let method = vm.get(this, "toString")?;
+    vm.call(&method, this, &[])
+}
+
 fn object_proto_has_own_property(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let key = vm.to_key(&arg(args, 0))?;
     let target = vm.to_object(this)?;
@@ -737,7 +743,7 @@ fn install_object(vm: &mut Vm) {
             object_proto_property_is_enumerable,
         ),
         ("toString", 0, object_proto_to_string),
-        ("toLocaleString", 0, object_proto_to_string),
+        ("toLocaleString", 0, object_proto_to_locale_string),
         ("valueOf", 0, object_proto_value_of),
         ("__defineGetter__", 2, object_proto_define_getter),
         ("__defineSetter__", 2, object_proto_define_setter),
@@ -1096,7 +1102,7 @@ fn make_error(vm: &mut Vm, class: &str, args: &[Value]) -> JsResult {
         vm.heap.get_mut(id).props.shift_remove("message");
     }
     if let Value::Object(options) = arg(args, 1)
-        && vm.has_property(options, "cause")
+        && vm.has_property_op(options, &PropertyKey::String(Arc::from("cause")))?
     {
         let cause = vm.get(&Value::Object(options), "cause")?;
         if let Some(id) = error.as_object() {
@@ -1142,6 +1148,67 @@ fn error_to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     ))
 }
 
+/// Propriété de données `key` de `id` ou de ses prototypes, lue sans
+/// appeler aucun accesseur ni piège.
+fn plain_text(vm: &Vm, id: ObjId, key: &str) -> Option<crate::value::JsStr> {
+    let mut current = Some(id);
+    for _ in 0..1_000 {
+        let object = vm.heap.get(current?);
+        if let Some(property) = object.props.get(key) {
+            return match &property.slot {
+                Slot::Data(Value::String(text)) => Some(Arc::clone(text)),
+                _ => None,
+            };
+        }
+        current = object.proto;
+    }
+    None
+}
+
+/// Lecture de `Error.prototype.stack` : une description de l'erreur (la
+/// pile d'appels n'est pas enregistrée), `undefined` pour un autre objet.
+fn error_stack_get(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let Some(id) = this.as_object() else {
+        return Err(vm.type_error("« stack » attend un objet comme receveur"));
+    };
+    if !matches!(vm.heap.get(id).kind, Kind::Error) {
+        return Ok(Value::Undefined);
+    }
+    let name = plain_text(vm, id, "name").unwrap_or_else(|| Arc::from("Error"));
+    let message = plain_text(vm, id, "message").unwrap_or_else(|| Arc::from(""));
+    Ok(Value::string(&if message.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}: {message}")
+    }))
+}
+
+/// Écriture de `Error.prototype.stack` : crée la propriété sur le receveur,
+/// jamais sur `Error.prototype`.
+fn error_stack_set(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let Some(id) = this.as_object() else {
+        return Err(vm.type_error("« stack » attend un objet comme receveur"));
+    };
+    let value = arg(args, 0);
+    if !matches!(value, Value::String(_)) {
+        return Err(vm.type_error("« stack » attend une chaîne"));
+    }
+    if id == vm.intrinsics.error_proto {
+        return Err(vm.type_error("« stack » ne peut pas être écrite sur Error.prototype"));
+    }
+    let key = PropertyKey::String(Arc::from("stack"));
+    let written = if vm.get_own_property(id, &key)?.is_none() {
+        vm.create_data_property(id, &key, value)?
+    } else {
+        vm.put_key(this, &key, value)?
+    };
+    if written {
+        Ok(Value::Undefined)
+    } else {
+        Err(vm.type_error("« stack » ne peut pas être écrite sur cet objet"))
+    }
+}
+
 fn install_errors(vm: &mut Vm) {
     let base = vm.intrinsics.error_proto;
     vm.error_protos.insert("Error", base);
@@ -1149,6 +1216,20 @@ fn install_errors(vm: &mut Vm) {
     vm.define_hidden(base, "name", Value::string("Error"));
     vm.define_hidden(base, "message", Value::string(""));
     vm.define_method(base, "toString", 0, error_to_string);
+    let stack_get = vm.new_function("get stack", 0, error_stack_get);
+    let stack_set = vm.new_function("set stack", 1, error_stack_set);
+    vm.heap.get_mut(base).props.insert(
+        Arc::from("stack"),
+        Property {
+            slot: Slot::Accessor {
+                get: Some(stack_get),
+                set: Some(stack_set),
+            },
+            writable: true,
+            enumerable: false,
+            configurable: true,
+        },
+    );
     let classes: &[(&'static str, NativeFn)] = &[
         ("TypeError", error_ctor_type),
         ("RangeError", error_ctor_range),
@@ -1493,9 +1574,9 @@ console_fn!(console_debug, "debug");
 fn install_globals(vm: &mut Vm) {
     let global = vm.global;
     vm.define_hidden(global, "globalThis", Value::Object(global));
-    vm.define_hidden(global, "NaN", Value::Number(f64::NAN));
-    vm.define_hidden(global, "Infinity", Value::Number(f64::INFINITY));
-    vm.define_hidden(global, "undefined", Value::Undefined);
+    vm.define_constant(global, "NaN", Value::Number(f64::NAN));
+    vm.define_constant(global, "Infinity", Value::Number(f64::INFINITY));
+    vm.define_constant(global, "undefined", Value::Undefined);
     let functions: &[(&str, u32, NativeFn)] = &[
         ("eval", 1, global_eval),
         ("isNaN", 1, global_is_nan),

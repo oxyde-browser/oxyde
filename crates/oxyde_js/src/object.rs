@@ -422,6 +422,19 @@ impl Vm {
             .collect()
     }
 
+    /// Définit une constante : ni inscriptible, ni énumérable, ni configurable.
+    pub(crate) fn define_constant(&mut self, target: ObjId, name: &str, value: Value) {
+        self.heap.get_mut(target).props.insert(
+            Arc::from(name),
+            Property {
+                slot: Slot::Data(value),
+                writable: false,
+                enumerable: false,
+                configurable: false,
+            },
+        );
+    }
+
     /// Définit une propriété de données non énumérable de clé symbole.
     /// `Symbol.toStringTag` n'est jamais inscriptible sur un intégré.
     pub fn define_hidden_symbol(&mut self, target: ObjId, symbol: &Symbol, value: Value) {
