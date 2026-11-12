@@ -283,6 +283,17 @@ pub(crate) enum Op {
         dst: Reg,
         key: Reg,
     },
+    /// `delete nom` sur une liaison globale : supprime la propriété de
+    /// l'objet global (`false` si elle n'est pas configurable, ou si le nom
+    /// est une liaison lexicale).
+    DeleteGlobal {
+        dst: Reg,
+        name: u32,
+    },
+    /// Lève une `ReferenceError` dont le message est la constante `message`.
+    ThrowReference {
+        message: u32,
+    },
     /// Appel en position terminale (`return f(…)` en mode strict) : comme
     /// `Call`, mais le cadre courant est remplacé par celui de la fonction
     /// appelée quand c'est possible (ECMA-262 §15.10, appels terminaux).

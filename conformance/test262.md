@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 40469 réussis sur 48795 (82.9 %).**
+**Total : 40593 réussis sur 48795 (83.2 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -32,13 +32,13 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Function` | 509 | 493 | 96.9 % |
 | `built-ins/GeneratorFunction` | 23 | 21 | 91.3 % |
 | `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
-| `built-ins/Infinity` | 6 | 5 | 83.3 % |
+| `built-ins/Infinity` | 6 | 6 | 100.0 % |
 | `built-ins/Iterator` | 684 | 464 | 67.8 % |
 | `built-ins/JSON` | 166 | 160 | 96.4 % |
 | `built-ins/Map` | 204 | 198 | 97.1 % |
 | `built-ins/MapIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/Math` | 327 | 314 | 96.0 % |
-| `built-ins/NaN` | 6 | 5 | 83.3 % |
+| `built-ins/NaN` | 6 | 6 | 100.0 % |
 | `built-ins/NativeErrors` | 94 | 82 | 87.2 % |
 | `built-ins/Number` | 340 | 337 | 99.1 % |
 | `built-ins/Object` | 3411 | 3378 | 99.0 % |
@@ -73,17 +73,17 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/isNaN` | 15 | 15 | 100.0 % |
 | `built-ins/parseFloat` | 54 | 54 | 100.0 % |
 | `built-ins/parseInt` | 55 | 55 | 100.0 % |
-| `built-ins/undefined` | 8 | 7 | 87.5 % |
-| `language/arguments-object` | 263 | 232 | 88.2 % |
+| `built-ins/undefined` | 8 | 8 | 100.0 % |
+| `language/arguments-object` | 263 | 233 | 88.6 % |
 | `language/asi` | 102 | 102 | 100.0 % |
 | `language/block-scope` | 145 | 145 | 100.0 % |
 | `language/comments` | 52 | 52 | 100.0 % |
 | `language/computed-property-names` | 48 | 48 | 100.0 % |
 | `language/destructuring` | 19 | 18 | 94.7 % |
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
-| `language/eval-code` | 347 | 339 | 97.7 % |
+| `language/eval-code` | 347 | 341 | 98.3 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 10772 | 96.6 % |
+| `language/expressions` | 11156 | 10793 | 96.7 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 42 | 100.0 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9068 | 96.5 % |
-| `language/types` | 113 | 108 | 95.6 % |
+| `language/statements` | 9399 | 9162 | 97.5 % |
+| `language/types` | 113 | 111 | 98.2 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

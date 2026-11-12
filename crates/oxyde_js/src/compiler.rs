@@ -1067,11 +1067,8 @@ impl Compiler {
                 src: flag,
                 target: 0,
             });
-            self.emit(Op::LoadHole { dst: flag });
-            self.emit(Op::CheckInit {
-                src: flag,
-                name: index,
-            });
+            let message = self.string(&Arc::from(format!("{name} n'est pas défini")));
+            self.emit(Op::ThrowReference { message });
             self.patch(present);
             self.free_to(mark);
         }
@@ -2216,6 +2213,23 @@ impl Compiler {
     }
 
     fn statement_inner(&mut self, stmt: &Stmt) -> CResult<()> {
+        // Valeur d'achèvement d'un script : une instruction composée part
+        // de `undefined`, sans garder la valeur de l'instruction précédente.
+        if self.f().is_script
+            && matches!(
+                stmt,
+                Stmt::If { .. }
+                    | Stmt::While { .. }
+                    | Stmt::DoWhile { .. }
+                    | Stmt::For { .. }
+                    | Stmt::ForIn { .. }
+                    | Stmt::Switch { .. }
+                    | Stmt::Try { .. }
+                    | Stmt::With(..)
+            )
+        {
+            self.emit(Op::LoadUndefined { dst: 0 });
+        }
         match stmt {
             Stmt::Empty => {}
             Stmt::Function(func) => {
@@ -3941,6 +3955,46 @@ impl Compiler {
                     let obj = self.expr_to_temp(object)?;
                     let key = self.expr(index, None)?;
                     self.emit(Op::DeleteElem { dst, obj, key });
+                }
+                Expr::Ident(name) => {
+                    // Sous `with` (ou après un `eval` qui a créé la
+                    // variable), la liaison est une propriété d'objet.
+                    let base = self.with_base(name)?;
+                    let index = self.string(name);
+                    let on_object = base.map(|base| {
+                        self.emit(Op::JumpIfNotUndefined {
+                            src: base,
+                            target: 0,
+                        })
+                    });
+                    match self.resolve(name)? {
+                        Resolved::Global => {
+                            self.emit(Op::DeleteGlobal { dst, name: index });
+                        }
+                        // Une liaison déclarative ne se supprime pas.
+                        _ => {
+                            self.emit(Op::LoadBool { dst, value: false });
+                        }
+                    }
+                    if let (Some(base), Some(on_object)) = (base, on_object) {
+                        let end = self.emit(Op::Jump { target: 0 });
+                        self.patch(on_object);
+                        self.emit(Op::DeleteProp {
+                            dst,
+                            obj: base,
+                            name: index,
+                        });
+                        self.patch(end);
+                    }
+                }
+                Expr::SuperMember(key) => {
+                    // `delete super.x` : la clé est évaluée, puis c'est une erreur.
+                    if let PropKey::Computed(expr) = key {
+                        self.expr(expr, None)?;
+                    }
+                    let message =
+                        self.string(&Arc::from("« delete super.propriété » est interdit"));
+                    self.emit(Op::ThrowReference { message });
                 }
                 other => {
                     self.expr(other, None)?;

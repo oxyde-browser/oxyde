@@ -1800,6 +1800,21 @@ impl Vm {
                 }
                 self.set_reg(dst, Value::Bool(deleted));
             }
+            Op::DeleteGlobal { dst, name } => {
+                let name = self.name(name);
+                let scope = self.scope();
+                let lexical = self
+                    .heap
+                    .get(self.global_lexicals)
+                    .props
+                    .contains_key(&name);
+                let deleted = !lexical && self.delete(&Value::Object(scope), &name)?;
+                self.set_reg(dst, Value::Bool(deleted));
+            }
+            Op::ThrowReference { message } => {
+                let message = self.name(message);
+                return Err(self.error("ReferenceError", &message));
+            }
             Op::DeleteElem { dst, obj, key } => {
                 let target = self.reg(obj);
                 let key = self.to_key(&self.reg(key))?;
