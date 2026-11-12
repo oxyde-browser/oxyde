@@ -12,7 +12,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 286 fichiers de test entièrement réussis sur 693 (41,3 %) ; 42936 sous-tests sur 49891, détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 538 fichiers entièrement réussis sur 2 267 (23,7 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 50 fichiers entièrement réussis sur 363 (13,8 %) ; détail dans [wpt-animations.md](wpt-animations.md). L'API Web Animations (`getAnimations`, `Element.animate`), dont dépendent la plupart de ces tests, reste à faire |
-| test262 | `oxyde_js` | **branchée** : 41 262 tests réussis sur 48 795 (84,6 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 41 466 tests réussis sur 48 795 (85,0 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.

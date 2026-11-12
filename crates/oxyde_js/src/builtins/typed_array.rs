@@ -8,9 +8,7 @@
 //! agents (voir `heap::SharedBytes`) ; les opérations d'`Atomics` sont dans
 //! `atomics.rs`.
 //!
-//! LIMITES CONNUES : `Symbol.species` n'est consulté que par `slice` des
-//! tampons (une méthode de tableau typé rend un tableau du même type que
-//! son receveur) ; `Object.defineProperty` sur un index n'est pas
+//! LIMITES CONNUES : `Object.defineProperty` sur un index n'est pas
 //! spécialisé ; un tampon est limité à 1 Gio.
 
 use std::sync::Arc;
@@ -561,12 +559,10 @@ fn shared_grow(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
-/// Constructeur à employer pour la copie rendue par `slice` : celui que
-/// désigne `Symbol.species` sur le constructeur du tampon, sinon `default`.
-fn buffer_species(vm: &mut Vm, this: &Value, default: &str) -> JsResult {
-    let global = Value::Object(vm.global);
-    let default = vm.get(&global, default)?;
-    let constructor = vm.get(this, "constructor")?;
+/// `SpeciesConstructor` : le constructeur que désigne `Symbol.species` sur
+/// le constructeur de `object`, sinon `default`.
+fn species_constructor(vm: &mut Vm, object: &Value, default: Value) -> JsResult {
+    let constructor = vm.get(object, "constructor")?;
     if constructor == Value::Undefined {
         return Ok(default);
     }
@@ -582,6 +578,54 @@ fn buffer_species(vm: &mut Vm, this: &Value, default: &str) -> JsResult {
         return Err(vm.type_error("« Symbol.species » doit être un constructeur"));
     }
     Ok(species)
+}
+
+/// Constructeur à employer pour la copie rendue par `slice` d'un tampon.
+fn buffer_species(vm: &mut Vm, this: &Value, default: &str) -> JsResult {
+    let global = Value::Object(vm.global);
+    let default = vm.get(&global, default)?;
+    species_constructor(vm, this, default)
+}
+
+/// Vrai pour les types dont les éléments sont des BigInt.
+fn is_bigint_kind(kind: ElementKind) -> bool {
+    matches!(kind, ElementKind::BigInt64 | ElementKind::BigUint64)
+}
+
+/// `TypedArrayCreateFromCtor` : construit par `constructor` et vérifie que
+/// le résultat est un tableau typé vivant, assez long si une longueur était
+/// demandée.
+fn create_from_constructor(vm: &mut Vm, constructor: &Value, args: &[Value]) -> JsResult<ObjId> {
+    let created = vm.construct(constructor, args, constructor)?;
+    let (id, length) = validate(vm, &created)?;
+    #[expect(clippy::cast_precision_loss, reason = "longueurs petites devant 2^53")]
+    if let [Value::Number(wanted)] = args
+        && (length as f64) < *wanted
+    {
+        return Err(vm.type_error("le tableau typé construit est trop court"));
+    }
+    Ok(id)
+}
+
+/// `TypedArraySpeciesCreate` : un tableau du constructeur que désigne
+/// l'espèce d'`exemplar`, de même nature d'éléments (nombres ou BigInt).
+fn species_create(vm: &mut Vm, exemplar: ObjId, args: &[Value]) -> JsResult<ObjId> {
+    let kind = kind_of(vm, exemplar);
+    let default = vm
+        .typed_protos
+        .get(KINDS.len() + 1 + kind.index())
+        .copied()
+        .map_or(Value::Undefined, Value::Object);
+    let constructor = species_constructor(vm, &Value::Object(exemplar), default)?;
+    let created = create_from_constructor(vm, &constructor, args)?;
+    if is_bigint_kind(kind_of(vm, created)) != is_bigint_kind(kind) {
+        return Err(vm.type_error("le tableau typé construit n'a pas le même type de contenu"));
+    }
+    Ok(created)
+}
+
+fn typed_species(_vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    Ok(this.clone())
 }
 
 /// `slice` commun aux deux sortes de tampon (`shared` dit laquelle).
@@ -841,57 +885,57 @@ fn typed_array_abstract(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult
     Err(vm.type_error("TypedArray est abstrait : utiliser Int8Array, Float64Array…"))
 }
 
-/// Type d'éléments du constructeur `this` (`Int8Array.from(…)`).
-fn kind_of_constructor(vm: &mut Vm, this: &Value) -> JsResult<ElementKind> {
-    let prototype = match this {
-        Value::Object(_) => vm.get(this, "prototype")?,
-        _ => Value::Undefined,
-    };
-    let found = prototype.as_object().and_then(|proto| {
-        vm.typed_protos
-            .iter()
-            .position(|p| *p == proto)
-            .and_then(|i| KINDS.get(i))
-    });
-    match found {
-        Some((kind, _)) => Ok(*kind),
-        None => Err(vm.type_error("le receveur n'est pas un constructeur de tableau typé")),
-    }
-}
-
-/// Tableau typé de type `kind` rempli avec `values`.
-fn from_values(vm: &mut Vm, kind: ElementKind, values: &[Value]) -> JsResult {
-    let id = vm.new_typed(kind, values.len())?;
-    for (index, value) in values.iter().enumerate() {
-        vm.typed_store(id, Some(index), value)?;
-    }
-    Ok(Value::Object(id))
-}
-
+/// `%TypedArray%.from(source, transformation, receveur)`.
 fn typed_from(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = kind_of_constructor(vm, this)?;
+    if !vm.is_constructor(this) {
+        return Err(vm.type_error("le receveur n'est pas un constructeur"));
+    }
     let (source, map, this_arg) = (arg(args, 0), arg(args, 1), arg(args, 2));
     if map != Value::Undefined && !is_callable(vm, &map) {
         return Err(vm.type_error("la fonction de transformation n'est pas appelable"));
     }
     let key = PropertyKey::Symbol(vm.well_known.iterator.clone());
-    let mut values = if vm.get_key(&source, &key)?.is_nullish() {
-        let object = vm.to_object(&source)?;
-        super::array_like_to_vec(vm, &object)?
+    // Un itérable est parcouru en entier avant la création du tableau ; un
+    // objet à indices est lu élément par élément, au fil de l'écriture.
+    let iterated = if vm.get_key(&source, &key)?.is_nullish() {
+        None
     } else {
-        vm.iterate_to_vec(&source)?
+        Some(vm.iterate_to_vec(&source)?)
     };
-    if map != Value::Undefined {
-        for (index, value) in values.iter_mut().enumerate() {
-            *value = vm.call(&map, &this_arg, &[value.clone(), number(index)])?;
-        }
+    let object = match iterated {
+        Some(_) => Value::Undefined,
+        None => vm.to_object(&source)?,
+    };
+    let len = match &iterated {
+        Some(values) => values.len(),
+        None => super::array::length_of(vm, &object)?,
+    };
+    let target = create_from_constructor(vm, this, &[number(len)])?;
+    for index in 0..len {
+        vm.tick(1)?;
+        let value = match &iterated {
+            Some(values) => values.get(index).cloned().unwrap_or(Value::Undefined),
+            None => vm.get(&object, &index.to_string())?,
+        };
+        let value = if map == Value::Undefined {
+            value
+        } else {
+            vm.call(&map, &this_arg, &[value, number(index)])?
+        };
+        vm.typed_store(target, Some(index), &value)?;
     }
-    from_values(vm, kind, &values)
+    Ok(Value::Object(target))
 }
 
 fn typed_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let kind = kind_of_constructor(vm, this)?;
-    from_values(vm, kind, args)
+    if !vm.is_constructor(this) {
+        return Err(vm.type_error("le receveur n'est pas un constructeur"));
+    }
+    let target = create_from_constructor(vm, this, &[number(args.len())])?;
+    for (index, value) in args.iter().enumerate() {
+        vm.typed_store(target, Some(index), value)?;
+    }
+    Ok(Value::Object(target))
 }
 
 // ---- Prototype des tableaux typés ------------------------------------------------
@@ -950,12 +994,117 @@ macro_rules! shared_methods {
     };
 }
 shared_methods! {
-    typed_at => at, typed_every => every, typed_some => some, typed_for_each => for_each,
+    typed_at => at,
     typed_find => find, typed_find_index => find_index, typed_find_last => find_last,
     typed_find_last_index => find_last_index, typed_includes => includes,
     typed_index_of => index_of, typed_last_index_of => last_index_of, typed_join => join,
-    typed_reduce => reduce, typed_reduce_right => reduce_right, typed_reverse => reverse,
+    typed_reverse => reverse,
     typed_copy_within => copy_within,
+}
+
+/// Parcourt les `len` éléments que le tableau avait à l'appel, dans l'ordre
+/// (`backwards` : à rebours), en appelant `callback(élément, index, tableau)`.
+/// Un élément disparu en route — tampon rétréci ou détaché par le rappel —
+/// est lu `undefined`. `visit` reçoit chaque résultat et rend `false` pour
+/// arrêter le parcours.
+fn each_element(
+    vm: &mut Vm,
+    this: &Value,
+    args: &[Value],
+    mut visit: impl FnMut(&Value) -> bool,
+) -> JsResult<()> {
+    let (id, len) = validate(vm, this)?;
+    let callback = callable(vm, &arg(args, 0))?;
+    let this_arg = arg(args, 1);
+    for index in 0..len {
+        vm.tick(1)?;
+        let value = vm.typed_get(id, index).unwrap_or(Value::Undefined);
+        let result = vm.call(&callback, &this_arg, &[value, number(index), this.clone()])?;
+        if !visit(&result) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn typed_every(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let mut all = true;
+    each_element(vm, this, args, |result| {
+        all = result.truthy();
+        all
+    })?;
+    Ok(Value::Bool(all))
+}
+
+fn typed_some(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let mut any = false;
+    each_element(vm, this, args, |result| {
+        any = result.truthy();
+        !any
+    })?;
+    Ok(Value::Bool(any))
+}
+
+fn typed_for_each(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    each_element(vm, this, args, |_| true)?;
+    Ok(Value::Undefined)
+}
+
+/// `reduce` et `reduceRight` (`backwards`).
+fn reduce_elements(vm: &mut Vm, this: &Value, args: &[Value], backwards: bool) -> JsResult {
+    let (id, len) = validate(vm, this)?;
+    let callback = callable(vm, &arg(args, 0))?;
+    let mut order: Vec<usize> = (0..len).collect();
+    if backwards {
+        order.reverse();
+    }
+    let mut indices = order.into_iter();
+    let mut accumulator = if args.len() >= 2 {
+        arg(args, 1)
+    } else {
+        match indices.next() {
+            Some(first) => vm.typed_get(id, first).unwrap_or(Value::Undefined),
+            None => return Err(vm.type_error("reduce d'un tableau vide sans valeur initiale")),
+        }
+    };
+    for index in indices {
+        vm.tick(1)?;
+        let value = vm.typed_get(id, index).unwrap_or(Value::Undefined);
+        accumulator = vm.call(
+            &callback,
+            &Value::Undefined,
+            &[accumulator, value, number(index), this.clone()],
+        )?;
+    }
+    Ok(accumulator)
+}
+
+fn typed_reduce(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    reduce_elements(vm, this, args, false)
+}
+
+fn typed_reduce_right(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    reduce_elements(vm, this, args, true)
+}
+
+/// `toLocaleString` : chaque élément par sa propre méthode `toLocaleString`.
+fn typed_to_locale_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let (id, len) = validate(vm, this)?;
+    let mut out = String::new();
+    for index in 0..len {
+        vm.tick(1)?;
+        if index > 0 {
+            out.push(',');
+        }
+        let value = vm.typed_get(id, index).unwrap_or(Value::Undefined);
+        if value.is_nullish() {
+            continue;
+        }
+        let method = vm.get(&value, "toLocaleString")?;
+        let text = vm.call(&method, &value, &[])?;
+        out.push_str(&vm.to_string(&text)?);
+    }
+    Ok(Value::string(&out))
 }
 
 fn typed_iterator(vm: &mut Vm, this: &Value, kind: IndexedKind) -> JsResult {
@@ -1006,7 +1155,7 @@ fn typed_map(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let (id, len) = validate(vm, this)?;
     let callback = callable(vm, &arg(args, 0))?;
     let this_arg = arg(args, 1);
-    let out = vm.new_typed(kind_of(vm, id), len)?;
+    let out = species_create(vm, id, &[number(len)])?;
     for index in 0..len {
         vm.tick(1)?;
         let value = vm.typed_get(id, index).unwrap_or(Value::Undefined);
@@ -1033,7 +1182,11 @@ fn typed_filter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             kept.push(value);
         }
     }
-    from_values(vm, kind_of(vm, id), &kept)
+    let out = species_create(vm, id, &[number(kept.len())])?;
+    for (index, value) in kept.iter().enumerate() {
+        vm.typed_store(out, Some(index), value)?;
+    }
+    Ok(Value::Object(out))
 }
 
 fn typed_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1041,11 +1194,32 @@ fn typed_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let end = super::relative_index(vm, &arg(args, 1), len, len)?;
     let count = end.saturating_sub(start);
-    let out = vm.new_typed(kind_of(vm, id), count)?;
+    let out = species_create(vm, id, &[number(count)])?;
+    if count == 0 {
+        return Ok(Value::Object(out));
+    }
+    // Les conversions et le constructeur ont pu détacher ou rétrécir le tableau.
     let (_, len) = validate(vm, this)?;
-    for offset in 0..count.min(len.saturating_sub(start)) {
-        if let Some(value) = vm.typed_get(id, start + offset) {
-            vm.typed_set(out, offset, &value);
+    let end = end.min(len);
+    let count = end.saturating_sub(start);
+    let (Some(source), Some(target)) = (vm.typed_array(id), vm.typed_array(out)) else {
+        return Ok(Value::Object(out));
+    };
+    if source.kind == target.kind {
+        // Même type : les octets sont copiés tels quels, sans conversion.
+        let size = source.kind.size();
+        let available = vm.typed_length(out).unwrap_or(0).min(count);
+        let bytes = vm
+            .buffer(source.buffer)
+            .map(|b| b.copy_range(source.offset + start * size, available * size))
+            .unwrap_or_default();
+        if let Some(buffer) = vm.buffer_mut(target.buffer) {
+            buffer.write(target.offset, &bytes);
+        }
+    } else {
+        for offset in 0..count {
+            let value = vm.typed_get(id, start + offset).unwrap_or(Value::Undefined);
+            vm.typed_store(out, Some(offset), &value)?;
         }
     }
     Ok(Value::Object(out))
@@ -1055,25 +1229,19 @@ fn typed_subarray(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let Some(id) = this.as_object().filter(|id| vm.typed_array(*id).is_some()) else {
         return Err(vm.type_error("le receveur n'est pas un tableau typé"));
     };
-    let len = vm.typed_length(id).unwrap_or(0);
-    let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
-    let end = super::relative_index(vm, &arg(args, 1), len, len)?;
     let view = vm
         .typed_array(id)
         .ok_or_else(|| vm.type_error("le receveur n'est pas un tableau typé"))?;
-    // Une vue qui suit la longueur de son tampon engendre une vue qui la suit aussi.
-    let length = if view.length.is_none() && arg(args, 1) == Value::Undefined {
-        None
-    } else {
-        Some(end.saturating_sub(start))
-    };
+    let len = vm.typed_length(id).unwrap_or(0);
+    let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
+    let end = super::relative_index(vm, &arg(args, 1), len, len)?;
     let offset = view.offset + start * view.kind.size();
-    Ok(Value::Object(vm.typed_view(
-        view.kind,
-        view.buffer,
-        offset,
-        length,
-    )))
+    let mut arguments = vec![Value::Object(view.buffer), number(offset)];
+    // Une vue qui suit la longueur de son tampon engendre une vue qui la suit aussi.
+    if view.length.is_some() || arg(args, 1) != Value::Undefined {
+        arguments.push(number(end.saturating_sub(start)));
+    }
+    species_create(vm, id, &arguments).map(Value::Object)
 }
 
 fn typed_set_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1381,9 +1549,15 @@ view_accessors! {
 
 // ---- Installation ----------------------------------------------------------------
 
-/// Accesseur natif dont la clé est un symbole.
-fn symbol_getter(vm: &mut Vm, target: ObjId, symbol: &crate::value::Symbol, func: NativeFn) {
-    let get = vm.new_function("get [Symbol.toStringTag]", 0, func);
+/// Accesseur natif, nommé `name`, dont la clé est un symbole.
+fn symbol_getter(
+    vm: &mut Vm,
+    target: ObjId,
+    symbol: &crate::value::Symbol,
+    name: &str,
+    func: NativeFn,
+) {
+    let get = vm.new_function(name, 0, func);
     vm.heap.get_mut(target).insert_prop(
         PropertyKey::Symbol(symbol.clone()),
         crate::heap::Property {
@@ -1471,7 +1645,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("some", 1, typed_some),
         ("sort", 1, typed_sort),
         ("subarray", 2, typed_subarray),
-        ("toLocaleString", 0, typed_join),
+        ("toLocaleString", 0, typed_to_locale_string),
         ("toReversed", 0, typed_to_reversed),
         ("toSorted", 1, typed_to_sorted),
         ("values", 0, typed_values),
@@ -1488,10 +1662,24 @@ pub(super) fn install(vm: &mut Vm) {
     if let Ok(values) = vm.get(&Value::Object(typed_proto), "values") {
         vm.define_hidden_symbol(typed_proto, &known.iterator, values);
     }
-    symbol_getter(vm, typed_proto, &known.to_string_tag, typed_tag);
+    symbol_getter(
+        vm,
+        typed_proto,
+        &known.to_string_tag,
+        "get [Symbol.toStringTag]",
+        typed_tag,
+    );
+    symbol_getter(
+        vm,
+        typed_ctor,
+        &known.species,
+        "get [Symbol.species]",
+        typed_species,
+    );
 
     // Un constructeur par type d'éléments.
-    let mut protos = Vec::with_capacity(KINDS.len());
+    let mut protos = Vec::with_capacity(2 * KINDS.len() + 1);
+    let mut ctors = Vec::with_capacity(KINDS.len());
     for ((kind, name), func) in KINDS.iter().zip(CONSTRUCTORS) {
         let proto = vm.new_object();
         vm.heap.get_mut(proto).proto = Some(typed_proto);
@@ -1510,6 +1698,7 @@ pub(super) fn install(vm: &mut Vm) {
             );
         }
         protos.push(proto);
+        ctors.push(ctor);
     }
     // SharedArrayBuffer : son prototype suit ceux des tableaux typés.
     let shared_proto = vm.new_object();
@@ -1531,6 +1720,8 @@ pub(super) fn install(vm: &mut Vm) {
     );
     let _ = shared_ctor;
     protos.push(shared_proto);
+    // Puis les constructeurs d'origine, pour l'espèce par défaut.
+    protos.extend(ctors);
     vm.typed_protos = protos;
 
     // DataView.

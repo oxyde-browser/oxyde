@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 262 tests de test262 sur 48 795 (84,6 %)** ; il en reste 7 533.
+- `oxyde_js` réussit **41 466 tests de test262 sur 48 795 (85,0 %)** ; il en reste 7 329.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -16,7 +16,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 |---|---:|---:|---|
 | A et B — langage, `eval` direct | 1 839 | 352 | presque terminées |
 | C — intégrés courants | 1 743 | 217 | presque terminée |
-| D — tampons partagés, tableaux typés | 1 024 | 502 | en cours |
+| D — tampons partagés, tableaux typés | 1 024 | 298 | en cours |
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
@@ -93,8 +93,11 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   `$262.agent` : chaque agent est un moteur sur son propre fil, et les tests vérifient la
   mémoire réellement partagée et le réveil par `notify`. Reste `Atomics.waitAsync` (une
   centaine de tests), qui demande une boucle d'événements dans le lanceur.
-- **TypedArray, ArrayBuffer, DataView** (529) : tampons redimensionnables, `transfer`,
-  `Uint8Array.fromBase64` et `toHex`, constructeurs d'espèce.
+- **TypedArray, ArrayBuffer, DataView** (529) : les constructeurs d'espèce sont consultés
+  (`slice`, `filter`, `map`, `subarray`, `from`, `of`), les parcours lisent les éléments au
+  fil de l'eau, `toLocaleString` appelle celui de chaque élément (TypedArray : 1 405 tests
+  sur 1 453). Restent `Uint8Array.fromBase64` et `toHex` (62), les tampons immuables
+  (une quarantaine), le prototype pris sur `new.target` d'un autre royaume.
 
 ### E — Expressions rationnelles (855 tests)
 
