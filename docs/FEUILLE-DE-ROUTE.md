@@ -193,7 +193,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 515 (22,7 %); une lecture force la
+  (9,4 %), aujourd'hui 521 (23,0 %); une lecture force la
   mise en page si le document a changé.
 - **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
   `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
@@ -221,6 +221,17 @@ Fait :
   d'atteinte par transformation inverse, `getBoundingClientRect` transformé ; une boîte
   transformée est un bloc conteneur et s'empile comme une boîte positionnée. Mesure à part
   ([wpt-animations.md](../conformance/wpt-animations.md)) : 27 fichiers sur 363 au départ.
+- **Animations et transitions** (`oxyde_css::animation`) : `@keyframes`, propriétés
+  `animation-*` et `transition-*` et leurs raccourcis, fonctions de temporisation
+  (`cubic-bezier()`, `steps()`), interpolation des longueurs, couleurs, nombres et
+  transformations ; les valeurs animées s'héritent, `!important` l'emporte sur une
+  animation. La page et son moteur de script partagent un même animateur et une même
+  horloge ; les événements `animationstart`/`iteration`/`end`/`cancel` et
+  `transitionrun`/`start`/`end`/`cancel` sont distribués, et une animation en cours demande
+  une image toutes les 16 ms. Les minuteurs suivent désormais l'horloge de la page, ce qui
+  donne aux tests un temps virtuel cohérent. Mesure : 50 fichiers sur 363 (13,8 %). Restent :
+  l'API Web Animations, dont dépendent la plupart des tests, et l'interpolation des
+  transformations par décomposition de matrice.
 
 Ordre prévu, chaque étape mesurée par la suite : positionnement et flottants ; `calc()` et
 police de test Ahem (`@font-face`), dont beaucoup de tests dépendent ; flex ; tailles

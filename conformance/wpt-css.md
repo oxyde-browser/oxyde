@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9704 / 28699 (33,8 %)** — fichiers entièrement réussis : 515 / 2267 (22,7 %).
+**Sous-tests réussis : 9711 / 28699 (33,8 %)** — fichiers entièrement réussis : 521 / 2267 (23,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -23,7 +23,7 @@ est le plus honnête des deux.
 | `css/css-align/blocks` | 0 / 37 | 136 / 556 (24,5 %) |
 | `css/css-align/content-distribution` | 2 / 17 | 145 / 573 (25,3 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
-| `css/css-align/gaps` | 1 / 20 | 121 / 162 (74,7 %) |
+| `css/css-align/gaps` | 7 / 20 | 127 / 162 (78,4 %) |
 | `css/css-align/multicol` | 0 / 1 | 0 / 32 (0,0 %) |
 | `css/css-align/parsing` | 1 / 50 | 214 / 759 (28,2 %) |
 | `css/css-align/self-alignment` | 1 / 16 | 160 / 731 (21,9 %) |
@@ -77,7 +77,7 @@ est le plus honnête des deux.
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position` | 26 / 47 | 148 / 256 (57,8 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
-| `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
+| `css/css-position/overlay` | 1 / 6 | 9 / 28 (32,1 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
 | `css/css-position/sticky` | 4 / 33 | 18 / 82 (22,0 %) |
@@ -279,9 +279,6 @@ est le plus honnête des deux.
 | `css/css-align/default-alignment/place-items-shorthand-006.html` | 132 / 168 |  |
 | `css/css-align/default-alignment/shorthand-serialization-001.html` | 4 / 17 |  |
 | `css/css-align/flow-start-and-end-serialization.html` | 0 / 9 |  |
-| `css/css-align/gaps/column-gap-animation-001.html` | 0 / 1 |  |
-| `css/css-align/gaps/column-gap-animation-002.html` | 0 / 1 |  |
-| `css/css-align/gaps/column-gap-animation-003.html` | 0 / 1 |  |
 | `css/css-align/gaps/column-gap-parsing-001.html` | 16 / 18 |  |
 | `css/css-align/gaps/gap-animation-001.html` | 0 / 1 |  |
 | `css/css-align/gaps/gap-animation-002.html` | 0 / 1 |  |
@@ -294,9 +291,6 @@ est le plus honnête des deux.
 | `css/css-align/gaps/grid-gap-parsing-001.html` | 22 / 26 |  |
 | `css/css-align/gaps/grid-row-gap-parsing-001.html` | 16 / 18 |  |
 | `css/css-align/gaps/legacy-gap-aliases-001.html` | 0 / 3 |  |
-| `css/css-align/gaps/row-gap-animation-001.html` | 0 / 1 |  |
-| `css/css-align/gaps/row-gap-animation-002.html` | 0 / 1 |  |
-| `css/css-align/gaps/row-gap-animation-003.html` | 0 / 1 |  |
 | `css/css-align/gaps/row-gap-parsing-001.html` | 16 / 18 |  |
 | `css/css-align/inheritance.html` | 4 / 16 |  |
 | `css/css-align/multicol/align-content-multicol.html` | 0 / 32 |  |
@@ -1323,7 +1317,7 @@ est le plus honnête des deux.
 | `css/css-position/overlay/animation/overlay-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/overlay/overlay-computed.html` | 0 / 6 |  |
 | `css/css-position/overlay/overlay-invalid.html` | 0 / 6 |  |
-| `css/css-position/overlay/overlay-transition-property.html` | 2 / 4 |  |
+| `css/css-position/overlay/overlay-transition-property.html` | 3 / 4 |  |
 | `css/css-position/overlay/overlay-transition.html` | 0 / 2 |  |
 | `css/css-position/overlay/overlay-user-agent-rules.html` | 0 / 4 |  |
 | `css/css-position/parsing/bottom-computed.html` | 3 / 5 |  |

@@ -19,7 +19,7 @@ pub use cors::preflight_allows;
 
 use std::collections::HashMap;
 use std::io::Cursor;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub use oxyde_css::Viewport;
 use oxyde_css::{Color, StyleMap, Stylesheet, parse_stylesheet};
@@ -183,6 +183,91 @@ pub(crate) struct LayoutEnv {
     base: Url,
     sizes: HashMap<NodeId, (f32, f32)>,
     fonts: Vec<FontSlot>,
+    pub(crate) animations: std::sync::Arc<Animations>,
+}
+
+/// Durée d'une image d'animation.
+const FRAME: Duration = Duration::from_millis(16);
+
+/// Animations et transitions d'une page, et l'horloge qui les fait avancer.
+/// La page et son moteur de script calculent le style chacun de leur côté :
+/// ils partagent cet état pour voir les mêmes effets au même instant.
+#[derive(Debug)]
+pub(crate) struct Animations {
+    /// Origine des temps de la page.
+    epoch: Instant,
+    state: std::sync::Mutex<AnimationClock>,
+}
+
+#[derive(Debug)]
+struct AnimationClock {
+    animator: oxyde_css::Animator,
+    /// Instant le plus avancé communiqué à la page, en millisecondes depuis
+    /// l'origine : un lanceur de tests fait avancer le temps plus vite que
+    /// l'horloge réelle.
+    latest: f64,
+}
+
+impl Animations {
+    fn new() -> Self {
+        Self {
+            epoch: Instant::now(),
+            state: std::sync::Mutex::new(AnimationClock {
+                animator: oxyde_css::Animator::new(),
+                latest: 0.0,
+            }),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, AnimationClock> {
+        // Un verrou empoisonné garde un état cohérent : chaque calcul de
+        // style repart d'un `begin`.
+        self.state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Instant courant, en millisecondes depuis l'origine de la page.
+    pub(crate) fn now(&self) -> f64 {
+        let real = self.epoch.elapsed().as_secs_f64() * 1000.0;
+        real.max(self.lock().latest)
+    }
+
+    /// Fait avancer l'horloge jusqu'à `instant`.
+    fn advance(&self, instant: Instant) {
+        let ms = instant.saturating_duration_since(self.epoch).as_secs_f64() * 1000.0;
+        let mut state = self.lock();
+        state.latest = state.latest.max(ms);
+    }
+
+    /// Instant `ms` millisecondes après l'origine.
+    fn instant_at(&self, ms: f64) -> Instant {
+        self.epoch + Duration::from_secs_f64((ms / 1000.0).max(0.0))
+    }
+
+    /// Calcule les styles à l'instant courant. Renvoie aussi cet instant si
+    /// le résultat en dépend (une animation ou une transition y contribue).
+    fn styles(
+        &self,
+        doc: &Document,
+        sheets: &[Stylesheet],
+        viewport: Viewport,
+    ) -> (StyleMap, Option<f64>) {
+        let now = self.now();
+        let mut state = self.lock();
+        let styles = oxyde_css::compute_styles_at(doc, sheets, viewport, &mut state.animator, now);
+        let time = state.animator.is_effective().then_some(now);
+        (styles, time)
+    }
+
+    /// Vrai si une animation ou une transition demande une nouvelle image.
+    fn needs_frames(&self) -> bool {
+        self.lock().animator.needs_frames()
+    }
+
+    fn take_events(&self) -> Vec<oxyde_css::AnimationEvent> {
+        self.lock().animator.take_events()
+    }
 }
 
 /// Police déclarée par `@font-face`.
@@ -270,7 +355,7 @@ pub(crate) fn layout_snapshot(
     env: &LayoutEnv,
     viewport: (f32, f32),
     text: &mut TextContext,
-) -> (StyleMap, LayoutTree) {
+) -> (StyleMap, LayoutTree, Option<f64>) {
     register_fonts(&env.fonts, text);
     // Les `<style>` sont relus dans le document, qui a pu changer.
     let slots = collect_sheets(doc, &env.base, env.sheets.clone());
@@ -278,10 +363,10 @@ pub(crate) fn layout_snapshot(
         width: viewport.0,
         height: viewport.1,
     };
-    let styles = oxyde_css::compute_styles(doc, &usable_sheets(&slots), viewport);
+    let (styles, time) = env.animations.styles(doc, &usable_sheets(&slots), viewport);
     let intrinsic = |node: NodeId| env.sizes.get(&node).copied();
     let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
-    (styles, tree)
+    (styles, tree, time)
 }
 
 /// État de chargement de l'image d'un élément `<img>`.
@@ -427,6 +512,8 @@ pub struct Page {
     tree: Option<LayoutTree>,
     list: DisplayList,
     viewport: Viewport,
+    /// Animations et transitions en cours, partagées avec le moteur de script.
+    animations: std::sync::Arc<Animations>,
     /// Vrai si le style, les images, le DOM ou la taille ont changé depuis la dernière mise en page.
     dirty: bool,
 }
@@ -612,6 +699,7 @@ impl Page {
                 width: 0.0,
                 height: 0.0,
             },
+            animations: std::sync::Arc::new(Animations::new()),
             dirty: true,
         }
     }
@@ -1045,6 +1133,7 @@ impl Page {
             base: self.base.clone(),
             sizes,
             fonts: self.fonts.clone(),
+            animations: std::sync::Arc::clone(&self.animations),
         }
     }
 
@@ -1162,21 +1251,55 @@ impl Page {
     /// Exécute les minuteurs arrivés à échéance. Renvoie `true` si la page
     /// doit être redessinée.
     pub fn tick(&mut self, now: Instant) -> bool {
-        let Some(engine) = self.engine.as_mut() else {
-            return false;
-        };
-        engine.run_timers(&mut self.doc, now);
-        if engine.take_dirty() {
-            self.dom_changed();
-            return true;
+        self.animations.advance(now);
+        let mut redraw = false;
+        if let Some(engine) = self.engine.as_mut() {
+            engine.run_timers(&mut self.doc, now);
+            if engine.take_dirty() {
+                self.dom_changed();
+                redraw = true;
+            }
         }
-        false
+        redraw | self.pump_animations()
     }
 
-    /// Instant du prochain minuteur à exécuter, s'il y en a un.
+    /// Fait avancer les animations et les transitions jusqu'à l'instant
+    /// courant et distribue leurs événements. Renvoie `true` si la page doit
+    /// être redessinée.
+    fn pump_animations(&mut self) -> bool {
+        let animating = self.animations.needs_frames();
+        if animating {
+            // Le calcul de style fait avancer les effets et relève leurs
+            // événements ; la page est redessinée à la prochaine mise à jour.
+            let sheets = usable_sheets(&self.sheets);
+            let _ = self.animations.styles(&self.doc, &sheets, self.viewport);
+            self.dirty = true;
+        }
+        let events = self.animations.take_events();
+        if !events.is_empty()
+            && let Some(engine) = self.engine.as_mut()
+        {
+            engine.animation_events(&mut self.doc, &events);
+            if engine.take_dirty() {
+                self.dom_changed();
+            }
+        }
+        animating
+    }
+
+    /// Instant du prochain minuteur à exécuter, ou de la prochaine image
+    /// d'une animation en cours, s'il y en a.
     #[must_use]
     pub fn next_wake(&mut self) -> Option<Instant> {
-        self.engine.as_mut()?.next_due()
+        let timer = self.engine.as_mut().and_then(|engine| engine.next_due());
+        let frame = self
+            .animations
+            .needs_frames()
+            .then(|| self.animations.instant_at(self.animations.now()) + FRAME);
+        match (timer, frame) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
     }
 
     /// Clic au point (`x`, `y`) de la page : distribue l'événement `click` aux
@@ -1236,7 +1359,7 @@ impl Page {
         }
         register_fonts(&self.fonts, text);
         let sheets = usable_sheets(&self.sheets);
-        self.styles = oxyde_css::compute_styles(&self.doc, &sheets, viewport);
+        (self.styles, _) = self.animations.styles(&self.doc, &sheets, viewport);
         let images = &self.images;
         let image_of = |node: NodeId| images.get(&node).and_then(|slot| slot.image.clone());
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
@@ -1374,6 +1497,40 @@ mod tests {
         assert!(!p.set_stylesheet(&pending[0], ""), "déjà fournie");
         assert!(p.update(&mut text, VIEWPORT));
         assert_eq!(p.content_height(), 50.0);
+    }
+
+    #[test]
+    fn animations_ask_for_frames_and_move_the_paint() {
+        let mut p = page(
+            "<style>body{margin:0} @keyframes glisse { from { width: 100px } to { width: 300px } }             div{height:10px;background:red;animation:glisse 1s linear}</style><div></div>",
+        );
+        let mut text = TextContext::new();
+        assert!(p.update(&mut text, VIEWPORT));
+        let red_width = |p: &Page| {
+            p.display_list().items.iter().find_map(|item| match item {
+                DisplayItem::Rect { rect, color, .. } if *color == Color::rgb(255, 0, 0) => {
+                    Some(rect.w)
+                }
+                _ => None,
+            })
+        };
+        let start = red_width(&p).expect("boîte rouge");
+        assert!(start < 110.0, "au départ : {start}");
+        // L'animation demande une image, et l'instant suivant la fait avancer.
+        let wake = p
+            .next_wake()
+            .expect("une animation en cours demande une image");
+        assert!(
+            p.tick(wake + Duration::from_millis(500)),
+            "la page doit être redessinée"
+        );
+        assert!(p.update(&mut text, VIEWPORT));
+        let middle = red_width(&p).expect("boîte rouge");
+        assert!(middle > 190.0 && middle < 230.0, "à mi-course : {middle}");
+        // Terminée : retour au style de base, plus d'image demandée.
+        p.tick(wake + Duration::from_secs(2));
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(p.next_wake(), None);
     }
 
     #[test]

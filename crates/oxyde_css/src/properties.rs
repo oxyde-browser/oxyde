@@ -97,6 +97,18 @@ pub enum Longhand {
     Transform,
     TransformOriginX,
     TransformOriginY,
+    AnimationName,
+    AnimationDuration,
+    AnimationDelay,
+    AnimationTimingFunction,
+    AnimationIterationCount,
+    AnimationDirection,
+    AnimationFillMode,
+    AnimationPlayState,
+    TransitionProperty,
+    TransitionDuration,
+    TransitionDelay,
+    TransitionTimingFunction,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -124,6 +136,14 @@ pub enum Value {
     Areas(crate::grid::GridAreas),
     /// Fonctions de transformation ; liste vide pour `none`.
     Transform(Vec<crate::transform::TransformFunction<Length>>),
+    /// Liste de noms ou de mots-clés (`animation-name`, `transition-property`…).
+    Names(Vec<String>),
+    /// Liste de durées, en millisecondes.
+    Times(Vec<f32>),
+    /// Liste de fonctions de temporisation.
+    Easings(Vec<crate::animation::Easing>),
+    /// Liste de nombres (`animation-iteration-count`).
+    Numbers(Vec<f32>),
     /// `inherit`
     Inherit,
     /// `initial`
@@ -647,6 +667,7 @@ fn font_shorthand(tokens: &[Token]) -> Option<Pairs> {
 }
 
 fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
+    use crate::animation;
     let wide = css_wide(tokens);
     let single = |property: Longhand, parsed: Option<Value>| -> Option<Pairs> {
         Some(vec![(property, wide.clone().or(parsed)?)])
@@ -828,6 +849,130 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "max-width" => single(Longhand::MaxWidth, size(NONE_SIZES)),
         "max-height" => single(Longhand::MaxHeight, size(NONE_SIZES)),
         "aspect-ratio" => single(Longhand::AspectRatio, aspect_ratio(tokens)),
+        "animation-name" | "-webkit-animation-name" => single(
+            Longhand::AnimationName,
+            animation::parse_names(tokens, &[]).map(Value::Names),
+        ),
+        "animation-duration" | "-webkit-animation-duration" => single(
+            Longhand::AnimationDuration,
+            animation::parse_times(tokens, false).map(Value::Times),
+        ),
+        "animation-delay" | "-webkit-animation-delay" => single(
+            Longhand::AnimationDelay,
+            animation::parse_times(tokens, true).map(Value::Times),
+        ),
+        "animation-timing-function" | "-webkit-animation-timing-function" => single(
+            Longhand::AnimationTimingFunction,
+            animation::parse_easings(tokens).map(Value::Easings),
+        ),
+        "animation-iteration-count" | "-webkit-animation-iteration-count" => single(
+            Longhand::AnimationIterationCount,
+            animation::parse_iterations(tokens).map(Value::Numbers),
+        ),
+        "animation-direction" | "-webkit-animation-direction" => single(
+            Longhand::AnimationDirection,
+            animation::parse_names(tokens, animation::DIRECTIONS).map(Value::Names),
+        ),
+        "animation-fill-mode" | "-webkit-animation-fill-mode" => single(
+            Longhand::AnimationFillMode,
+            animation::parse_names(tokens, animation::FILL_MODES).map(Value::Names),
+        ),
+        "animation-play-state" | "-webkit-animation-play-state" => single(
+            Longhand::AnimationPlayState,
+            animation::parse_names(tokens, animation::PLAY_STATES).map(Value::Names),
+        ),
+        "animation" | "-webkit-animation" => {
+            const ALL: [Longhand; 8] = [
+                Longhand::AnimationName,
+                Longhand::AnimationDuration,
+                Longhand::AnimationDelay,
+                Longhand::AnimationTimingFunction,
+                Longhand::AnimationIterationCount,
+                Longhand::AnimationDirection,
+                Longhand::AnimationFillMode,
+                Longhand::AnimationPlayState,
+            ];
+            if let Some(w) = wide {
+                return Some(ALL.iter().map(|l| (*l, w.clone())).collect());
+            }
+            let entries = animation::parse_animation_shorthand(tokens)?;
+            let names = |pick: fn(&animation::AnimationEntry) -> String| {
+                Value::Names(entries.iter().map(pick).collect())
+            };
+            Some(vec![
+                (Longhand::AnimationName, names(|e| e.name.clone())),
+                (
+                    Longhand::AnimationDuration,
+                    Value::Times(entries.iter().map(|e| e.duration).collect()),
+                ),
+                (
+                    Longhand::AnimationDelay,
+                    Value::Times(entries.iter().map(|e| e.delay).collect()),
+                ),
+                (
+                    Longhand::AnimationTimingFunction,
+                    Value::Easings(entries.iter().map(|e| e.easing).collect()),
+                ),
+                (
+                    Longhand::AnimationIterationCount,
+                    Value::Numbers(entries.iter().map(|e| e.iterations).collect()),
+                ),
+                (Longhand::AnimationDirection, names(|e| e.direction.clone())),
+                (Longhand::AnimationFillMode, names(|e| e.fill_mode.clone())),
+                (
+                    Longhand::AnimationPlayState,
+                    names(|e| e.play_state.clone()),
+                ),
+            ])
+        }
+        "transition-property" | "-webkit-transition-property" => single(
+            Longhand::TransitionProperty,
+            animation::parse_names(tokens, &[])
+                .filter(|names| names.len() == 1 || names.iter().all(|n| n != "none"))
+                .map(|names| Value::Names(names.iter().map(|n| n.to_ascii_lowercase()).collect())),
+        ),
+        "transition-duration" | "-webkit-transition-duration" => single(
+            Longhand::TransitionDuration,
+            animation::parse_times(tokens, false).map(Value::Times),
+        ),
+        "transition-delay" | "-webkit-transition-delay" => single(
+            Longhand::TransitionDelay,
+            animation::parse_times(tokens, true).map(Value::Times),
+        ),
+        "transition-timing-function" | "-webkit-transition-timing-function" => single(
+            Longhand::TransitionTimingFunction,
+            animation::parse_easings(tokens).map(Value::Easings),
+        ),
+        "transition" | "-webkit-transition" => {
+            const ALL: [Longhand; 4] = [
+                Longhand::TransitionProperty,
+                Longhand::TransitionDuration,
+                Longhand::TransitionDelay,
+                Longhand::TransitionTimingFunction,
+            ];
+            if let Some(w) = wide {
+                return Some(ALL.iter().map(|l| (*l, w.clone())).collect());
+            }
+            let entries = animation::parse_transition_shorthand(tokens)?;
+            Some(vec![
+                (
+                    Longhand::TransitionProperty,
+                    Value::Names(entries.iter().map(|e| e.property.clone()).collect()),
+                ),
+                (
+                    Longhand::TransitionDuration,
+                    Value::Times(entries.iter().map(|e| e.duration).collect()),
+                ),
+                (
+                    Longhand::TransitionDelay,
+                    Value::Times(entries.iter().map(|e| e.delay).collect()),
+                ),
+                (
+                    Longhand::TransitionTimingFunction,
+                    Value::Easings(entries.iter().map(|e| e.easing).collect()),
+                ),
+            ])
+        }
         "transform" | "-webkit-transform" => single(
             Longhand::Transform,
             crate::transform::parse_transform(tokens).map(Value::Transform),

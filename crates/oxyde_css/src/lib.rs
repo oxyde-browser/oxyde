@@ -4,6 +4,7 @@
 //! - [`selector`] : sélecteurs, spécificité, correspondance ;
 //! - [`values`] / [`properties`] / [`grid`] : valeurs et déclarations ;
 //! - [`transform`] : fonctions de transformation et matrices affines ;
+//! - [`animation`] : animations et transitions ;
 //! - [`stylesheet`] : règles et requêtes média ;
 //! - [`style`] : cascade et [`style::ComputedStyle`].
 //!
@@ -17,6 +18,7 @@
 //! assert_eq!(styles.get(p).expect("style").color.g, 0xC9);
 //! ```
 
+pub mod animation;
 pub mod grid;
 pub mod properties;
 pub mod selector;
@@ -26,12 +28,14 @@ pub mod syntax;
 pub mod transform;
 pub mod values;
 
+pub use animation::{AnimationEvent, AnimationStyle, Animator, Easing, TransitionStyle};
 pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, TrackSize};
 pub use properties::Side;
 pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
     LineHeight, ListStyle, Overflow, Position, Size, SizeKeyword, StyleMap, TextAlign,
     VerticalAlign, Visibility, WhiteSpace, collect_style_elements, compute_styles,
+    compute_styles_at,
 };
 pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
 pub use transform::{Affine, TransformFunction};

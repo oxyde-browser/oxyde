@@ -209,10 +209,7 @@ fn new_event(
 ) -> ObjId {
     let event = vm.new_object();
     let (proto, elapsed) = match host(vm) {
-        Some(h) => (
-            h.protos.get(interface).copied(),
-            h.started.elapsed().as_secs_f64() * 1000.0,
-        ),
+        Some(h) => (h.protos.get(interface).copied(), h.elapsed_ms()),
         None => (None, 0.0),
     };
     if let Some(proto) = proto {

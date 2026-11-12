@@ -16,6 +16,38 @@
     define(global, name, { value, writable: true, enumerable: false, configurable: true });
   };
 
+  // ---- Événements d'animation et de transition -----------------------------------------------
+  class AnimationEvent extends global.Event {
+    #name; #elapsed; #pseudo;
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#name = String(init?.animationName ?? "");
+      this.#elapsed = Number(init?.elapsedTime ?? 0);
+      this.#pseudo = String(init?.pseudoElement ?? "");
+    }
+    get animationName() { return this.#name; }
+    get elapsedTime() { return this.#elapsed; }
+    get pseudoElement() { return this.#pseudo; }
+  }
+  class TransitionEvent extends global.Event {
+    #name; #elapsed; #pseudo;
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#name = String(init?.propertyName ?? "");
+      this.#elapsed = Number(init?.elapsedTime ?? 0);
+      this.#pseudo = String(init?.pseudoElement ?? "");
+    }
+    get propertyName() { return this.#name; }
+    get elapsedTime() { return this.#elapsed; }
+    get pseudoElement() { return this.#pseudo; }
+  }
+  for (const constructor of [AnimationEvent, TransitionEvent]) {
+    define(constructor.prototype, Symbol.toStringTag, {
+      value: constructor.name, configurable: true,
+    });
+    expose(constructor.name, constructor);
+  }
+
   // ---- CSS -------------------------------------------------------------------------------
   // `CSS.escape` (CSSOM §2.1) : rend un identifiant utilisable dans un sélecteur.
   function escape(value) {

@@ -93,7 +93,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
   formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
   pas encore. Conformité mesurée : 83,5 % de test262
-  ([conformance/test262.md](conformance/test262.md)) ; 95,3 % des membres des interfaces du DOM
+  ([conformance/test262.md](conformance/test262.md)) ; 92,4 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
   dossier `dom/` des Web Platform Tests, 286 fichiers de test entièrement réussis sur 693 (41,3 %)
   ([conformance/wpt.md](conformance/wpt.md)).

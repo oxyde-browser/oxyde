@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 42930 / 49886 (86,1 %)** — fichiers entièrement réussis : 286 / 693 (41,3 %).
+**Sous-tests réussis : 42934 / 49886 (86,1 %)** — fichiers entièrement réussis : 286 / 693 (41,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -16,7 +16,7 @@ est le plus honnête des deux.
 | `dom` | 5 / 9 | 120 / 142 (84,5 %) |
 | `dom/abort` | 3 / 6 | 34 / 37 (91,9 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
-| `dom/events` | 52 / 100 | 336 / 496 (67,7 %) |
+| `dom/events` | 52 / 100 | 340 / 496 (68,5 %) |
 | `dom/events/non-cancelable-when-passive` | 1 / 42 | 9 / 13 (69,2 %) |
 | `dom/events/scrolling` | 0 / 39 | 12 / 103 (11,7 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
@@ -49,7 +49,7 @@ est le plus honnête des deux.
 | `dom/events/Event-dispatch-click.html` | 11 / 33 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-detached-input-and-change.html` | 4 / 12 |  |
 | `dom/events/Event-dispatch-listener-order.window.js` | 0 / 1 |  |
-| `dom/events/Event-dispatch-on-disabled-elements.html` | 3 / 9 | harnais : délai du harnais dépassé |
+| `dom/events/Event-dispatch-on-disabled-elements.html` | 4 / 9 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-redispatch.html` | 2 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-single-activation-behavior.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 | harnais : délai du harnais dépassé |
@@ -64,7 +64,7 @@ est le plus honnête des deux.
 | `dom/events/EventListener-handleEvent.html` | 3 / 6 |  |
 | `dom/events/EventListener-incumbent-global-1.sub.html` | 0 / 1 |  |
 | `dom/events/EventListener-incumbent-global-2.sub.html` | 0 / 1 |  |
-| `dom/events/EventListener-invoke-legacy.html` | 0 / 6 | harnais : délai du harnais dépassé |
+| `dom/events/EventListener-invoke-legacy.html` | 3 / 6 | harnais : délai du harnais dépassé |
 | `dom/events/EventTarget-add-listener-platform-object.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/EventTarget-dispatchEvent.html` | 5 / 25 |  |
 | `dom/events/click-on-absolute-pseudo.html` | 0 / 1 |  |

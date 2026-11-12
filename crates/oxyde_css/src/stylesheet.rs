@@ -186,6 +186,8 @@ pub struct Stylesheet {
     pub rules: Vec<Rule>,
     /// Polices déclarées par `@font-face`, dans l'ordre du source.
     pub font_faces: Vec<FontFace>,
+    /// Règles `@keyframes`, dans l'ordre du source.
+    pub keyframes: Vec<crate::animation::Keyframes>,
 }
 
 /// Police déclarée par une règle `@font-face`.
@@ -196,6 +198,36 @@ pub struct FontFace {
     /// Adresses des fichiers de police (`src: url(…)`), par ordre de
     /// préférence, telles qu'écrites dans la feuille.
     pub sources: Vec<String>,
+}
+
+/// Relève les règles `@keyframes` de `tokens`, y compris dans `@media`,
+/// `@layer` et `@supports`.
+fn collect_keyframes(tokens: &[Token], out: &mut Vec<crate::animation::Keyframes>, depth: usize) {
+    let mut i = 0;
+    while i < tokens.len() {
+        let Token::AtKeyword(name) = &tokens[i] else {
+            i += 1;
+            continue;
+        };
+        let end = prelude_end(tokens, i + 1);
+        if tokens.get(end) != Some(&Token::OpenBrace) {
+            i = end + 1;
+            continue;
+        }
+        let close = matching_close(tokens, end);
+        let body = tokens.get(end + 1..close).unwrap_or(&[]);
+        match name.to_ascii_lowercase().as_str() {
+            "keyframes" | "-webkit-keyframes" => {
+                let prelude = tokens.get(i + 1..end).unwrap_or(&[]);
+                out.extend(crate::animation::parse_keyframes(prelude, body));
+            }
+            "media" | "layer" | "supports" if depth < MAX_NESTING => {
+                collect_keyframes(body, out, depth + 1);
+            }
+            _ => {}
+        }
+        i = close + 1;
+    }
 }
 
 /// Relève les règles `@font-face` de `tokens`, y compris dans `@media` et
@@ -283,6 +315,7 @@ pub fn parse_stylesheet(source: &str) -> Stylesheet {
     let mut sheet = Stylesheet::default();
     parse_rules(&tokens, &[], &mut sheet.rules, 0);
     collect_font_faces(&tokens, &mut sheet.font_faces, 0);
+    collect_keyframes(&tokens, &mut sheet.keyframes, 0);
     sheet
 }
 

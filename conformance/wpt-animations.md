@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 337 / 4340 (7,8 %)** — fichiers entièrement réussis : 27 / 363 (7,4 %).
+**Sous-tests réussis : 566 / 4341 (13,0 %)** — fichiers entièrement réussis : 50 / 363 (13,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,16 +13,16 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `css/css-animations` | 2 / 82 | 7 / 398 (1,8 %) |
-| `css/css-animations/parsing` | 7 / 41 | 127 / 574 (22,1 %) |
-| `css/css-animations/responsive` | 0 / 4 | 0 / 7 (0,0 %) |
+| `css/css-animations` | 10 / 82 | 70 / 398 (17,6 %) |
+| `css/css-animations/parsing` | 10 / 41 | 150 / 574 (26,1 %) |
+| `css/css-animations/responsive` | 1 / 4 | 1 / 7 (14,3 %) |
 | `css/css-animations/stability` | 0 / 1 | 0 / 1 (0,0 %) |
 | `css/css-transforms` | 9 / 43 | 34 / 197 (17,3 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
-| `css/css-transitions` | 5 / 98 | 12 / 2385 (0,5 %) |
+| `css/css-transitions` | 16 / 98 | 125 / 2386 (5,2 %) |
 | `css/css-transitions/animations` | 0 / 11 | 0 / 11 (0,0 %) |
-| `css/css-transitions/parsing` | 2 / 18 | 44 / 252 (17,5 %) |
+| `css/css-transitions/parsing` | 2 / 18 | 73 / 252 (29,0 %) |
 
 ## Fichiers non entièrement réussis
 
@@ -32,7 +32,7 @@ est le plus honnête des deux.
 | `css/css-animations/AnimationEffect-updateTiming.tentative.html` | 0 / 5 |  |
 | `css/css-animations/CSSAnimation-animationName.tentative.html` | 0 / 3 |  |
 | `css/css-animations/CSSAnimation-canceling.tentative.html` | 0 / 9 |  |
-| `css/css-animations/CSSAnimation-compositeOrder.tentative.html` | 0 / 2 |  |
+| `css/css-animations/CSSAnimation-compositeOrder.tentative.html` | 1 / 2 |  |
 | `css/css-animations/CSSAnimation-effect.tentative.html` | 0 / 8 |  |
 | `css/css-animations/CSSAnimation-finished.tentative.html` | 0 / 3 |  |
 | `css/css-animations/CSSAnimation-getCurrentTime.tentative.html` | 0 / 2 |  |
@@ -43,7 +43,7 @@ est le plus honnête des deux.
 | `css/css-animations/CSSAnimation-startTime.tentative.html` | 0 / 3 |  |
 | `css/css-animations/Document-getAnimations.tentative.html` | 0 / 18 |  |
 | `css/css-animations/Element-getAnimations-dynamic-changes.tentative.html` | 0 / 5 |  |
-| `css/css-animations/Element-getAnimations.tentative.html` | 0 / 22 | harnais : délai du harnais dépassé |
+| `css/css-animations/Element-getAnimations.tentative.html` | 0 / 22 |  |
 | `css/css-animations/KeyframeEffect-getKeyframes.tentative.html` | 0 / 32 |  |
 | `css/css-animations/KeyframeEffect-setKeyframes.tentative.html` | 0 / 3 |  |
 | `css/css-animations/KeyframeEffect-target.tentative.html` | 0 / 3 |  |
@@ -64,17 +64,11 @@ est le plus honnête des deux.
 | `css/css-animations/animation-important-001.html` | 1 / 7 |  |
 | `css/css-animations/animation-important-with-transition.html` | 1 / 5 |  |
 | `css/css-animations/animation-in-offscreen-iframe.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-animations/animation-iteration-count-009.html` | 0 / 4 |  |
-| `css/css-animations/animation-iteration-count-010.html` | 2 / 6 |  |
-| `css/css-animations/animation-iteration-count-calc.html` | 0 / 1 |  |
 | `css/css-animations/animation-iteration-event-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animation-iteration-event-002.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-animations/animation-multiple-from-to-keyframes-with-only-timing-function.html` | 0 / 1 |  |
-| `css/css-animations/animation-name-inline-style.html` | 0 / 1 |  |
 | `css/css-animations/animation-play-state-005.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animation-restarted-after-changing-iteration-count-after-completion.html` | 0 / 1 |  |
-| `css/css-animations/animation-style-element-replaced-with-keyframes-rule-of-same-name.html` | 0 / 1 |  |
-| `css/css-animations/animationevent-interface.html` | 0 / 42 |  |
+| `css/css-animations/animationevent-interface.html` | 33 / 42 |  |
 | `css/css-animations/animationevent-marker-pseudoelement.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animationevent-pseudoelement.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animationevent-types.html` | 0 / 3 | harnais : délai du harnais dépassé |
@@ -93,30 +87,25 @@ est le plus honnête des deux.
 | `css/css-animations/event-dispatch.tentative.html` | 0 / 32 |  |
 | `css/css-animations/event-order.tentative.html` | 0 / 6 |  |
 | `css/css-animations/idlharness.html` | 0 / 1 |  |
-| `css/css-animations/inheritance.html` | 0 / 16 |  |
 | `css/css-animations/keyframes-rule-caching.html` | 0 / 1 |  |
 | `css/css-animations/keyframes-unrelated-custom-property.html` | 0 / 1 |  |
 | `css/css-animations/missing-values-first-keyframe.html` | 0 / 1 |  |
 | `css/css-animations/missing-values-last-keyframe.html` | 0 / 1 |  |
-| `css/css-animations/missing-values-middle-keyframe.html` | 0 / 1 |  |
 | `css/css-animations/parsing/animation-composition-computed.tentative.html` | 0 / 1 |  |
 | `css/css-animations/parsing/animation-composition-invalid.tentative.html` | 0 / 4 |  |
 | `css/css-animations/parsing/animation-computed.html` | 0 / 15 |  |
-| `css/css-animations/parsing/animation-delay-computed.html` | 0 / 4 |  |
+| `css/css-animations/parsing/animation-delay-computed.html` | 2 / 4 |  |
 | `css/css-animations/parsing/animation-delay-invalid.html` | 0 / 5 |  |
-| `css/css-animations/parsing/animation-direction-computed.html` | 0 / 1 |  |
 | `css/css-animations/parsing/animation-direction-invalid.html` | 0 / 4 |  |
-| `css/css-animations/parsing/animation-duration-computed.html` | 0 / 15 |  |
+| `css/css-animations/parsing/animation-duration-computed.html` | 5 / 15 |  |
 | `css/css-animations/parsing/animation-duration-invalid.html` | 0 / 6 |  |
-| `css/css-animations/parsing/animation-fill-mode-computed.html` | 0 / 1 |  |
 | `css/css-animations/parsing/animation-fill-mode-invalid.html` | 0 / 4 |  |
 | `css/css-animations/parsing/animation-invalid.html` | 0 / 8 |  |
-| `css/css-animations/parsing/animation-iteration-count-computed.html` | 0 / 2 |  |
+| `css/css-animations/parsing/animation-iteration-count-computed.html` | 1 / 2 |  |
 | `css/css-animations/parsing/animation-iteration-count-invalid.html` | 0 / 5 |  |
-| `css/css-animations/parsing/animation-name-computed.html` | 0 / 27 |  |
+| `css/css-animations/parsing/animation-name-computed.html` | 9 / 27 |  |
 | `css/css-animations/parsing/animation-name-invalid.html` | 0 / 9 |  |
 | `css/css-animations/parsing/animation-name-valid.html` | 23 / 27 |  |
-| `css/css-animations/parsing/animation-play-state-computed.html` | 0 / 1 |  |
 | `css/css-animations/parsing/animation-play-state-invalid.html` | 0 / 4 |  |
 | `css/css-animations/parsing/animation-range-end-computed.html` | 0 / 29 |  |
 | `css/css-animations/parsing/animation-range-end-invalid.html` | 0 / 14 |  |
@@ -126,7 +115,7 @@ est le plus honnête des deux.
 | `css/css-animations/parsing/animation-range-start-computed.html` | 0 / 30 |  |
 | `css/css-animations/parsing/animation-range-start-invalid.html` | 0 / 11 |  |
 | `css/css-animations/parsing/animation-range-start-valid.html` | 21 / 26 |  |
-| `css/css-animations/parsing/animation-shorthand.html` | 0 / 36 |  |
+| `css/css-animations/parsing/animation-shorthand.html` | 3 / 36 |  |
 | `css/css-animations/parsing/animation-timing-function-invalid.html` | 0 / 7 |  |
 | `css/css-animations/parsing/animation-valid.html` | 9 / 12 |  |
 | `css/css-animations/parsing/keyframe-selectors.html` | 0 / 14 |  |
@@ -137,7 +126,6 @@ est le plus honnête des deux.
 | `css/css-animations/responsive/column-rule-color-001.html` | 0 / 2 |  |
 | `css/css-animations/responsive/column-width-001.html` | 0 / 3 |  |
 | `css/css-animations/responsive/fill-forwards-viewport-units.html` | 0 / 1 |  |
-| `css/css-animations/responsive/line-height.html` | 0 / 1 |  |
 | `css/css-animations/revert-rule-keyframes-dynamic.html` | 0 / 2 |  |
 | `css/css-animations/revert-rule-keyframes.html` | 0 / 2 |  |
 | `css/css-animations/sample-on-last-keyframe.html` | 0 / 1 |  |
@@ -274,10 +262,8 @@ est le plus honnête des deux.
 | `css/css-transitions/animations/vertical-align-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-transitions/animations/z-index-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-transitions/before-load-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-transitions/changing-while-transition-001.html` | 0 / 1 |  |
-| `css/css-transitions/changing-while-transition-002.html` | 0 / 1 |  |
-| `css/css-transitions/changing-while-transition-003.html` | 0 / 1 |  |
 | `css/css-transitions/changing-while-transition-004.html` | 0 / 1 |  |
+| `css/css-transitions/currentcolor-animation-001.html` | 0 / 1 |  |
 | `css/css-transitions/custom-property-and-allow-discrete.html` | 0 / 2 |  |
 | `css/css-transitions/disconnected-element-001.html` | 3 / 6 | harnais : délai du harnais dépassé |
 | `css/css-transitions/display-none-no-animations.html` | 0 / 1 |  |
@@ -294,7 +280,6 @@ est le plus honnête des deux.
 | `css/css-transitions/idlharness.html` | 0 / 1 |  |
 | `css/css-transitions/inert-while-transitioning-to-display-none.html` | 0 / 1 |  |
 | `css/css-transitions/inherit-height-transition.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-transitions/inheritance.html` | 0 / 8 |  |
 | `css/css-transitions/no-transition-for-unchanged-pointer-valued-properties.html` | 0 / 1 |  |
 | `css/css-transitions/non-rendered-element-001.html` | 3 / 4 | harnais : délai du harnais dépassé |
 | `css/css-transitions/non-rendered-element-002.html` | 0 / 1 |  |
@@ -304,14 +289,14 @@ est le plus honnête des deux.
 | `css/css-transitions/parsing/transition-computed.html` | 0 / 10 |  |
 | `css/css-transitions/parsing/transition-delay-computed.html` | 0 / 1 |  |
 | `css/css-transitions/parsing/transition-delay-invalid.html` | 0 / 5 |  |
-| `css/css-transitions/parsing/transition-duration-computed.html` | 0 / 3 |  |
+| `css/css-transitions/parsing/transition-duration-computed.html` | 2 / 3 |  |
 | `css/css-transitions/parsing/transition-duration-invalid.html` | 0 / 5 |  |
 | `css/css-transitions/parsing/transition-invalid.html` | 0 / 5 |  |
-| `css/css-transitions/parsing/transition-property-computed.html` | 0 / 10 |  |
+| `css/css-transitions/parsing/transition-property-computed.html` | 9 / 10 |  |
 | `css/css-transitions/parsing/transition-property-invalid.html` | 0 / 66 |  |
 | `css/css-transitions/parsing/transition-property-valid.html` | 9 / 10 |  |
-| `css/css-transitions/parsing/transition-shorthand.html` | 0 / 18 |  |
-| `css/css-transitions/parsing/transition-timing-function-computed.html` | 0 / 22 |  |
+| `css/css-transitions/parsing/transition-shorthand.html` | 3 / 18 |  |
+| `css/css-transitions/parsing/transition-timing-function-computed.html` | 15 / 22 |  |
 | `css/css-transitions/parsing/transition-timing-function-invalid.html` | 0 / 25 |  |
 | `css/css-transitions/parsing/transition-timing-function-valid.html` | 18 / 22 |  |
 | `css/css-transitions/parsing/transition-valid.html` | 7 / 10 |  |
@@ -326,7 +311,6 @@ est le plus honnête des deux.
 | `css/css-transitions/pseudo-elements-002.html` | 0 / 1 |  |
 | `css/css-transitions/retargetted-transition-with-box-sizing.html` | 0 / 1 |  |
 | `css/css-transitions/shadow-root-insertion.html` | 0 / 1 |  |
-| `css/css-transitions/starting-of-transitions-001.html` | 0 / 1 |  |
 | `css/css-transitions/starting-style-adjustment.html` | 0 / 1 |  |
 | `css/css-transitions/starting-style-cascade.html` | 0 / 0 | harnais : ReferenceError: CSSStyleSheet n'est pas défini |
 | `css/css-transitions/starting-style-name-defining-rules.html` | 0 / 2 |  |
@@ -335,7 +319,7 @@ est le plus honnête des deux.
 | `css/css-transitions/starting-style-rule-none.html` | 0 / 0 | harnais : ReferenceError: CSSStyleSheet n'est pas défini |
 | `css/css-transitions/starting-style-rule-pseudo-elements.html` | 0 / 3 |  |
 | `css/css-transitions/starting-style-size-container.html` | 0 / 2 |  |
-| `css/css-transitions/transition-001.html` | 0 / 13 |  |
+| `css/css-transitions/transition-001.html` | 12 / 13 |  |
 | `css/css-transitions/transition-after-animation-001.html` | 0 / 1 |  |
 | `css/css-transitions/transition-base-response-001.html` | 0 / 3 |  |
 | `css/css-transitions/transition-base-response-002.html` | 0 / 1 |  |
@@ -343,21 +327,14 @@ est le plus honnête des deux.
 | `css/css-transitions/transition-behavior-events.html` | 0 / 2 |  |
 | `css/css-transitions/transition-behavior.html` | 0 / 6 |  |
 | `css/css-transitions/transition-cancel-elapsed-time-on-removal.html` | 0 / 1 |  |
-| `css/css-transitions/transition-delay-001.html` | 0 / 21 |  |
-| `css/css-transitions/transition-duration-001.html` | 0 / 21 |  |
-| `css/css-transitions/transition-duration-shorthand.html` | 0 / 1 |  |
 | `css/css-transitions/transition-events-with-document-change.html` | 0 / 1 |  |
-| `css/css-transitions/transition-important.html` | 0 / 1 |  |
-| `css/css-transitions/transition-in-iframe-001.html` | 0 / 0 | le harnais n'a pas terminé |
-| `css/css-transitions/transition-property-001.html` | 0 / 5 |  |
-| `css/css-transitions/transition-property-002.html` | 0 / 7 |  |
+| `css/css-transitions/transition-in-iframe-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-transitions/transition-remove-and-change-immediate.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-transitions/transition-reparented.html` | 0 / 1 |  |
 | `css/css-transitions/transition-zero-duration-with-delay.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-transitions/transitioncancel-001.html` | 0 / 1 |  |
-| `css/css-transitions/transitioncancel-002.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-transitions/transitioncancel-003.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-transitions/transitionevent-interface.html` | 0 / 42 |  |
+| `css/css-transitions/transitionevent-interface.html` | 33 / 42 |  |
 | `css/css-transitions/transitions-retarget.html` | 0 / 1 |  |
 | `css/css-transitions/ua-important-001.tentative.html` | 0 / 1 |  |
 | `css/css-transitions/ua-important-002.tentative.html` | 0 / 1 |  |

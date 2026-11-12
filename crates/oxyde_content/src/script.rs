@@ -139,6 +139,9 @@ struct DomHost {
     dirty: bool,
     viewport: (f32, f32),
     started: Instant,
+    /// Instant le plus avancé communiqué par la page : un lanceur de tests
+    /// fait avancer le temps plus vite que l'horloge réelle.
+    clock: Instant,
     /// Requêtes `fetch` que l'embarqueur n'a pas encore prises en charge.
     fetch_queue: Vec<crate::FetchRequest>,
     /// Requêtes `fetch` en attente de réponse, par identifiant.
@@ -163,6 +166,20 @@ struct RealmHost {
 }
 
 impl DomHost {
+    /// Instant courant : l'horloge réelle, ou l'instant le plus avancé que
+    /// la page a communiqué s'il la devance (temps virtuel).
+    fn now(&self) -> Instant {
+        self.clock.max(Instant::now())
+    }
+
+    /// Millisecondes écoulées depuis la création du moteur.
+    fn elapsed_ms(&self) -> f64 {
+        self.now()
+            .saturating_duration_since(self.started)
+            .as_secs_f64()
+            * 1000.0
+    }
+
     /// Échange l'état du royaume courant avec `other`.
     fn swap_realm(&mut self, other: &mut RealmHost) {
         std::mem::swap(&mut self.url, &mut other.url);
@@ -1356,7 +1373,7 @@ fn add_timer(vm: &mut Vm, args: &[Value], repeat: bool, default_delay: f64) -> J
     let id = h.next_timer;
     h.timers.push(Timer {
         id,
-        due: Instant::now() + delay,
+        due: h.now() + delay,
         callback: callback.clone(),
         args: extra.clone(),
         repeat: repeat.then(|| delay.max(MIN_INTERVAL)),
@@ -1400,7 +1417,7 @@ fn clear_timer(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn performance_now(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    let elapsed = host(vm).map_or(0.0, |h| h.started.elapsed().as_secs_f64() * 1000.0);
+    let elapsed = host(vm).map_or(0.0, |h| h.elapsed_ms());
     Ok(Value::Number(elapsed))
 }
 
@@ -1846,6 +1863,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             dirty: false,
             viewport: (0.0, 0.0),
             started: Instant::now(),
+            clock: Instant::now(),
         }));
     }
     vm.set_host_hooks(HostHooks {
@@ -2159,6 +2177,9 @@ impl ScriptEngine {
 
     /// Exécute les minuteurs arrivés à échéance à l'instant `now`.
     pub(crate) fn run_timers(&mut self, doc: &mut Document, now: Instant) {
+        if let Some(h) = host(&mut self.vm) {
+            h.clock = h.clock.max(now);
+        }
         if !host(&mut self.vm).is_some_and(|h| h.timers.iter().any(|t| t.due <= now)) {
             return;
         }
@@ -2304,6 +2325,44 @@ impl ScriptEngine {
         result: Result<crate::FetchResponse, String>,
     ) {
         self.run(doc, |vm| settle_fetch(vm, id, result));
+    }
+
+    /// Distribue aux scripts les événements d'animation et de transition.
+    pub(crate) fn animation_events(
+        &mut self,
+        doc: &mut Document,
+        events: &[oxyde_css::AnimationEvent],
+    ) {
+        self.run(doc, |vm| {
+            for event in events {
+                let transition = event.kind.starts_with("transition");
+                let (interface, key) = if transition {
+                    ("TransitionEvent", "propertyName")
+                } else {
+                    ("AnimationEvent", "animationName")
+                };
+                let global = Value::Object(vm.global());
+                let outcome = (|| -> JsResult {
+                    let constructor = vm.get(&global, interface)?;
+                    let init = Value::Object(vm.new_object());
+                    vm.set(&init, key, Value::string(&event.name))?;
+                    vm.set(&init, "elapsedTime", Value::Number(event.elapsed))?;
+                    vm.set(&init, "bubbles", Value::Bool(true))?;
+                    let object = vm.construct(
+                        &constructor,
+                        &[Value::string(event.kind), init],
+                        &constructor,
+                    )?;
+                    let target = wrap(vm, event.node);
+                    let dispatch = vm.get(&target, "dispatchEvent")?;
+                    vm.call(&dispatch, &target, &[object])
+                })();
+                if let Err(thrown) = outcome {
+                    report(vm, &thrown);
+                }
+                vm.run_microtasks();
+            }
+        });
     }
 
     /// Échéance du prochain minuteur.

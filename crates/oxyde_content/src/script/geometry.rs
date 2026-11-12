@@ -29,6 +29,9 @@ pub(super) struct Geometry {
     /// Version du document et fenêtre pour lesquelles elle vaut.
     version: u64,
     viewport: (f32, f32),
+    /// Instant du calcul, si une animation ou une transition y contribuait :
+    /// la géométrie ne vaut alors que pour cet instant.
+    time: Option<f64>,
     /// Boîte de bordure de chaque nœud mis en page, en coordonnées de page.
     boxes: HashMap<u32, Rect>,
     /// Rectangle englobant, une fois transformé, de chaque boîte soumise à
@@ -124,14 +127,14 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
     let h = host(vm)?;
     let version = h.doc.version();
     let viewport = h.viewport;
-    let fresh = h
-        .geometry
-        .as_ref()
-        .is_some_and(|g| g.version == version && g.viewport == viewport);
+    let now = h.layout_env.as_ref().map(|env| env.animations.now());
+    let fresh = h.geometry.as_ref().is_some_and(|g| {
+        g.version == version && g.viewport == viewport && (g.time.is_none() || g.time == now)
+    });
     if !fresh {
         let env = h.layout_env.as_ref()?;
         let text = h.text.get_or_insert_with(TextContext::new);
-        let (styles, tree) = crate::layout_snapshot(&h.doc, env, viewport, text);
+        let (styles, tree, time) = crate::layout_snapshot(&h.doc, env, viewport, text);
         let mut collected = Collected::default();
         if let Some(root) = &tree.root {
             collect(root, None, &mut collected);
@@ -161,6 +164,7 @@ fn ensure(vm: &mut Vm) -> Option<&Geometry> {
         h.geometry = Some(Geometry {
             version,
             viewport,
+            time,
             boxes,
             transformed,
             styles,
@@ -388,6 +392,45 @@ fn border_style_name(style: BorderStyle) -> String {
 /// Valeur résolue de la propriété CSS `name` (écrite avec des tirets) pour
 /// un élément de style `style`, de boîte de bordure `rect` et dont le bloc
 /// conteneur a pour largeur `base`.
+/// Liste de noms, ou `default` si elle est vide ou absente.
+fn names(list: Option<&[String]>, default: &str) -> String {
+    match list {
+        Some(list) if !list.is_empty() => list.join(", "),
+        _ => default.to_owned(),
+    }
+}
+
+/// Liste de durées, en secondes ; `0s` si elle est vide ou absente.
+fn times(list: Option<&[f32]>) -> String {
+    match list {
+        Some(list) if !list.is_empty() => list
+            .iter()
+            .map(|ms| format!("{}s", ms / 1000.0))
+            .collect::<Vec<_>>()
+            .join(", "),
+        _ => "0s".to_owned(),
+    }
+}
+
+/// Liste de fonctions de temporisation ; `ease` si elle est vide ou absente.
+fn easings(list: Option<&[oxyde_css::Easing]>) -> String {
+    use oxyde_css::Easing;
+    let one = |easing: &Easing| match *easing {
+        Easing::Linear => "linear".to_owned(),
+        Easing::CubicBezier(0.25, 0.1, 0.25, 1.0) => "ease".to_owned(),
+        Easing::CubicBezier(0.42, 0.0, 1.0, 1.0) => "ease-in".to_owned(),
+        Easing::CubicBezier(0.0, 0.0, 0.58, 1.0) => "ease-out".to_owned(),
+        Easing::CubicBezier(0.42, 0.0, 0.58, 1.0) => "ease-in-out".to_owned(),
+        Easing::CubicBezier(x1, y1, x2, y2) => format!("cubic-bezier({x1}, {y1}, {x2}, {y2})"),
+        Easing::Steps(count, true) => format!("steps({count}, start)"),
+        Easing::Steps(count, false) => format!("steps({count})"),
+    };
+    match list {
+        Some(list) if !list.is_empty() => list.iter().map(one).collect::<Vec<_>>().join(", "),
+        _ => "ease".to_owned(),
+    }
+}
+
 fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) -> Option<String> {
     let borders = style.border_widths();
     let pad = |edge: Size| edge.resolve(base).unwrap_or(0.0);
@@ -492,6 +535,69 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
         "overflow-y" => format!("{:?}", style.overflow_y).to_ascii_lowercase(),
         "visibility" => format!("{:?}", style.visibility).to_ascii_lowercase(),
         "opacity" => format!("{}", style.opacity),
+        "animation-name" => names(style.animation.as_ref().map(|a| a.names.as_slice()), "none"),
+        "animation-duration" => times(style.animation.as_ref().map(|a| a.durations.as_slice())),
+        "animation-delay" => times(style.animation.as_ref().map(|a| a.delays.as_slice())),
+        "animation-timing-function" => {
+            easings(style.animation.as_ref().map(|a| a.easings.as_slice()))
+        }
+        "animation-iteration-count" => match style.animation.as_ref().map(|a| &a.iterations) {
+            Some(list) if !list.is_empty() => list
+                .iter()
+                .map(|n| {
+                    if n.is_finite() {
+                        format!("{n}")
+                    } else {
+                        "infinite".to_owned()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => "1".to_owned(),
+        },
+        "animation-direction" => match style.animation.as_ref().map(|a| &a.directions) {
+            Some(list) if !list.is_empty() => list
+                .iter()
+                .map(|d| match d {
+                    oxyde_css::animation::Direction::Normal => "normal",
+                    oxyde_css::animation::Direction::Reverse => "reverse",
+                    oxyde_css::animation::Direction::Alternate => "alternate",
+                    oxyde_css::animation::Direction::AlternateReverse => "alternate-reverse",
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => "normal".to_owned(),
+        },
+        "animation-fill-mode" => match style.animation.as_ref().map(|a| &a.fill_modes) {
+            Some(list) if !list.is_empty() => list
+                .iter()
+                .map(|f| match f {
+                    oxyde_css::animation::FillMode::None => "none",
+                    oxyde_css::animation::FillMode::Forwards => "forwards",
+                    oxyde_css::animation::FillMode::Backwards => "backwards",
+                    oxyde_css::animation::FillMode::Both => "both",
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => "none".to_owned(),
+        },
+        "animation-play-state" => match style.animation.as_ref().map(|a| &a.paused) {
+            Some(list) if !list.is_empty() => list
+                .iter()
+                .map(|paused| if *paused { "paused" } else { "running" })
+                .collect::<Vec<_>>()
+                .join(", "),
+            _ => "running".to_owned(),
+        },
+        "transition-property" => names(
+            style.transition.as_ref().map(|t| t.properties.as_slice()),
+            "all",
+        ),
+        "transition-duration" => times(style.transition.as_ref().map(|t| t.durations.as_slice())),
+        "transition-delay" => times(style.transition.as_ref().map(|t| t.delays.as_slice())),
+        "transition-timing-function" => {
+            easings(style.transition.as_ref().map(|t| t.easings.as_slice()))
+        }
         "transform" => {
             let (w, h) = rect.map_or((0.0, 0.0), |r| (r.w, r.h));
             match style.transform_functions_matrix(w, h) {

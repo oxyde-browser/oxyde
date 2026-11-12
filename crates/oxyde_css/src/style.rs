@@ -11,6 +11,7 @@ use std::sync::{Arc, LazyLock};
 
 use oxyde_dom::{Document, ElementData, NodeId};
 
+use crate::animation::{AnimationStyle, Animator, Direction, FillMode, TransitionStyle};
 use crate::grid::{GridAreas, GridLine, TrackList, TrackSize};
 use crate::properties::{Declaration, Longhand, Side, Value, parse_declarations};
 use crate::stylesheet::{Stylesheet, Viewport, parse_stylesheet};
@@ -52,7 +53,7 @@ impl<T: Copy> Edges<T> {
         }
     }
 
-    fn set(&mut self, side: Side, v: T) {
+    pub(crate) fn set(&mut self, side: Side, v: T) {
         match side {
             Side::Top => self.top = v,
             Side::Right => self.right = v,
@@ -511,6 +512,10 @@ pub struct ComputedStyle {
     pub transform: Option<Arc<[TransformFunction<Size>]>>,
     /// `transform-origin`, rapporté à la boîte de bordure.
     pub transform_origin: (Size, Size),
+    /// Propriétés `animation-*` ; `None` : aucune n'est déclarée.
+    pub animation: Option<Arc<AnimationStyle>>,
+    /// Propriétés `transition-*` ; `None` : aucune n'est déclarée.
+    pub transition: Option<Arc<TransitionStyle>>,
 }
 
 impl ComputedStyle {
@@ -596,6 +601,8 @@ impl ComputedStyle {
             aspect_ratio: None,
             transform: None,
             transform_origin: (Size::Percent(50.0), Size::Percent(50.0)),
+            animation: None,
+            transition: None,
         }
     }
 
@@ -722,10 +729,20 @@ impl ComputedStyle {
     }
 }
 
-struct Context<'a> {
-    parent: &'a ComputedStyle,
-    root_font_size: f32,
-    viewport: Viewport,
+pub(crate) struct Context<'a> {
+    pub(crate) parent: &'a ComputedStyle,
+    pub(crate) root_font_size: f32,
+    pub(crate) viewport: Viewport,
+}
+
+/// Propriétés `animation-*` de `style`, créées au besoin.
+fn animation_mut(style: &mut ComputedStyle) -> &mut AnimationStyle {
+    Arc::make_mut(style.animation.get_or_insert_with(Arc::default))
+}
+
+/// Propriétés `transition-*` de `style`, créées au besoin.
+fn transition_mut(style: &mut ComputedStyle) -> &mut TransitionStyle {
+    Arc::make_mut(style.transition.get_or_insert_with(Arc::default))
 }
 
 fn length_px(length: Length, font_size: f32, cx: &Context<'_>) -> Size {
@@ -775,8 +792,26 @@ fn is_inherited(property: Longhand) -> bool {
 }
 
 /// Copie la propriété `property` de `from` vers `style`.
-fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Longhand) {
+pub(crate) fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Longhand) {
+    let animation = || from.animation.as_deref().cloned().unwrap_or_default();
+    let transition = || from.transition.as_deref().cloned().unwrap_or_default();
     match property {
+        Longhand::AnimationName => animation_mut(style).names = animation().names,
+        Longhand::AnimationDuration => animation_mut(style).durations = animation().durations,
+        Longhand::AnimationDelay => animation_mut(style).delays = animation().delays,
+        Longhand::AnimationTimingFunction => animation_mut(style).easings = animation().easings,
+        Longhand::AnimationIterationCount => {
+            animation_mut(style).iterations = animation().iterations;
+        }
+        Longhand::AnimationDirection => animation_mut(style).directions = animation().directions,
+        Longhand::AnimationFillMode => animation_mut(style).fill_modes = animation().fill_modes,
+        Longhand::AnimationPlayState => animation_mut(style).paused = animation().paused,
+        Longhand::TransitionProperty => transition_mut(style).properties = transition().properties,
+        Longhand::TransitionDuration => transition_mut(style).durations = transition().durations,
+        Longhand::TransitionDelay => transition_mut(style).delays = transition().delays,
+        Longhand::TransitionTimingFunction => {
+            transition_mut(style).easings = transition().easings;
+        }
         Longhand::Display => {
             style.display = from.display;
             style.flex_container = from.flex_container;
@@ -900,7 +935,7 @@ fn size_of(value: &Value, font_size: f32, cx: &Context<'_>) -> Size {
     }
 }
 
-fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
+pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
     let property = decl.property;
     match &decl.value {
         Value::Inherit => return copy_property(style, cx.parent, property),
@@ -1065,6 +1100,82 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
         Longhand::Width => {
             style.width = size_of(&decl.value, fs, cx);
             style.width_keyword = SizeKeyword::parse(ident);
+        }
+        Longhand::AnimationName => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).names.clone_from(names);
+            }
+        }
+        Longhand::AnimationDuration => {
+            if let Value::Times(times) = &decl.value {
+                animation_mut(style).durations.clone_from(times);
+            }
+        }
+        Longhand::AnimationDelay => {
+            if let Value::Times(times) = &decl.value {
+                animation_mut(style).delays.clone_from(times);
+            }
+        }
+        Longhand::AnimationTimingFunction => {
+            if let Value::Easings(easings) = &decl.value {
+                animation_mut(style).easings.clone_from(easings);
+            }
+        }
+        Longhand::AnimationIterationCount => {
+            if let Value::Numbers(counts) = &decl.value {
+                animation_mut(style).iterations.clone_from(counts);
+            }
+        }
+        Longhand::AnimationDirection => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).directions = names
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "reverse" => Direction::Reverse,
+                        "alternate" => Direction::Alternate,
+                        "alternate-reverse" => Direction::AlternateReverse,
+                        _ => Direction::Normal,
+                    })
+                    .collect();
+            }
+        }
+        Longhand::AnimationFillMode => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).fill_modes = names
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "forwards" => FillMode::Forwards,
+                        "backwards" => FillMode::Backwards,
+                        "both" => FillMode::Both,
+                        _ => FillMode::None,
+                    })
+                    .collect();
+            }
+        }
+        Longhand::AnimationPlayState => {
+            if let Value::Names(names) = &decl.value {
+                animation_mut(style).paused = names.iter().map(|name| name == "paused").collect();
+            }
+        }
+        Longhand::TransitionProperty => {
+            if let Value::Names(names) = &decl.value {
+                transition_mut(style).properties.clone_from(names);
+            }
+        }
+        Longhand::TransitionDuration => {
+            if let Value::Times(times) = &decl.value {
+                transition_mut(style).durations.clone_from(times);
+            }
+        }
+        Longhand::TransitionDelay => {
+            if let Value::Times(times) = &decl.value {
+                transition_mut(style).delays.clone_from(times);
+            }
+        }
+        Longhand::TransitionTimingFunction => {
+            if let Value::Easings(easings) = &decl.value {
+                transition_mut(style).easings.clone_from(easings);
+            }
         }
         Longhand::Transform => {
             if let Value::Transform(list) = &decl.value {
@@ -1476,6 +1587,32 @@ pub fn compute_styles(
     author_sheets: &[Stylesheet],
     viewport: Viewport,
 ) -> StyleMap {
+    cascade(doc, author_sheets, viewport, None)
+}
+
+/// Comme [`compute_styles`], animations et transitions comprises : le style
+/// rendu est celui de l'instant `now` (en millisecondes), et `animator`
+/// garde l'état des effets d'un calcul à l'autre.
+#[must_use]
+pub fn compute_styles_at(
+    doc: &Document,
+    author_sheets: &[Stylesheet],
+    viewport: Viewport,
+    animator: &mut Animator,
+    now: f64,
+) -> StyleMap {
+    animator.begin(doc.len());
+    let map = cascade(doc, author_sheets, viewport, Some((animator, now)));
+    animator.end();
+    map
+}
+
+fn cascade(
+    doc: &Document,
+    author_sheets: &[Stylesheet],
+    viewport: Viewport,
+    mut animation: Option<(&mut Animator, f64)>,
+) -> StyleMap {
     let initial = ComputedStyle::initial();
     let mut map = StyleMap {
         styles: vec![None; doc.len()],
@@ -1582,8 +1719,21 @@ pub fn compute_styles(
         {
             apply(&mut style, d, &cx);
         }
+        // Le style d'un élément sans `animation` ni `transition` n'a pas
+        // d'entrée dans ces listes : les mots-clés seuls n'en créent pas.
+        let style = match animation.as_mut() {
+            Some((animator, now)) => {
+                let important: Vec<Longhand> = matched
+                    .iter()
+                    .filter(|(rank, ..)| *rank >= 2)
+                    .map(|(.., declaration)| declaration.property)
+                    .collect();
+                animator.animate(node, style, author_sheets, &cx, &important, *now)
+            }
+            None => Arc::new(style),
+        };
         if let Some(slot) = map.styles.get_mut(node.index()) {
-            *slot = Some(Arc::new(style));
+            *slot = Some(style);
         }
     }
     map
