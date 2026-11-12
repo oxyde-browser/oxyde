@@ -467,4 +467,21 @@ pub(crate) static INTERFACES: &[InterfaceDescriptor] = &[
             OperationDescriptor { name: "removeProperty", length: 1, is_static: false },
         ],
     },
+    InterfaceDescriptor {
+        name: "Storage",
+        parent: None,
+        constructor: None,
+        constants: &[
+        ],
+        attributes: &[
+            AttributeDescriptor { name: "length", readonly: true, is_static: false },
+        ],
+        operations: &[
+            OperationDescriptor { name: "key", length: 1, is_static: false },
+            OperationDescriptor { name: "getItem", length: 1, is_static: false },
+            OperationDescriptor { name: "setItem", length: 2, is_static: false },
+            OperationDescriptor { name: "removeItem", length: 1, is_static: false },
+            OperationDescriptor { name: "clear", length: 0, is_static: false },
+        ],
+    },
 ];

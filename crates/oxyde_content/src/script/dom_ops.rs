@@ -114,7 +114,7 @@ fn nodes_equal(doc: &Document, a: NodeId, b: NodeId, depth: usize) -> bool {
         return false;
     }
     let same = match (&doc.node(a).data, &doc.node(b).data) {
-        (NodeData::Document, NodeData::Document) => true,
+        (NodeData::Document, NodeData::Document) | (NodeData::Fragment, NodeData::Fragment) => true,
         (
             NodeData::Doctype {
                 name: n1,

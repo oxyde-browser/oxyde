@@ -1239,7 +1239,7 @@ mod tests {
             .and_then(|rest| rest.split(' ').next())
             .and_then(|n| n.parse().ok())
             .expect("total lisible");
-        assert!(done >= 215, "couverture en régression : {done} membres");
+        assert!(done >= 235, "couverture en régression : {done} membres");
     }
 
     #[test]
@@ -1296,6 +1296,41 @@ mod tests {
                 "capture 1|cible 2 true|objet 7|une fois|bulle 3|retour false|",
                 "capture 1|cible 2 true|objet 8|true|false|0"
             )
+        );
+    }
+
+    #[test]
+    fn storage_fragments_collections_and_dataset() {
+        let mut p = page(
+            "<p id=a data-user-id=7 name=n>x</p><p>y</p>
+             <script>
+               const log = [];
+               localStorage.setItem('k', 1);
+               localStorage.theme = 'sombre';
+               log.push(localStorage.getItem('k'), localStorage.theme, localStorage.length);
+               log.push(localStorage.key(1), localStorage.getItem('absent'));
+               localStorage.removeItem('k');
+               sessionStorage.setItem('s', 'v');
+               log.push(localStorage.length, sessionStorage.length);
+               const fragment = document.createDocumentFragment();
+               fragment.append(document.createElement('b'), 'texte');
+               log.push(fragment.nodeType, fragment.childNodes.length);
+               const host = document.createElement('div');
+               host.appendChild(fragment);
+               log.push(host.innerHTML, fragment.childNodes.length);
+               const paragraphs = document.getElementsByTagName('p');
+               log.push(paragraphs.item(1).textContent, paragraphs.namedItem('n').id);
+               log.push(document.querySelectorAll('p').item(5));
+               const a = document.getElementById('a');
+               a.dataset.fooBar = 'z';
+               log.push(a.dataset.userId, a.getAttribute('data-foo-bar'));
+               document.body.textContent = log.join('|');
+             </script>",
+        );
+        p.run_scripts();
+        assert_eq!(
+            body_text(&p),
+            "1|sombre|2|theme||1|1|11|2|<b></b>texte|0|y|a||7|z"
         );
     }
 

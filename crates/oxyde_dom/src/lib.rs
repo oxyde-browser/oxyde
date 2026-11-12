@@ -111,6 +111,9 @@ pub enum NodeData {
     },
     /// Élément.
     Element(ElementData),
+    /// Fragment de document : conteneur détaché dont les enfants prennent la
+    /// place quand on l'insère dans un autre nœud.
+    Fragment,
     /// Nœud texte.
     Text(String),
     /// Commentaire.
@@ -326,6 +329,11 @@ impl Document {
         self.push(NodeData::Text(text.to_owned()))
     }
 
+    /// Crée un fragment de document vide.
+    pub fn create_fragment(&mut self) -> NodeId {
+        self.push(NodeData::Fragment)
+    }
+
     /// Crée un commentaire détaché.
     pub fn create_comment(&mut self, text: &str) -> NodeId {
         self.push(NodeData::Comment(text.to_owned()))
@@ -372,6 +380,14 @@ impl Document {
     /// l'insertion se fait à la fin.
     pub fn insert_before(&mut self, parent: NodeId, child: NodeId, reference: Option<NodeId>) {
         if child == parent || reference == Some(child) {
+            return;
+        }
+        // Un fragment ne s'insère pas : ses enfants prennent sa place.
+        if matches!(self.node(child).data, NodeData::Fragment) {
+            let children: Vec<NodeId> = self.children(child).collect();
+            for moved in children {
+                self.insert_before(parent, moved, reference);
+            }
             return;
         }
         self.detach(child);
@@ -529,6 +545,7 @@ impl Document {
             }
             NodeData::Text(t) => writeln!(out, "| {indent}\"{t}\""),
             NodeData::Comment(c) => writeln!(out, "| {indent}<!-- {c} -->"),
+            NodeData::Fragment => writeln!(out, "| {indent}#document-fragment"),
         };
         for child in self.children(id) {
             self.dump_node(child, depth + 1, out);

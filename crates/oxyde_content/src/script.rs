@@ -27,12 +27,15 @@ use url::Url;
 
 mod dom_ops;
 mod events;
+mod storage;
 
 use events::{Listener, add_event_listener, dispatch, remove_event_listener};
 
 const CLASS_NODE: u32 = 1;
 const CLASS_STYLE: u32 = 2;
 const CLASS_LIST: u32 = 3;
+const CLASS_STORAGE: u32 = 4;
+const CLASS_DATASET: u32 = 5;
 
 /// Instructions accordées à une tâche (script, événement, minuteur) avant interruption.
 const TASK_BUDGET: u64 = 200_000_000;
@@ -59,6 +62,11 @@ struct DomHost {
     node_proto: ObjId,
     style_proto: ObjId,
     class_list_proto: ObjId,
+    /// Prototype des objets `dataset`.
+    dataset_proto: ObjId,
+    /// Entrées de `localStorage` (0) et `sessionStorage` (1), dans l'ordre
+    /// de leur création.
+    storage: [Vec<(String, String)>; 2],
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
@@ -131,6 +139,7 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
         NodeData::Element(_) => "Element",
         NodeData::Text(_) => "Text",
         NodeData::Comment(_) => "Comment",
+        NodeData::Fragment => "DocumentFragment",
     };
     let proto = h.protos.get(interface).copied().unwrap_or(h.node_proto);
     let id = vm.new_host_object(proto, CLASS_NODE, u64::from(index));
@@ -145,9 +154,27 @@ fn wrap_opt(vm: &mut Vm, node: Option<NodeId>) -> Value {
     node.map_or(Value::Null, |n| wrap(vm, n))
 }
 
+/// Liste de nœuds (`NodeList`) : un tableau dont le prototype porte `item`.
 fn wrap_all(vm: &mut Vm, nodes: Vec<NodeId>) -> Value {
+    wrap_list(vm, nodes, "NodeList")
+}
+
+/// Collection d'éléments (`HTMLCollection`) : `item` et `namedItem`.
+fn wrap_collection(vm: &mut Vm, nodes: Vec<NodeId>) -> Value {
+    wrap_list(vm, nodes, "HTMLCollection")
+}
+
+fn wrap_list(vm: &mut Vm, nodes: Vec<NodeId>, interface: &str) -> Value {
     let items = nodes.into_iter().map(|n| wrap(vm, n)).collect();
-    vm.new_array(items)
+    let list = vm.new_array(items);
+    if let (Some(id), Some(proto)) = (
+        list.as_object(),
+        host(vm).and_then(|h| h.protos.get(interface).copied()),
+    ) {
+        // Tableau tout juste créé : son prototype se change toujours.
+        let _ = vm.set_prototype(id, Some(proto));
+    }
+    list
 }
 
 // ---- Sérialisation et analyse de fragments -------------------------------------
@@ -220,7 +247,7 @@ fn serialize(doc: &Document, node: NodeId, out: &mut String) {
                 let children: Vec<NodeId> = doc.children(current).collect();
                 stack.extend(children.into_iter().rev().map(Ok));
             }
-            NodeData::Document | NodeData::Doctype { .. } => {
+            NodeData::Document | NodeData::Doctype { .. } | NodeData::Fragment => {
                 let children: Vec<NodeId> = doc.children(current).collect();
                 stack.extend(children.into_iter().rev().map(Ok));
             }
@@ -470,6 +497,7 @@ fn node_name(doc: &Document, node: NodeId) -> String {
         NodeData::Doctype { name, .. } => name.clone(),
         NodeData::Text(_) => "#text".to_owned(),
         NodeData::Comment(_) => "#comment".to_owned(),
+        NodeData::Fragment => "#document-fragment".to_owned(),
         NodeData::Element(e) if e.ns == Namespace::Html => e.name.to_ascii_uppercase(),
         NodeData::Element(e) => e.name.clone(),
     }
@@ -512,6 +540,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             NodeData::Comment(_) => 8.0,
             NodeData::Document => 9.0,
             NodeData::Doctype { .. } => 10.0,
+            NodeData::Fragment => 11.0,
         })),
         "nodeName" => string(&node_name(doc, node)),
         "tagName" | "localName" if is_element(doc, node) => {
@@ -584,7 +613,15 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         }
         "children" => {
             let nodes: Vec<NodeId> = doc.children(node).filter(|c| is_element(doc, *c)).collect();
-            return Some(Ok(wrap_all(vm, nodes)));
+            return Some(Ok(wrap_collection(vm, nodes)));
+        }
+        "dataset" if is_element(doc, node) => {
+            let proto = h.dataset_proto;
+            return Some(Ok(Value::Object(vm.new_host_object(
+                proto,
+                CLASS_DATASET,
+                data,
+            ))));
         }
         "childNodes" => {
             let nodes: Vec<NodeId> = doc.children(node).collect();
@@ -664,7 +701,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                     })
                 })
                 .collect();
-            return Some(Ok(wrap_all(vm, nodes)));
+            return Some(Ok(wrap_collection(vm, nodes)));
         }
         "name" | "publicId" | "systemId" if matches!(links.data, NodeData::Doctype { .. }) => {
             match &links.data {
@@ -739,7 +776,7 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
     match key {
         "textContent" | "innerText" => match &doc.node(node).data {
             NodeData::Text(_) | NodeData::Comment(_) => doc.set_text(node, &text),
-            NodeData::Element(_) => {
+            NodeData::Element(_) | NodeData::Fragment => {
                 doc.remove_children(node);
                 doc.insert_text(node, None, &text);
             }
@@ -809,6 +846,19 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
                 _ => None,
             }
         }
+        CLASS_STORAGE => {
+            let area = usize::from(data != 0);
+            match key {
+                "length" => Some(Ok(storage::length(vm, area))),
+                // Les méthodes ne sont jamais masquées par une entrée.
+                "getItem" | "setItem" | "removeItem" | "clear" | "key" | "constructor" => None,
+                _ => storage::stored(vm, area, key).map(|value| string(&value)),
+            }
+        }
+        CLASS_DATASET => {
+            let node = storage::dataset_owner(vm, data)?;
+            storage::dataset_get(vm, node, key).map(|value| string(&value))
+        }
         _ => None,
     }
 }
@@ -829,6 +879,24 @@ fn host_set(vm: &mut Vm, class: u32, data: u64, key: &str, value: &Value) -> Opt
             } else {
                 set_style_property(vm, node, &css_name(key), &text);
             }
+            Some(Ok(()))
+        }
+        CLASS_STORAGE => {
+            let text = match vm.to_string(value) {
+                Ok(text) => text,
+                Err(thrown) => return Some(Err(thrown)),
+            };
+            Some(storage::store(vm, usize::from(data != 0), key, &text))
+        }
+        CLASS_DATASET => {
+            let text = match vm.to_string(value) {
+                Ok(text) => text,
+                Err(thrown) => return Some(Err(thrown)),
+            };
+            let node = storage::dataset_owner(vm, data)?;
+            let h = host(vm)?;
+            h.doc.set_attr(node, &storage::data_attribute(key), &text);
+            h.dirty = true;
             Some(Ok(()))
         }
         _ => None,
@@ -1057,7 +1125,7 @@ fn get_elements_by_tag_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResu
                 .collect()
         })
         .unwrap_or_default();
-    Ok(wrap_all(vm, found))
+    Ok(wrap_collection(vm, found))
 }
 
 fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1076,7 +1144,7 @@ fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRe
                 .collect()
         })
         .unwrap_or_default();
-    Ok(wrap_all(vm, found))
+    Ok(wrap_collection(vm, found))
 }
 
 fn create_element(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -1087,6 +1155,11 @@ fn create_element(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         return Err(vm.error("Error", "InvalidCharacterError : nom d'élément invalide"));
     }
     let node = host(vm).map(|h| h.doc.create_element(&name, Namespace::Html, Vec::new()));
+    Ok(wrap_opt(vm, node))
+}
+
+fn create_document_fragment(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let node = host(vm).map(|h| h.doc.create_fragment());
     Ok(wrap_opt(vm, node))
 }
 
@@ -1328,6 +1401,15 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("Event", "composedPath", events::composed_path),
     ("Event", "initEvent", events::init_event),
     ("CustomEvent", "initCustomEvent", events::init_custom_event),
+    ("", "createDocumentFragment", create_document_fragment),
+    ("Storage", "getItem", storage::get_item),
+    ("Storage", "setItem", storage::set_item),
+    ("Storage", "removeItem", storage::remove_item),
+    ("Storage", "clear", storage::clear),
+    ("Storage", "key", storage::key),
+    ("NodeList", "item", storage::list_item),
+    ("HTMLCollection", "item", storage::list_item),
+    ("HTMLCollection", "namedItem", storage::list_named_item),
     ("", "hasChildNodes", dom_ops::has_child_nodes),
     ("", "isSameNode", dom_ops::is_same_node),
     ("", "getRootNode", dom_ops::get_root_node),
@@ -1508,6 +1590,18 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             "interfaces du DOM absentes de la table générée",
         ));
     };
+    // Les listes de nœuds sont des tableaux : leurs prototypes héritent de
+    // `Array.prototype`, ce qui leur garde `forEach`, `map`, l'itération…
+    let array = vm.get(&Value::Object(vm.global()), "Array")?;
+    if let Some(array_proto) = vm.get(&array, "prototype")?.as_object() {
+        for name in ["NodeList", "HTMLCollection"] {
+            if let Some(proto) = proto_of(name) {
+                vm.set_prototype(proto, Some(array_proto))?;
+            }
+        }
+    }
+    let dataset_proto = vm.new_object();
+    let storage_proto = proto_of("Storage");
     vm.host = Some(Box::new(DomHost {
         doc: Document::new(),
         url: url.clone(),
@@ -1515,6 +1609,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         node_proto,
         style_proto,
         class_list_proto,
+        dataset_proto,
+        storage: [Vec::new(), Vec::new()],
         protos,
         listeners: Vec::new(),
         next_listener: 0,
@@ -1532,6 +1628,12 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         set: host_set,
     });
     events::install_attributes(vm)?;
+    if let Some(proto) = storage_proto {
+        for (name, area) in [("localStorage", 0), ("sessionStorage", 1)] {
+            let object = vm.new_host_object(proto, CLASS_STORAGE, area);
+            vm.define_hidden(vm.global(), name, Value::Object(object));
+        }
+    }
 
     let global = vm.global();
     let window = Value::Object(global);
@@ -2079,7 +2181,7 @@ pub(crate) fn dom_coverage_report() -> String {
            const samples = {{
              Event: ev, CustomEvent: new CustomEvent('x'), EventTarget: el, Node: el, Element: el, HTMLElement: el, Document: document,
              DocumentType: kind(document.firstChild) === 10 ? document.firstChild : null,
-             DocumentFragment: null,
+             DocumentFragment: document.createDocumentFragment(), Storage: localStorage,
              CharacterData: el.firstChild, Text: el.firstChild,
              Comment: kind(el.lastChild) === 8 ? el.lastChild : null,
              DOMTokenList: el.classList, CSSStyleDeclaration: el.style,
