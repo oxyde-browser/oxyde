@@ -69,10 +69,12 @@ pub(crate) fn relative_index(
     }
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     let len_f = len as f64;
+    // La troncature précède le test du signe : -0,9 vaut 0, pas « depuis la fin ».
+    let n = n.trunc();
     let clamped = if n < 0.0 {
-        (len_f + n.trunc()).max(0.0)
+        (len_f + n).max(0.0)
     } else {
-        n.trunc().min(len_f)
+        n.min(len_f)
     };
     #[expect(
         clippy::cast_possible_truncation,

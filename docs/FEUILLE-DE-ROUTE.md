@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **41 526 tests de test262 sur 48 795 (85,1 %)** ; il en reste 7 269.
+- `oxyde_js` réussit **41 594 tests de test262 sur 48 795 (85,2 %)** ; il en reste 7 201.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -98,8 +98,10 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
   fil de l'eau, `toLocaleString` appelle celui de chaque élément (TypedArray : 1 405 tests
   sur 1 453). `Uint8Array` lit et écrit le base64 et l'hexadécimal (`fromBase64`,
   `fromHex`, `toBase64`, `toHex`, `setFromBase64`, `setFromHex` : 68 tests sur 70).
-  Restent les tampons immuables (une quarantaine), le prototype pris sur `new.target`
-  d'un autre royaume.
+  Les tampons immuables sont là (`immutable`, `transferToImmutable`, `sliceToImmutable`) :
+  toute écriture y est refusée, par les tableaux typés, `DataView` et `Atomics` (61 tests
+  dédiés sur 66 ; les 5 autres demandent les attributs d'importation). Reste le prototype
+  pris sur `new.target` d'un autre royaume.
 
 ### E — Expressions rationnelles (855 tests)
 

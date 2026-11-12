@@ -2593,3 +2593,50 @@ fn never_panics_on_arbitrary_programs() {
         }
     });
 }
+
+#[test]
+fn uint8_array_reads_and_writes_base64_and_hex() {
+    assert_eq!(eval("Uint8Array.fromBase64('Zm9v').join()"), "102,111,111");
+    assert_eq!(eval("new Uint8Array([102, 111]).toBase64()"), "Zm8=");
+    assert_eq!(
+        eval("new Uint8Array([255, 239]).toBase64({ alphabet: 'base64url', omitPadding: true })"),
+        "_-8"
+    );
+    assert_eq!(eval("Uint8Array.fromHex('00ff10').toHex()"), "00ff10");
+    assert_eq!(
+        eval(
+            "var a = new Uint8Array(4); var r = a.setFromBase64('Zm9vYmFy'); \
+             [r.read, r.written, a.join()].join(' ')"
+        ),
+        "4 3 102,111,111,0"
+    );
+    assert!(eval("Uint8Array.fromBase64('Zm9v*')").contains("SyntaxError"));
+}
+
+#[test]
+fn immutable_array_buffers_refuse_writes() {
+    let setup = "var source = new Uint8Array([1, 2, 3]).buffer; \
+                 var frozen = source.transferToImmutable(); var view = new Uint8Array(frozen); ";
+    let run = |probe: &str| eval(&format!("{setup}{probe}"));
+    assert_eq!(
+        run("[frozen.immutable, source.detached, view.join()].join(' ')"),
+        "true true 1,2,3"
+    );
+    assert_eq!(run("view[0] = 9; view[0]"), "1");
+    assert!(run("(function () { 'use strict'; view[0] = 9; })()").contains("TypeError"));
+    assert!(run("view.fill(0)").contains("TypeError"));
+    assert!(run("new DataView(frozen).setUint8(0, 1)").contains("TypeError"));
+    assert!(run("frozen.transfer()").contains("TypeError"));
+    assert_eq!(
+        run("Object.getOwnPropertyDescriptor(view, '0').writable"),
+        "false"
+    );
+    assert_eq!(
+        run("new Uint8Array(frozen.sliceToImmutable(1)).join()"),
+        "2,3"
+    );
+    assert_eq!(
+        run("new Uint8Array(frozen.slice(0, 2)).fill(7).join()"),
+        "7,7"
+    );
+}

@@ -49,6 +49,15 @@ fn integer_array(
     Ok((id, view.kind, length))
 }
 
+/// Comme [`integer_array`], pour une écriture : `TypeError` aussi si le
+/// tampon du tableau est immuable.
+fn writable_array(vm: &mut Vm, value: &Value) -> JsResult<(ObjId, ElementKind, usize)> {
+    if value.as_object().is_some_and(|id| vm.typed_immutable(id)) {
+        return Err(vm.type_error("Atomics : le tampon du tableau est immuable"));
+    }
+    integer_array(vm, value, false)
+}
+
 /// Index d'élément demandé, vérifié contre la longueur du tableau.
 fn access_index(vm: &mut Vm, request: &Value, length: usize) -> JsResult<usize> {
     let index = to_index(vm, request)?;
@@ -126,7 +135,7 @@ fn bits(kind: ElementKind, value: &Value) -> u64 {
 /// Opération de lecture-modification-écriture `Atomics.<nom>(tableau, index,
 /// valeur)`.
 fn modify(vm: &mut Vm, args: &[Value], combine: impl FnOnce(u64, u64) -> u64) -> JsResult {
-    let (id, kind, length) = integer_array(vm, &arg(args, 0), false)?;
+    let (id, kind, length) = writable_array(vm, &arg(args, 0))?;
     let index = access_index(vm, &arg(args, 1), length)?;
     let value = operand(vm, kind, &arg(args, 2))?;
     let (buffer, start) = element_offset(vm, id, index)?;
@@ -161,7 +170,7 @@ fn atomics_exchange(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn atomics_compare_exchange(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let (id, kind, length) = integer_array(vm, &arg(args, 0), false)?;
+    let (id, kind, length) = writable_array(vm, &arg(args, 0))?;
     let index = access_index(vm, &arg(args, 1), length)?;
     let expected = operand(vm, kind, &arg(args, 2))?;
     let replacement = operand(vm, kind, &arg(args, 3))?;
@@ -185,7 +194,7 @@ fn atomics_load(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn atomics_store(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
-    let (id, kind, length) = integer_array(vm, &arg(args, 0), false)?;
+    let (id, kind, length) = writable_array(vm, &arg(args, 0))?;
     let index = access_index(vm, &arg(args, 1), length)?;
     let value = operand(vm, kind, &arg(args, 2))?;
     let (buffer, start) = element_offset(vm, id, index)?;

@@ -624,6 +624,7 @@ impl Vm {
             && *n >= 0.0
             && n.fract() == 0.0
             && *n < 9_007_199_254_740_992.0
+            && !self.typed_immutable(*id)
         {
             #[expect(
                 clippy::cast_possible_truncation,

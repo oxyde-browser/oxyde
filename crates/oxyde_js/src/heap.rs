@@ -461,6 +461,9 @@ pub(crate) struct BufferData {
     bytes: Vec<u8>,
     /// Tampon détaché : il n'a plus d'octets et ses vues sont vides.
     pub(crate) detached: bool,
+    /// Tampon immuable : ses octets ne changent plus, il ne se détache ni ne
+    /// se redimensionne.
+    pub(crate) immutable: bool,
     /// Taille maximale d'un tampon redimensionnable ; `None` : taille fixe.
     pub(crate) max_len: Option<usize>,
     /// Octets d'un `SharedArrayBuffer`.
@@ -473,6 +476,7 @@ impl BufferData {
         Self {
             bytes: vec![0; len],
             detached: false,
+            immutable: false,
             max_len,
             shared: None,
         }
@@ -483,6 +487,7 @@ impl BufferData {
         Self {
             bytes: Vec::new(),
             detached: false,
+            immutable: false,
             max_len,
             shared: Some(SharedBytes::new(len, max_len.unwrap_or(len))),
         }
@@ -493,6 +498,7 @@ impl BufferData {
         Self {
             bytes: Vec::new(),
             detached: false,
+            immutable: false,
             max_len,
             shared: Some(shared),
         }

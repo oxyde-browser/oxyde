@@ -393,6 +393,9 @@ fn write_decoded(vm: &mut Vm, id: ObjId, decoded: &Decoded) -> JsResult {
 
 fn set_from_base64(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_bytes(vm, this)?;
+    if vm.typed_immutable(id) {
+        return Err(vm.type_error("le tampon du tableau typé est immuable"));
+    }
     let units = string_units(vm, &arg(args, 0))?;
     let options = options_object(vm, &arg(args, 1))?;
     let url_safe = alphabet_option(vm, options.as_ref())?;
@@ -404,6 +407,9 @@ fn set_from_base64(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn set_from_hex(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_bytes(vm, this)?;
+    if vm.typed_immutable(id) {
+        return Err(vm.type_error("le tampon du tableau typé est immuable"));
+    }
     let units = string_units(vm, &arg(args, 0))?;
     let (_, length) = validate(vm, this)?;
     let decoded = from_hex(&units, length);

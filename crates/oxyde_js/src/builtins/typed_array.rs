@@ -339,12 +339,22 @@ impl Vm {
                 if data.shared.is_some() {
                     return Err(self.type_error("un SharedArrayBuffer ne se détache pas"));
                 }
+                if data.immutable {
+                    return Err(self.type_error("un ArrayBuffer immuable ne se détache pas"));
+                }
                 data.take_bytes();
                 data.detached = true;
                 Ok(())
             }
             None => Err(self.type_error("un ArrayBuffer est attendu")),
         }
+    }
+
+    /// Vrai si `id` est un tableau typé posé sur un tampon immuable.
+    pub(crate) fn typed_immutable(&self, id: ObjId) -> bool {
+        self.typed_array(id)
+            .and_then(|view| self.buffer(view.buffer))
+            .is_some_and(|buffer| buffer.immutable)
     }
 
     pub(crate) fn typed_array(&self, id: ObjId) -> Option<TypedArrayData> {
@@ -406,7 +416,7 @@ impl Vm {
         let Some(view) = self.typed_array(id) else {
             return;
         };
-        if self.typed_length(id).is_none_or(|len| index >= len) {
+        if self.typed_length(id).is_none_or(|len| index >= len) || self.typed_immutable(id) {
             return;
         }
         let (bytes, size) = encode_value(view.kind, value);
@@ -459,6 +469,15 @@ pub(super) fn validate(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, usize)> {
         Some(len) => Ok((id, len)),
         None => Err(vm.type_error("le tableau typé est détaché ou hors des bornes de son tampon")),
     }
+}
+
+/// Comme [`validate`], pour une écriture : `TypeError` aussi si le tampon du
+/// tableau est immuable.
+pub(super) fn validate_write(vm: &mut Vm, this: &Value) -> JsResult<(ObjId, usize)> {
+    if this.as_object().is_some_and(|id| vm.typed_immutable(id)) {
+        return Err(vm.type_error("le tampon du tableau typé est immuable"));
+    }
+    validate(vm, this)
 }
 
 // ---- ArrayBuffer -----------------------------------------------------------------
@@ -601,10 +620,19 @@ fn is_bigint_kind(kind: ElementKind) -> bool {
 
 /// `TypedArrayCreateFromCtor` : construit par `constructor` et vérifie que
 /// le résultat est un tableau typé vivant, assez long si une longueur était
-/// demandée.
-fn create_from_constructor(vm: &mut Vm, constructor: &Value, args: &[Value]) -> JsResult<ObjId> {
+/// demandée ; `write` : et qu'on peut y écrire.
+fn create_from_constructor(
+    vm: &mut Vm,
+    constructor: &Value,
+    args: &[Value],
+    write: bool,
+) -> JsResult<ObjId> {
     let created = vm.construct(constructor, args, constructor)?;
-    let (id, length) = validate(vm, &created)?;
+    let (id, length) = if write {
+        validate_write(vm, &created)?
+    } else {
+        validate(vm, &created)?
+    };
     #[expect(clippy::cast_precision_loss, reason = "longueurs petites devant 2^53")]
     if let [Value::Number(wanted)] = args
         && (length as f64) < *wanted
@@ -616,7 +644,7 @@ fn create_from_constructor(vm: &mut Vm, constructor: &Value, args: &[Value]) -> 
 
 /// `TypedArraySpeciesCreate` : un tableau du constructeur que désigne
 /// l'espèce d'`exemplar`, de même nature d'éléments (nombres ou BigInt).
-fn species_create(vm: &mut Vm, exemplar: ObjId, args: &[Value]) -> JsResult<ObjId> {
+fn species_create(vm: &mut Vm, exemplar: ObjId, args: &[Value], write: bool) -> JsResult<ObjId> {
     let kind = kind_of(vm, exemplar);
     let default = vm
         .typed_protos
@@ -624,7 +652,7 @@ fn species_create(vm: &mut Vm, exemplar: ObjId, args: &[Value]) -> JsResult<ObjI
         .copied()
         .map_or(Value::Undefined, Value::Object);
     let constructor = species_constructor(vm, &Value::Object(exemplar), default)?;
-    let created = create_from_constructor(vm, &constructor, args)?;
+    let created = create_from_constructor(vm, &constructor, args, write)?;
     if is_bigint_kind(kind_of(vm, created)) != is_bigint_kind(kind) {
         return Err(vm.type_error("le tableau typé construit n'a pas le même type de contenu"));
     }
@@ -664,6 +692,7 @@ fn slice_buffer(vm: &mut Vm, this: &Value, args: &[Value], shared: bool) -> JsRe
     };
     if !shared {
         live_buffer(vm, copy)?;
+        mutable_buffer(vm, copy)?;
     }
     if copy == id {
         return Err(vm.type_error("le constructeur a rendu le tampon lui-même"));
@@ -738,12 +767,85 @@ fn live_buffer(vm: &mut Vm, id: ObjId) -> JsResult<()> {
     Ok(())
 }
 
+/// Tampon modifiable désigné par `id`, sinon `TypeError`.
+fn mutable_buffer(vm: &mut Vm, id: ObjId) -> JsResult<()> {
+    if vm.buffer(id).is_some_and(|b| b.immutable) {
+        return Err(vm.type_error("l'ArrayBuffer est immuable"));
+    }
+    Ok(())
+}
+
+fn buffer_immutable(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let id = this_buffer(vm, this)?;
+    Ok(Value::Bool(vm.buffer(id).is_some_and(|b| b.immutable)))
+}
+
+/// Nouveau tampon immuable contenant `bytes`.
+fn new_immutable_buffer(vm: &mut Vm, bytes: Vec<u8>) -> JsResult<ObjId> {
+    let copy = vm.new_buffer(bytes.len(), None)?;
+    if let Some(target) = vm.buffer_mut(copy) {
+        target.set_bytes(bytes);
+        target.immutable = true;
+    }
+    Ok(copy)
+}
+
+/// `ArrayBuffer.prototype.transferToImmutable(longueur)` : le contenu passe
+/// dans un tampon immuable, le receveur est détaché.
+fn buffer_transfer_immutable(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_buffer(vm, this)?;
+    let len = match arg(args, 0) {
+        Value::Undefined => vm.buffer(id).map_or(0, BufferData::len),
+        other => to_index(vm, &other)?,
+    };
+    live_buffer(vm, id)?;
+    mutable_buffer(vm, id)?;
+    // La taille est vérifiée avant que le receveur ne perde ses octets.
+    if u32::try_from(len).is_err() {
+        return Err(vm_range(vm, "tampon trop grand"));
+    }
+    let mut bytes = vm
+        .buffer_mut(id)
+        .map(BufferData::take_bytes)
+        .unwrap_or_default();
+    bytes.resize(len, 0);
+    let copy = new_immutable_buffer(vm, bytes)?;
+    vm.detach_array_buffer(this)?;
+    Ok(Value::Object(copy))
+}
+
+/// `ArrayBuffer.prototype.sliceToImmutable(début, fin)` : copie immuable
+/// d'une tranche, sans passer par l'espèce.
+fn buffer_slice_immutable(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_buffer(vm, this)?;
+    live_buffer(vm, id)?;
+    let len = vm.buffer(id).map_or(0, BufferData::len);
+    let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
+    let end = super::relative_index(vm, &arg(args, 1), len, len)?;
+    let count = end.saturating_sub(start);
+    // Les conversions ont pu détacher ou rétrécir le tampon.
+    live_buffer(vm, id)?;
+    let current = vm.buffer(id).map_or(0, BufferData::len);
+    if count > 0 && current < end {
+        return Err(vm_range(
+            vm,
+            "le tampon a rétréci en deçà de la tranche demandée",
+        ));
+    }
+    let bytes = vm
+        .buffer(id)
+        .map(|b| b.copy_range(start, count))
+        .unwrap_or_default();
+    new_immutable_buffer(vm, bytes).map(Value::Object)
+}
+
 fn buffer_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     slice_buffer(vm, this, args, false)
 }
 
 fn buffer_resize(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_buffer(vm, this)?;
+    mutable_buffer(vm, id)?;
     let Some(max) = vm.buffer(id).and_then(|b| b.max_len) else {
         return Err(vm.type_error("cet ArrayBuffer n'est pas redimensionnable"));
     };
@@ -765,6 +867,7 @@ fn transfer(vm: &mut Vm, this: &Value, args: &[Value], keep_resizable: bool) -> 
         other => to_index(vm, &other)?,
     };
     live_buffer(vm, id)?;
+    mutable_buffer(vm, id)?;
     let max_len = vm
         .buffer(id)
         .and_then(|b| b.max_len)
@@ -904,10 +1007,18 @@ fn typed_from(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let key = PropertyKey::Symbol(vm.well_known.iterator.clone());
     // Un itérable est parcouru en entier avant la création du tableau ; un
     // objet à indices est lu élément par élément, au fil de l'écriture.
-    let iterated = if vm.get_key(&source, &key)?.is_nullish() {
+    // La méthode d'itération n'est lue qu'une fois.
+    let method = vm.get_key(&source, &key)?;
+    let iterated = if method.is_nullish() {
         None
     } else {
-        Some(vm.iterate_to_vec(&source)?)
+        let iterator = vm.iterator_from_method(&source, &method)?;
+        let mut values = Vec::new();
+        while let Some(value) = vm.iterator_next(&iterator)? {
+            vm.tick(1)?;
+            values.push(value);
+        }
+        Some(values)
     };
     let object = match iterated {
         Some(_) => Value::Undefined,
@@ -917,7 +1028,7 @@ fn typed_from(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         Some(values) => values.len(),
         None => super::array::length_of(vm, &object)?,
     };
-    let target = create_from_constructor(vm, this, &[number(len)])?;
+    let target = create_from_constructor(vm, this, &[number(len)], true)?;
     for index in 0..len {
         vm.tick(1)?;
         let value = match &iterated {
@@ -938,7 +1049,7 @@ fn typed_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     if !vm.is_constructor(this) {
         return Err(vm.type_error("le receveur n'est pas un constructeur"));
     }
-    let target = create_from_constructor(vm, this, &[number(args.len())])?;
+    let target = create_from_constructor(vm, this, &[number(args.len())], true)?;
     for (index, value) in args.iter().enumerate() {
         vm.typed_store(target, Some(index), value)?;
     }
@@ -1005,8 +1116,16 @@ shared_methods! {
     typed_find => find, typed_find_index => find_index, typed_find_last => find_last,
     typed_find_last_index => find_last_index, typed_includes => includes,
     typed_index_of => index_of, typed_last_index_of => last_index_of, typed_join => join,
-    typed_reverse => reverse,
-    typed_copy_within => copy_within,
+}
+
+fn typed_reverse(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    validate_write(vm, this)?;
+    array::reverse(vm, this, args)
+}
+
+fn typed_copy_within(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    validate_write(vm, this)?;
+    array::copy_within(vm, this, args)
 }
 
 /// Parcourt les `len` éléments que le tableau avait à l'appel, dans l'ordre
@@ -1146,7 +1265,7 @@ fn kind_of(vm: &Vm, id: ObjId) -> ElementKind {
 }
 
 fn typed_fill(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let (id, len) = validate(vm, this)?;
+    let (id, len) = validate_write(vm, this)?;
     let value = convert(vm, kind_of(vm, id), &arg(args, 0))?;
     let start = super::relative_index(vm, &arg(args, 1), len, 0)?;
     let end = super::relative_index(vm, &arg(args, 2), len, len)?;
@@ -1162,7 +1281,7 @@ fn typed_map(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let (id, len) = validate(vm, this)?;
     let callback = callable(vm, &arg(args, 0))?;
     let this_arg = arg(args, 1);
-    let out = species_create(vm, id, &[number(len)])?;
+    let out = species_create(vm, id, &[number(len)], true)?;
     for index in 0..len {
         vm.tick(1)?;
         let value = vm.typed_get(id, index).unwrap_or(Value::Undefined);
@@ -1189,7 +1308,7 @@ fn typed_filter(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             kept.push(value);
         }
     }
-    let out = species_create(vm, id, &[number(kept.len())])?;
+    let out = species_create(vm, id, &[number(kept.len())], true)?;
     for (index, value) in kept.iter().enumerate() {
         vm.typed_store(out, Some(index), value)?;
     }
@@ -1201,7 +1320,7 @@ fn typed_slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let end = super::relative_index(vm, &arg(args, 1), len, len)?;
     let count = end.saturating_sub(start);
-    let out = species_create(vm, id, &[number(count)])?;
+    let out = species_create(vm, id, &[number(count)], true)?;
     if count == 0 {
         return Ok(Value::Object(out));
     }
@@ -1248,13 +1367,16 @@ fn typed_subarray(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     if view.length.is_some() || arg(args, 1) != Value::Undefined {
         arguments.push(number(end.saturating_sub(start)));
     }
-    species_create(vm, id, &arguments).map(Value::Object)
+    species_create(vm, id, &arguments, false).map(Value::Object)
 }
 
 fn typed_set_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let Some(id) = this.as_object().filter(|id| vm.typed_array(*id).is_some()) else {
         return Err(vm.type_error("le receveur n'est pas un tableau typé"));
     };
+    if vm.typed_immutable(id) {
+        return Err(vm.type_error("le tampon du tableau typé est immuable"));
+    }
     let offset = vm.to_number(&arg(args, 1))?;
     let offset = if offset.is_nan() { 0.0 } else { offset.trunc() };
     if offset < 0.0 {
@@ -1334,7 +1456,7 @@ fn comparator_arg(vm: &mut Vm, args: &[Value]) -> JsResult<Value> {
 
 fn typed_sort(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let comparator = comparator_arg(vm, args)?;
-    let (id, _) = validate(vm, this)?;
+    let (id, _) = validate_write(vm, this)?;
     let sorted = sort_elements(vm, elements(vm, id), &comparator)?;
     for (index, value) in sorted.into_iter().enumerate() {
         vm.typed_set(id, index, &value);
@@ -1512,7 +1634,8 @@ fn view_get(vm: &mut Vm, this: &Value, args: &[Value], kind: ElementKind) -> JsR
 }
 
 fn view_set(vm: &mut Vm, this: &Value, args: &[Value], kind: ElementKind) -> JsResult {
-    data_view(vm, this)?;
+    let (viewed, ..) = data_view(vm, this)?;
+    mutable_buffer(vm, viewed)?;
     let index = to_index(vm, &arg(args, 0))?;
     let value = convert(vm, kind, &arg(args, 1))?;
     let little_endian = arg(args, 2).truthy();
@@ -1591,6 +1714,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("maxByteLength", buffer_max_byte_length),
         ("resizable", buffer_resizable),
         ("detached", buffer_detached),
+        ("immutable", buffer_immutable),
     ];
     for (name, func) in buffer_getters {
         getter(vm, buffer_proto, name, *func);
@@ -1600,6 +1724,8 @@ pub(super) fn install(vm: &mut Vm) {
         ("resize", 1, buffer_resize),
         ("transfer", 0, buffer_transfer),
         ("transferToFixedLength", 0, buffer_transfer_fixed),
+        ("sliceToImmutable", 2, buffer_slice_immutable),
+        ("transferToImmutable", 0, buffer_transfer_immutable),
     ];
     for (name, arity, func) in buffer_methods {
         vm.define_method(buffer_proto, name, *arity, *func);
