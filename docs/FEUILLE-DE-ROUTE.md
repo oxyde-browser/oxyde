@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **40 660 tests de test262 sur 48 795 (83,3 %)** ; il en reste 8 135.
+- `oxyde_js` réussit **40 768 tests de test262 sur 48 795 (83,5 %)** ; il en reste 8 027.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -20,7 +20,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
-| Royaumes (`$262.createRealm`) | — | 141 | à faire |
+| Royaumes (`$262.createRealm`) | — | 33 | fait pour l'essentiel (108 tests gagnés) |
 
 Ce qui reste dans A, B et C tient à quelques limites de fond :
 

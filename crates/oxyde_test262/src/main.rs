@@ -175,9 +175,34 @@ fn host_eval_script(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     }
 }
 
+/// `$262.createRealm()` : un royaume neuf, rendu par son propre objet `$262`.
+fn host_create_realm(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let Some(realm) = vm.create_realm() else {
+        return Err(vm.error("RangeError", "trop de royaumes"));
+    };
+    let previous = vm.realm();
+    vm.set_realm(realm);
+    install_host(vm);
+    let object = vm
+        .eval_script(HOST_OBJECT)
+        .and_then(|_| vm.eval_script("$262"));
+    vm.set_realm(previous);
+    object
+}
+
+/// Installe dans le royaume courant les fonctions sur lesquelles `$262`
+/// s'appuie.
+fn install_host(vm: &mut Vm) {
+    let global = vm.global();
+    vm.define_method(global, "print", 1, host_print);
+    vm.define_method(global, "__detach", 1, host_detach);
+    vm.define_method(global, "__evalScript", 1, host_eval_script);
+    vm.define_method(global, "__createRealm", 0, host_create_realm);
+}
+
 /// Objet `$262` minimal exposé aux tests.
 const HOST_OBJECT: &str = "var $262 = { global: this, gc() {}, agent: {}, detachArrayBuffer: __detach, \
-     evalScript: __evalScript };";
+     evalScript: __evalScript, createRealm: __createRealm };";
 
 /// Chargeur de modules : lit le fichier désigné par `specifier`, relatif au
 /// module qui l'importe. L'identifiant d'un module est son chemin.
@@ -204,10 +229,7 @@ fn run_once(
     let mut vm = Vm::new();
     vm.set_budget(Some(BUDGET));
     vm.host = Some(Box::new(Vec::<String>::new()));
-    let global = vm.global();
-    vm.define_method(global, "print", 1, host_print);
-    vm.define_method(global, "__detach", 1, host_detach);
-    vm.define_method(global, "__evalScript", 1, host_eval_script);
+    install_host(&mut vm);
 
     if !meta.has("raw") {
         let mut prelude = String::from(HOST_OBJECT);
