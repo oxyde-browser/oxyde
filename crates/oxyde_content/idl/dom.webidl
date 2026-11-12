@@ -305,6 +305,31 @@ interface Element : Node {
   undefined insertAdjacentText(DOMString where, DOMString data);
 };
 
+[Exposed=Window, LegacyUnenumerableNamedProperties]
+interface NamedNodeMap {
+  readonly attribute unsigned long length;
+  getter Attr? item(unsigned long index);
+  getter Attr? getNamedItem(DOMString qualifiedName);
+  Attr? getNamedItemNS(DOMString? namespace, DOMString localName);
+  [CEReactions] Attr? setNamedItem(Attr attr);
+  [CEReactions] Attr? setNamedItemNS(Attr attr);
+  [CEReactions] Attr removeNamedItem(DOMString qualifiedName);
+  [CEReactions] Attr removeNamedItemNS(DOMString? namespace, DOMString localName);
+};
+
+[Exposed=Window]
+interface Attr : Node {
+  readonly attribute DOMString? namespaceURI;
+  readonly attribute DOMString? prefix;
+  readonly attribute DOMString localName;
+  readonly attribute DOMString name;
+  [CEReactions] attribute DOMString value;
+
+  readonly attribute Element? ownerElement;
+
+  readonly attribute boolean specified;
+};
+
 [Exposed=Window]
 interface CharacterData : Node {
   attribute [LegacyNullToEmptyString] DOMString data;

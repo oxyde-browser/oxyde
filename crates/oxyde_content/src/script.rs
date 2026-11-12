@@ -25,6 +25,7 @@ use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
+mod attrs;
 mod documents;
 mod dom_ops;
 mod events;
@@ -42,11 +43,12 @@ const CLASS_LIST: u32 = 3;
 const CLASS_STORAGE: u32 = 4;
 const CLASS_DATASET: u32 = 5;
 const CLASS_RANGE: u32 = 6;
+const CLASS_ATTRS: u32 = 7;
 
-/// Instructions accordées à une tâche (script, événement, minuteur) avant
-/// interruption : une dizaine de secondes de calcul, comme le délai après
-/// lequel un navigateur propose d'arrêter un script.
-const TASK_BUDGET: u64 = 2_000_000_000;
+/// Instructions accordées par défaut à une tâche (script, événement,
+/// minuteur) avant interruption : un script emballé ne fige pas l'onglet.
+/// Réglable par [`ScriptEngine::set_task_budget`].
+const TASK_BUDGET: u64 = 200_000_000;
 /// Nombre maximal de minuteurs exécutés par appel de [`ScriptEngine::run_timers`].
 const MAX_TIMERS_PER_TICK: usize = 500;
 /// Nombre maximal de minuteurs en attente.
@@ -175,6 +177,7 @@ fn wrap(vm: &mut Vm, node: NodeId) -> Value {
         NodeData::Document => "Document",
         NodeData::CData(_) => "CDATASection",
         NodeData::ProcessingInstruction { .. } => "ProcessingInstruction",
+        NodeData::Attr(_) => "Attr",
         NodeData::Doctype { .. } => "DocumentType",
         NodeData::Element(element) if element.ns == Namespace::Html => "HTMLElement",
         NodeData::Element(_) => "Element",
@@ -287,6 +290,7 @@ fn serialize(doc: &Document, node: NodeId, out: &mut String) {
                 out.push_str(data);
                 out.push('>');
             }
+            NodeData::Attr(_) => {}
             NodeData::Element(element) => {
                 out.push('<');
                 out.push_str(&element.name);
@@ -549,17 +553,22 @@ const REFLECTED: &[&str] = &[
     "target",
 ];
 
-fn node_name(doc: &Document, node: NodeId) -> String {
+/// `nodeName` de `node` ; `html_document` : son document est un document
+/// HTML, où les noms des éléments HTML se lisent en majuscules.
+fn node_name(doc: &Document, node: NodeId, html_document: bool) -> String {
     match &doc.node(node).data {
         NodeData::Document => "#document".to_owned(),
         NodeData::Doctype { name, .. } => name.clone(),
         NodeData::Text(_) => "#text".to_owned(),
         NodeData::Comment(_) => "#comment".to_owned(),
         NodeData::Fragment => "#document-fragment".to_owned(),
-        NodeData::Element(e) if e.ns == Namespace::Html => e.name.to_ascii_uppercase(),
-        NodeData::Element(e) => e.name.clone(),
+        NodeData::Element(e) if e.ns == Namespace::Html && html_document => {
+            e.qualified().to_ascii_uppercase()
+        }
+        NodeData::Element(e) => e.qualified().into_owned(),
         NodeData::CData(_) => "#cdata-section".to_owned(),
         NodeData::ProcessingInstruction { target, .. } => target.clone(),
+        NodeData::Attr(attr) => attr.qualified(),
     }
 }
 
@@ -579,6 +588,10 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
     let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
     let doc = &h.doc;
     let is_document = doc.is_document(node);
+    let html_document = u32::try_from(doc.owner(node).index())
+        .ok()
+        .and_then(|owner| h.kinds.get(&owner))
+        .is_none_or(|kind| kind.html);
     let links = doc.node(node);
     let (parent, first, last, next, prev) = (
         links.parent,
@@ -594,7 +607,17 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             .to_owned()
     };
     Some(match key {
+        "name" | "nodeName" | "localName" | "prefix" | "namespaceURI" | "value" | "nodeValue"
+        | "textContent" | "specified" | "ownerElement"
+            if matches!(links.data, NodeData::Attr(_)) =>
+        {
+            return attrs::property(vm, node, key);
+        }
+        "attributes" if is_element(doc, node) => {
+            return Some(Ok(attrs::named_node_map(vm, node)));
+        }
         "nodeType" => Ok(Value::Number(match &links.data {
+            NodeData::Attr(_) => 2.0,
             NodeData::Element(_) => 1.0,
             NodeData::Text(_) => 3.0,
             NodeData::Comment(_) => 8.0,
@@ -604,14 +627,10 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             NodeData::Doctype { .. } => 10.0,
             NodeData::Fragment => 11.0,
         })),
-        "nodeName" => string(&node_name(doc, node)),
-        "tagName" | "localName" if is_element(doc, node) => {
-            let name = node_name(doc, node);
-            string(&if key == "localName" {
-                name.to_ascii_lowercase()
-            } else {
-                name
-            })
+        "nodeName" => string(&node_name(doc, node, html_document)),
+        "tagName" if is_element(doc, node) => string(&node_name(doc, node, html_document)),
+        "localName" if is_element(doc, node) => {
+            string(doc.element(node).map_or("", |e| e.name.as_str()))
         }
         "textContent" | "innerText" => match &links.data {
             NodeData::Document | NodeData::Doctype { .. } => Ok(Value::Null),
@@ -805,12 +824,14 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 _ => return None,
             }
         }
-        "namespaceURI" if is_element(doc, node) => string(match doc.element(node).map(|e| e.ns) {
-            Some(Namespace::Svg) => "http://www.w3.org/2000/svg",
-            Some(Namespace::MathMl) => "http://www.w3.org/1998/Math/MathML",
-            _ => "http://www.w3.org/1999/xhtml",
-        }),
-        "prefix" if is_element(doc, node) => Ok(Value::Null),
+        "namespaceURI" if is_element(doc, node) => Ok(doc
+            .element(node)
+            .and_then(|e| doc.namespace_uri(e.ns))
+            .map_or(Value::Null, Value::string)),
+        "prefix" if is_element(doc, node) => Ok(doc
+            .element(node)
+            .and_then(|e| e.prefix.as_deref())
+            .map_or(Value::Null, Value::string)),
         "slot" | "dir" | "accessKey" | "nonce" if is_element(doc, node) => {
             string(&attr(&key.to_ascii_lowercase()))
         }
@@ -839,6 +860,22 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
 
 fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option<JsResult<()>> {
     let node = host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)?;
+    // Valeur d'un nœud d'attribut.
+    if matches!(key, "value" | "nodeValue" | "textContent")
+        && host(vm)?.doc.attr_data(node).is_some()
+    {
+        let text = match value {
+            Value::Null if key != "value" => String::new(),
+            other => match vm.to_string(other) {
+                Ok(text) => text.to_string(),
+                Err(thrown) => return Some(Err(thrown)),
+            },
+        };
+        let h = host(vm)?;
+        h.doc.set_attr_value(node, &text);
+        h.dirty = true;
+        return Some(Ok(()));
+    }
     // `value` d'une liste ou d'une zone de texte : voir `elements.js`.
     if key == "value"
         && host(vm)?
@@ -963,6 +1000,7 @@ fn host_get(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<JsResult> {
             }
         }
         CLASS_RANGE => range::property(vm, data, key),
+        CLASS_ATTRS => attrs::map_property(vm, data, key),
         CLASS_STORAGE => {
             let area = usize::from(data != 0);
             match key {
@@ -1029,52 +1067,6 @@ fn node_arg(vm: &mut Vm, value: &Value) -> JsResult<NodeId> {
     }
 }
 
-fn get_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let value = host(vm).and_then(|h| h.doc.element(node)?.attr(&name).map(str::to_owned));
-    Ok(value.map_or(Value::Null, |v| Value::string(&v)))
-}
-
-fn set_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let value = vm.to_string(&arg(args, 1))?;
-    // Un nom d'attribut vide ou contenant des blancs n'est pas sérialisable.
-    if name.is_empty()
-        || name.contains(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '>' | '/' | '='))
-    {
-        return Err(dom_exception(
-            vm,
-            "InvalidCharacterError",
-            "nom d'attribut invalide",
-        ));
-    }
-    if let Some(h) = host(vm) {
-        h.doc.set_attr(node, &name, &value);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-fn remove_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    if let Some(h) = host(vm) {
-        h.doc.remove_attr(node, &name);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-fn has_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    Ok(Value::Bool(host(vm).is_some_and(|h| {
-        h.doc.element(node).is_some_and(|e| e.has_attr(&name))
-    })))
-}
-
 fn matching(vm: &mut Vm, scope: NodeId, list: &[Selector], first_only: bool) -> Vec<NodeId> {
     let Some(h) = host(vm) else { return Vec::new() };
     let doc = &h.doc;
@@ -1133,23 +1125,6 @@ fn get_element_by_id(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some(&*id)))
     });
     Ok(wrap_opt(vm, found))
-}
-
-fn get_elements_by_tag_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let scope = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let found: Vec<NodeId> = host(vm)
-        .map(|h| {
-            let doc = &h.doc;
-            doc.descendants(scope)
-                .filter(|n| {
-                    doc.element(*n)
-                        .is_some_and(|e| name == "*" || e.name == name)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    Ok(wrap_collection(vm, found))
 }
 
 fn get_elements_by_class_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1371,16 +1346,16 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "remove", tree::remove),
     ("", "append", tree::append),
     ("", "prepend", tree::prepend),
-    ("", "getAttribute", get_attribute),
-    ("", "setAttribute", set_attribute),
-    ("", "removeAttribute", remove_attribute),
-    ("", "hasAttribute", has_attribute),
+    ("", "getAttribute", attrs::get_attribute),
+    ("", "setAttribute", attrs::set_attribute),
+    ("", "removeAttribute", attrs::remove_attribute),
+    ("", "hasAttribute", attrs::has_attribute),
     ("", "querySelector", query_selector),
     ("", "querySelectorAll", query_selector_all),
     ("", "matches", element_matches),
     ("", "closest", closest),
     ("", "getElementById", get_element_by_id),
-    ("", "getElementsByTagName", get_elements_by_tag_name),
+    ("", "getElementsByTagName", attrs::get_elements_by_tag_name),
     ("", "getElementsByClassName", get_elements_by_class_name),
     ("", "createElement", create_element),
     ("", "createTextNode", documents::create_text_node),
@@ -1432,6 +1407,28 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ),
     ("DOMImplementation", "hasFeature", documents::has_feature),
     ("", "createRange", range::create_range),
+    (
+        "",
+        "getElementsByTagNameNS",
+        attrs::get_elements_by_tag_name_ns,
+    ),
+    ("", "getAttributeNode", attrs::get_attribute_node),
+    ("", "getAttributeNodeNS", attrs::get_attribute_node_ns),
+    ("", "setAttributeNode", attrs::set_attribute_node),
+    ("", "setAttributeNodeNS", attrs::set_attribute_node),
+    ("", "removeAttributeNode", attrs::remove_attribute_node),
+    ("", "createAttribute", attrs::create_attribute),
+    ("", "createAttributeNS", attrs::create_attribute_ns),
+    ("", "lookupNamespaceURI", attrs::lookup_namespace_uri),
+    ("", "lookupPrefix", attrs::lookup_prefix),
+    ("", "isDefaultNamespace", attrs::is_default_namespace),
+    ("NamedNodeMap", "item", attrs::map_item),
+    ("NamedNodeMap", "getNamedItem", attrs::map_get),
+    ("NamedNodeMap", "getNamedItemNS", attrs::map_get_ns),
+    ("NamedNodeMap", "setNamedItem", attrs::map_set),
+    ("NamedNodeMap", "setNamedItemNS", attrs::map_set),
+    ("NamedNodeMap", "removeNamedItem", attrs::map_remove),
+    ("NamedNodeMap", "removeNamedItemNS", attrs::map_remove_ns),
     ("Range", "setStart", range::set_start),
     ("Range", "setEnd", range::set_end),
     ("Range", "setStartBefore", range::set_start_before),
@@ -1480,13 +1477,13 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "after", tree::after),
     ("", "replaceWith", tree::replace_with),
     ("", "replaceChildren", tree::replace_children),
-    ("", "hasAttributes", dom_ops::has_attributes),
-    ("", "getAttributeNames", dom_ops::get_attribute_names),
-    ("", "toggleAttribute", dom_ops::toggle_attribute),
-    ("", "getAttributeNS", dom_ops::get_attribute_ns),
-    ("", "hasAttributeNS", dom_ops::has_attribute_ns),
-    ("", "setAttributeNS", dom_ops::set_attribute_ns),
-    ("", "removeAttributeNS", dom_ops::remove_attribute_ns),
+    ("", "hasAttributes", attrs::has_attributes),
+    ("", "getAttributeNames", attrs::get_attribute_names),
+    ("", "toggleAttribute", attrs::toggle_attribute),
+    ("", "getAttributeNS", attrs::get_attribute_ns),
+    ("", "hasAttributeNS", attrs::has_attribute_ns),
+    ("", "setAttributeNS", attrs::set_attribute_ns),
+    ("", "removeAttributeNS", attrs::remove_attribute_ns),
     ("", "webkitMatchesSelector", element_matches),
     (
         "",
@@ -1502,7 +1499,7 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "replaceData", dom_ops::replace_data),
     ("", "splitText", dom_ops::split_text),
     ("", "createComment", documents::create_comment),
-    ("", "createElementNS", dom_ops::create_element_ns),
+    ("", "createElementNS", attrs::create_element_ns),
     ("", "importNode", documents::import_node),
     ("", "adoptNode", documents::adopt_node),
     ("", "getElementsByName", dom_ops::get_elements_by_name),
@@ -1793,6 +1790,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
 /// Moteur de script d'une page : la machine JavaScript et ses liaisons au DOM.
 pub(crate) struct ScriptEngine {
     vm: Vm,
+    /// Instructions accordées à chaque tâche.
+    task_budget: u64,
 }
 
 impl std::fmt::Debug for ScriptEngine {
@@ -1809,12 +1808,21 @@ impl ScriptEngine {
         if let Err(thrown) = install(&mut vm, url) {
             report(&mut vm, &thrown);
         }
-        Self { vm }
+        Self {
+            vm,
+            task_budget: TASK_BUDGET,
+        }
     }
 
     /// Exécute `task` avec le document `doc` prêté à la machine, sur un fil à
     /// grande pile et avec un budget d'instructions.
+    /// Change le nombre d'instructions accordées à chaque tâche.
+    pub(crate) fn set_task_budget(&mut self, budget: u64) {
+        self.task_budget = budget;
+    }
+
     fn run<T: Send>(&mut self, doc: &mut Document, task: impl FnOnce(&mut Vm) -> T + Send) -> T {
+        let budget = self.task_budget;
         let vm = &mut self.vm;
         if let Some(h) = host(vm) {
             std::mem::swap(&mut h.doc, doc);
@@ -1826,7 +1834,7 @@ impl ScriptEngine {
             let global = vm.global();
             vm.define_hidden(global, "document", wrapper);
         }
-        vm.set_budget(Some(TASK_BUDGET));
+        vm.set_budget(Some(budget));
         let result = oxyde_js::with_large_stack(|| {
             let result = task(vm);
             // Fin de la tâche : les réactions de promesses en attente
@@ -2684,6 +2692,7 @@ pub(crate) fn dom_coverage_report() -> String {
              DOMImplementation: document.implementation, XMLDocument: xml,
              ProcessingInstruction: xml.createProcessingInstruction('cible', 'x'),
              CDATASection: xml.createCDATASection('x'),
+             NamedNodeMap: el.attributes, Attr: el.getAttributeNode('id'),
            }};
            let out = '';
            for (const [iface, nature, name, isStatic] of [{members}]) {{

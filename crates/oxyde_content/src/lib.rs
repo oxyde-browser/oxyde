@@ -211,6 +211,9 @@ pub struct Page {
     /// module indisponible.
     modules: HashMap<Url, Option<String>>,
     engine: Option<Box<ScriptEngine>>,
+    /// Instructions accordées à chaque tâche de script ; `None` : la valeur
+    /// par défaut du moteur.
+    task_budget: Option<u64>,
     styles: StyleMap,
     tree: Option<LayoutTree>,
     list: DisplayList,
@@ -365,6 +368,7 @@ impl Page {
             scripts,
             modules: HashMap::new(),
             engine: None,
+            task_budget: None,
             styles: StyleMap::default(),
             tree: None,
             list: DisplayList::default(),
@@ -570,6 +574,9 @@ impl Page {
         let modules = std::mem::take(&mut self.modules);
         let scripts = std::mem::take(&mut self.scripts);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
+        if let Some(budget) = self.task_budget {
+            engine.set_task_budget(budget);
+        }
         for slot in &scripts {
             let source = match slot {
                 ScriptSlot::Inline(source)
@@ -606,6 +613,16 @@ impl Page {
         let previous = std::mem::take(&mut self.sheets);
         self.sheets = collect_sheets(&self.doc, &self.base, previous);
         self.dirty = true;
+    }
+
+    /// Fixe le nombre d'instructions qu'une tâche de script (script, événement,
+    /// minuteur) peut exécuter avant d'être interrompue. À appeler avant
+    /// [`Page::run_scripts`] ; un lanceur de tests y met une valeur large.
+    pub fn set_task_budget(&mut self, budget: u64) {
+        self.task_budget = Some(budget);
+        if let Some(engine) = self.engine.as_mut() {
+            engine.set_task_budget(budget);
+        }
     }
 
     /// Messages écrits dans la console par les scripts depuis le dernier appel.
@@ -1367,7 +1384,7 @@ mod tests {
             .and_then(|rest| rest.split(' ').next())
             .and_then(|n| n.parse().ok())
             .expect("total lisible");
-        assert!(done >= 280, "couverture en régression : {done} membres");
+        assert!(done >= 310, "couverture en régression : {done} membres");
     }
 
     #[test]

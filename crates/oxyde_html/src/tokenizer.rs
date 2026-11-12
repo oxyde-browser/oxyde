@@ -257,7 +257,7 @@ impl Tokenizer {
         let value = std::mem::take(&mut self.attr_value);
         // Un attribut en double est ignoré (le premier gagne).
         if !self.tag.attrs.iter().any(|a| a.name == name) {
-            self.tag.attrs.push(Attribute { name, value });
+            self.tag.attrs.push(Attribute::new(name, value));
         }
     }
 
@@ -940,13 +940,7 @@ mod tests {
     fn start(name: &str, attrs: &[(&str, &str)], self_closing: bool) -> Token {
         Token::StartTag(Tag {
             name: name.into(),
-            attrs: attrs
-                .iter()
-                .map(|(n, v)| Attribute {
-                    name: (*n).into(),
-                    value: (*v).into(),
-                })
-                .collect(),
+            attrs: attrs.iter().map(|(n, v)| Attribute::new(*n, *v)).collect(),
             self_closing,
         })
     }

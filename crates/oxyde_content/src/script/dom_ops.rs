@@ -1,10 +1,9 @@
 //! Compléments du DOM : opérations de `Node`, `Element`, `CharacterData`,
 //! `Text`, `Document` et `DOMTokenList` (DOM Standard, WHATWG).
 //!
-//! LIMITES CONNUES : les espaces de noms des attributs sont ignorés ;
-//! `insertAdjacentHTML` analyse son fragment comme le contenu d'un `<body>`.
+//! LIMITES CONNUES : `insertAdjacentHTML` analyse son fragment comme le contenu d'un `<body>`.
 
-use oxyde_dom::{Document, Namespace, NodeData, NodeId};
+use oxyde_dom::{Document, NodeData, NodeId};
 use oxyde_js::{JsResult, Value, Vm};
 
 use super::{
@@ -171,91 +170,6 @@ pub(super) fn compare_document_position(vm: &mut Vm, this: &Value, args: &[Value
     } else {
         FOLLOWING
     }))
-}
-
-// ---- Attributs d'Element ---------------------------------------------------------------
-
-pub(super) fn has_attributes(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    Ok(Value::Bool(host(vm).is_some_and(|h| {
-        h.doc.element(node).is_some_and(|e| !e.attrs.is_empty())
-    })))
-}
-
-pub(super) fn get_attribute_names(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let names: Vec<Value> = host(vm)
-        .and_then(|h| h.doc.element(node))
-        .map(|e| e.attrs.iter().map(|a| Value::string(&a.name)).collect())
-        .unwrap_or_default();
-    Ok(vm.new_array(names))
-}
-
-pub(super) fn toggle_attribute(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 0))?.to_ascii_lowercase();
-    let force = args
-        .get(1)
-        .filter(|v| **v != Value::Undefined)
-        .map(Value::truthy);
-    let Some(h) = host(vm) else {
-        return Ok(Value::Bool(false));
-    };
-    let present = h.doc.element(node).is_some_and(|e| e.has_attr(&name));
-    let wanted = force.unwrap_or(!present);
-    if wanted && !present {
-        h.doc.set_attr(node, &name, "");
-    } else if !wanted && present {
-        h.doc.remove_attr(node, &name);
-    }
-    h.dirty = true;
-    Ok(Value::Bool(wanted))
-}
-
-/// `getAttributeNS`, `hasAttributeNS`… : l'espace de noms (premier argument)
-/// est ignoré, le nom local désigne l'attribut.
-pub(super) fn get_attribute_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 1))?;
-    let value = host(vm)
-        .and_then(|h| h.doc.element(node))
-        .and_then(|e| e.attr(&name).map(str::to_owned));
-    Ok(value.map_or(Value::Null, |v| Value::string(&v)))
-}
-
-pub(super) fn has_attribute_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 1))?;
-    Ok(Value::Bool(host(vm).is_some_and(|h| {
-        h.doc.element(node).is_some_and(|e| e.has_attr(&name))
-    })))
-}
-
-pub(super) fn set_attribute_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let qualified = vm.to_string(&arg(args, 1))?;
-    let value = vm.to_string(&arg(args, 2))?;
-    // `préfixe:nom` : seul le nom local est gardé.
-    let local = qualified
-        .rsplit(':')
-        .next()
-        .unwrap_or(&qualified)
-        .to_owned();
-    if let Some(h) = host(vm) {
-        h.doc.set_attr(node, &local, &value);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
-}
-
-pub(super) fn remove_attribute_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let node = this_node(vm, this)?;
-    let name = vm.to_string(&arg(args, 1))?;
-    if let Some(h) = host(vm) {
-        h.doc.remove_attr(node, &name);
-        h.dirty = true;
-    }
-    Ok(Value::Undefined)
 }
 
 // ---- insertAdjacent… ---------------------------------------------------------------------
@@ -475,38 +389,6 @@ pub(super) fn whole_text(doc: &Document, node: NodeId) -> String {
 }
 
 // ---- Document ------------------------------------------------------------------------------
-
-pub(super) fn create_element_ns(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let namespace = match arg(args, 0) {
-        Value::Null | Value::Undefined => String::new(),
-        other => vm.to_string(&other)?.to_string(),
-    };
-    let qualified = vm.to_string(&arg(args, 1))?;
-    let local = qualified
-        .rsplit(':')
-        .next()
-        .unwrap_or(&qualified)
-        .to_owned();
-    let valid = local
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_alphabetic() || c == '_')
-        && !local.chars().any(char::is_whitespace);
-    if !valid {
-        return Err(dom_error(
-            vm,
-            "InvalidCharacterError",
-            "nom d'élément invalide",
-        ));
-    }
-    let ns = match namespace.as_str() {
-        "http://www.w3.org/2000/svg" => Namespace::Svg,
-        "http://www.w3.org/1998/Math/MathML" => Namespace::MathMl,
-        _ => Namespace::Html,
-    };
-    let node = host(vm).map(|h| h.doc.create_element(&local, ns, Vec::new()));
-    Ok(super::documents::created_by(vm, this, node))
-}
 
 pub(super) fn get_elements_by_name(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let scope = this_node(vm, this)?;

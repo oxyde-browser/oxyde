@@ -373,7 +373,7 @@ pub(super) fn create_document(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRe
     let element = if qualified.is_empty() {
         None
     } else {
-        let created = super::dom_ops::create_element_ns(
+        let created = super::attrs::create_element_ns(
             vm,
             &wrapper,
             &[arg(args, 0), Value::string(&qualified)],

@@ -31,6 +31,9 @@ const REPORT_JS: &str = include_str!("report.js");
 const CHILD_BUDGET: Duration = Duration::from_secs(10);
 /// Temps au bout duquel le processus père tue un fils muet.
 const KILL_AFTER: Duration = Duration::from_secs(20);
+/// Instructions accordées à chaque tâche de script : certains fichiers
+/// enchaînent des dizaines de milliers de sous-tests dans un seul script.
+const TASK_BUDGET: u64 = 2_000_000_000;
 /// Nombre maximal de réveils de minuteurs par fichier.
 const MAX_TICKS: usize = 50_000;
 
@@ -197,6 +200,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         return ExitCode::FAILURE;
     };
     let mut page = Page::from_html(url, &html);
+    page.set_task_budget(TASK_BUDGET);
     for url in page.pending_stylesheets() {
         let css = read_url(suite, &url).unwrap_or_default();
         page.set_stylesheet(&url, &css);

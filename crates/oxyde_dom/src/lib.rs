@@ -30,8 +30,10 @@ impl fmt::Debug for NodeId {
     }
 }
 
+mod attrs;
 mod ranges;
 
+pub use attrs::{AttrData, HTML_NS, MATHML_NS, SVG_NS, XML_NS, XMLNS_NS};
 pub use ranges::{Boundary, IteratorState, LiveRange};
 
 /// Espace de noms d'un élément.
@@ -43,15 +45,53 @@ pub enum Namespace {
     Svg,
     /// `http://www.w3.org/1998/Math/MathML`
     MathMl,
+    /// Aucun espace de noms.
+    None,
+    /// `http://www.w3.org/XML/1998/namespace`
+    Xml,
+    /// `http://www.w3.org/2000/xmlns/`
+    Xmlns,
+    /// Autre espace de noms : rang dans la table du document (voir
+    /// [`Document::namespace_uri`]).
+    Other(u32),
 }
 
 /// Un attribut d'élément.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Attribute {
-    /// Nom (en minuscules pour les éléments HTML).
+    /// Nom qualifié (en minuscules pour les éléments HTML).
     pub name: String,
     /// Valeur.
     pub value: String,
+    /// Espace de noms ; [`Namespace::None`] pour un attribut ordinaire.
+    pub ns: Namespace,
+    /// Préfixe d'espace de noms, début du nom qualifié.
+    pub prefix: Option<String>,
+    /// Nœud `Attr` qui désigne cet attribut, si un script en a demandé un.
+    pub node: Option<NodeId>,
+}
+
+impl Attribute {
+    /// Attribut ordinaire, sans espace de noms.
+    #[must_use]
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            ns: Namespace::None,
+            prefix: None,
+            node: None,
+        }
+    }
+
+    /// Nom local : le nom qualifié sans son préfixe.
+    #[must_use]
+    pub fn local(&self) -> &str {
+        match &self.prefix {
+            Some(prefix) => self.name.get(prefix.len() + 1..).unwrap_or(&self.name),
+            None => &self.name,
+        }
+    }
 }
 
 /// Données propres à un élément.
@@ -61,6 +101,8 @@ pub struct ElementData {
     pub name: String,
     /// Espace de noms.
     pub ns: Namespace,
+    /// Préfixe d'espace de noms (`svg` dans `svg:rect`).
+    pub prefix: Option<String>,
     /// Attributs, dans l'ordre du source, sans doublon de nom.
     pub attrs: Vec<Attribute>,
 }
@@ -90,6 +132,15 @@ impl ElementData {
     /// Itère sur les classes de l'attribut `class`.
     pub fn classes(&self) -> impl Iterator<Item = &str> {
         self.attr("class").unwrap_or("").split_ascii_whitespace()
+    }
+
+    /// Nom qualifié : `préfixe:nom`, ou le nom local seul.
+    #[must_use]
+    pub fn qualified(&self) -> std::borrow::Cow<'_, str> {
+        match &self.prefix {
+            Some(prefix) => std::borrow::Cow::Owned(format!("{prefix}:{}", self.name)),
+            None => std::borrow::Cow::Borrowed(&self.name),
+        }
     }
 
     /// Vrai si l'élément est l'élément HTML `name`.
@@ -131,6 +182,8 @@ pub enum NodeData {
         /// Données.
         data: String,
     },
+    /// Nœud d'attribut, créé à la demande d'un script.
+    Attr(AttrData),
 }
 
 /// Un nœud de l'arbre et ses liens.
@@ -185,6 +238,8 @@ pub struct Document {
     ranges: Vec<LiveRange>,
     /// Itérateurs (`NodeIterator`) créés par les scripts.
     iterators: Vec<IteratorState>,
+    /// Adresses des espaces de noms [`Namespace::Other`].
+    namespaces: Vec<String>,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -253,6 +308,7 @@ impl Document {
             last_group: 0,
             ranges: Vec::new(),
             iterators: Vec::new(),
+            namespaces: Vec::new(),
         }
     }
 
@@ -373,7 +429,7 @@ impl Document {
     /// consignées au journal des mutations.
     pub fn clone_subtree(&mut self, id: NodeId, deep: bool, owner: NodeId) -> NodeId {
         let journal = self.mutations.take();
-        let root = self.push(self.node(id).data.clone());
+        let root = self.push(self.copied_data(id));
         if self.is_document(root) {
             self.node_mut(root).owner = root;
         } else {
@@ -385,7 +441,7 @@ impl Document {
             let mut pending: Vec<(NodeId, NodeId)> = self.children(id).map(|c| (c, root)).collect();
             pending.reverse();
             while let Some((src, parent)) = pending.pop() {
-                let copy = self.push(self.node(src).data.clone());
+                let copy = self.push(self.copied_data(src));
                 self.node_mut(copy).owner = inner;
                 self.append_child(parent, copy);
                 let before = pending.len();
@@ -395,6 +451,25 @@ impl Document {
         }
         self.mutations = journal;
         root
+    }
+
+    /// Contenu d'une copie de `id` : les attributs perdent leur nœud `Attr`,
+    /// et un nœud d'attribut copié est détaché, avec sa valeur du moment.
+    fn copied_data(&self, id: NodeId) -> NodeData {
+        let mut data = self.node(id).data.clone();
+        match &mut data {
+            NodeData::Element(element) => {
+                for attribute in &mut element.attrs {
+                    attribute.node = None;
+                }
+            }
+            NodeData::Attr(attr) => {
+                attr.value = self.attr_value(id).unwrap_or("").to_owned();
+                attr.element = None;
+            }
+            _ => {}
+        }
+        data
     }
 
     /// Tient (ou cesse de tenir) le journal des modifications.
@@ -505,10 +580,7 @@ impl Document {
             let old = match element.attrs.iter_mut().find(|a| a.name == name) {
                 Some(attr) => Some(std::mem::replace(&mut attr.value, value.to_owned())),
                 None => {
-                    element.attrs.push(Attribute {
-                        name: name.to_owned(),
-                        value: value.to_owned(),
-                    });
+                    element.attrs.push(Attribute::new(name, value));
                     None
                 }
             };
@@ -522,15 +594,8 @@ impl Document {
 
     /// Retire l'attribut `name` de l'élément `id`.
     pub fn remove_attr(&mut self, id: NodeId, name: &str) {
-        if let Some(element) = self.element_mut(id)
-            && let Some(position) = element.attrs.iter().position(|a| a.name == name)
-        {
-            let old = element.attrs.remove(position).value;
-            self.log(|| Mutation::Attribute {
-                target: id,
-                name: name.to_owned(),
-                old: Some(old),
-            });
+        if let Some(index) = self.attr_index(id, name) {
+            self.remove_attr_at(id, index);
         }
     }
 
@@ -569,6 +634,7 @@ impl Document {
         self.push(NodeData::Element(ElementData {
             name: name.to_owned(),
             ns,
+            prefix: None,
             attrs,
         }))
     }
@@ -846,6 +912,7 @@ impl Document {
                     Namespace::Html => "",
                     Namespace::Svg => "svg ",
                     Namespace::MathMl => "math ",
+                    Namespace::None | Namespace::Xml | Namespace::Xmlns | Namespace::Other(_) => "",
                 };
                 let mut r = writeln!(out, "| {indent}<{prefix}{}>", e.name);
                 let mut attrs: Vec<&Attribute> = e.attrs.iter().collect();
@@ -858,6 +925,7 @@ impl Document {
             NodeData::Text(t) => writeln!(out, "| {indent}\"{t}\""),
             NodeData::Comment(c) => writeln!(out, "| {indent}<!-- {c} -->"),
             NodeData::Fragment => writeln!(out, "| {indent}#document-fragment"),
+            NodeData::Attr(_) => Ok(()),
         };
         for child in self.children(id) {
             self.dump_node(child, depth + 1, out);
