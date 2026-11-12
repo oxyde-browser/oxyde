@@ -87,6 +87,12 @@ pub enum Longhand {
     GridTemplateAreas,
     JustifyItems,
     JustifySelf,
+    BorderSpacingH,
+    BorderSpacingV,
+    BorderCollapse,
+    TableLayout,
+    CaptionSide,
+    VerticalAlign,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -1056,6 +1062,54 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
                 (Longhand::GridTemplateAreas, no_areas()),
             ])
         }
+        "border-spacing" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::BorderSpacingH, w.clone()),
+                    (Longhand::BorderSpacingV, w),
+                ]);
+            }
+            let values: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| length_value(t, false))
+                .collect();
+            match values?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::BorderSpacingH, both.clone()),
+                    (Longhand::BorderSpacingV, both.clone()),
+                ]),
+                [horizontal, vertical] => Some(vec![
+                    (Longhand::BorderSpacingH, horizontal.clone()),
+                    (Longhand::BorderSpacingV, vertical.clone()),
+                ]),
+                _ => None,
+            }
+        }
+        "border-collapse" => single(
+            Longhand::BorderCollapse,
+            keyword(tokens, &["separate", "collapse"]),
+        ),
+        "table-layout" => single(Longhand::TableLayout, keyword(tokens, &["auto", "fixed"])),
+        "caption-side" => single(Longhand::CaptionSide, keyword(tokens, &["top", "bottom"])),
+        "vertical-align" => single(
+            Longhand::VerticalAlign,
+            one().and_then(|t| {
+                length_or_keywords(
+                    t,
+                    &[
+                        "baseline",
+                        "top",
+                        "middle",
+                        "bottom",
+                        "text-top",
+                        "text-bottom",
+                        "sub",
+                        "super",
+                    ],
+                    true,
+                )
+            }),
+        ),
         "justify-items" => single(Longhand::JustifyItems, keyword(tokens, SELF_ALIGNMENTS)),
         "justify-self" => single(Longhand::JustifySelf, keyword(tokens, SELF_ALIGNMENTS)),
         "place-items" | "place-self" | "place-content" => {

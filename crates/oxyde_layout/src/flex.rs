@@ -768,11 +768,18 @@ impl Engine<'_> {
                 }
                 let pad = edges_px(b.style.padding, 0.0);
                 let bw = b.style.border_widths();
-                let inner = b
-                    .children
-                    .iter()
-                    .map(|c| self.min_content(c))
-                    .fold(0.0_f32, f32::max);
+                let table = b
+                    .node
+                    .filter(|_| b.style.display == oxyde_css::Display::Table)
+                    .and_then(|n| self.table_sizes.get(&n));
+                let inner = match table {
+                    Some((min, _)) => *min,
+                    None => b
+                        .children
+                        .iter()
+                        .map(|c| self.min_content(c))
+                        .fold(0.0_f32, f32::max),
+                };
                 let extras = pad.left + pad.right + bw.left + bw.right;
                 crate::bounded_width(&b.style, inner, extras) + margins
             }

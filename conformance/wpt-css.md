@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 8806 / 28699 (30,7 %)** — fichiers entièrement réussis : 454 / 2267 (20,0 %).
+**Sous-tests réussis : 9039 / 28699 (31,5 %)** — fichiers entièrement réussis : 478 / 2267 (21,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -39,21 +39,21 @@ est le plus honnête des deux.
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 62 / 185 | 765 / 1804 (42,4 %) |
+| `css/css-flexbox` | 63 / 185 | 766 / 1804 (42,5 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
 | `css/css-flexbox/balance` | 1 / 10 | 15 / 68 (22,1 %) |
 | `css/css-flexbox/getcomputedstyle` | 51 / 75 | 53 / 78 (67,9 %) |
-| `css/css-flexbox/intrinsic-size` | 1 / 16 | 6 / 51 (11,8 %) |
+| `css/css-flexbox/intrinsic-size` | 1 / 16 | 5 / 51 (9,8 %) |
 | `css/css-flexbox/parsing` | 8 / 27 | 68 / 215 (31,6 %) |
-| `css/css-grid` | 6 / 11 | 60 / 187 (32,1 %) |
+| `css/css-grid` | 5 / 11 | 59 / 187 (31,6 %) |
 | `css/css-grid/abspos` | 4 / 58 | 403 / 3513 (11,5 %) |
 | `css/css-grid/alignment` | 59 / 286 | 469 / 1778 (26,4 %) |
 | `css/css-grid/alignment/self-baseline` | 0 / 1 | 0 / 12 (0,0 %) |
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
 | `css/css-grid/grid-definition` | 14 / 51 | 743 / 1318 (56,4 %) |
-| `css/css-grid/grid-items` | 15 / 50 | 473 / 984 (48,1 %) |
+| `css/css-grid/grid-items` | 15 / 50 | 477 / 984 (48,5 %) |
 | `css/css-grid/grid-lanes` | 0 / 2 | 2 / 35 (5,7 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
@@ -75,7 +75,7 @@ est le plus honnête des deux.
 | `css/css-grid/placement` | 9 / 24 | 232 / 316 (73,4 %) |
 | `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 23 / 47 | 128 / 256 (50,0 %) |
+| `css/css-position` | 24 / 47 | 132 / 256 (51,6 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 8 / 28 (28,6 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
@@ -91,14 +91,14 @@ est le plus honnête des deux.
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
-| `css/css-sizing/stretch` | 12 / 50 | 186 / 1015 (18,3 %) |
-| `css/css-tables` | 13 / 82 | 129 / 285 (45,3 %) |
+| `css/css-sizing/stretch` | 12 / 50 | 192 / 1015 (18,9 %) |
+| `css/css-tables` | 27 / 82 | 180 / 285 (63,2 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
-| `css/css-tables/height-distribution` | 0 / 5 | 2 / 10 (20,0 %) |
+| `css/css-tables/height-distribution` | 2 / 5 | 5 / 10 (50,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
-| `css/css-tables/tentative` | 1 / 23 | 46 / 333 (13,8 %) |
-| `css/css-tables/width-distribution` | 2 / 15 | 7 / 35 (20,0 %) |
-| `css/cssom-view` | 38 / 233 | 625 / 1747 (35,8 %) |
+| `css/css-tables/tentative` | 3 / 23 | 189 / 333 (56,8 %) |
+| `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
+| `css/cssom-view` | 38 / 233 | 634 / 1747 (36,3 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -651,7 +651,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/intrinsic-size/percentage-gap-001.html` | 0 / 2 |  |
 | `css/css-flexbox/intrinsic-size/row-005.html` | 0 / 9 |  |
 | `css/css-flexbox/intrinsic-size/row-008.html` | 0 / 11 |  |
-| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 2 / 3 |  |
+| `css/css-flexbox/intrinsic-size/row-compat-001.html` | 1 / 3 |  |
 | `css/css-flexbox/intrinsic-size/row-use-cases-001.html` | 3 / 6 |  |
 | `css/css-flexbox/intrinsic-size/row-wrap-001.html` | 0 / 5 |  |
 | `css/css-flexbox/intrinsic-width-orthogonal-writing-mode.html` | 1 / 3 |  |
@@ -698,7 +698,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/select-as-flex-item-child-with-overflow.html` | 0 / 1 |  |
 | `css/css-flexbox/svg-root-as-flex-item-006.html` | 0 / 1 |  |
 | `css/css-flexbox/svg-root-as-flex-item-007.html` | 0 / 2 |  |
-| `css/css-flexbox/table-as-item-cross-size.html` | 0 / 1 |  |
 | `css/css-flexbox/text-as-flexitem-size-001.html` | 13 / 18 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 10 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 12 |  |
@@ -1035,7 +1034,7 @@ est le plus honnête des deux.
 | `css/css-grid/grid-definition/grid-template-columns-rows-resolved-values-001.tentative.html` | 40 / 76 |  |
 | `css/css-grid/grid-important.html` | 0 / 1 |  |
 | `css/css-grid/grid-items/grid-automatic-minimum-intrinsic-aspect-ratio-001.html` | 0 / 14 |  |
-| `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 8 / 14 |  |
+| `css/css-grid/grid-items/grid-item-children-percentage-resolution-001.html` | 12 / 14 |  |
 | `css/css-grid/grid-items/grid-item-min-auto-size-001.html` | 2 / 4 |  |
 | `css/css-grid/grid-items/grid-item-min-contribution-behaves-as-auto-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-items/grid-item-min-height-border-box-001.html` | 6 / 14 |  |
@@ -1330,6 +1329,7 @@ est le plus honnête des deux.
 | `css/css-grid/subgrid/subgrid-baseline-018.html` | 2 / 6 |  |
 | `css/css-grid/subgrid/subgrid-item-aspect-ratio-001.html` | 0 / 3 |  |
 | `css/css-grid/subgrid/subgridded-axis-content-distribution-001.html` | 0 / 8 |  |
+| `css/css-grid/table-grid-item-005.html` | 0 / 1 |  |
 | `css/css-grid/test-plan/index.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/css-position/animations/bottom-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/bottom-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1374,7 +1374,6 @@ est le plus honnête des deux.
 | `css/css-position/position-absolute-padding-percentage.html` | 1 / 2 |  |
 | `css/css-position/position-absolute-percentage-height.html` | 0 / 2 |  |
 | `css/css-position/position-absolute-replaced-minmax.html` | 11 / 43 |  |
-| `css/css-position/position-absolute-table-001.html` | 2 / 6 |  |
 | `css/css-position/position-absolute-with-negative-sized-imcb.html` | 4 / 30 |  |
 | `css/css-position/position-fixed-dynamic-containing-block.html` | 0 / 4 |  |
 | `css/css-position/position-relative-015.html` | 19 / 20 |  |
@@ -1589,7 +1588,7 @@ est le plus honnête des deux.
 | `css/css-sizing/stretch/stretch-max-inline-size-001.html` | 10 / 45 |  |
 | `css/css-sizing/stretch/stretch-min-block-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-min-inline-size-001.html` | 10 / 46 |  |
-| `css/css-sizing/stretch/stretch-table-001.html` | 0 / 7 |  |
+| `css/css-sizing/stretch/stretch-table-001.html` | 6 / 7 |  |
 | `css/css-sizing/svg-intrinsic-size-001.html` | 0 / 5 |  |
 | `css/css-sizing/svg-intrinsic-size-002.html` | 0 / 5 |  |
 | `css/css-sizing/svg-intrinsic-size-003.html` | 0 / 5 |  |
@@ -1600,15 +1599,10 @@ est le plus honnête des deux.
 | `css/css-sizing/svg-intrinsic-size-011.html` | 0 / 4 |  |
 | `css/css-sizing/svg-intrinsic-size-zero-img-and-object.html` | 0 / 14 | harnais : délai du harnais dépassé |
 | `css/css-sizing/table-cell-definite-height-transferred-size.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/absolute-tables-001.html` | 0 / 8 |  |
-| `css/css-tables/absolute-tables-002.html` | 0 / 4 |  |
-| `css/css-tables/absolute-tables-003.html` | 0 / 4 |  |
-| `css/css-tables/absolute-tables-004.html` | 0 / 4 |  |
-| `css/css-tables/absolute-tables-005.html` | 0 / 4 |  |
+| `css/css-tables/absolute-tables-003.html` | 2 / 4 |  |
+| `css/css-tables/absolute-tables-005.html` | 2 / 4 |  |
 | `css/css-tables/absolute-tables-height-001.html` | 10 / 11 |  |
-| `css/css-tables/absolute-tables-height-quirks-001.html` | 0 / 1 |  |
 | `css/css-tables/animations/border-spacing-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/border-spacing-included-in-sizes-001.html` | 2 / 4 |  |
 | `css/css-tables/border-writing-mode-dynamic-001.html` | 0 / 1 |  |
 | `css/css-tables/bounding-box-computation-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/bounding-box-computation-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1616,21 +1610,14 @@ est le plus honnête des deux.
 | `css/css-tables/caption-orthogonal-margin-in-table-block-axis.html` | 0 / 2 |  |
 | `css/css-tables/caption-side-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/caption-writing-mode-001.html` | 0 / 2 |  |
-| `css/css-tables/chrome-rowspan-bug.html` | 0 / 1 |  |
 | `css/css-tables/col_removal.html` | 0 / 1 |  |
-| `css/css-tables/colspan-001.html` | 0 / 5 |  |
-| `css/css-tables/colspan-002.html` | 0 / 5 |  |
-| `css/css-tables/colspan-003.html` | 0 / 5 |  |
-| `css/css-tables/column-track-merging.html` | 0 / 13 |  |
-| `css/css-tables/dynamic-rowspan-change.html` | 0 / 2 |  |
+| `css/css-tables/column-track-merging.html` | 7 / 13 |  |
+| `css/css-tables/dynamic-rowspan-change.html` | 1 / 2 |  |
 | `css/css-tables/fixed-layout-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/fixed-layout-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/fixed-layout-excess-width-distribution-001.html` | 0 / 1 |  |
-| `css/css-tables/fractional-percent-width.html` | 0 / 3 |  |
 | `css/css-tables/height-distribution/computing-row-measure-0.html` | 2 / 4 |  |
-| `css/css-tables/height-distribution/computing-row-measure-1.html` | 0 / 4 |  |
-| `css/css-tables/height-distribution/extra-height-given-to-all-row-groups-003.html` | 0 / 1 |  |
-| `css/css-tables/height-distribution/extra-height-given-to-all-row-groups-004.html` | 0 / 1 |  |
+| `css/css-tables/height-distribution/computing-row-measure-1.html` | 1 / 4 |  |
 | `css/css-tables/height-distribution/percentage-sizing-of-table-cell-children.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/html-to-css-mapping-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/html-to-css-mapping-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1651,42 +1638,38 @@ est le plus honnête des deux.
 | `css/css-tables/parsing/empty-cells-invalid.html` | 0 / 2 |  |
 | `css/css-tables/parsing/table-layout-computed.html` | 0 / 2 |  |
 | `css/css-tables/parsing/table-layout-invalid.html` | 0 / 2 |  |
-| `css/css-tables/percent-width-ignored-001.tentative.html` | 0 / 1 |  |
+| `css/css-tables/percent-height-overflow-auto-in-restricted-block-size-cell.html` | 0 / 1 |  |
 | `css/css-tables/percent-width-ignored-002.tentative.html` | 0 / 1 |  |
-| `css/css-tables/percent-width-ignored-003.tentative.html` | 0 / 1 |  |
 | `css/css-tables/table-cell-writing-mode-computed.html` | 0 / 1 |  |
-| `css/css-tables/table-height-distribution-proportional.html` | 1 / 2 |  |
 | `css/css-tables/table-min-max-width-intrinsic-contribution-border-padding.html` | 0 / 5 |  |
 | `css/css-tables/table-min-max-width-intrinsic-contribution.html` | 0 / 4 |  |
-| `css/css-tables/table-model-fixup-2.html` | 20 / 40 |  |
-| `css/css-tables/table-model-fixup.html` | 5 / 11 |  |
+| `css/css-tables/table-model-fixup-2.html` | 17 / 40 |  |
+| `css/css-tables/table-model-fixup.html` | 6 / 11 |  |
 | `css/css-tables/table-stretch-in-flex-and-grid.html` | 5 / 6 |  |
 | `css/css-tables/tentative/baseline-table.html` | 3 / 15 |  |
-| `css/css-tables/tentative/baseline-td.html` | 1 / 5 |  |
-| `css/css-tables/tentative/caption.html` | 6 / 13 |  |
-| `css/css-tables/tentative/colgroup-col.html` | 0 / 6 |  |
-| `css/css-tables/tentative/colspan-redistribution.html` | 0 / 31 |  |
-| `css/css-tables/tentative/column-widths.html` | 1 / 33 |  |
-| `css/css-tables/tentative/element-sizing.html` | 0 / 2 |  |
+| `css/css-tables/tentative/baseline-td.html` | 2 / 5 |  |
+| `css/css-tables/tentative/caption.html` | 10 / 13 |  |
+| `css/css-tables/tentative/colgroup-col.html` | 1 / 6 |  |
+| `css/css-tables/tentative/colspan-redistribution.html` | 16 / 31 |  |
+| `css/css-tables/tentative/column-widths.html` | 22 / 33 |  |
 | `css/css-tables/tentative/position-sticky-container.html` | 0 / 3 |  |
-| `css/css-tables/tentative/rowspan-height-redistribution.html` | 2 / 24 |  |
-| `css/css-tables/tentative/table-fixed-minmax.html` | 4 / 8 |  |
-| `css/css-tables/tentative/table-height-redistribution.html` | 4 / 31 |  |
-| `css/css-tables/tentative/table-limited-quirks.html` | 2 / 7 |  |
-| `css/css-tables/tentative/table-minmax.html` | 3 / 16 |  |
-| `css/css-tables/tentative/table-quirks.html` | 1 / 7 |  |
+| `css/css-tables/tentative/rowspan-height-redistribution.html` | 4 / 24 |  |
+| `css/css-tables/tentative/table-fixed-minmax.html` | 3 / 8 |  |
+| `css/css-tables/tentative/table-height-redistribution.html` | 16 / 31 |  |
+| `css/css-tables/tentative/table-minmax.html` | 12 / 16 |  |
+| `css/css-tables/tentative/table-quirks.html` | 4 / 7 |  |
 | `css/css-tables/tentative/table-rows-with-zero-columns.html` | 0 / 12 |  |
-| `css/css-tables/tentative/table-width-redistribution-fixed-padding.html` | 0 / 15 |  |
-| `css/css-tables/tentative/table-width-redistribution-fixed.html` | 1 / 26 |  |
-| `css/css-tables/tentative/table-width-redistribution.html` | 0 / 22 |  |
+| `css/css-tables/tentative/table-width-redistribution-fixed-padding.html` | 7 / 15 |  |
+| `css/css-tables/tentative/table-width-redistribution-fixed.html` | 21 / 26 |  |
+| `css/css-tables/tentative/table-width-redistribution.html` | 19 / 22 |  |
 | `css/css-tables/tentative/tbody-height-redistribution.html` | 1 / 12 |  |
-| `css/css-tables/tentative/td-box-sizing-001.html` | 0 / 14 |  |
-| `css/css-tables/tentative/td-box-sizing-002.html` | 11 / 15 |  |
-| `css/css-tables/tentative/td-box-sizing-003.html` | 1 / 11 |  |
+| `css/css-tables/tentative/td-box-sizing-001.html` | 13 / 14 |  |
+| `css/css-tables/tentative/td-box-sizing-002.html` | 13 / 15 |  |
+| `css/css-tables/tentative/td-box-sizing-003.html` | 8 / 11 |  |
 | `css/css-tables/visibility-collapse-col-001.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-col-002.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-col-003.html` | 1 / 2 |  |
-| `css/css-tables/visibility-collapse-col-004-dynamic.html` | 1 / 2 |  |
+| `css/css-tables/visibility-collapse-col-004-dynamic.html` | 0 / 2 |  |
 | `css/css-tables/visibility-collapse-col-005.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-colspan-001.html` | 1 / 2 |  |
 | `css/css-tables/visibility-collapse-colspan-002.html` | 1 / 2 |  |
@@ -1704,22 +1687,15 @@ est le plus honnête des deux.
 | `css/css-tables/visibility-collapse-rowspan-003-border-separate.html` | 5 / 6 |  |
 | `css/css-tables/visibility-collapse-rowspan-003.html` | 5 / 6 |  |
 | `css/css-tables/visibility-collapse-rowspan-004-dynamic.html` | 14 / 18 |  |
-| `css/css-tables/visibility-hidden-col-001.html` | 1 / 2 |  |
-| `css/css-tables/visibility-hidden-nested-001.html` | 7 / 8 |  |
 | `css/css-tables/visibility-hidden-row-001.html` | 2 / 3 |  |
 | `css/css-tables/visibility-hidden-row-002.html` | 2 / 3 |  |
-| `css/css-tables/width-distribution/computing-column-measure-0.html` | 0 / 4 |  |
+| `css/css-tables/width-distribution/computing-column-measure-0.html` | 2 / 4 |  |
 | `css/css-tables/width-distribution/computing-column-measure-1.html` | 0 / 4 |  |
 | `css/css-tables/width-distribution/computing-column-measure-2.html` | 0 / 1 |  |
 | `css/css-tables/width-distribution/computing-table-width-0.html` | 0 / 1 |  |
-| `css/css-tables/width-distribution/computing-table-width-1.html` | 0 / 1 |  |
-| `css/css-tables/width-distribution/distribution-algo-1.html` | 0 / 3 |  |
-| `css/css-tables/width-distribution/distribution-algo-2.html` | 0 / 3 |  |
-| `css/css-tables/width-distribution/distribution-algo-min-content-guess.html` | 0 / 3 |  |
-| `css/css-tables/width-distribution/distribution-algo-min-content-specified-guess.1.html` | 0 / 1 |  |
-| `css/css-tables/width-distribution/distribution-algo-min-content-specified-guess.html` | 0 / 1 |  |
+| `css/css-tables/width-distribution/distribution-algo-min-content-percent-guess.html` | 0 / 3 |  |
 | `css/css-tables/width-distribution/td-max-width-auto-layout.html` | 3 / 4 |  |
-| `css/css-tables/width-distribution/td-min-width-auto-layout.html` | 0 / 4 |  |
+| `css/css-tables/width-distribution/td-min-width-auto-layout.html` | 3 / 4 |  |
 | `css/css-tables/width-distribution/td-with-subpixel-padding-vertical-rl.html` | 0 / 1 |  |
 | `css/cssom-view/CaretPosition-001.html` | 0 / 2 |  |
 | `css/cssom-view/DOMRectList.html` | 0 / 2 |  |
@@ -1907,9 +1883,9 @@ est le plus honnête des deux.
 | `css/cssom-view/smooth-scrollIntoView-with-smooth-fragment-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scrollIntoView-with-unrelated-gesture-scroll.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/subpixel-sizes-and-offsets.tentative.html` | 12 / 15 |  |
-| `css/cssom-view/table-client-props.html` | 8 / 15 |  |
-| `css/cssom-view/table-offset-props.html` | 9 / 13 |  |
-| `css/cssom-view/table-scroll-props.html` | 8 / 13 |  |
+| `css/cssom-view/table-client-props.html` | 11 / 15 |  |
+| `css/cssom-view/table-offset-props.html` | 12 / 13 |  |
+| `css/cssom-view/table-scroll-props.html` | 11 / 13 |  |
 | `css/cssom-view/table-with-border-client-width-height.html` | 0 / 1 |  |
 | `css/cssom-view/user-scroll-interrupts-smooth-scroll.html` | 1 / 3 |  |
 | `css/cssom-view/visual-scrollIntoView-001.html` | 0 / 1 |  |

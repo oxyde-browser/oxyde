@@ -28,8 +28,8 @@ pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, Trac
 pub use properties::Side;
 pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
-    LineHeight, ListStyle, Overflow, Position, Size, StyleMap, TextAlign, Visibility, WhiteSpace,
-    collect_style_elements, compute_styles,
+    LineHeight, ListStyle, Overflow, Position, Size, StyleMap, TextAlign, VerticalAlign,
+    Visibility, WhiteSpace, collect_style_elements, compute_styles,
 };
 pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
 

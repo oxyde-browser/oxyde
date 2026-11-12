@@ -19,6 +19,7 @@
 
 mod flex;
 mod grid;
+mod table;
 
 use std::sync::Arc;
 
@@ -186,6 +187,9 @@ pub fn layout_document(
         out_of_flow: Vec::new(),
         inline_origin: (0.0, 0.0),
         grids: std::collections::HashMap::new(),
+        tables: std::collections::HashMap::new(),
+        table_sizes: std::collections::HashMap::new(),
+        cell_sizes: std::collections::HashMap::new(),
     };
     let root = doc
         .children(doc.root())
@@ -379,6 +383,12 @@ struct Engine<'a> {
     inline_origin: (f32, f32),
     /// Pistes des conteneurs en grille déjà mis en page.
     grids: std::collections::HashMap<NodeId, GridTracks>,
+    /// Tableaux planifiés, en attente de leur mise en page.
+    tables: std::collections::HashMap<NodeId, table::TablePlan>,
+    /// Largeurs de contenu minimale et maximale des tableaux planifiés.
+    table_sizes: std::collections::HashMap<NodeId, (f32, f32)>,
+    /// Largeurs de contenu minimale et maximale des cellules déjà mesurées.
+    cell_sizes: std::collections::HashMap<NodeId, (f32, f32)>,
 }
 
 fn px(size: Size, base: f32) -> f32 {
@@ -617,11 +627,21 @@ impl Engine<'_> {
         };
         let available = (cb_w - ml - mr - extras_w).max(0.0);
         let mut shrink = false;
-        let content_w = match (mode, specified) {
-            (Width::Fixed(w), _) => w.max(0.0),
-            (_, Some(w)) => clamp_w(w),
-            (Width::Stretch, None) => clamp_w(available),
-            (Width::ShrinkToFit, None) => {
+        // Un tableau fixe lui-même sa largeur : celle de ses colonnes.
+        let planned = (style.display == Display::Table).then(|| {
+            let wanted = match mode {
+                Width::Fixed(w) => Some(w.max(0.0)),
+                _ => specified.map(clamp_w),
+            };
+            let (limit, floor) = (clamp_w(available), clamp_w(0.0));
+            self.plan_table_box(node, style, wanted, limit, floor, depth + 1)
+        });
+        let content_w = match (planned, mode, specified) {
+            (Some(w), _, _) => w,
+            (None, Width::Fixed(w), _) => w.max(0.0),
+            (None, _, Some(w)) => clamp_w(w),
+            (None, Width::Stretch, None) => clamp_w(available),
+            (None, Width::ShrinkToFit, None) => {
                 shrink = true;
                 clamp_w(available)
             }
@@ -697,6 +717,13 @@ impl Engine<'_> {
             })
         });
         let mut height = specified_h.unwrap_or(content_h);
+        // La hauteur d'une cellule est un minimum ; celle d'un tableau vaut
+        // pour sa grille, et sa mise en page l'a déjà prise en compte.
+        match style.display {
+            Display::Table => height = content_h,
+            Display::TableCell => height = height.max(content_h),
+            _ => {}
+        }
         if fixed_h.is_none() {
             if let Some(max) = resolve_height(style.max_height, cb_h) {
                 height = height.min(to_content_h(max));
@@ -961,7 +988,9 @@ impl Engine<'_> {
             Fragment::Box(b) => {
                 let margins =
                     px(b.style.margin.left, available) + px(b.style.margin.right, available);
-                if b.style.width != Size::Auto
+                // Une largeur en pourcentage ne dit rien de la place que
+                // le contenu demande.
+                if matches!(b.style.width, Size::Px(_))
                     || b.node
                         .is_some_and(|n| self.intrinsic_size(n, &b.style).is_some())
                 {
@@ -974,9 +1003,14 @@ impl Engine<'_> {
                     .node
                     .filter(|_| b.style.grid_container)
                     .and_then(|n| self.grids.get(&n));
-                let inner = match grid {
-                    Some(tracks) => tracks.max_content,
-                    None => self.max_content_of(&b.style, &b.children, available),
+                let table = b
+                    .node
+                    .filter(|_| b.style.display == Display::Table)
+                    .and_then(|n| self.table_sizes.get(&n));
+                let inner = match (grid, table) {
+                    (Some(tracks), _) => tracks.max_content,
+                    (None, Some((_, max))) => *max,
+                    (None, None) => self.max_content_of(&b.style, &b.children, available),
                 };
                 // Le contenu ne descend pas sous `min-width` ni ne dépasse
                 // un `max-width` en pixels.
@@ -1007,8 +1041,11 @@ impl Engine<'_> {
         let mut children = Vec::new();
         self.flow_children(node, &mut children, depth);
 
+        if style.display == Display::Table {
+            return self.layout_table(node, x, y, width, height, depth);
+        }
         if style.display == Display::TableRow {
-            return self.layout_row(&children, x, y, width, depth);
+            return self.layout_stray_row(node, style, x, y, width, depth);
         }
         if style.flex_container {
             return self.layout_flex(style, node, &children, x, y, width, height, depth);
@@ -1169,62 +1206,6 @@ impl Engine<'_> {
         let fragment = self.layout_inline(&nodes, style, parent, x, *cursor, width, depth);
         *cursor += fragment.layout.height();
         fragments.push(Fragment::Text(Box::new(fragment)));
-    }
-
-    /// Rangée de tableau : cellules côte à côte, de largeur égale.
-    fn layout_row(
-        &mut self,
-        children: &[NodeId],
-        x: f32,
-        y: f32,
-        width: f32,
-        depth: usize,
-    ) -> (Vec<Fragment>, f32) {
-        let cells: Vec<NodeId> = children
-            .iter()
-            .copied()
-            .filter(|c| self.doc.element(*c).is_some())
-            .collect();
-        if cells.is_empty() {
-            return (Vec::new(), 0.0);
-        }
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "nombre de cellules petit devant 2^24"
-        )]
-        let cell_w = width / cells.len() as f32;
-        let mut fragments = Vec::with_capacity(cells.len());
-        let mut row_h = 0.0_f32;
-        let mut cell_x = x;
-        for cell in cells {
-            let Some(style) = self.style(cell).cloned() else {
-                continue;
-            };
-            let pad = edges_px(style.padding, cell_w);
-            let bw = style.border_widths();
-            let inner = (cell_w - pad.left - pad.right - bw.left - bw.right).max(0.0);
-            let space = Space {
-                cb_w: cell_w,
-                cb_x: cell_x,
-                y,
-                mode: Width::Fixed(inner),
-                cb_h: None,
-                fixed_h: None,
-            };
-            let mut fragment = self.layout_box(cell, &style, space, depth);
-            fragment.border_box.x = cell_x;
-            row_h = row_h.max(fragment.border_box.h);
-            fragments.push(fragment);
-            cell_x += cell_w;
-        }
-        let fragments = fragments
-            .into_iter()
-            .map(|mut f| {
-                f.border_box.h = row_h;
-                Fragment::Box(f)
-            })
-            .collect();
-        (fragments, row_h)
     }
 
     /// Puce ou numéro d'un élément de liste, placé à gauche de son contenu.
@@ -1750,8 +1731,111 @@ mod tests {
             300.0,
         );
         let (c1, c2) = (rect(&doc, &tree, "c1"), rect(&doc, &tree, "c2"));
-        assert_eq!((c1.x, c1.w, c2.x, c2.w), (0.0, 150.0, 150.0, 150.0));
+        assert_eq!(c1.x, 2.0, "espacement de bordure par défaut");
+        assert_eq!(c2.x, c1.x + c1.w + 2.0);
+        assert!(c1.w < 40.0, "la colonne s'ajuste à son contenu : {}", c1.w);
         assert_eq!(c1.h, c2.h, "les cellules d'une rangée ont la même hauteur");
+    }
+
+    const TABLE: &str = "<style>body{margin:0} table{border-spacing:0} td,th{padding:0}</style>";
+
+    #[test]
+    fn table_columns_follow_specified_widths() {
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table id=t style='width:400px'><tr>\
+                 <td id=a style='width:100px'></td><td id=b></td><td id=c style='width:25%'></td>\
+                 </tr></table>"
+            ),
+            800.0,
+        );
+        let (a, b, c) = (
+            rect(&doc, &tree, "a"),
+            rect(&doc, &tree, "b"),
+            rect(&doc, &tree, "c"),
+        );
+        assert_eq!(rect(&doc, &tree, "t").w, 400.0);
+        assert_eq!((a.x, a.w), (0.0, 100.0));
+        assert_eq!((b.x, b.w), (100.0, 200.0));
+        assert_eq!((c.x, c.w), (300.0, 100.0));
+    }
+
+    #[test]
+    fn table_spans_and_row_heights() {
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table style='width:300px'>\
+                 <tr><td id=a rowspan=2 style='height:80px'></td>\
+                     <td id=b style='height:30px;width:100px'></td>\
+                     <td id=c style='width:100px'></td></tr>\
+                 <tr><td id=d colspan=2 style='height:20px'></td></tr></table>"
+            ),
+            800.0,
+        );
+        let (a, b, d) = (
+            rect(&doc, &tree, "a"),
+            rect(&doc, &tree, "b"),
+            rect(&doc, &tree, "d"),
+        );
+        assert_eq!((a.y, a.h), (0.0, 80.0), "la cellule couvre deux rangées");
+        assert_eq!(b.h + d.h, 80.0, "les rangées se partagent la hauteur");
+        assert_eq!(d.y, b.h);
+        assert_eq!((d.x, d.w), (b.x, 200.0), "la cellule couvre deux colonnes");
+    }
+
+    #[test]
+    fn table_shrinks_and_centers() {
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table id=t style='margin:0 auto'><tr>\
+                 <td><div style='width:120px;height:10px'></div></td>\
+                 <td><div style='width:80px;height:10px'></div></td></tr></table>"
+            ),
+            800.0,
+        );
+        let t = rect(&doc, &tree, "t");
+        assert_eq!((t.x, t.w), (300.0, 200.0));
+    }
+
+    #[test]
+    fn table_fixed_layout_and_header_order() {
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table style='width:300px;table-layout:fixed'>\
+                 <tbody><tr><td id=b style='height:10px;width:60px'>un-mot-vraiment-très-long</td>\
+                 <td id=c></td></tr></tbody>\
+                 <thead><tr><th id=h style='height:20px'></th><th></th></tr></thead></table>"
+            ),
+            800.0,
+        );
+        let (h, b, c) = (
+            rect(&doc, &tree, "h"),
+            rect(&doc, &tree, "b"),
+            rect(&doc, &tree, "c"),
+        );
+        assert_eq!(h.y, 0.0, "l'en-tête passe avant le corps");
+        assert_eq!(b.y, 20.0);
+        // La première rangée affichée est l'en-tête, sans largeur : parts égales.
+        assert_eq!((b.w, c.w), (150.0, 150.0));
+    }
+
+    #[test]
+    fn table_vertical_align_and_collapse() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0} table{border-collapse:collapse} \
+             td{padding:0;border:2px solid black}</style>\
+             <table><tr><td id=a style='height:100px'></td>\
+             <td id=b><div id=i style='width:30px;height:20px'></div></td></tr></table>",
+            800.0,
+        );
+        let (a, b, i) = (
+            rect(&doc, &tree, "a"),
+            rect(&doc, &tree, "b"),
+            rect(&doc, &tree, "i"),
+        );
+        assert_eq!(b.x, a.x + a.w, "pas d'espacement en mode fusionné");
+        assert_eq!(b.w, 32.0, "la bordure commune n'est comptée qu'une fois");
+        assert_eq!(i.y - b.y, 2.0 + 40.0, "contenu centré verticalement");
     }
 
     #[test]

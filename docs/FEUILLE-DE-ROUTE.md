@@ -193,12 +193,20 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 454 (20,0 %); une lecture force la
+  (9,4 %), aujourd'hui 478 (21,1 %); une lecture force la
   mise en page si le document a changé.
 - **Propriétés CSS** analysées et calculées, pas encore toutes mises en page : `position`,
   `top`/`right`/`bottom`/`left`, `inset`, `float`, `clear`, `z-index`, `overflow`,
   `visibility`, `opacity`, la famille flex (`flex`, `flex-flow`, `justify-content`,
   `align-*`, `order`) et `gap`.
+
+- **Tableaux** (`oxyde_layout::table`) : grille des cellules avec `colspan`/`rowspan`,
+  en-tête et pied réordonnés, rangées et tableaux anonymes ; disposition automatique
+  (largeurs minimale et maximale du contenu, largeurs en pixels et en pourcentage) et
+  `table-layout: fixed` ; `border-spacing`, `border-collapse` (approché : une seule bordure
+  par arête), `caption-side`, `vertical-align` des cellules ; attributs HTML `cellspacing`,
+  `cellpadding`, `border`, `valign`, `nowrap`. Restent : `<col>`, l'alignement sur la ligne
+  de base, l'arbitrage complet des bordures fusionnées.
 
 Ordre prévu, chaque étape mesurée par la suite : positionnement et flottants ; `calc()` et
 police de test Ahem (`@font-face`), dont beaucoup de tests dépendent ; flex ; tailles

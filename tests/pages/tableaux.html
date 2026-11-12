@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="fr">
+<meta charset="utf-8">
+<title>Tableaux</title>
+<style>
+  body { margin: 20px; font-family: sans-serif; font-size: 15px; color: #1b1f24; background: #f4f5f7; }
+  h2 { font-size: 16px; margin: 18px 0 8px; }
+  .donnees { border-collapse: collapse; background: white; }
+  .donnees th, .donnees td { border: 1px solid #c5ccd6; padding: 6px 10px; }
+  .donnees th { background: #171c23; color: #e6e9ed; }
+  .donnees tfoot td { background: #dfe3e8; font-weight: bold; }
+  .donnees .nombre { text-align: right; }
+  .separe { border: 2px solid #4cc9a8; border-spacing: 6px; width: 100%; }
+  .separe td { background: #8fb4f2; padding: 4px; }
+  .separe .haut { vertical-align: top; }
+  .separe .bas { vertical-align: bottom; }
+  .fixe { table-layout: fixed; width: 420px; border-collapse: collapse; }
+  .fixe td { border: 1px solid #e0a458; padding: 4px; overflow: hidden; white-space: nowrap; }
+  caption { padding: 4px; color: #5b6572; }
+</style>
+<h2>Bordures fusionnées, en-tête, pied, cellules fusionnées</h2>
+<table class="donnees">
+  <caption>Mesures de conformité</caption>
+  <tfoot><tr><td colspan="2">Total</td><td class="nombre">49 572</td></tr></tfoot>
+  <thead><tr><th>Suite</th><th>Dossier</th><th>Réussis</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="2">WPT</td><td>dom</td><td class="nombre">42 926</td></tr>
+    <tr><td>css</td><td class="nombre">8 806</td></tr>
+    <tr><td>test262</td><td>langage et bibliothèque standard</td><td class="nombre">40 768</td></tr>
+  </tbody>
+</table>
+<h2>Bordures séparées, largeur de 100 %, alignement vertical</h2>
+<table class="separe">
+  <tr><td style="width: 30%; height: 70px">30 %, centré</td><td class="haut">en haut</td><td class="bas">en bas</td>
+      <td style="width: 90px">90 px</td></tr>
+</table>
+<h2>Disposition fixe</h2>
+<table class="fixe">
+  <tr><td style="width: 100px">100 px</td><td>le reste se partage à parts égales</td><td>même largeur</td></tr>
+  <tr><td>un texte bien trop long pour sa colonne</td><td>b</td><td>c</td></tr>
+</table>
+<h2>Attributs HTML</h2>
+<table border="1" cellpadding="8" cellspacing="0" align="center" bgcolor="white">
+  <tr><td>cellpadding</td><td nowrap>sans retour à la ligne</td><td valign="bottom" height="50">en bas</td></tr>
+</table>

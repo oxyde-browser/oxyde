@@ -167,6 +167,26 @@ pub enum Visibility {
     Collapse,
 }
 
+/// Valeur calculée de `vertical-align`.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum VerticalAlign {
+    /// `baseline`
+    #[default]
+    Baseline,
+    /// `top`, `text-top`
+    Top,
+    /// `middle`
+    Middle,
+    /// `bottom`, `text-bottom`
+    Bottom,
+    /// `sub`
+    Sub,
+    /// `super`
+    Super,
+    /// Décalage vers le haut, en pixels.
+    Offset(f32),
+}
+
 /// Valeur calculée de `flex-direction`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
@@ -446,6 +466,16 @@ pub struct ComputedStyle {
     pub justify_items: Alignment,
     /// `justify-self` ; [`Alignment::Normal`] : celui du conteneur.
     pub justify_self: Alignment,
+    /// `border-spacing` : horizontal, vertical, en pixels.
+    pub border_spacing: (f32, f32),
+    /// `border-collapse: collapse`
+    pub border_collapse: bool,
+    /// `table-layout: fixed`
+    pub table_layout_fixed: bool,
+    /// `caption-side: bottom`
+    pub caption_bottom: bool,
+    /// `vertical-align`
+    pub vertical_align: VerticalAlign,
 }
 
 impl ComputedStyle {
@@ -522,6 +552,11 @@ impl ComputedStyle {
             grid_template_areas: Arc::clone(&NO_AREAS),
             justify_items: Alignment::Normal,
             justify_self: Alignment::Normal,
+            border_spacing: (0.0, 0.0),
+            border_collapse: false,
+            table_layout_fixed: false,
+            caption_bottom: false,
+            vertical_align: VerticalAlign::Baseline,
         }
     }
 
@@ -568,6 +603,9 @@ impl ComputedStyle {
             line_through: parent.line_through,
             list_style: parent.list_style,
             visibility: parent.visibility,
+            border_spacing: parent.border_spacing,
+            border_collapse: parent.border_collapse,
+            caption_bottom: parent.caption_bottom,
             ..Self::initial()
         }
     }
@@ -652,6 +690,10 @@ fn is_inherited(property: Longhand) -> bool {
             | Longhand::WhiteSpace
             | Longhand::ListStyleType
             | Longhand::Visibility
+            | Longhand::BorderSpacingH
+            | Longhand::BorderSpacingV
+            | Longhand::BorderCollapse
+            | Longhand::CaptionSide
     )
 }
 
@@ -732,6 +774,12 @@ fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, property: Long
         }
         Longhand::JustifyItems => style.justify_items = from.justify_items,
         Longhand::JustifySelf => style.justify_self = from.justify_self,
+        Longhand::BorderSpacingH => style.border_spacing.0 = from.border_spacing.0,
+        Longhand::BorderSpacingV => style.border_spacing.1 = from.border_spacing.1,
+        Longhand::BorderCollapse => style.border_collapse = from.border_collapse,
+        Longhand::TableLayout => style.table_layout_fixed = from.table_layout_fixed,
+        Longhand::CaptionSide => style.caption_bottom = from.caption_bottom,
+        Longhand::VerticalAlign => style.vertical_align = from.vertical_align,
     }
 }
 
@@ -1099,6 +1147,37 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
         }
         Longhand::JustifyItems => style.justify_items = Alignment::parse(ident),
         Longhand::JustifySelf => style.justify_self = Alignment::parse(ident),
+        Longhand::BorderSpacingH | Longhand::BorderSpacingV => {
+            if let Value::Length(l) = &decl.value
+                && let Size::Px(v) = length_px(*l, fs, cx)
+            {
+                if property == Longhand::BorderSpacingH {
+                    style.border_spacing.0 = v;
+                } else {
+                    style.border_spacing.1 = v;
+                }
+            }
+        }
+        Longhand::BorderCollapse => style.border_collapse = ident == "collapse",
+        Longhand::TableLayout => style.table_layout_fixed = ident == "fixed",
+        Longhand::CaptionSide => style.caption_bottom = ident == "bottom",
+        Longhand::VerticalAlign => {
+            style.vertical_align = match (ident, &decl.value) {
+                ("top" | "text-top", _) => VerticalAlign::Top,
+                ("middle", _) => VerticalAlign::Middle,
+                ("bottom" | "text-bottom", _) => VerticalAlign::Bottom,
+                ("sub", _) => VerticalAlign::Sub,
+                ("super", _) => VerticalAlign::Super,
+                (_, Value::Length(l)) => match length_px(*l, fs, cx) {
+                    Size::Px(v) => VerticalAlign::Offset(v),
+                    // Un pourcentage se rapporte à la hauteur de ligne.
+                    other => {
+                        VerticalAlign::Offset(other.resolve(style.line_height_px()).unwrap_or(0.0))
+                    }
+                },
+                _ => VerticalAlign::Baseline,
+            };
+        }
         Longhand::ListStyleType => {
             style.list_style = match ident {
                 "none" => ListStyle::None,
@@ -1114,7 +1193,10 @@ fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<'_>) {
 static UA_SHEET: LazyLock<Stylesheet> = LazyLock::new(|| parse_stylesheet(include_str!("ua.css")));
 
 /// Indications de présentation issues des attributs HTML (`bgcolor`, `align`…).
-fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
+///
+/// `table` : le tableau auquel appartient une cellule, dont dépend sa marge
+/// intérieure (`cellpadding`).
+fn presentational_hints(el: &ElementData, table: Option<&ElementData>) -> Vec<Declaration> {
     let mut css = String::new();
     let mut push = |property: &str, value: &str| {
         // Les valeurs passent par l'analyseur CSS : rien d'invalide n'est accepté.
@@ -1156,6 +1238,44 @@ fn presentational_hints(el: &ElementData) -> Vec<Declaration> {
             }
         }
         _ => {}
+    }
+    if el.name == "table" {
+        if let Some(v) = el.attr("cellspacing") {
+            push("border-spacing", &dimension(v));
+        }
+        if let Some(v) = el.attr("border") {
+            // `border` sans valeur vaut 1.
+            let width = v.trim().parse::<f32>().unwrap_or(1.0).max(0.0);
+            push("border-width", &format!("{width}px"));
+            push("border-style", "outset");
+        }
+        if el
+            .attr("align")
+            .is_some_and(|v| v.eq_ignore_ascii_case("center"))
+        {
+            push("margin-left", "auto");
+            push("margin-right", "auto");
+        }
+    }
+    if matches!(el.name.as_str(), "td" | "th") {
+        if let Some(v) = table.and_then(|t| t.attr("cellpadding")) {
+            push("padding", &dimension(v));
+        }
+        if el.attr("nowrap").is_some() {
+            push("white-space", "nowrap");
+        }
+    }
+    if el.name == "tr"
+        && let Some(v) = el.attr("height")
+    {
+        push("height", &dimension(v));
+    }
+    if matches!(
+        el.name.as_str(),
+        "td" | "th" | "tr" | "tbody" | "thead" | "tfoot"
+    ) && let Some(v) = el.attr("valign")
+    {
+        push("vertical-align", &v.to_ascii_lowercase());
     }
     if matches!(
         el.name.as_str(),
@@ -1279,7 +1399,16 @@ pub fn compute_styles(
             &mut order,
             &mut matched,
         );
-        let hints = presentational_hints(el);
+        // Tableau d'une cellule : au plus trois niveaux au-dessus d'elle.
+        let table = matches!(el.name.as_str(), "td" | "th")
+            .then(|| {
+                doc.ancestors(node)
+                    .take(3)
+                    .filter_map(|a| doc.element(a))
+                    .find(|a| a.name == "table")
+            })
+            .flatten();
+        let hints = presentational_hints(el, table);
         let hint_base = order;
         for (sheet, rules) in author_sheets.iter().zip(&author_active) {
             collect_matching(
