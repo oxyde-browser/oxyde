@@ -2640,3 +2640,32 @@ fn immutable_array_buffers_refuse_writes() {
         "7,7"
     );
 }
+
+#[test]
+fn default_prototype_comes_from_the_realm_of_new_target() {
+    let mut vm = Vm::new();
+    let other = vm.create_realm().and_then(|realm| vm.realm_global(realm));
+    let global = Value::Object(vm.global());
+    let other = other.map_or(Value::Undefined, Value::Object);
+    assert!(vm.set(&global, "other", other).is_ok());
+    let mut run = |source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    // Sans `prototype` objet, le prototype par défaut est celui du royaume du
+    // constructeur désigné par `new.target`.
+    assert_eq!(
+        run("var F = new other.Function(); F.prototype = null; \
+             var proto = (C, args) => Object.getPrototypeOf(Reflect.construct(C, args, F)); \
+             [proto(Map, []) === other.Map.prototype, \
+              proto(Uint8Array, [0]) === other.Uint8Array.prototype, \
+              proto(TypeError, []) === other.TypeError.prototype, \
+              proto(function () {}, []) === other.Object.prototype].join()"),
+        "true,true,true,true"
+    );
+    assert_eq!(
+        run("function G() {} G.prototype = 1; \
+             Object.getPrototypeOf(Reflect.construct(Date, [], G)) === Date.prototype"),
+        "true"
+    );
+}

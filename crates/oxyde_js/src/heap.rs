@@ -818,6 +818,10 @@ pub(crate) struct Heap {
     pub(crate) collections: usize,
     /// Royaume courant, inscrit dans chaque objet créé.
     pub(crate) realm: u16,
+    /// Vrai pendant l'installation d'un royaume : les objets sont créés à la
+    /// suite, sans réemployer d'emplacement libre, pour que tous les royaumes
+    /// rangent leurs intrinsèques dans le même ordre.
+    pub(crate) append_only: bool,
 }
 
 impl Heap {
@@ -833,13 +837,15 @@ impl Heap {
             threshold: GC_MIN_THRESHOLD,
             collections: 0,
             realm: 0,
+            append_only: false,
         }
     }
 
     pub(crate) fn alloc(&mut self, mut object: Object) -> ObjId {
         object.realm = self.realm;
         self.allocated_since_gc += 1;
-        if let Some(index) = self.free.pop()
+        if !self.append_only
+            && let Some(index) = self.free.pop()
             && let Some(slot) = self.objects.get_mut(index as usize)
         {
             *slot = Some(object);
@@ -848,6 +854,11 @@ impl Heap {
         let index = u32::try_from(self.objects.len()).unwrap_or(u32::MAX);
         self.objects.push(Some(object));
         ObjId(index)
+    }
+
+    /// Nombre d'emplacements d'objets, libres ou occupés.
+    pub(crate) fn slots(&self) -> u32 {
+        u32::try_from(self.objects.len()).unwrap_or(u32::MAX)
     }
 
     pub(crate) fn get(&self, id: ObjId) -> &Object {

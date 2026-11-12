@@ -252,6 +252,9 @@ pub struct Vm {
     realms: Vec<Option<RealmState>>,
     /// Numéro du royaume courant.
     realm: u16,
+    /// Pour chaque royaume, la plage d'emplacements (début, taille) où son
+    /// installation a créé ses intrinsèques, dans le même ordre pour tous.
+    realm_spans: Vec<(u32, u32)>,
 }
 
 /// Objets de base d'un royaume neuf : ses intrinsèques, son objet global
@@ -467,8 +470,12 @@ impl Vm {
             console: Vec::new(),
             realms: vec![None],
             realm: 0,
+            realm_spans: Vec::new(),
         };
+        vm.heap.append_only = true;
         crate::builtins::install(&mut vm);
+        vm.heap.append_only = false;
+        vm.realm_spans.push((0, vm.heap.slots()));
         vm
     }
 
@@ -563,6 +570,8 @@ impl Vm {
         let id = u16::try_from(self.realms.len()).ok()?;
         let previous = self.realm;
         self.heap.realm = id;
+        self.heap.append_only = true;
+        let base = self.heap.slots();
         let (intrinsics, global, global_lexicals) = fresh_realm_objects(&mut self.heap);
         self.heap.realm = previous;
         self.realms.push(Some(RealmState {
@@ -583,6 +592,9 @@ impl Vm {
         self.switch_realm(id);
         crate::builtins::install(self);
         self.switch_realm(previous);
+        self.heap.append_only = false;
+        self.realm_spans
+            .push((base, self.heap.slots().saturating_sub(base)));
         Some(usize::from(id))
     }
 
@@ -1477,10 +1489,73 @@ impl Vm {
         result
     }
 
-    /// Prototype à donner aux instances créées par `new_target`.
-    fn instance_proto(&mut self, new_target: &Value) -> JsResult<ObjId> {
+    /// Royaume d'une fonction (ECMA-262 §7.3.24) : celui de la cible pour une
+    /// fonction liée ou un mandataire.
+    fn function_realm(&mut self, function: &Value) -> JsResult<u16> {
+        let mut current = function.as_object();
+        for _ in 0..10_000 {
+            let Some(id) = current else { break };
+            let object = self.heap.get(id);
+            current = match &object.kind {
+                Kind::Bound { target, .. } => Some(*target),
+                Kind::Proxy(proxy) => match proxy.target {
+                    Some(target) => Some(target),
+                    None => return Err(self.type_error("le mandataire est révoqué")),
+                },
+                _ => return Ok(object.realm),
+            };
+        }
+        Ok(self.realm)
+    }
+
+    /// L'intrinsèque du royaume `realm` qui correspond à `object`,
+    /// intrinsèque d'un autre royaume : les royaumes s'installent dans le
+    /// même ordre, l'objet cherché est au même rang. `None` si `object`
+    /// n'est pas un intrinsèque.
+    fn intrinsic_in_realm(&self, object: ObjId, realm: u16) -> Option<ObjId> {
+        let from = self.heap.get(object).realm;
+        if from == realm {
+            return Some(object);
+        }
+        let (from_base, from_len) = *self.realm_spans.get(usize::from(from))?;
+        let (to_base, to_len) = *self.realm_spans.get(usize::from(realm))?;
+        let rank = object.0.checked_sub(from_base)?;
+        if from_len != to_len || rank >= from_len {
+            return None;
+        }
+        let twin = ObjId(to_base.checked_add(rank)?);
+        let same_kind = std::mem::discriminant(&self.heap.get(twin).kind)
+            == std::mem::discriminant(&self.heap.get(object).kind);
+        (self.heap.get(twin).realm == realm && same_kind).then_some(twin)
+    }
+
+    /// `Object.prototype` du royaume `realm`.
+    fn object_proto_of(&self, realm: u16) -> ObjId {
+        if realm == self.realm {
+            return self.intrinsics.object_proto;
+        }
+        self.realms
+            .get(usize::from(realm))
+            .and_then(Option::as_ref)
+            .map_or(self.intrinsics.object_proto, |state| {
+                state.intrinsics.object_proto
+            })
+    }
+
+    /// Prototype à donner aux instances créées par `new_target` (ECMA-262
+    /// §10.1.14) : sa propriété `prototype` si c'est un objet, sinon le
+    /// prototype par défaut `default` pris dans le royaume de `new_target`
+    /// (`None` : `Object.prototype`).
+    fn instance_proto(&mut self, new_target: &Value, default: Option<ObjId>) -> JsResult<ObjId> {
         let proto = self.get(new_target, "prototype")?;
-        Ok(proto.as_object().unwrap_or(self.intrinsics.object_proto))
+        if let Some(proto) = proto.as_object() {
+            return Ok(proto);
+        }
+        let realm = self.function_realm(new_target)?;
+        Ok(match default {
+            Some(default) => self.intrinsic_in_realm(default, realm).unwrap_or(default),
+            None => self.object_proto_of(realm),
+        })
     }
 
     /// `new callee(...args)`, avec `new_target` comme constructeur d'origine.
@@ -1515,7 +1590,8 @@ impl Vm {
                 if new_target != callee
                     && let Some(instance) = result.as_object()
                 {
-                    let proto = self.instance_proto(new_target)?;
+                    let default = self.heap.get(instance).proto;
+                    let proto = self.instance_proto(new_target, default)?;
                     self.heap.get_mut(instance).proto = Some(proto);
                 }
                 Ok(result)
@@ -1545,7 +1621,7 @@ impl Vm {
                 let this = if kind == (FunctionKind::ClassConstructor { derived: true }) {
                     Value::Hole
                 } else {
-                    let proto = self.instance_proto(new_target)?;
+                    let proto = self.instance_proto(new_target, None)?;
                     let instance = self.heap.alloc(Object::new(Some(proto), Kind::Ordinary));
                     if let Some(fields) = fields {
                         self.call(&Value::Object(fields), &Value::Object(instance), &[])?;
@@ -1597,7 +1673,7 @@ impl Vm {
             let this = if kind == (FunctionKind::ClassConstructor { derived: true }) {
                 Value::Hole
             } else {
-                let proto = self.instance_proto(callee)?;
+                let proto = self.instance_proto(callee, None)?;
                 let instance = self.heap.alloc(Object::new(Some(proto), Kind::Ordinary));
                 if let Some(fields) = fields {
                     self.call(&Value::Object(fields), &Value::Object(instance), &[])?;
