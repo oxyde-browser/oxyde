@@ -97,10 +97,12 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   déstructuration, `Map`/`Set`, JSON, `Symbol`, itérateurs, générateurs, `Promise`,
   `async`/`await`, générateurs async, expressions rationnelles, `BigInt`, tableaux typés, membres
   privés et blocs statiques de classe, `Proxy`, descripteurs de propriétés, mode strict) et les pages peuvent modifier le DOM, écouter
-  `click`, poser des minuteurs, appeler `fetch` (`GET` seulement) et charger des modules
-  (`<script type="module">`, `import`/`export`, `import()`, `await` de premier niveau). Manquent encore `XMLHttpRequest`, les
-  formulaires et une grande partie du DOM : la plupart des sites réels ne fonctionnent donc
-  pas encore. Conformité mesurée : 98,6 % de test262
+  `click`, poser des minuteurs, appeler `fetch` et `XMLHttpRequest`, envoyer des formulaires
+  et charger des modules (`<script type="module">`, `import`/`export`, `import()`, `await`
+  de premier niveau). Manquent encore la saisie dans les champs des pages, les workers, les
+  éléments personnalisés et une part du DOM : beaucoup de sites réels ne fonctionnent donc
+  pas encore. Ce qui sépare Oxyde d'un navigateur de tous les jours est listé dans
+  [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md), partie 3. Conformité mesurée : 98,6 % de test262
   ([conformance/test262.md](conformance/test262.md)) ; 96,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
   dossier `dom/` des Web Platform Tests, 286 fichiers de test entièrement réussis sur 693 (41,3 %)
