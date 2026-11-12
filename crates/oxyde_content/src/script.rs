@@ -9,7 +9,7 @@
 //! LIMITES CONNUES : les modules sont chargés entièrement avant toute
 //! exécution et sans contrôle CORS ; le corps d'une requête `fetch` est pris pour du texte, et la
 //! réponse est lue d'un bloc (pas de flux, `text()` et `json()` seulement) ;
-//! pas de `XMLHttpRequest`, `localStorage`, `MutationObserver`
+//! pas de `MutationObserver`
 //! ni `getBoundingClientRect` réel ; `getElementsBy…` et `querySelectorAll`
 //! renvoient des tableaux figés ; `document.write` n'existe pas ; les scripts
 //! s'exécutent après l'analyse complète du document, dans l'ordre du source ;
@@ -1657,6 +1657,12 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     for (name, arity, func) in window_methods {
         vm.define_method(global, name, *arity, *func);
     }
+    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
+    // qui reçoit le `fetch` d'origine.
+    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
+    let original_fetch = vm.get(&window, "fetch")?;
+    let xhr = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    vm.define_hidden(global, "XMLHttpRequest", xhr);
     define_getter(vm, global, "innerWidth", window_inner_width)?;
     define_getter(vm, global, "innerHeight", window_inner_height)?;
 
@@ -2201,9 +2207,11 @@ fn make_response(
         .collect();
     let headers = vm.new_object();
     let get = vm.new_native_data(headers_get, pairs.clone());
-    let has = vm.new_native_data(headers_has, pairs);
+    let has = vm.new_native_data(headers_has, pairs.clone());
+    let for_each = vm.new_native_data(headers_for_each, pairs);
     vm.define_hidden(headers, "get", get);
     vm.define_hidden(headers, "has", has);
+    vm.define_hidden(headers, "forEach", for_each);
     vm.set(&object, "headers", Value::Object(headers))?;
 
     let text = String::from_utf8_lossy(&response.body);
@@ -2239,6 +2247,22 @@ fn headers_has(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> Js
     Ok(Value::Bool(
         header_value(vm, data, &arg(args, 0))?.is_some(),
     ))
+}
+
+/// `headers.forEach(rappel)` : `rappel(valeur, nom, headers)` pour chaque en-tête.
+fn headers_for_each(vm: &mut Vm, data: &[Value], this: &Value, args: &[Value]) -> JsResult {
+    let callback = arg(args, 0);
+    let this_arg = arg(args, 1);
+    for pair in data.chunks(2) {
+        if let [name, value] = pair {
+            vm.call(
+                &callback,
+                &this_arg,
+                &[value.clone(), name.clone(), this.clone()],
+            )?;
+        }
+    }
+    Ok(Value::Undefined)
 }
 
 fn response_text(vm: &mut Vm, data: &[Value], _this: &Value, _args: &[Value]) -> JsResult {

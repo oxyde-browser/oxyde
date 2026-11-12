@@ -1369,6 +1369,48 @@ mod tests {
     }
 
     #[test]
+    fn xml_http_request_runs_over_fetch() {
+        let mut p = page(
+            "<script>
+               const log = [];
+               const xhr = new XMLHttpRequest();
+               xhr.onreadystatechange = () => log.push('état ' + xhr.readyState);
+               xhr.addEventListener('load', () => {
+                 log.push(xhr.status, xhr.responseText, xhr.getResponseHeader('X-Essai'));
+               });
+               xhr.onloadend = () => { document.body.textContent = log.join('|'); };
+               xhr.open('POST', '/depot');
+               xhr.setRequestHeader('X-Jeton', 'abc');
+               xhr.send('corps');
+               log.push(xhr instanceof EventTarget, XMLHttpRequest.DONE);
+             </script>",
+        );
+        p.run_scripts();
+        let requests = p.take_fetches();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[0].body, b"corps");
+        assert!(
+            requests[0]
+                .headers
+                .contains(&("X-Jeton".to_owned(), "abc".to_owned()))
+        );
+        assert!(p.complete_fetch(
+            requests[0].id,
+            Ok(FetchResponse {
+                url: requests[0].url.clone(),
+                status: 201,
+                headers: vec![("x-essai".to_owned(), "oui".to_owned())],
+                body: b"fait".to_vec(),
+            }),
+        ));
+        assert_eq!(
+            body_text(&p),
+            "état 1|true|4|état 2|état 3|état 4|201|fait|oui"
+        );
+    }
+
+    #[test]
     fn storage_fragments_collections_and_dataset() {
         let mut p = page(
             "<p id=a data-user-id=7 name=n>x</p><p>y</p>
