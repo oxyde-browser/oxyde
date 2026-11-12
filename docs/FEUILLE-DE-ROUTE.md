@@ -656,8 +656,13 @@ moteurs tiers et le JIT, à trancher le moment venu.
 ### R — Les bancs d'essai publics (1.0)
 
 La version 1.0 ne se contente pas de fonctionner : elle doit tenir son rang sur les bancs
-d'essai que tout le monde peut lancer, et la comparaison avec Chrome, Edge et Firefox est
-publiée dans [bench/comparaisons.md](../bench/comparaisons.md), avec sa méthode.
+d'essai que tout le monde peut lancer. La comparaison est publiée dans
+[bench/comparaisons.md](../bench/comparaisons.md), avec sa méthode, face à deux groupes :
+
+- les **navigateurs établis** — Chrome, Edge, Opera, Brave, Vivaldi (tous sur le moteur de
+  Chromium) et Firefox —, qui disent où est la barre ;
+- les **moteurs indépendants**, vrais concurrents d'Oxyde — Servo, Verso, Gosub et Blitz,
+  écrits en Rust, et Ladybird, en C++.
 
 Bancs retenus : [Speedometer 3](https://browserbench.org/Speedometer3.0/) (réactivité
 d'applications web réelles, le plus proche de l'usage), JetStream (JavaScript et
@@ -667,8 +672,13 @@ tous les jours) et Basemark Web 3.0 (panorama).
 
 - [ ] Lancer chaque banc dans Oxyde et noter où il s'arrête : c'est l'état de départ, et
       la liste de ce qui manque en découle (elle recoupe H, I, L, O et P).
-- [ ] Mesurer Chrome, Edge et Firefox sur la machine de référence, selon la méthode du
+- [ ] Mesurer les navigateurs établis sur la machine de référence, selon la méthode du
       document (même jour, cinq passes, médiane, versions exactes).
+- [ ] Mesurer les moteurs indépendants de la même façon, en notant la préversion essayée
+      et les bancs qu'ils ne terminent pas ; reprendre leur conformité publiée (test262,
+      Web Platform Tests) à côté de la nôtre.
+- [ ] **Devant tous les moteurs indépendants écrits en Rust** sur chaque banc que l'un
+      d'eux termine.
 - [ ] **Speedometer 3 se termine**, puis atteint la moitié du meilleur score.
 - [ ] **JetStream se termine** (WebAssembly et JIT, étape L), puis atteint le tiers.
 - [ ] **MotionMark se termine** (`canvas`, SVG, compositeur, étape I), puis atteint la moitié.
