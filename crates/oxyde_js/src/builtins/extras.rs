@@ -178,7 +178,14 @@ pub(super) fn install(vm: &mut Vm) {
     let global = Value::Object(vm.global);
 
     // `Symbol.species` : accesseur qui rend le constructeur lui-même.
-    for name in ["Array", "Map", "Set", "Promise", "ArrayBuffer"] {
+    for name in [
+        "Array",
+        "Map",
+        "Set",
+        "Promise",
+        "ArrayBuffer",
+        "SharedArrayBuffer",
+    ] {
         let Ok(Value::Object(ctor)) = vm.get(&global, name) else {
             continue;
         };

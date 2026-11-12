@@ -2593,3 +2593,567 @@ fn never_panics_on_arbitrary_programs() {
         }
     });
 }
+
+#[test]
+fn uint8_array_reads_and_writes_base64_and_hex() {
+    assert_eq!(eval("Uint8Array.fromBase64('Zm9v').join()"), "102,111,111");
+    assert_eq!(eval("new Uint8Array([102, 111]).toBase64()"), "Zm8=");
+    assert_eq!(
+        eval("new Uint8Array([255, 239]).toBase64({ alphabet: 'base64url', omitPadding: true })"),
+        "_-8"
+    );
+    assert_eq!(eval("Uint8Array.fromHex('00ff10').toHex()"), "00ff10");
+    assert_eq!(
+        eval(
+            "var a = new Uint8Array(4); var r = a.setFromBase64('Zm9vYmFy'); \
+             [r.read, r.written, a.join()].join(' ')"
+        ),
+        "4 3 102,111,111,0"
+    );
+    assert!(eval("Uint8Array.fromBase64('Zm9v*')").contains("SyntaxError"));
+}
+
+#[test]
+fn immutable_array_buffers_refuse_writes() {
+    let setup = "var source = new Uint8Array([1, 2, 3]).buffer; \
+                 var frozen = source.transferToImmutable(); var view = new Uint8Array(frozen); ";
+    let run = |probe: &str| eval(&format!("{setup}{probe}"));
+    assert_eq!(
+        run("[frozen.immutable, source.detached, view.join()].join(' ')"),
+        "true true 1,2,3"
+    );
+    assert_eq!(run("view[0] = 9; view[0]"), "1");
+    assert!(run("(function () { 'use strict'; view[0] = 9; })()").contains("TypeError"));
+    assert!(run("view.fill(0)").contains("TypeError"));
+    assert!(run("new DataView(frozen).setUint8(0, 1)").contains("TypeError"));
+    assert!(run("frozen.transfer()").contains("TypeError"));
+    assert_eq!(
+        run("Object.getOwnPropertyDescriptor(view, '0').writable"),
+        "false"
+    );
+    assert_eq!(
+        run("new Uint8Array(frozen.sliceToImmutable(1)).join()"),
+        "2,3"
+    );
+    assert_eq!(
+        run("new Uint8Array(frozen.slice(0, 2)).fill(7).join()"),
+        "7,7"
+    );
+}
+
+#[test]
+fn default_prototype_comes_from_the_realm_of_new_target() {
+    let mut vm = Vm::new();
+    let other = vm.create_realm().and_then(|realm| vm.realm_global(realm));
+    let global = Value::Object(vm.global());
+    let other = other.map_or(Value::Undefined, Value::Object);
+    assert!(vm.set(&global, "other", other).is_ok());
+    let mut run = |source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    // Sans `prototype` objet, le prototype par défaut est celui du royaume du
+    // constructeur désigné par `new.target`.
+    assert_eq!(
+        run("var F = new other.Function(); F.prototype = null; \
+             var proto = (C, args) => Object.getPrototypeOf(Reflect.construct(C, args, F)); \
+             [proto(Map, []) === other.Map.prototype, \
+              proto(Uint8Array, [0]) === other.Uint8Array.prototype, \
+              proto(TypeError, []) === other.TypeError.prototype, \
+              proto(function () {}, []) === other.Object.prototype].join()"),
+        "true,true,true,true"
+    );
+    assert_eq!(
+        run("function G() {} G.prototype = 1; \
+             Object.getPrototypeOf(Reflect.construct(Date, [], G)) === Date.prototype"),
+        "true"
+    );
+}
+
+#[test]
+fn atomics_wait_async_settles_between_tasks() {
+    let mut vm = Vm::new();
+    let run = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    // Réponses immédiates : valeur différente, ou délai nul.
+    assert_eq!(
+        run(
+            &mut vm,
+            "var cells = new Int32Array(new SharedArrayBuffer(16)); var seen = []; \
+             var a = Atomics.waitAsync(cells, 0, 1), b = Atomics.waitAsync(cells, 0, 0, 0); \
+             [a.async, a.value, b.async, b.value].join()"
+        ),
+        "false,not-equal,false,timed-out"
+    );
+    // Réveil par `notify` : la promesse se règle à la fin de la tâche.
+    assert_eq!(
+        run(
+            &mut vm,
+            "var woken = Atomics.waitAsync(cells, 0, 0); \
+             woken.value.then(outcome => seen.push(outcome)); \
+             [woken.async, Atomics.notify(cells, 0), Atomics.notify(cells, 0)].join()"
+        ),
+        "true,1,0"
+    );
+    assert_eq!(run(&mut vm, "seen.join()"), "ok");
+    assert_eq!(vm.pending_async_waits(), 0);
+    // Délai : rien avant son terme, `timed-out` après.
+    assert_eq!(
+        run(
+            &mut vm,
+            "Atomics.waitAsync(cells, 1, 0, 20).value.then(outcome => seen.push(outcome)); \
+             seen.join()"
+        ),
+        "ok"
+    );
+    assert_eq!(vm.pending_async_waits(), 1);
+    let started = std::time::Instant::now();
+    while vm.pending_async_waits() > 0 && started.elapsed() < std::time::Duration::from_secs(5) {
+        vm.park_for_async_waits(std::time::Duration::from_millis(50));
+        vm.run_microtasks();
+    }
+    assert!(started.elapsed() >= std::time::Duration::from_millis(20));
+    assert_eq!(
+        run(&mut vm, "[seen.join(), Atomics.notify(cells, 1)].join(' ')"),
+        "ok,timed-out 0"
+    );
+}
+
+#[test]
+fn regexp_escape_compile_indices_and_legacy_statics() {
+    // `RegExp.escape` : le texte se lit littéralement, où qu'on l'insère.
+    assert_eq!(eval(r#"RegExp.escape("a.b*c")"#), r"\x61\.b\*c");
+    assert_eq!(
+        eval(r#"RegExp.escape("1 + 1, ok-_")"#),
+        r"\x31\x20\+\x201\x2c\x20ok\x2d_"
+    );
+    assert_eq!(
+        eval(r#"new RegExp(RegExp.escape("(a|b)?")).test("x(a|b)?y")"#),
+        "true"
+    );
+    assert!(eval("RegExp.escape(1)").contains("TypeError"));
+    // Drapeau `d` : bornes de la correspondance et des groupes.
+    assert_eq!(
+        eval(
+            r#"var m = /a(?<mid>b+)?(c)/d.exec("xxabbc");
+               [m.indices[0], m.indices[1], m.indices.groups.mid, m.indices.length].join(" ")"#
+        ),
+        "2,6 3,5 3,5 3"
+    );
+    assert_eq!(eval(r#"/a(b)?/d.exec("a").indices[1]"#), "undefined");
+    // `compile` recompile sur place et remet `lastIndex` à zéro.
+    assert_eq!(
+        eval(
+            r#"var r = /a/g; r.lastIndex = 3; var same = r.compile("b+", "i") === r;
+               [same, r.source, r.flags, r.lastIndex, r.test("ABB")].join()"#
+        ),
+        "true,b+,i,0,true"
+    );
+    assert!(eval("class R extends RegExp {} new R('a').compile('b')").contains("TypeError"));
+    // Propriétés statiques héritées.
+    assert_eq!(
+        eval(
+            r#"/(b)(c)?/.exec("abd");
+               [RegExp.$1, RegExp.$2, RegExp.lastMatch, RegExp["$&"], RegExp.lastParen,
+                RegExp.leftContext, RegExp.rightContext, RegExp.input, RegExp.$_].join("|")"#
+        ),
+        "b||b|b||a|d|abd|abd"
+    );
+    assert_eq!(
+        eval(r#"RegExp.input = 12; RegExp.input + typeof RegExp.input"#),
+        "12string"
+    );
+    assert!(eval("class R extends RegExp {} R.$1").contains("TypeError"));
+    assert!(
+        eval(r#"class R extends RegExp {} new R("a").exec("a"); RegExp.lastMatch"#)
+            .contains("TypeError")
+    );
+    assert_eq!(
+        eval(r#"class R extends RegExp {} new R("a").exec("a"); /b/.exec("b"); RegExp.lastMatch"#),
+        "b"
+    );
+    // Le constructeur lit `source` et `flags` d'un objet qui se dit expression.
+    assert_eq!(
+        eval(
+            r#"var like = { source: "a+", flags: "g", [Symbol.match]: true };
+               var r = new RegExp(like); [r.source, r.flags, RegExp(/x/) === RegExp(/x/)].join()"#
+        ),
+        "a+,g,false"
+    );
+    assert_eq!(eval("var r = /x/; RegExp(r) === r"), "true");
+}
+
+#[test]
+fn iterator_chunks_windows_zip_includes_join() {
+    let show = |source: &str| eval(&format!("JSON.stringify({source})"));
+    assert_eq!(
+        show("[1, 2, 3, 4, 5].values().chunks(2).toArray()"),
+        "[[1,2],[3,4],[5]]"
+    );
+    assert_eq!(
+        show("[1, 2, 3, 4].values().windows(3).toArray()"),
+        "[[1,2,3],[2,3,4]]"
+    );
+    assert_eq!(show("[1, 2].values().windows(3).toArray()"), "[]");
+    assert_eq!(
+        show("[1, 2].values().windows(3, 'allow-partial').toArray()"),
+        "[[1,2]]"
+    );
+    assert!(eval("[].values().chunks(0)").contains("RangeError"));
+    assert!(eval("[].values().chunks('2')").contains("TypeError"));
+    assert!(eval("[].values().windows(2, 'partial')").contains("TypeError"));
+    // `includes` : comparaison SameValueZero, éléments sautés, fermeture.
+    assert_eq!(
+        eval(
+            "[[1, NaN].values().includes(NaN), [1, 2].values().includes(1, 1), \
+              [0].values().includes(-0)].join()"
+        ),
+        "true,false,true"
+    );
+    assert_eq!(
+        eval(
+            "var closed = 0; var it = { __proto__: Iterator.prototype, i: 0, \
+              next() { return { done: false, value: this.i++ }; }, \
+              return() { closed++; return {}; } }; [it.includes(3), closed, it.i].join()"
+        ),
+        "true,1,4"
+    );
+    assert!(eval("[].values().includes(1, -1)").contains("RangeError"));
+    assert_eq!(
+        eval("['a', null, 'b', undefined].values().join('-')"),
+        "a--b-"
+    );
+    assert_eq!(eval("[1, 2, 3].values().join()"), "1,2,3");
+    // `zip` : les trois modes, le remplissage, et `zipKeyed`.
+    assert_eq!(
+        show("Iterator.zip([[1, 2, 3], 'ab'.split('')]).toArray()"),
+        r#"[[1,"a"],[2,"b"]]"#
+    );
+    assert_eq!(
+        show("Iterator.zip([[1, 2, 3], ['a']], { mode: 'longest', padding: [0, '?'] }).toArray()"),
+        r#"[[1,"a"],[2,"?"],[3,"?"]]"#
+    );
+    assert_eq!(
+        show("Iterator.zip([[1], [2]], { mode: 'strict' }).toArray()"),
+        "[[1,2]]"
+    );
+    assert!(
+        eval("Iterator.zip([[1], [2, 3]], { mode: 'strict' }).toArray()").contains("TypeError")
+    );
+    assert!(eval("Iterator.zip([[1]], { mode: 'other' })").contains("TypeError"));
+    assert_eq!(
+        show("Iterator.zipKeyed({ n: [1, 2], s: ['a', 'b', 'c'], skip: undefined }).toArray()"),
+        r#"[{"n":1,"s":"a"},{"n":2,"s":"b"}]"#
+    );
+    assert_eq!(
+        eval("Object.getPrototypeOf(Iterator.zipKeyed({ a: [1] }).next().value) === null"),
+        "true"
+    );
+    // Un arrêt prématuré ferme les itérateurs ouverts, du dernier au premier.
+    assert_eq!(
+        eval(
+            "var log = []; var make = name => ({ __proto__: Iterator.prototype, \
+              next() { return { done: false, value: name }; }, \
+              return() { log.push(name); return {}; } }); \
+              var zipped = Iterator.zip([make('a'), make('b')]); zipped.next(); zipped.return(); \
+              log.join()"
+        ),
+        "b,a"
+    );
+}
+
+#[test]
+fn disposable_stacks() {
+    // Libération dans l'ordre inverse, une seule fois.
+    assert_eq!(
+        eval(
+            "var log = []; var stack = new DisposableStack(); \
+             stack.use({ [Symbol.dispose]() { log.push('a'); } }); \
+             stack.adopt('b', value => log.push(value)); \
+             stack.defer(() => log.push('c')); stack.use(null); \
+             stack.dispose(); stack.dispose(); [log.join(), stack.disposed].join(' ')"
+        ),
+        "c,b,a true"
+    );
+    // Les erreurs de libération s'empilent dans des SuppressedError.
+    assert_eq!(
+        eval(
+            "var stack = new DisposableStack(); \
+             stack.defer(() => { throw new Error('premier'); }); \
+             stack.defer(() => { throw new Error('second'); }); \
+             try { stack.dispose(); } catch (e) { \
+               [e instanceof SuppressedError, e.error.message, e.suppressed.message].join() }"
+        ),
+        "true,premier,second"
+    );
+    // `move` transfère les ressources ; la pile d'origine est libérée.
+    assert_eq!(
+        eval(
+            "var log = []; var stack = new DisposableStack(); stack.defer(() => log.push(1)); \
+             var moved = stack.move(); \
+             [stack.disposed, moved.disposed, log.length, (moved.dispose(), log.length)].join()"
+        ),
+        "true,false,0,1"
+    );
+    assert!(eval("new DisposableStack().use({})").contains("TypeError"));
+    assert!(
+        eval("var s = new DisposableStack(); s.dispose(); s.use(null)").contains("ReferenceError")
+    );
+    assert!(eval("DisposableStack.prototype.use.call({}, null)").contains("TypeError"));
+    assert!(eval("DisposableStack()").contains("TypeError"));
+    assert_eq!(
+        eval(
+            "[DisposableStack.prototype[Symbol.dispose] === DisposableStack.prototype.dispose, \
+              Object.prototype.toString.call(new AsyncDisposableStack()), \
+              DisposableStack.prototype.use.toString().includes('native code'), \
+              Iterator.prototype[Symbol.dispose].name].join()"
+        ),
+        "true,[object AsyncDisposableStack],true,[Symbol.dispose]"
+    );
+    // Version asynchrone : les libérations sont attendues l'une après l'autre.
+    let mut vm = Vm::new();
+    let run = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    assert_eq!(
+        run(
+            &mut vm,
+            "var log = []; var stack = new AsyncDisposableStack(); \
+             stack.use({ async [Symbol.asyncDispose]() { await null; log.push('a'); } }); \
+             stack.use({ [Symbol.dispose]() { log.push('b'); } }); \
+             stack.defer(async () => { log.push('c'); }); \
+             var done = stack.disposeAsync().then(() => log.push('fin')); \
+             [done instanceof Promise, stack.disposed, log.join()].join(' ')"
+        ),
+        "true true c"
+    );
+    assert_eq!(run(&mut vm, "log.join()"), "c,b,a,fin");
+    assert_eq!(
+        run(
+            &mut vm,
+            "var outcome; AsyncDisposableStack.prototype.disposeAsync.call({}) \
+               .catch(e => { outcome = e instanceof TypeError; }); typeof outcome"
+        ),
+        "undefined"
+    );
+    assert_eq!(run(&mut vm, "outcome"), "true");
+    // Un nom redéfini puis supprimé ne reparaît pas.
+    assert_eq!(
+        eval(
+            "var f = { [Symbol.iterator]() {} }[Symbol.iterator]; \
+              [f.name, delete f.name, Object.hasOwn(f, 'name')].join()"
+        ),
+        "[Symbol.iterator],true,false"
+    );
+}
+
+#[test]
+fn using_declarations() {
+    let prelude = "var log = []; \
+        function res(name) { return { [Symbol.dispose]() { log.push(name); } }; } ";
+    let run = |body: &str| eval(&format!("{prelude}{body}"));
+    // Libération en sortie de bloc, dans l'ordre inverse des déclarations.
+    assert_eq!(
+        run("{ using a = res('a'), b = res('b'); using c = null; log.push('corps'); } log.join()"),
+        "corps,b,a"
+    );
+    // À la sortie par `return`, `break` ou `continue`, et par exception.
+    assert_eq!(
+        run("function f() { using a = res('a'); return log.length; } [f(), log.join()].join(' ')"),
+        "0 a"
+    );
+    assert_eq!(
+        run(
+            "for (var i = 0; i < 3; i++) { using a = res(i); if (i == 1) continue; \
+             if (i == 2) break; log.push('x'); } log.join()"
+        ),
+        "x,0,1,2"
+    );
+    assert_eq!(
+        run("try { using a = res('a'); throw new Error('boum'); } \
+             catch (e) { log.push(e.message); } log.join()"),
+        "a,boum"
+    );
+    // Une libération qui lève enveloppe l'exception en cours.
+    assert_eq!(
+        run(
+            "try { using a = { [Symbol.dispose]() { throw new Error('fin'); } }; \
+             throw new Error('corps'); } \
+             catch (e) { [e.name, e.error.message, e.suppressed.message].join() }"
+        ),
+        "SuppressedError,fin,corps"
+    );
+    // Boucles : ressource de la boucle entière, ou d'un tour.
+    assert_eq!(
+        run("for (using a = res('a'), n = null; log.length < 2;) log.push('tour'); log.join()"),
+        "tour,tour,a"
+    );
+    assert_eq!(
+        run("for (using a of [res(1), res(2)]) log.push('tour'); log.join()"),
+        "tour,1,tour,2"
+    );
+    // Liaison constante, en zone morte avant son initialisation.
+    assert!(run("{ using a = res('a'); a = 1; }").contains("TypeError"));
+    assert!(run("{ a; using a = res('a'); }").contains("ReferenceError"));
+    assert!(run("{ using a = 1; }").contains("TypeError"));
+    assert!(run("{ using a = {}; }").contains("TypeError"));
+    // Syntaxe : ni au premier niveau d'un script, ni dans une clause de
+    // `switch`, ni sans initialisation, ni avec un motif.
+    for source in [
+        "using a = null;",
+        "switch (1) { case 1: using a = null; }",
+        "{ using a; }",
+        "{ using {a} = null; }",
+        "if (1) using a = null;",
+        "for (using a in {}) ;",
+        "function f() { await using a = null; }",
+    ] {
+        assert!(eval(source).contains("SyntaxError"), "{source}");
+    }
+    // `using` reste un identifiant ordinaire.
+    assert_eq!(eval("var using = 2; using\n* 3"), "6");
+    assert_eq!(
+        eval("var using = [7]; var x = 0; for (using of [5]) ; using"),
+        "5"
+    );
+    // `await using` : la libération asynchrone est attendue.
+    let mut vm = Vm::new();
+    let step = |vm: &mut Vm, source: &str| match vm.eval(source) {
+        Ok(value) => vm.display(&value),
+        Err(error) => format!("ERREUR {error}"),
+    };
+    assert_eq!(
+        step(
+            &mut vm,
+            "var log = []; \
+             (async function () { \
+               { await using a = { async [Symbol.asyncDispose]() { await null; log.push('a'); } }; \
+                 using b = { [Symbol.dispose]() { log.push('b'); } }; \
+                 log.push('corps'); } \
+               log.push('suite'); \
+               for await (using c of [{ [Symbol.dispose]() { log.push('c'); } }]) log.push('tour'); \
+             })().then(() => log.push('fin')); log.join()"
+        ),
+        "corps,b"
+    );
+    assert_eq!(step(&mut vm, "log.join()"), "corps,b,a,suite,tour,c,fin");
+}
+
+#[test]
+fn shadow_realm_boundary() {
+    // Les primitives passent ; les objets sont refusés ; le royaume a ses
+    // propres intrinsèques et son propre objet global.
+    assert_eq!(
+        eval(
+            "var realm = new ShadowRealm(); globalThis.marque = 1; \
+             [realm.evaluate('1 + 1'), realm.evaluate('typeof marque'), \
+              realm.evaluate('Array.prototype.ajout = 1; 2'), [].ajout].join()"
+        ),
+        "2,undefined,2,"
+    );
+    assert!(eval("new ShadowRealm().evaluate('({})')").contains("TypeError"));
+    assert!(eval("new ShadowRealm().evaluate('throw new RangeError()')").contains("TypeError"));
+    assert!(eval("new ShadowRealm().evaluate('1 +')").contains("SyntaxError"));
+    assert!(eval("new ShadowRealm().evaluate(1)").contains("TypeError"));
+    assert!(eval("ShadowRealm()").contains("TypeError"));
+    assert!(eval("ShadowRealm.prototype.evaluate.call({}, '1')").contains("TypeError"));
+    // Une fonction est enveloppée : arguments et résultat traversent la
+    // frontière, les fonctions dans les deux sens.
+    assert_eq!(
+        eval(
+            "var realm = new ShadowRealm(); \
+             var add = realm.evaluate('(function add(a, b) { return a + b; })'); \
+             var apply = realm.evaluate('(f, x) => f(x) * 2'); \
+             [add(2, 3), add.name, add.length, typeof add.prototype, \
+              apply(x => x + 1, 4), add instanceof Function, \
+              Object.getPrototypeOf(add) === Function.prototype].join()"
+        ),
+        "5,add,2,undefined,10,true,true"
+    );
+    assert!(
+        eval("new ShadowRealm().evaluate('(f) => f()')(() => { throw 1; })").contains("TypeError")
+    );
+    assert!(eval("new ShadowRealm().evaluate('(x) => x')({})").contains("TypeError"));
+    assert_eq!(
+        eval("Object.prototype.toString.call(new ShadowRealm())"),
+        "[object ShadowRealm]"
+    );
+}
+
+#[test]
+fn import_attributes() {
+    // Modules JSON et texte : un seul export, `default`.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    r#"import config from './config' with { type: 'json' };
+                       import * as ns from './config' with { "type": "json" };
+                       import texte from './config' with { type: 'text' };
+                       globalThis.out = [config.nom, config.liste.length, ns.default === config,
+                         Object.keys(ns).join(), typeof texte, texte.length].join();"#
+                ),
+                (
+                    "config",
+                    r#"{ "nom": "oxyde", "liste": [1, 2, 3], "__proto__": 1 }"#
+                ),
+            ],
+            "out"
+        ),
+        "oxyde,3,true,default,string,54"
+    );
+    // Un JSON invalide est une erreur de syntaxe ; un type inconnu est refusé.
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import x from './data' with { type: 'json' };"),
+                ("data", "{ nom: 1 }")
+            ],
+            "1"
+        )
+        .contains("SyntaxError")
+    );
+    assert!(
+        eval_modules(
+            &[
+                ("main", "import x from './data' with { type: 'css' };"),
+                ("data", "a {}")
+            ],
+            "1"
+        )
+        .contains("TypeError")
+    );
+    // Seul `type` est reconnu, et un attribut ne se répète pas.
+    for source in [
+        "import x from './data' with { mode: 'x' };",
+        "import x from './data' with { type: 'json', type: 'json' };",
+        "import x from './data' with { type: json };",
+    ] {
+        assert!(
+            eval_modules(&[("main", source), ("data", "1")], "1").contains("SyntaxError"),
+            "{source}"
+        );
+    }
+    // `import()` : le second argument porte les attributs.
+    assert_eq!(
+        eval_modules(
+            &[
+                (
+                    "main",
+                    r#"globalThis.out = [];
+                       import('./data', { with: { type: 'json' } }).then(ns => out.push(ns.default.n));
+                       import('./data', 1).catch(e => out.push(e.name));
+                       import('./data', { with: { type: 1 } }).catch(e => out.push(e.name));
+                       import('./data', { with: { autre: 'x' } }).catch(e => out.push(e.name));"#
+                ),
+                ("data", r#"{ "n": 7 }"#),
+            ],
+            "out.sort().join()"
+        ),
+        "7,TypeError,TypeError,TypeError"
+    );
+}

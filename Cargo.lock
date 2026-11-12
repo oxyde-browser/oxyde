@@ -2537,11 +2537,14 @@ dependencies = [
  "anyhow",
  "arboard",
  "base64",
+ "oxyde_compositor",
  "oxyde_content",
  "oxyde_css",
  "oxyde_gpu",
+ "oxyde_ipc",
  "oxyde_net",
  "oxyde_paint",
+ "oxyde_sandbox",
  "oxyde_text",
  "oxyde_ui",
  "percent-encoding",
@@ -2582,6 +2585,7 @@ dependencies = [
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",
+ "oxyde_ipc",
  "oxyde_js",
  "oxyde_layout",
  "oxyde_paint",
@@ -2627,6 +2631,7 @@ version = "0.1.0"
 name = "oxyde_js"
 version = "0.1.0"
 dependencies = [
+ "icu_properties",
  "indexmap",
  "unicode-ident",
 ]
@@ -2666,6 +2671,7 @@ dependencies = [
  "oxyde_css",
  "oxyde_dom",
  "oxyde_html",
+ "oxyde_ipc",
  "oxyde_layout",
  "oxyde_text",
  "peniko",
@@ -2678,6 +2684,9 @@ version = "0.1.0"
 [[package]]
 name = "oxyde_sandbox"
 version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "oxyde_test262"

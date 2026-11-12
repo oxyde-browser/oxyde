@@ -11,6 +11,8 @@ pub(crate) const ICON_SEARCH: &str = "M11 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM10 10l3
 pub(crate) const ICON_OFFLINE: &str =
     "M6 16c8-8 20-8 28 0M11 22c5-5 13-5 18 0M16 28c2.5-2.5 5.5-2.5 8 0M6 34 34 6";
 pub(crate) const ICON_WARNING: &str = "M20 5 36 33H4zM20 16v8M20 28.5v.5";
+/// Onglet au visage défait : cadre d'onglet, deux yeux en croix, bouche à l'envers.
+pub(crate) const ICON_CRASHED: &str = "M6 12a4 4 0 0 1 4-4h8l3 4h9a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4z     M12 17l4 4M16 17l-4 4M24 17l4 4M28 17l-4 4M14 29c3-3 9-3 12 0";
 
 /// Texte en cours de saisie : sélection ou curseur, sinon texte indicatif.
 #[expect(clippy::too_many_arguments, reason = "géométrie explicite du champ")]
@@ -285,10 +287,10 @@ pub(crate) fn error(
     let content_w = (page.w - 80.0).clamp(0.0, 640.0);
     let mut y = page.y + 96.0f32.min(page.h * 0.12).max(32.0);
 
-    let icon = if certificate {
-        ICON_WARNING
-    } else {
-        ICON_OFFLINE
+    let icon = match error.style {
+        ErrorStyle::Certificate => ICON_WARNING,
+        ErrorStyle::Crashed => ICON_CRASHED,
+        ErrorStyle::Network | ErrorStyle::Other => ICON_OFFLINE,
     };
     p.stroke_path(icon, x, y, icon_color, 2.5);
     y += 40.0 + 16.0;
@@ -318,6 +320,7 @@ pub(crate) fn error(
             }),
         ),
         ErrorStyle::Other => ("Réessayer", None),
+        ErrorStyle::Crashed => ("Recharger la page", Some("Fermer l'onglet")),
     };
     let (primary_fill, primary_text, secondary_fill) = if certificate {
         (

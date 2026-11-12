@@ -6,13 +6,14 @@
 //! LIMITE : rien n'est conservé d'une session à l'autre (onglets épinglés,
 //! espaces, onglets fermés) ; la persistance vient avec le jalon 7.
 
-use oxyde_content::{Navigation, Page, Url};
+use oxyde_content::{Navigation, Url};
 use oxyde_css::Color;
 use oxyde_ui::{
     ChromeState, ClosedView, ErrorStyle, ErrorView, Hit, PaneContent, SpaceView, TabView, theme,
 };
 
 use crate::loader::{self, ErrorKind, LoadError, Loaded};
+use crate::renderer::host::{PageHost, RemotePage};
 
 /// Identifiant d'un document chargé : deux entrées d'historique qui le
 /// partagent ne diffèrent que par `history.pushState` ou par leur fragment.
@@ -79,7 +80,10 @@ pub(crate) enum KeyPress {
 
 pub(crate) struct Tab {
     id: u64,
-    pub(crate) page: Page,
+    pub(crate) page: PageHost,
+    /// Chargement confié à un processus de rendu : faut-il, à son terme,
+    /// ajouter une entrée à l'historique ?
+    pending_push: Option<bool>,
     history: Vec<Url>,
     /// Document de chaque entrée de `history` (voir [`next_document`]).
     documents: Vec<u64>,
@@ -101,7 +105,8 @@ impl Tab {
             id,
             history: vec![loaded.page.url().clone()],
             documents: vec![next_document()],
-            page: loaded.page,
+            page: loaded.page.into(),
+            pending_push: None,
             position: 0,
             loading: false,
             title: String::new(),
@@ -137,10 +142,11 @@ impl Tab {
                     ErrorKind::Network => ErrorStyle::Network,
                     ErrorKind::Certificate => ErrorStyle::Certificate,
                     ErrorKind::Other => ErrorStyle::Other,
+                    ErrorKind::Crashed => ErrorStyle::Crashed,
                 },
                 title: &error.title,
                 message: &error.message,
-                code: error.code,
+                code: &error.code,
                 detail: self.show_details.then_some(error.detail.as_str()),
             }),
             None if self.is_new_tab() => PaneContent::NewTab,
@@ -599,6 +605,8 @@ impl Browser {
                 tab.show_details = !tab.show_details;
                 Vec::new()
             }
+            // « Fermer l'onglet ».
+            Some(ErrorKind::Crashed) => self.close_tab(index),
             _ => Vec::new(),
         }
     }
@@ -656,9 +664,7 @@ impl Browser {
                 // annuler la navigation.
                 let link = page_point.and_then(|(x, y)| {
                     let tab = self.tabs.get_mut(i)?;
-                    let link = tab.page.click(x, y);
-                    loader::report_console(&mut tab.page);
-                    link
+                    tab.page.click(x, y)
                 });
                 match link {
                     Some(url) => self.load(i, url, true),
@@ -809,11 +815,131 @@ impl Browser {
     /// onglet doit être redessiné.
     pub(crate) fn tick(&mut self, now: std::time::Instant) -> bool {
         let mut redraw = false;
-        for tab in &mut self.tabs {
-            redraw |= tab.page.tick(now);
-            loader::report_console(&mut tab.page);
+        let mut commits = Vec::new();
+        for (index, tab) in self.tabs.iter_mut().enumerate() {
+            let changed = tab.page.tick(now);
+            redraw |= changed;
+            let Some(remote) = tab.page.remote_mut() else {
+                continue;
+            };
+            for commit in remote.take_commits() {
+                commits.push((index, commit));
+            }
+            // Le processus de rendu a disparu : l'onglet le dit, les autres
+            // continuent.
+            let crashed = remote.is_crashed();
+            if crashed
+                && !tab
+                    .error
+                    .as_ref()
+                    .is_some_and(|e| e.kind == ErrorKind::Crashed)
+            {
+                tab.error = Some(LoadError::crashed(tab.page.url()));
+                tab.show_details = false;
+                tab.loading = false;
+                tab.pending_push = None;
+                redraw = true;
+            }
+            if changed {
+                // Une image peut apporter un nouveau titre.
+                tab.refresh_labels();
+            }
+        }
+        for (index, commit) in commits {
+            self.finish_remote_load(index, commit);
+        }
+        if redraw && self.editing.is_none() {
+            self.refresh_address();
         }
         redraw
+    }
+
+    /// Confie à un processus de rendu le chargement de `url` dans l'onglet
+    /// `tab_id`. `wake` réveille la boucle d'événements quand ce processus a
+    /// quelque chose à dire. Renvoie `false` si le processus n'a pas pu être
+    /// lancé : à l'appelant de charger la page autrement.
+    pub(crate) fn load_remote(
+        &mut self,
+        tab_id: u64,
+        url: &Url,
+        post: Option<&oxyde_content::FormPost>,
+        push_history: bool,
+        wake: impl Fn() + Send + 'static,
+    ) -> bool {
+        let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab_id) else {
+            return true;
+        };
+        match tab
+            .page
+            .remote_mut()
+            .filter(|remote| !remote.is_crashed() && remote.can_host(url))
+        {
+            // L'onglet a déjà un processus voué à ce site : il y charge la
+            // nouvelle page. Pour un autre site, un processus neuf prend le
+            // relais et l'ancien s'arrête.
+            Some(remote) => remote.load(url.clone(), post.cloned()),
+            None => {
+                let viewport = loader::viewport_size();
+                match RemotePage::spawn(url.clone(), post.cloned(), viewport, wake) {
+                    Ok(remote) => tab.page = PageHost::Remote(Box::new(remote)),
+                    Err(error) => {
+                        eprintln!("processus de rendu indisponible : {error}");
+                        return false;
+                    }
+                }
+            }
+        }
+        // Une navigation reprise après une redirection vers un autre site
+        // garde l'intention de celle qu'elle remplace.
+        let pushing = tab.pending_push.take().unwrap_or(false);
+        tab.pending_push = Some(push_history || pushing);
+        true
+    }
+
+    /// Le processus de rendu de l'onglet `index` a terminé un chargement.
+    fn finish_remote_load(&mut self, index: usize, commit: crate::renderer::host::Commit) {
+        let Some(tab) = self.tabs.get_mut(index) else {
+            return;
+        };
+        let push_history = tab.pending_push.take().unwrap_or(false);
+        if push_history {
+            tab.history.truncate(tab.position + 1);
+            tab.documents.truncate(tab.position + 1);
+            tab.history.push(commit.url);
+            tab.documents.push(next_document());
+            tab.position = tab.history.len() - 1;
+        } else {
+            if let Some(entry) = tab.history.get_mut(tab.position) {
+                // Une redirection peut avoir changé l'adresse finale.
+                *entry = commit.url;
+            }
+            if let Some(document) = tab.documents.get_mut(tab.position) {
+                *document = next_document();
+            }
+        }
+        tab.error = commit.error;
+        tab.show_details = false;
+        tab.loading = false;
+        tab.refresh_labels();
+        if index == self.active && self.editing.is_none() {
+            self.refresh_address();
+        }
+    }
+
+    /// Chargements à lancer pour les onglets ouverts en attente de leur page
+    /// (voir [`loader::placeholder`]).
+    pub(crate) fn initial_loads(&mut self) -> Vec<Command> {
+        let mut commands = Vec::new();
+        for index in 0..self.tabs.len() {
+            let pending = self.tabs.get(index).and_then(|tab| {
+                let url = tab.page.url();
+                (tab.error.is_none() && crate::renderer::host::is_remote(url)).then(|| url.clone())
+            });
+            if let Some(url) = pending {
+                commands.extend(self.load(index, url, false));
+            }
+        }
+        commands
     }
 
     /// Requêtes `fetch` émises par les scripts des onglets : (onglet, requête).
@@ -838,9 +964,7 @@ impl Browser {
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == tab) else {
             return false;
         };
-        let redraw = tab.page.complete_fetch(id, result);
-        loader::report_console(&mut tab.page);
-        redraw
+        tab.page.complete_fetch(id, result)
     }
 
     /// Instant du prochain minuteur à exécuter, tous onglets confondus.
@@ -880,7 +1004,8 @@ impl Browser {
                 *document = next_document();
             }
         }
-        tab.page = loaded.page;
+        tab.page = loaded.page.into();
+        tab.pending_push = None;
         tab.error = loaded.error;
         tab.show_details = false;
         tab.loading = false;
@@ -904,9 +1029,7 @@ impl Browser {
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return (false, false);
         };
-        let outcome = tab.page.key_event(down, input);
-        loader::report_console(&mut tab.page);
-        outcome
+        tab.page.key_event(down, input)
     }
 
     /// Exécute les navigations que les scripts des onglets ont demandées
@@ -972,6 +1095,7 @@ impl Browser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxyde_content::Page;
 
     fn page(url: &str, html: &str) -> Loaded {
         Loaded {
@@ -987,7 +1111,7 @@ mod tests {
                 kind,
                 title: "Titre".into(),
                 message: "Message".into(),
-                code: "ERR_TEST",
+                code: "ERR_TEST".to_owned(),
                 detail: "détail".into(),
             }),
         }

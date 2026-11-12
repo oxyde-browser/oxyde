@@ -523,6 +523,8 @@ fn symbol_match_all(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         remaining: 0.0,
         inner: None,
         sources: Vec::new(),
+        buffer: Vec::new(),
+        zip: None,
         started: false,
         running: false,
         done: false,

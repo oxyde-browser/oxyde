@@ -10,9 +10,21 @@
 //! le drapeau `u` (un caractère hors du plan de base compte pour un seul
 //! « . ») ; un demi-substitut isolé (`\uD83D` seul) n'est pas représentable ;
 //! la comparaison insensible à la casse suit les correspondances simples
-//! d'Unicode ; `\p{…}` ne connaît que quelques propriétés (`L`, `Lu`, `Ll`,
-//! `N`, `Nd`, `Alphabetic`, `Uppercase`, `Lowercase`, `White_Space`, `ASCII`,
-//! `Any`) ; le drapeau `v` n'existe pas et `d` est accepté sans effet.
+//! d'Unicode ; avec le drapeau `v`, les propriétés de chaînes `RGI_Emoji`,
+//! `RGI_Emoji_Flag_Sequence` et `RGI_Emoji_ZWJ_Sequence` ne sont pas fournies
+//! (leurs tables manquent).
+//!
+//! Les propriétés Unicode de `\p{…}` (catégories générales, écritures,
+//! propriétés binaires) viennent des tables d'ICU4X.
+
+use icu_properties::props::{
+    BasicEmoji, EmojiModifierBase, GeneralCategory, GeneralCategoryGroup, IdContinue, IdStart,
+    Script,
+};
+use icu_properties::script::ScriptWithExtensions;
+use icu_properties::{
+    CodePointMapData, CodePointSetData, CodePointSetDataBorrowed, EmojiSetData, PropertyParser,
+};
 
 /// Nombre maximal de pas d'exécution pour une recherche.
 const STEP_LIMIT: u64 = 20_000_000;
@@ -32,6 +44,8 @@ pub(crate) struct Flags {
     pub(crate) multiline: bool,
     pub(crate) dot_all: bool,
     pub(crate) unicode: bool,
+    /// Drapeau `v` : mode Unicode, avec les classes étendues.
+    pub(crate) unicode_sets: bool,
     pub(crate) sticky: bool,
 }
 
@@ -47,6 +61,7 @@ impl Flags {
                 'm' => &mut flags.multiline,
                 's' => &mut flags.dot_all,
                 'u' => &mut flags.unicode,
+                'v' => &mut flags.unicode_sets,
                 'y' => &mut flags.sticky,
                 _ => return Err(format!("drapeau « {c} » invalide ou non pris en charge")),
             };
@@ -54,10 +69,18 @@ impl Flags {
                 return Err(format!("drapeau « {c} » répété"));
             }
         }
+        if flags.unicode && flags.unicode_sets {
+            return Err("les drapeaux « u » et « v » s'excluent".to_owned());
+        }
         Ok(flags)
     }
 
-    /// Drapeaux dans l'ordre canonique (`dgimsuy`).
+    /// Vrai en mode Unicode : drapeau `u` ou `v`.
+    pub(crate) fn unicode_mode(self) -> bool {
+        self.unicode || self.unicode_sets
+    }
+
+    /// Drapeaux dans l'ordre canonique (`dgimsuvy`).
     pub(crate) fn canonical(self) -> String {
         [
             (self.indices, 'd'),
@@ -66,6 +89,7 @@ impl Flags {
             (self.multiline, 'm'),
             (self.dot_all, 's'),
             (self.unicode, 'u'),
+            (self.unicode_sets, 'v'),
             (self.sticky, 'y'),
         ]
         .into_iter()
@@ -84,18 +108,66 @@ pub(crate) type Captures = Vec<Option<(usize, usize)>>;
 
 // ---- Classes de caractères -------------------------------------------------------
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Propriété Unicode désignée par `\p{…}`.
+#[derive(Clone, Copy, Debug)]
 enum Property {
-    Letter,
-    Uppercase,
-    Lowercase,
-    Number,
-    WhiteSpace,
-    Ascii,
+    /// Tous les points de code.
     Any,
+    Ascii,
+    /// Tout sauf la catégorie « non assigné ».
+    Assigned,
+    /// Une catégorie générale, ou un groupe de catégories (`L`, `Letter`).
+    Category(GeneralCategoryGroup),
+    Script(Script),
+    ScriptExtensions(Script),
+    /// Propriété binaire (`Alphabetic`, `Emoji`…).
+    Binary(CodePointSetDataBorrowed<'static>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl Property {
+    /// Propriété nommée par le contenu de `\p{…}` : `Nom` ou `Nom=Valeur`,
+    /// à la lettre près (ECMA-262 §22.2.2.9). `None` si elle n'existe pas.
+    fn parse(text: &str) -> Option<Self> {
+        let category = |value: &str| {
+            PropertyParser::<GeneralCategoryGroup>::new()
+                .get_strict(value)
+                .map(Self::Category)
+        };
+        let script = |value: &str| PropertyParser::<Script>::new().get_strict(value);
+        match text.split_once('=') {
+            Some(("General_Category" | "gc", value)) => category(value),
+            Some(("Script" | "sc", value)) => script(value).map(Self::Script),
+            Some(("Script_Extensions" | "scx", value)) => script(value).map(Self::ScriptExtensions),
+            Some(_) => None,
+            None => match text {
+                "Any" => Some(Self::Any),
+                "ASCII" => Some(Self::Ascii),
+                "Assigned" => Some(Self::Assigned),
+                // Alias que la table d'ICU4X ne connaît pas.
+                "space" => CodePointSetData::new_for_ecma262(b"White_Space").map(Self::Binary),
+                // Une valeur de catégorie générale s'écrit aussi seule.
+                _ => category(text).or_else(|| {
+                    CodePointSetData::new_for_ecma262(text.as_bytes()).map(Self::Binary)
+                }),
+            },
+        }
+    }
+
+    fn matches(self, c: char) -> bool {
+        let category = || CodePointMapData::<GeneralCategory>::new().get(c);
+        match self {
+            Self::Any => true,
+            Self::Ascii => c.is_ascii(),
+            Self::Assigned => category() != GeneralCategory::Unassigned,
+            Self::Category(group) => group.contains(category()),
+            Self::Script(script) => CodePointMapData::<Script>::new().get(c) == script,
+            Self::ScriptExtensions(script) => ScriptWithExtensions::new().has_script(c, script),
+            Self::Binary(set) => set.contains(c),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 enum Builtin {
     Digit,
     Word,
@@ -111,7 +183,7 @@ fn is_word(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-fn is_space(c: char) -> bool {
+pub(crate) fn is_space(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
@@ -125,36 +197,264 @@ fn is_space(c: char) -> bool {
     )
 }
 
+/// Lettres qu'un repli de casse Unicode ramène à une lettre ASCII : avec les
+/// drapeaux `i` et `u`, elles comptent parmi les caractères de mot.
+fn folds_to_word(c: char) -> bool {
+    matches!(c, '\u{17f}' | '\u{212a}')
+}
+
 impl Builtin {
-    fn matches(self, c: char) -> bool {
+    /// `wide` : drapeaux `i` et `u` ensemble, qui élargissent `\w`.
+    fn matches(self, c: char, wide: bool) -> bool {
         match self {
             Self::Digit => c.is_ascii_digit(),
-            Self::Word => is_word(c),
+            Self::Word => is_word(c) || (wide && folds_to_word(c)),
             Self::Space => is_space(c),
-            Self::Property(property) => match property {
-                Property::Letter => c.is_alphabetic(),
-                Property::Uppercase => c.is_uppercase(),
-                Property::Lowercase => c.is_lowercase(),
-                Property::Number => c.is_numeric(),
-                Property::WhiteSpace => c.is_whitespace(),
-                Property::Ascii => c.is_ascii(),
-                Property::Any => true,
-            },
+            Self::Property(property) => property.matches(c),
         }
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 struct ClassSet {
     negated: bool,
     ranges: Vec<(char, char)>,
     /// Classes prédéfinies ; le booléen les inverse (`\D`, `\P{…}`).
     builtins: Vec<(Builtin, bool)>,
+    /// Classe du mode `v` : une expression d'ensembles, qui remplace le reste.
+    expr: Option<Box<SetExpr>>,
+}
+
+/// Expression d'ensembles de caractères d'une classe du mode `v`.
+#[derive(Clone, Debug)]
+enum SetExpr {
+    /// Intervalles et classes prédéfinies, sans négation.
+    Leaf(ClassSet),
+    Union(Vec<SetExpr>),
+    Intersection(Vec<SetExpr>),
+    /// Le premier ensemble, privé des suivants.
+    Difference(Vec<SetExpr>),
+    Complement(Box<SetExpr>),
+}
+
+impl SetExpr {
+    /// Vrai si `c` appartient à l'ensemble. Insensible à la casse (`fold`),
+    /// tout se décide sur la forme repliée de `c` : une feuille le contient si
+    /// elle contient une de ses variantes de casse, et le complément se prend
+    /// ensuite (ECMA-262 §22.2.2.9.7, `CharacterComplement`).
+    fn contains(&self, c: char, fold: bool) -> bool {
+        let folded = if fold { canonical(c, true) } else { c };
+        self.holds(folded, c, fold)
+    }
+
+    fn holds(&self, c: char, original: char, fold: bool) -> bool {
+        match self {
+            Self::Leaf(set) => {
+                set.contains(c, fold)
+                    || (fold
+                        && (set.contains(original, true) || set.contains(simple_upper(c), true)))
+            }
+            Self::Union(sets) => sets.iter().any(|s| s.holds(c, original, fold)),
+            Self::Intersection(sets) => sets.iter().all(|s| s.holds(c, original, fold)),
+            Self::Difference(sets) => {
+                let mut sets = sets.iter();
+                sets.next().is_some_and(|s| s.holds(c, original, fold))
+                    && !sets.any(|s| s.holds(c, original, fold))
+            }
+            Self::Complement(set) => !set.holds(c, original, fold),
+        }
+    }
+}
+
+/// Valeur d'une classe du mode `v`, ou d'un de ses opérandes : un ensemble
+/// de caractères et des chaînes (de longueur autre que 1).
+#[derive(Clone, Debug)]
+struct Operand {
+    chars: SetExpr,
+    strings: Vec<Vec<char>>,
+    /// `MayContainStrings` : interdit la négation de la classe.
+    may_contain_strings: bool,
+}
+
+impl Operand {
+    fn chars(chars: SetExpr) -> Self {
+        Self {
+            chars,
+            strings: Vec::new(),
+            may_contain_strings: false,
+        }
+    }
+
+    fn range(low: char, high: char) -> Self {
+        Self::chars(SetExpr::Leaf(ClassSet {
+            ranges: vec![(low, high)],
+            ..ClassSet::default()
+        }))
+    }
+
+    fn builtin(builtin: Builtin, negated: bool) -> Self {
+        let leaf = SetExpr::Leaf(ClassSet::single(builtin, false));
+        Self::chars(if negated {
+            SetExpr::Complement(Box::new(leaf))
+        } else {
+            leaf
+        })
+    }
+
+    /// Ensemble de caractères (`ranges`) et de chaînes donnés en extension.
+    fn listed(ranges: Vec<(char, char)>, strings: Vec<Vec<char>>, may: bool) -> Self {
+        let mut operand = Self::chars(SetExpr::Leaf(ClassSet {
+            ranges,
+            ..ClassSet::default()
+        }));
+        for string in strings {
+            if !operand.strings.contains(&string) {
+                operand.strings.push(string);
+            }
+        }
+        operand.may_contain_strings = may;
+        operand
+    }
+
+    fn union(items: Vec<Self>) -> Self {
+        let mut strings: Vec<Vec<char>> = Vec::new();
+        let mut may = false;
+        let mut sets = Vec::with_capacity(items.len());
+        for item in items {
+            may |= item.may_contain_strings;
+            for string in item.strings {
+                if !strings.contains(&string) {
+                    strings.push(string);
+                }
+            }
+            sets.push(item.chars);
+        }
+        Self {
+            chars: SetExpr::Union(sets),
+            strings,
+            may_contain_strings: may,
+        }
+    }
+
+    fn intersection(items: Vec<Self>) -> Self {
+        let may = items.iter().all(|item| item.may_contain_strings);
+        let strings = items.first().map_or_else(Vec::new, |first| {
+            first
+                .strings
+                .iter()
+                .filter(|s| items.iter().all(|item| item.strings.contains(s)))
+                .cloned()
+                .collect()
+        });
+        Self {
+            chars: SetExpr::Intersection(items.into_iter().map(|item| item.chars).collect()),
+            strings,
+            may_contain_strings: may,
+        }
+    }
+
+    fn difference(items: Vec<Self>) -> Self {
+        let may = items.first().is_some_and(|item| item.may_contain_strings);
+        let strings = items.first().map_or_else(Vec::new, |first| {
+            first
+                .strings
+                .iter()
+                .filter(|s| !items.iter().skip(1).any(|item| item.strings.contains(s)))
+                .cloned()
+                .collect()
+        });
+        Self {
+            chars: SetExpr::Difference(items.into_iter().map(|item| item.chars).collect()),
+            strings,
+            may_contain_strings: may,
+        }
+    }
+
+    /// Nœud qui reconnaît la classe : les chaînes d'abord, de la plus longue
+    /// à la plus courte, la classe de caractères prenant rang parmi elles.
+    fn into_node(self) -> Node {
+        let set = ClassSet {
+            expr: Some(Box::new(self.chars)),
+            ..ClassSet::default()
+        };
+        if self.strings.is_empty() {
+            return Node::Class(set);
+        }
+        let mut strings = self.strings;
+        strings.sort_by_key(|string| std::cmp::Reverse(string.len()));
+        let mut alternatives = Vec::with_capacity(strings.len() + 1);
+        let mut set = Some(set);
+        for string in strings {
+            if string.is_empty() {
+                // La chaîne vide vient après les caractères seuls.
+                alternatives.extend(set.take().map(Node::Class));
+                alternatives.push(Node::Empty);
+            } else {
+                alternatives.push(Node::Seq(string.into_iter().map(Node::Char).collect()));
+            }
+        }
+        alternatives.extend(set.take().map(Node::Class));
+        Node::Group(Box::new(Node::Alt(alternatives)), None)
+    }
+}
+
+/// Propriété de chaînes du mode `v` (`\p{Emoji_Keycap_Sequence}`…), donnée
+/// en extension. `Ok(None)` : `name` n'en est pas une.
+fn string_property(name: &str) -> PResult<Option<Operand>> {
+    let scalar = |code: u32| char::from_u32(code).unwrap_or('\u{fffd}');
+    let strings: Vec<Vec<char>> = match name {
+        "Emoji_Keycap_Sequence" => "#*0123456789"
+            .chars()
+            .map(|c| vec![c, '\u{fe0f}', '\u{20e3}'])
+            .collect(),
+        "RGI_Emoji_Tag_Sequence" => ["eng", "sct", "wls"]
+            .iter()
+            .map(|region| {
+                // Drapeau noir, « gb » et la région en lettres-étiquettes, fin.
+                let mut sequence = vec!['\u{1f3f4}'];
+                sequence.extend(
+                    "gb".chars()
+                        .chain(region.chars())
+                        .map(|c| scalar(0xe0000 + u32::from(c))),
+                );
+                sequence.push('\u{e007f}');
+                sequence
+            })
+            .collect(),
+        "RGI_Emoji_Modifier_Sequence" => CodePointSetData::new::<EmojiModifierBase>()
+            .iter_ranges()
+            .flatten()
+            .flat_map(|base| (0x1f3fb..=0x1f3ff).map(move |tone| vec![scalar(base), scalar(tone)]))
+            .collect(),
+        "Basic_Emoji" => {
+            let data = EmojiSetData::new::<BasicEmoji>().static_to_owned();
+            let list = data.to_code_point_inversion_list_string_list();
+            let ranges = list
+                .code_points()
+                .iter_ranges()
+                .map(|range| (scalar(*range.start()), scalar(*range.end())))
+                .collect();
+            let strings = list.strings().iter().map(|s| s.chars().collect()).collect();
+            return Ok(Some(Operand::listed(ranges, strings, true)));
+        }
+        "RGI_Emoji" | "RGI_Emoji_Flag_Sequence" | "RGI_Emoji_ZWJ_Sequence" => {
+            return Err(format!(
+                "propriété de chaînes « {name} » non prise en charge par Oxyde pour l'instant"
+            ));
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(Operand::listed(Vec::new(), strings, true)))
 }
 
 /// Forme canonique d'un caractère pour la comparaison insensible à la casse
-/// (ECMA-262 §22.2.5.6, sans le drapeau `u`).
-fn canonical(c: char) -> char {
+/// (ECMA-262 §22.2.5.6). Avec le drapeau `u` (`unicode`), c'est le repli de
+/// casse simple d'Unicode, approché par la minuscule de la majuscule ; sans
+/// lui, la majuscule, qui ne ramène jamais une lettre non ASCII à l'ASCII.
+fn canonical(c: char, unicode: bool) -> char {
+    if unicode {
+        return simple_lower(simple_upper(c));
+    }
     if c.is_ascii() {
         return c.to_ascii_uppercase();
     }
@@ -162,6 +462,14 @@ fn canonical(c: char) -> char {
     match (upper.next(), upper.next()) {
         // Une lettre non ASCII ne se replie jamais sur une lettre ASCII.
         (Some(u), None) if !u.is_ascii() => u,
+        _ => c,
+    }
+}
+
+fn simple_upper(c: char) -> char {
+    let mut upper = c.to_uppercase();
+    match (upper.next(), upper.next()) {
+        (Some(u), None) => u,
         _ => c,
     }
 }
@@ -180,25 +488,54 @@ impl ClassSet {
             negated: false,
             ranges: Vec::new(),
             builtins: vec![(builtin, negated)],
+            expr: None,
         }
     }
 
-    fn contains(&self, c: char) -> bool {
+    fn contains(&self, c: char, wide: bool) -> bool {
         self.ranges.iter().any(|(lo, hi)| *lo <= c && c <= *hi)
             || self
                 .builtins
                 .iter()
-                .any(|(builtin, negated)| builtin.matches(c) != *negated)
+                .any(|(builtin, negated)| builtin.matches(c, wide) != *negated)
     }
 
-    fn matches(&self, c: char, ignore_case: bool) -> bool {
-        let hit = self.contains(c)
-            || (ignore_case && (self.contains(canonical(c)) || self.contains(simple_lower(c))));
+    /// `ignore_case` : insensible à la casse ; `unicode` : drapeau `u`.
+    fn matches(&self, c: char, ignore_case: bool, unicode: bool) -> bool {
+        if let Some(expr) = &self.expr {
+            return expr.contains(c, ignore_case);
+        }
+        let wide = ignore_case && unicode;
+        let hit = self.contains(c, wide)
+            || (ignore_case
+                && (self.contains(canonical(c, unicode), wide)
+                    || self.contains(simple_lower(c), wide)
+                    || (unicode && self.contains(simple_upper(c), wide))));
         hit != self.negated
     }
 }
 
 // ---- Arbre syntaxique ------------------------------------------------------------
+
+/// Drapeaux qu'un groupe peut changer pour son contenu : `i`, `m` et `s`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Modifiers {
+    ignore_case: bool,
+    multiline: bool,
+    dot_all: bool,
+}
+
+impl Modifiers {
+    /// Champ du drapeau `c`, s'il peut être modifié.
+    fn slot(&mut self, c: char) -> Option<&mut bool> {
+        match c {
+            'i' => Some(&mut self.ignore_case),
+            'm' => Some(&mut self.multiline),
+            's' => Some(&mut self.dot_all),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 enum Node {
@@ -208,6 +545,13 @@ enum Node {
     Class(ClassSet),
     Seq(Vec<Node>),
     Alt(Vec<Node>),
+    /// Groupe à modificateurs `(?ims-ims:…)` : drapeaux allumés (`on`) et
+    /// éteints (`off`) pour son contenu.
+    Modified {
+        node: Box<Node>,
+        on: Modifiers,
+        off: Modifiers,
+    },
     /// Groupe ; `Some(n)` : capturant, de numéro `n`.
     Group(Box<Node>, Option<usize>),
     Repeat {
@@ -223,7 +567,8 @@ enum Node {
     WordBoundary {
         negated: bool,
     },
-    BackRef(usize),
+    /// Référence arrière : au groupe qui a participé, parmi ceux de même nom.
+    BackRef(Vec<usize>),
     Look {
         node: Box<Node>,
         behind: bool,
@@ -234,16 +579,103 @@ enum Node {
 struct Parser {
     chars: Vec<char>,
     pos: usize,
+    /// Mode Unicode : drapeau `u` ou `v`.
     unicode: bool,
+    /// Drapeau `v` : classes étendues.
+    unicode_sets: bool,
     /// Nombre total de groupes capturants du motif (connu d'avance).
     total_groups: usize,
     /// Noms des groupes, avec leur numéro.
     names: Vec<(String, usize)>,
     next_group: usize,
     depth: usize,
+    /// Nombre de disjonctions rencontrées : chacune a son numéro.
+    disjunctions: usize,
+    /// Disjonctions qui entourent la position courante, avec le rang de
+    /// l'alternative où l'on se trouve dans chacune.
+    path: Vec<(usize, usize)>,
+    /// Groupes nommés déjà définis, avec leur chemin.
+    defined: Vec<(String, Vec<(usize, usize)>)>,
 }
 
 type PResult<T> = Result<T, String>;
+
+/// Lit quatre chiffres hexadécimaux à partir de `pos`.
+fn hex4(chars: &[char], pos: usize) -> Option<u32> {
+    let digits = chars.get(pos..pos + 4)?;
+    digits
+        .iter()
+        .try_fold(0u32, |value, c| Some(value * 16 + c.to_digit(16)?))
+}
+
+/// Lit un nom de groupe à partir de `pos` (juste après `<`), `>` compris
+/// (ECMA-262 §22.2.1, `RegExpIdentifierName`) : lettres d'identifiant, `$`,
+/// `_`, et échappements `\uXXXX` ou `\u{X}`, quel que soit le drapeau `u`.
+/// Renvoie le nom et la position qui suit `>`.
+fn read_group_name(chars: &[char], mut pos: usize) -> PResult<(String, usize)> {
+    let invalid = || "nom de groupe invalide".to_owned();
+    let mut name = String::new();
+    loop {
+        let c = match chars.get(pos).copied() {
+            Some('>') if !name.is_empty() => return Ok((name, pos + 1)),
+            Some('\\') if chars.get(pos + 1) == Some(&'u') => {
+                pos += 2;
+                let code = if chars.get(pos) == Some(&'{') {
+                    let close = chars
+                        .get(pos..)
+                        .and_then(|rest| rest.iter().position(|c| *c == '}'))
+                        .ok_or_else(invalid)?;
+                    let digits = chars.get(pos + 1..pos + close).unwrap_or(&[]);
+                    if digits.is_empty() || digits.len() > 8 {
+                        return Err(invalid());
+                    }
+                    let code = digits
+                        .iter()
+                        .try_fold(0u32, |value, c| Some(value * 16 + c.to_digit(16)?))
+                        .ok_or_else(invalid)?;
+                    pos += close + 1;
+                    code
+                } else {
+                    let lead = hex4(chars, pos).ok_or_else(invalid)?;
+                    pos += 4;
+                    // Deux échappements qui se suivent forment une paire.
+                    let trail = (0xd800..0xdc00)
+                        .contains(&lead)
+                        .then(|| {
+                            (chars.get(pos) == Some(&'\\') && chars.get(pos + 1) == Some(&'u'))
+                                .then(|| hex4(chars, pos + 2))
+                                .flatten()
+                                .filter(|trail| (0xdc00..0xe000).contains(trail))
+                        })
+                        .flatten();
+                    match trail {
+                        Some(trail) => {
+                            pos += 6;
+                            0x10000 + ((lead - 0xd800) << 10) + (trail - 0xdc00)
+                        }
+                        None => lead,
+                    }
+                };
+                char::from_u32(code).ok_or_else(invalid)?
+            }
+            Some(c) => {
+                pos += 1;
+                c
+            }
+            None => return Err(invalid()),
+        };
+        let allowed = if name.is_empty() {
+            c == '$' || c == '_' || CodePointSetData::new::<IdStart>().contains(c)
+        } else {
+            matches!(c, '$' | '\u{200c}' | '\u{200d}')
+                || CodePointSetData::new::<IdContinue>().contains(c)
+        };
+        if !allowed {
+            return Err(invalid());
+        }
+        name.push(c);
+    }
+}
 
 /// Compte les groupes capturants et relève leurs noms, sans analyser le reste.
 fn scan_groups(chars: &[char]) -> PResult<(usize, Vec<(String, usize)>)> {
@@ -263,15 +695,9 @@ fn scan_groups(chars: &[char]) -> PResult<(usize, Vec<(String, usize)>)> {
                     && !matches!(chars.get(i + 3), Some('=' | '!'))
                 {
                     count += 1;
-                    let name: String = chars
-                        .get(i + 3..)
-                        .unwrap_or(&[])
-                        .iter()
-                        .take_while(|c| **c != '>')
-                        .collect();
-                    if names.iter().any(|(n, _)| *n == name) {
-                        return Err(format!("nom de groupe « {name} » répété"));
-                    }
+                    // Un même nom peut revenir dans des alternatives distinctes :
+                    // l'analyse complète le vérifie.
+                    let (name, _) = read_group_name(chars, i + 3)?;
                     names.push((name, count));
                 }
             }
@@ -310,9 +736,17 @@ impl Parser {
         if self.depth > DEPTH_LIMIT {
             return Err("groupes trop imbriqués".to_owned());
         }
-        let mut alternatives = vec![self.alternative()?];
-        while self.eat('|') {
-            alternatives.push(self.alternative()?);
+        let id = self.disjunctions;
+        self.disjunctions += 1;
+        let mut alternatives = Vec::new();
+        loop {
+            self.path.push((id, alternatives.len()));
+            let alternative = self.alternative();
+            self.path.pop();
+            alternatives.push(alternative?);
+            if !self.eat('|') {
+                break;
+            }
         }
         self.depth -= 1;
         Ok(if alternatives.len() == 1 {
@@ -422,6 +856,7 @@ impl Parser {
             '$' => (Node::End, false),
             '.' => (Node::Any, true),
             '(' => return self.group(),
+            '[' if self.unicode_sets => (self.class_v()?.into_node(), true),
             '[' => (Node::Class(self.class()?), true),
             '\\' => return self.atom_escape(),
             '*' | '+' | '?' => return Err("rien à répéter".to_owned()),
@@ -462,15 +897,39 @@ impl Parser {
                 !behind && !self.unicode,
             ));
         }
+        if self.peek() == Some('?') && matches!(self.peek_at(1), Some('i' | 'm' | 's' | '-')) {
+            let (on, off) = self.modifiers()?;
+            let node = self.disjunction()?;
+            self.close_group()?;
+            return Ok((
+                Node::Modified {
+                    node: Box::new(node),
+                    on,
+                    off,
+                },
+                true,
+            ));
+        }
         let index = if self.looking_at("?:") {
             self.pos += 2;
             None
         } else if self.looking_at("?<") {
-            self.pos += 2;
-            let name = self.group_name()?;
-            if name.is_empty() {
-                return Err("nom de groupe vide".to_owned());
+            let (name, next) = read_group_name(&self.chars, self.pos + 2)?;
+            self.pos = next;
+            // Deux groupes de même nom ne doivent pas pouvoir participer
+            // ensemble : il faut qu'une disjonction les sépare.
+            let clash = self.defined.iter().any(|(other, path)| {
+                *other == name
+                    && !path
+                        .iter()
+                        .zip(&self.path)
+                        .take_while(|(a, b)| a.0 == b.0)
+                        .any(|(a, b)| a.1 != b.1)
+            });
+            if clash {
+                return Err(format!("nom de groupe « {name} » répété"));
             }
+            self.defined.push((name, self.path.clone()));
             self.next_group += 1;
             Some(self.next_group)
         } else if self.peek() == Some('?') {
@@ -484,29 +943,42 @@ impl Parser {
         Ok((Node::Group(Box::new(node), index), true))
     }
 
+    /// Lit `?ims-ims:` : les drapeaux à allumer, puis ceux à éteindre. Aucun
+    /// ne se répète, et `(?-:` ne modifie rien : c'est une erreur.
+    fn modifiers(&mut self) -> PResult<(Modifiers, Modifiers)> {
+        let invalid = || "modificateurs de groupe invalides".to_owned();
+        self.pos += 1;
+        let (mut on, mut off) = (Modifiers::default(), Modifiers::default());
+        let mut removing = false;
+        loop {
+            let c = self.peek().ok_or_else(invalid)?;
+            self.pos += 1;
+            match c {
+                ':' => break,
+                '-' if !removing => removing = true,
+                c => {
+                    // Un drapeau ne paraît qu'une fois, d'un côté ou de l'autre.
+                    let seen = on.slot(c).is_some_and(|slot| *slot)
+                        || off.slot(c).is_some_and(|slot| *slot);
+                    let target = if removing { &mut off } else { &mut on };
+                    match target.slot(c) {
+                        Some(slot) if !seen => *slot = true,
+                        _ => return Err(invalid()),
+                    }
+                }
+            }
+        }
+        if removing && on == Modifiers::default() && off == Modifiers::default() {
+            return Err(invalid());
+        }
+        Ok((on, off))
+    }
+
     fn close_group(&mut self) -> PResult<()> {
         if self.eat(')') {
             Ok(())
         } else {
             Err("parenthèse non fermée".to_owned())
-        }
-    }
-
-    /// Lit `nom>` (le `<` est déjà consommé).
-    fn group_name(&mut self) -> PResult<String> {
-        let mut name = String::new();
-        loop {
-            match self.peek() {
-                Some('>') => {
-                    self.pos += 1;
-                    return Ok(name);
-                }
-                Some(c) if c.is_alphanumeric() || c == '_' || c == '$' => {
-                    name.push(c);
-                    self.pos += 1;
-                }
-                _ => return Err("nom de groupe invalide".to_owned()),
-            }
         }
     }
 
@@ -557,7 +1029,8 @@ impl Parser {
         Ok(Some(char::from_u32(unit).unwrap_or('\u{fffd}')))
     }
 
-    fn property(&mut self, negated: bool) -> PResult<ClassSet> {
+    /// Lit `{Nom}` ou `{Nom=Valeur}` après `\p`.
+    fn property_name(&mut self) -> PResult<String> {
         if !self.eat('{') {
             return Err("propriété Unicode invalide".to_owned());
         }
@@ -566,7 +1039,7 @@ impl Parser {
             match self.peek() {
                 Some('}') => {
                     self.pos += 1;
-                    break;
+                    return Ok(name);
                 }
                 Some(c) => {
                     name.push(c);
@@ -575,19 +1048,196 @@ impl Parser {
                 None => return Err("propriété Unicode invalide".to_owned()),
             }
         }
-        let value = name
-            .strip_prefix("General_Category=")
-            .or_else(|| name.strip_prefix("gc="))
-            .unwrap_or(&name);
-        let property = match value {
-            "L" | "Letter" | "Alphabetic" | "Alpha" => Property::Letter,
-            "Lu" | "Uppercase_Letter" | "Uppercase" => Property::Uppercase,
-            "Ll" | "Lowercase_Letter" | "Lowercase" => Property::Lowercase,
-            "N" | "Number" | "Nd" | "Decimal_Number" => Property::Number,
-            "White_Space" | "space" => Property::WhiteSpace,
-            "ASCII" => Property::Ascii,
-            "Any" => Property::Any,
-            _ => return Err(format!("propriété Unicode « {name} » non prise en charge")),
+    }
+
+    /// Classe prédéfinie du mode `v` : `\d`, `\W`, `\p{…}`… (`c`, la lettre,
+    /// est déjà consommée). Une négation est un complément, et une propriété
+    /// de chaînes ne se nie pas.
+    fn class_escape_v(&mut self, c: char) -> PResult<Operand> {
+        Ok(match c {
+            'd' | 'D' => Operand::builtin(Builtin::Digit, c == 'D'),
+            'w' | 'W' => Operand::builtin(Builtin::Word, c == 'W'),
+            's' | 'S' => Operand::builtin(Builtin::Space, c == 'S'),
+            _ => {
+                let name = self.property_name()?;
+                if let Some(strings) = string_property(&name)? {
+                    if c == 'P' {
+                        return Err(format!("la propriété de chaînes « {name} » ne se nie pas"));
+                    }
+                    return Ok(strings);
+                }
+                let Some(property) = Property::parse(&name) else {
+                    return Err(format!("propriété Unicode « {name} » inconnue"));
+                };
+                Operand::builtin(Builtin::Property(property), c == 'P')
+            }
+        })
+    }
+
+    /// Opérande d'une classe du mode `v` : classe imbriquée, `\q{…}`, classe
+    /// prédéfinie ou caractère. Le caractère est rendu à part quand
+    /// l'opérande en est un : il peut alors borner un intervalle.
+    fn class_operand_v(&mut self) -> PResult<(Operand, Option<char>)> {
+        let single = |c: char| Ok((Operand::range(c, c), Some(c)));
+        let Some(c) = self.peek() else {
+            return Err("classe de caractères non fermée".to_owned());
+        };
+        self.pos += 1;
+        match c {
+            '[' => Ok((self.class_v()?, None)),
+            '\\' => {
+                let Some(escaped) = self.peek() else {
+                    return Err("« \\ » en fin de motif".to_owned());
+                };
+                self.pos += 1;
+                match escaped {
+                    'q' if self.peek() == Some('{') => {
+                        self.pos += 1;
+                        Ok((self.class_strings_v()?, None))
+                    }
+                    'd' | 'D' | 'w' | 'W' | 's' | 'S' | 'p' | 'P' => {
+                        Ok((self.class_escape_v(escaped)?, None))
+                    }
+                    'b' => single('\u{8}'),
+                    '&' | '-' | '!' | '#' | '%' | ',' | ':' | ';' | '<' | '=' | '>' | '@' | '`'
+                    | '~' => single(escaped),
+                    _ => single(self.char_escape(escaped)?),
+                }
+            }
+            '(' | ')' | '{' | '}' | '/' | '-' | '|' | ']' => {
+                Err(format!("« {c} » doit être échappé dans une classe"))
+            }
+            _ => {
+                // Ponctuation doublée : réservée à de futurs opérateurs.
+                if "&!#$%*+,.:;<=>?@^`~".contains(c) && self.peek() == Some(c) {
+                    return Err(format!("« {c}{c} » est réservé dans une classe"));
+                }
+                single(c)
+            }
+        }
+    }
+
+    /// `\q{abc|d|}` : les chaînes séparées par `|` (l'accolade ouvrante est
+    /// déjà consommée). Une chaîne d'un seul caractère est ce caractère.
+    fn class_strings_v(&mut self) -> PResult<Operand> {
+        let mut ranges = Vec::new();
+        let mut strings = Vec::new();
+        let mut current: Vec<char> = Vec::new();
+        let mut may = false;
+        loop {
+            let closing = match self.peek() {
+                Some('}') => true,
+                Some('|') => false,
+                Some(_) => {
+                    let (_, Some(c)) = self.class_operand_v()? else {
+                        return Err("« \\q{…} » ne contient que des caractères".to_owned());
+                    };
+                    current.push(c);
+                    continue;
+                }
+                None => return Err("« \\q{ » non fermé".to_owned()),
+            };
+            self.pos += 1;
+            let string = std::mem::take(&mut current);
+            match string.as_slice() {
+                [c] => ranges.push((*c, *c)),
+                _ => {
+                    may = true;
+                    strings.push(string);
+                }
+            }
+            if closing {
+                return Ok(Operand::listed(ranges, strings, may));
+            }
+        }
+    }
+
+    /// Classe du mode `v`, après son `[` : union d'opérandes et
+    /// d'intervalles, intersection (`&&`) ou différence (`--`) d'opérandes,
+    /// sans mélange à un même niveau.
+    fn class_v(&mut self) -> PResult<Operand> {
+        #[derive(Clone, Copy, PartialEq)]
+        enum Op {
+            Union,
+            Intersection,
+            Difference,
+        }
+        self.depth += 1;
+        if self.depth > DEPTH_LIMIT {
+            return Err("classes trop imbriquées".to_owned());
+        }
+        let negated = self.eat('^');
+        let mut items: Vec<Operand> = Vec::new();
+        let mut op = None;
+        let mut first_is_range = false;
+        loop {
+            if self.eat(']') {
+                break;
+            }
+            if !items.is_empty() {
+                let found = if self.looking_at("&&") {
+                    Some(Op::Intersection)
+                } else if self.looking_at("--") {
+                    Some(Op::Difference)
+                } else {
+                    None
+                };
+                match (op, found) {
+                    (None, Some(found)) if !first_is_range => {
+                        op = Some(found);
+                        self.pos += 2;
+                    }
+                    (Some(current), Some(found)) if current == found => self.pos += 2,
+                    (_, Some(_)) => {
+                        return Err("opérateurs de classe mélangés".to_owned());
+                    }
+                    (None | Some(Op::Union), None) => op = Some(Op::Union),
+                    (Some(_), None) => {
+                        return Err("opérateur de classe attendu".to_owned());
+                    }
+                }
+            }
+            let (operand, single) = self.class_operand_v()?;
+            // Intervalle `a-z` : un tiret seul entre deux caractères.
+            if let Some(low) = single
+                && self.peek() == Some('-')
+                && self.peek_at(1) != Some('-')
+            {
+                if matches!(op, Some(Op::Intersection | Op::Difference)) {
+                    return Err("intervalle parmi des opérandes".to_owned());
+                }
+                self.pos += 1;
+                let (_, Some(high)) = self.class_operand_v()? else {
+                    return Err("intervalle de classe invalide".to_owned());
+                };
+                if low > high {
+                    return Err("intervalle de classe dans le désordre".to_owned());
+                }
+                first_is_range |= items.is_empty();
+                items.push(Operand::range(low, high));
+                continue;
+            }
+            items.push(operand);
+        }
+        self.depth -= 1;
+        let mut class = match op {
+            None | Some(Op::Union) => Operand::union(items),
+            Some(Op::Intersection) => Operand::intersection(items),
+            Some(Op::Difference) => Operand::difference(items),
+        };
+        if negated {
+            if class.may_contain_strings {
+                return Err("une classe niée ne contient pas de chaînes".to_owned());
+            }
+            class.chars = SetExpr::Complement(Box::new(class.chars));
+        }
+        Ok(class)
+    }
+
+    fn property(&mut self, negated: bool) -> PResult<ClassSet> {
+        let name = self.property_name()?;
+        let Some(property) = Property::parse(&name) else {
+            return Err(format!("propriété Unicode « {name} » inconnue"));
         };
         Ok(ClassSet::single(Builtin::Property(property), negated))
     }
@@ -646,6 +1296,9 @@ impl Parser {
             return Err("« \\ » en fin de motif".to_owned());
         };
         self.pos += 1;
+        if self.unicode_sets && matches!(c, 'd' | 'D' | 'w' | 'W' | 's' | 'S' | 'p' | 'P') {
+            return Ok((self.class_escape_v(c)?.into_node(), true));
+        }
         let class = |builtin, negated| Ok((Node::Class(ClassSet::single(builtin, negated)), true));
         match c {
             'b' => return Ok((Node::WordBoundary { negated: false }, false)),
@@ -663,11 +1316,18 @@ impl Parser {
                 if !self.eat('<') {
                     return Err("référence nommée invalide".to_owned());
                 }
-                let name = self.group_name()?;
-                let Some((_, index)) = self.names.iter().find(|(n, _)| *n == name) else {
+                let (name, next) = read_group_name(&self.chars, self.pos)?;
+                self.pos = next;
+                let groups: Vec<usize> = self
+                    .names
+                    .iter()
+                    .filter(|(n, _)| *n == name)
+                    .map(|(_, index)| *index)
+                    .collect();
+                if groups.is_empty() {
                     return Err(format!("groupe « {name} » inconnu"));
-                };
-                return Ok((Node::BackRef(*index), true));
+                }
+                return Ok((Node::BackRef(groups), true));
             }
             '1'..='9' => {
                 // Référence arrière si le groupe existe ; sinon (annexe B)
@@ -679,7 +1339,7 @@ impl Parser {
                     self.pos += 1;
                 }
                 if value <= self.total_groups {
-                    return Ok((Node::BackRef(value), true));
+                    return Ok((Node::BackRef(vec![value]), true));
                 }
                 if self.unicode {
                     return Err("référence à un groupe inexistant".to_owned());
@@ -731,6 +1391,13 @@ impl Parser {
             let low = match self.class_atom()? {
                 Ok(c) => c,
                 Err(inner) => {
+                    // Une classe prédéfinie ne borne pas un intervalle.
+                    if self.unicode
+                        && self.peek() == Some('-')
+                        && !matches!(self.peek_at(1), Some(']') | None)
+                    {
+                        return Err("intervalle de classe invalide".to_owned());
+                    }
                     set.builtins.extend(inner.builtins);
                     continue;
                 }
@@ -763,16 +1430,20 @@ impl Parser {
 
 #[derive(Clone, Debug)]
 enum Inst {
+    /// `fold` : comparaison insensible à la casse (`c` est déjà canonique).
     Char {
         c: char,
         back: bool,
+        fold: bool,
     },
     Any {
         back: bool,
+        dot_all: bool,
     },
     Class {
         set: usize,
         back: bool,
+        fold: bool,
     },
     Save(usize),
     /// Essaie `first`, puis `second` en cas d'échec.
@@ -781,18 +1452,35 @@ enum Inst {
         second: usize,
     },
     Jmp(usize),
-    Start,
-    End,
+    Start {
+        multiline: bool,
+    },
+    End {
+        multiline: bool,
+    },
     WordBoundary {
         negated: bool,
+        /// Drapeaux `i` et `u` ensemble : `\w` élargi.
+        wide: bool,
     },
     BackRef {
-        group: usize,
+        /// Groupes candidats : celui qui a participé est comparé.
+        groups: Vec<usize>,
         back: bool,
+        fold: bool,
     },
     SetReg {
         reg: usize,
         value: usize,
+    },
+    /// Répétition d'un atome d'un seul caractère (`a*`, `.+`, `\d{2,}`) :
+    /// l'atome est l'instruction suivante, la suite du motif vient après.
+    /// Les tours ne s'empilent pas : un seul point de choix les représente.
+    Span {
+        min: u32,
+        max: Option<u32>,
+        greedy: bool,
+        back: bool,
     },
     /// Tête de boucle : décide, d'après le compteur `reg`, de refaire un tour
     /// (instruction suivante) ou de sortir (`exit`).
@@ -847,7 +1535,11 @@ struct Compiler {
     insts: Vec<Inst>,
     sets: Vec<ClassSet>,
     registers: usize,
-    ignore_case: bool,
+    /// Drapeaux en vigueur à l'endroit que l'on compile : ceux de
+    /// l'expression, modifiés par les groupes `(?ims-ims:…)` traversés.
+    modifiers: Modifiers,
+    /// Drapeau `u` : il change la comparaison insensible à la casse.
+    unicode: bool,
 }
 
 impl Compiler {
@@ -870,16 +1562,28 @@ impl Compiler {
         match node {
             Node::Empty => {}
             Node::Char(c) => {
-                let c = if self.ignore_case { canonical(*c) } else { *c };
-                self.emit(Inst::Char { c, back })?;
+                let fold = self.modifiers.ignore_case;
+                let c = if fold {
+                    canonical(*c, self.unicode)
+                } else {
+                    *c
+                };
+                self.emit(Inst::Char { c, back, fold })?;
             }
             Node::Any => {
-                self.emit(Inst::Any { back })?;
+                self.emit(Inst::Any {
+                    back,
+                    dot_all: self.modifiers.dot_all,
+                })?;
             }
             Node::Class(set) => {
                 self.sets.push(set.clone());
                 let set = self.sets.len() - 1;
-                self.emit(Inst::Class { set, back })?;
+                self.emit(Inst::Class {
+                    set,
+                    back,
+                    fold: self.modifiers.ignore_case,
+                })?;
             }
             Node::Seq(nodes) => {
                 if back {
@@ -922,6 +1626,16 @@ impl Compiler {
                 }
             }
             Node::Group(inner, None) => self.node(inner, back)?,
+            Node::Modified { node, on, off } => {
+                let outer = self.modifiers;
+                let inner = &mut self.modifiers;
+                inner.ignore_case = (inner.ignore_case || on.ignore_case) && !off.ignore_case;
+                inner.multiline = (inner.multiline || on.multiline) && !off.multiline;
+                inner.dot_all = (inner.dot_all || on.dot_all) && !off.dot_all;
+                let compiled = self.node(node, back);
+                self.modifiers = outer;
+                compiled?;
+            }
             Node::Group(inner, Some(index)) => {
                 // À reculons, la fin du groupe est rencontrée la première.
                 let (first, second) = if back {
@@ -940,6 +1654,15 @@ impl Compiler {
                 greedy,
                 groups,
             } => {
+                if matches!(**node, Node::Char(_) | Node::Any | Node::Class(_)) {
+                    self.emit(Inst::Span {
+                        min: *min,
+                        max: *max,
+                        greedy: *greedy,
+                        back,
+                    })?;
+                    return self.node(node, back);
+                }
                 let count = self.register();
                 let mark = self.register();
                 self.emit(Inst::SetReg {
@@ -974,18 +1697,26 @@ impl Compiler {
                 }
             }
             Node::Start => {
-                self.emit(Inst::Start)?;
+                self.emit(Inst::Start {
+                    multiline: self.modifiers.multiline,
+                })?;
             }
             Node::End => {
-                self.emit(Inst::End)?;
+                self.emit(Inst::End {
+                    multiline: self.modifiers.multiline,
+                })?;
             }
             Node::WordBoundary { negated } => {
-                self.emit(Inst::WordBoundary { negated: *negated })?;
+                self.emit(Inst::WordBoundary {
+                    negated: *negated,
+                    wide: self.unicode && self.modifiers.ignore_case,
+                })?;
             }
-            Node::BackRef(group) => {
+            Node::BackRef(groups) => {
                 self.emit(Inst::BackRef {
-                    group: *group,
+                    groups: groups.clone(),
                     back,
+                    fold: self.modifiers.ignore_case,
                 })?;
             }
             Node::Look {
@@ -1020,11 +1751,15 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Result<Regex, String> {
     let mut parser = Parser {
         chars,
         pos: 0,
-        unicode: flags.unicode,
+        unicode: flags.unicode_mode(),
+        unicode_sets: flags.unicode_sets,
         total_groups,
         names,
         next_group: 0,
         depth: 0,
+        disjunctions: 0,
+        path: Vec::new(),
+        defined: Vec::new(),
     };
     let node = parser.disjunction()?;
     if parser.pos < parser.chars.len() {
@@ -1034,7 +1769,12 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Result<Regex, String> {
         insts: Vec::new(),
         sets: Vec::new(),
         registers: 0,
-        ignore_case: flags.ignore_case,
+        unicode: flags.unicode_mode(),
+        modifiers: Modifiers {
+            ignore_case: flags.ignore_case,
+            multiline: flags.multiline,
+            dot_all: flags.dot_all,
+        },
     };
     compiler.emit(Inst::Save(0))?;
     compiler.node(&node, false)?;
@@ -1069,6 +1809,21 @@ enum Undo {
     },
     /// Captures d'avant une assertion réussie.
     Caps(Vec<Option<usize>>),
+    /// Répétition gourmande : reprendre à `pc` avec un caractère de moins,
+    /// tant que `pos` n'a pas rejoint `limit`.
+    Shorter {
+        pc: usize,
+        pos: usize,
+        limit: usize,
+        back: bool,
+    },
+    /// Répétition paresseuse d'instruction `span` : essayer un caractère de
+    /// plus à partir de `pos`, `count` étant déjà pris.
+    Longer {
+        span: usize,
+        pos: usize,
+        count: u32,
+    },
 }
 
 struct Machine<'a> {
@@ -1080,10 +1835,6 @@ struct Machine<'a> {
 }
 
 impl Machine<'_> {
-    fn same(&self, a: char, b: char) -> bool {
-        a == b || (self.regex.flags.ignore_case && canonical(a) == canonical(b))
-    }
-
     /// Caractère à consommer à `pos` dans le sens demandé, et position suivante.
     fn next_char(&self, pos: usize, back: bool) -> Option<(char, usize)> {
         if back {
@@ -1094,10 +1845,33 @@ impl Machine<'_> {
         }
     }
 
-    fn word_at(&self, index: Option<usize>) -> bool {
+    /// Vrai si l'atome d'un seul caractère `inst` accepte `c`.
+    fn unit_matches(&self, inst: Option<&Inst>, c: char) -> bool {
+        match inst {
+            Some(Inst::Char {
+                c: wanted, fold, ..
+            }) => {
+                let found = if *fold {
+                    canonical(c, self.regex.flags.unicode_mode())
+                } else {
+                    c
+                };
+                found == *wanted
+            }
+            Some(Inst::Any { dot_all, .. }) => *dot_all || !is_line_terminator(c),
+            Some(Inst::Class { set, fold, .. }) => self
+                .regex
+                .sets
+                .get(*set)
+                .is_some_and(|s| s.matches(c, *fold, self.regex.flags.unicode_mode())),
+            _ => false,
+        }
+    }
+
+    fn word_at(&self, index: Option<usize>, wide: bool) -> bool {
         index
             .and_then(|i| self.input.get(i))
-            .is_some_and(|c| is_word(*c))
+            .is_some_and(|c| is_word(*c) || (wide && folds_to_word(*c)))
     }
 
     /// Exécute le programme à partir de `pc` et `pos`. `Ok(true)` : `Match`
@@ -1114,10 +1888,10 @@ impl Machine<'_> {
                 return Ok(false);
             };
             let ok = match inst {
-                Inst::Char { c, back } => match self.next_char(pos, *back) {
+                Inst::Char { c, back, fold } => match self.next_char(pos, *back) {
                     Some((found, next)) => {
-                        let found = if self.regex.flags.ignore_case {
-                            canonical(found)
+                        let found = if *fold {
+                            canonical(found, self.regex.flags.unicode_mode())
                         } else {
                             found
                         };
@@ -1130,28 +1904,24 @@ impl Machine<'_> {
                     }
                     None => false,
                 },
-                Inst::Any { back } => match self.next_char(pos, *back) {
+                Inst::Any { back, dot_all } => match self.next_char(pos, *back) {
+                    Some((found, next)) if *dot_all || !is_line_terminator(found) => {
+                        pos = next;
+                        true
+                    }
+                    _ => false,
+                },
+                Inst::Class { set, back, fold } => match self.next_char(pos, *back) {
                     Some((found, next))
-                        if self.regex.flags.dot_all || !is_line_terminator(found) =>
+                        if self.regex.sets.get(*set).is_some_and(|s| {
+                            s.matches(found, *fold, self.regex.flags.unicode_mode())
+                        }) =>
                     {
                         pos = next;
                         true
                     }
                     _ => false,
                 },
-                Inst::Class { set, back } => {
-                    match self.next_char(pos, *back) {
-                        Some((found, next))
-                            if self.regex.sets.get(*set).is_some_and(|s| {
-                                s.matches(found, self.regex.flags.ignore_case)
-                            }) =>
-                        {
-                            pos = next;
-                            true
-                        }
-                        _ => false,
-                    }
-                }
                 Inst::Save(index) => {
                     if let Some(slot) = self.caps.get_mut(*index) {
                         stack.push(Undo::Cap {
@@ -1170,27 +1940,31 @@ impl Machine<'_> {
                     pc = *target;
                     continue;
                 }
-                Inst::Start => {
+                Inst::Start { multiline } => {
                     pos == 0
-                        || (self.regex.flags.multiline
+                        || (*multiline
                             && self
                                 .input
                                 .get(pos - 1)
                                 .is_some_and(|c| is_line_terminator(*c)))
                 }
-                Inst::End => {
+                Inst::End { multiline } => {
                     pos == self.input.len()
-                        || (self.regex.flags.multiline
+                        || (*multiline
                             && self.input.get(pos).is_some_and(|c| is_line_terminator(*c)))
                 }
-                Inst::WordBoundary { negated } => {
-                    let boundary = self.word_at(pos.checked_sub(1)) != self.word_at(Some(pos));
+                Inst::WordBoundary { negated, wide } => {
+                    let boundary =
+                        self.word_at(pos.checked_sub(1), *wide) != self.word_at(Some(pos), *wide);
                     boundary != *negated
                 }
-                Inst::BackRef { group, back } => {
-                    let start = self.caps.get(group * 2).copied().flatten();
-                    let end = self.caps.get(group * 2 + 1).copied().flatten();
-                    match (start, end) {
+                Inst::BackRef { groups, back, fold } => {
+                    let bounds = groups.iter().find_map(|group| {
+                        let start = self.caps.get(group * 2).copied().flatten()?;
+                        let end = self.caps.get(group * 2 + 1).copied().flatten()?;
+                        Some((start, end))
+                    });
+                    match (bounds.map(|b| b.0), bounds.map(|b| b.1)) {
                         // Un groupe qui n'a pas participé correspond au vide.
                         (Some(start), Some(end)) if start <= end => {
                             let len = end - start;
@@ -1204,7 +1978,13 @@ impl Machine<'_> {
                                     && (0..len).all(|i| {
                                         match (self.input.get(start + i), self.input.get(from + i))
                                         {
-                                            (Some(a), Some(b)) => self.same(*a, *b),
+                                            (Some(a), Some(b)) => {
+                                                let unicode = self.regex.flags.unicode_mode();
+                                                a == b
+                                                    || (*fold
+                                                        && canonical(*a, unicode)
+                                                            == canonical(*b, unicode))
+                                            }
                                             _ => false,
                                         }
                                     })
@@ -1225,6 +2005,54 @@ impl Machine<'_> {
                         });
                     }
                     true
+                }
+                Inst::Span {
+                    min,
+                    max,
+                    greedy,
+                    back,
+                } => {
+                    let (min, max, back) = (*min, *max, *back);
+                    let unit = self.regex.insts.get(pc + 1);
+                    // Gourmande : tout ce qui se présente ; paresseuse : le minimum.
+                    let wanted = if *greedy { max } else { Some(min) };
+                    let mut count = 0u32;
+                    let mut end = pos;
+                    let mut least = pos;
+                    while wanted.is_none_or(|wanted| count < wanted) {
+                        match self.next_char(end, back) {
+                            Some((c, next)) if self.unit_matches(unit, c) => {
+                                end = next;
+                                count += 1;
+                                if count == min {
+                                    least = end;
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                    self.steps += u64::from(count);
+                    if count < min {
+                        false
+                    } else {
+                        if *greedy && end != least {
+                            stack.push(Undo::Shorter {
+                                pc: pc + 2,
+                                pos: end,
+                                limit: least,
+                                back,
+                            });
+                        } else if !*greedy && max.is_none_or(|max| count < max) {
+                            stack.push(Undo::Longer {
+                                span: pc,
+                                pos: end,
+                                count,
+                            });
+                        }
+                        pos = end;
+                        pc += 2;
+                        continue;
+                    }
                 }
                 Inst::LoopHead {
                     reg,
@@ -1328,6 +2156,58 @@ impl Machine<'_> {
                         }
                     }
                     Some(Undo::Caps(old)) => self.caps = old,
+                    Some(Undo::Shorter {
+                        pc: target,
+                        pos: longest,
+                        limit,
+                        back,
+                    }) => {
+                        // Un caractère de moins ; `longest` diffère de `limit`.
+                        let shorter = if back {
+                            longest.saturating_add(1)
+                        } else {
+                            longest.saturating_sub(1)
+                        };
+                        if shorter != limit {
+                            stack.push(Undo::Shorter {
+                                pc: target,
+                                pos: shorter,
+                                limit,
+                                back,
+                            });
+                        }
+                        self.steps += 1;
+                        pc = target;
+                        pos = shorter;
+                        break;
+                    }
+                    Some(Undo::Longer {
+                        span,
+                        pos: shortest,
+                        count,
+                    }) => {
+                        let Some(Inst::Span { max, back, .. }) = self.regex.insts.get(span) else {
+                            continue;
+                        };
+                        let unit = self.regex.insts.get(span + 1);
+                        self.steps += 1;
+                        // Un caractère de plus, s'il convient ; sinon l'échec continue.
+                        if let Some((c, next)) = self.next_char(shortest, *back)
+                            && self.unit_matches(unit, c)
+                        {
+                            let count = count.saturating_add(1);
+                            if max.is_none_or(|max| count < max) {
+                                stack.push(Undo::Longer {
+                                    span,
+                                    pos: next,
+                                    count,
+                                });
+                            }
+                            pc = span + 2;
+                            pos = next;
+                            break;
+                        }
+                    }
                     None => return Ok(false),
                 }
             }
@@ -1501,6 +2381,278 @@ mod tests {
     }
 
     #[test]
+    fn unicode_properties() {
+        // Catégories générales, seules ou nommées, et groupes de catégories.
+        assert_eq!(find(r"\p{Lu}+", "u", "abcDÉFghi").as_deref(), Some("DÉF"));
+        assert_eq!(
+            find(r"\p{General_Category=Letter}+", "u", "12abc34").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(find(r"\P{L}+", "u", "ab12cd").as_deref(), Some("12"));
+        // Écritures, avec et sans extensions.
+        assert_eq!(
+            find(r"\p{Script=Greek}+", "u", "abc αβγ").as_deref(),
+            Some("αβγ")
+        );
+        assert_eq!(
+            find(r"\p{sc=Han}+", "u", "ab漢字cd").as_deref(),
+            Some("漢字")
+        );
+        assert_eq!(
+            find(r"\p{scx=Hira}+", "u", "ab ーあ").as_deref(),
+            Some("ーあ")
+        );
+        assert_eq!(find(r"\p{sc=Hira}+", "u", "ab ーあ").as_deref(), Some("あ"));
+        // Propriétés binaires et pseudo-propriétés.
+        assert_eq!(
+            find(r"\p{Emoji_Presentation}", "u", "a😀b").as_deref(),
+            Some("😀")
+        );
+        assert_eq!(
+            find(r"\p{White_Space}+", "u", "a \t\u{a0}b").as_deref(),
+            Some(" \t\u{a0}")
+        );
+        assert_eq!(find(r"\p{space}", "u", "a b").as_deref(), Some(" "));
+        assert_eq!(find(r"[\p{ASCII}-]+", "u", "é-a-é").as_deref(), Some("-a-"));
+        assert_eq!(
+            find(r"\P{Assigned}", "u", "a\u{378}b").as_deref(),
+            Some("\u{378}")
+        );
+        assert_eq!(find(r"\p{Any}+", "u", "a\n😀").as_deref(), Some("a\n😀"));
+        // Les noms se lisent à la lettre : ni casse libre, ni valeur inconnue.
+        for pattern in [
+            r"\p{lu}",
+            r"\p{letter}",
+            r"\p{Script=greek}",
+            r"\p{Script}",
+            r"\p{Latin}",
+            r"\p{General_Category=Greek}",
+            r"\p{Nope=Lu}",
+            r"\p{}",
+            r"[\p{Lu}-z]",
+        ] {
+            assert!(compile(pattern, "u").is_err(), "{pattern}");
+        }
+    }
+
+    #[test]
+    fn single_character_loops_do_not_stack() {
+        // Un tour par caractère ne coûte ni pas ni place de pile en proportion.
+        let text: Vec<char> = "a".repeat(3_000_000).chars().collect();
+        let regex = compile(r"^\p{L}+$", "u").expect("motif valide");
+        let (result, steps) = regex.find(&text, 0, false);
+        assert_eq!(result, Ok(Some(vec![Some((0, 3_000_000))])));
+        assert!(steps < STEP_LIMIT);
+        // Le retour sur trace rend les caractères un à un.
+        assert_eq!(find("a*ab", "", "aaab").as_deref(), Some("aaab"));
+        assert_eq!(find("a{2,}?b|a+", "", "aaa").as_deref(), Some("aaa"));
+        assert_eq!(find(".*?b", "", "aabab").as_deref(), Some("aab"));
+        assert_eq!(find("x[ab]{1,2}?a", "", "xbaa").as_deref(), Some("xba"));
+        assert_eq!(find("(?<=a+)b", "", "caab").as_deref(), Some("b"));
+        assert_eq!(find("(?<=(a+?))b", "", "caab").as_deref(), Some("b|a"));
+        assert_eq!(find("a{2}", "", "a"), None);
+    }
+
+    #[test]
+    fn group_names() {
+        // Un même nom dans des alternatives distinctes ; `\k` suit le groupe
+        // qui a participé.
+        let regex = compile(r"(?:(?<x>a)|(?<x>b))\k<x>", "").expect("motif valide");
+        assert_eq!(regex.names, [("x".to_owned(), 1), ("x".to_owned(), 2)]);
+        assert_eq!(
+            find(r"(?:(?<x>a)|(?<x>b))\k<x>", "", "abbaa").as_deref(),
+            Some("bb|-|b")
+        );
+        assert_eq!(
+            find(r"(?<y>.)(?:(?<x>a)|(?<x>b)|c)\k<x>", "", "zc").as_deref(),
+            Some("zc|z|-|-")
+        );
+        // Deux groupes de même nom qui peuvent participer ensemble : refusés.
+        for pattern in [
+            r"(?<x>a)(?<x>b)",
+            r"(?<x>a)|(?:b(?<x>c)(?<x>d))",
+            r"(?:(?<x>a)|b)(?<x>c)",
+            r"(?<x>a(?<x>b)|c)",
+        ] {
+            assert!(compile(pattern, "").is_err(), "{pattern}");
+        }
+        assert!(compile(r"(?<x>a)|(?:b|(?<x>c))|(?<x>d)", "").is_ok());
+        // Noms : lettres d'identifiant Unicode et échappements, avec ou sans `u`.
+        for flags in ["", "u"] {
+            for pattern in [
+                r"(?<π>a)\k<π>",
+                r"(?<\u{03C0}>a)\k<π>",
+                r"(?<\u03C0>a)",
+                r"(?<$_a1>a)",
+                r"(?<𝒜>a)",
+                r"(?<\uD835\uDC9C>a)\k<𝒜>",
+                "(?<a\u{200d}b>.)",
+            ] {
+                assert!(compile(pattern, flags).is_ok(), "{pattern} /{flags}");
+            }
+            for pattern in [
+                r"(?<>a)",
+                r"(?<1a>a)",
+                r"(?<a-b>a)",
+                r"(?<a",
+                r"(?<\u{110000}>a)",
+                r"(?<a>.)\k<b>",
+            ] {
+                assert!(compile(pattern, flags).is_err(), "{pattern} /{flags}");
+            }
+        }
+    }
+
+    #[test]
+    fn modifiers() {
+        // Un groupe allume ou éteint `i`, `m`, `s` pour son seul contenu.
+        assert_eq!(find("a(?i:b)c", "", "aBc").as_deref(), Some("aBc"));
+        assert_eq!(find("a(?i:b)c", "", "aBC"), None);
+        assert_eq!(find("a(?-i:b)c", "i", "AbC").as_deref(), Some("AbC"));
+        assert_eq!(find("a(?-i:b)c", "i", "ABC"), None);
+        assert_eq!(find("(?s:.)+", "", "a\nb").as_deref(), Some("a\nb"));
+        assert_eq!(find("(?-s:.)+", "s", "a\nb").as_deref(), Some("a"));
+        assert_eq!(find("(?m:^b)", "", "a\nb").as_deref(), Some("b"));
+        assert_eq!(find("(?-m:^b)", "m", "a\nb"), None);
+        assert_eq!(find("(?im-s:^B.)", "s", "a\nbc").as_deref(), Some("bc"));
+        // Imbrication, répétition, références et classes.
+        assert_eq!(
+            find("(?i:a(?-i:b)c)+", "", "AbCabc").as_deref(),
+            Some("AbCabc")
+        );
+        assert_eq!(find("(a)(?i:\\1)", "", "aA").as_deref(), Some("aA|a"));
+        assert_eq!(find("(?i:[a-c]+)d", "", "xABCd").as_deref(), Some("ABCd"));
+        // Avec `u`, le repli de casse d'Unicode : `ſ` et `K` valent `s` et `k`.
+        assert_eq!(find("(?i:s)", "u", "\u{17f}").as_deref(), Some("\u{17f}"));
+        assert_eq!(
+            find("(?i:\\w)", "u", "\u{212a}").as_deref(),
+            Some("\u{212a}")
+        );
+        assert_eq!(find("\\w", "u", "\u{17f}"), None);
+        assert_eq!(find("(?i:\\W)", "u", "\u{17f}"), None);
+        assert_eq!(find("(?i:\\b)s", "u", "\u{17f}s"), None);
+        for pattern in ["(?:a)", "(?i:)", "(?ims:a)", "(?-ims:a)", "(?i-ms:a)"] {
+            assert!(compile(pattern, "").is_ok(), "{pattern}");
+        }
+        for pattern in [
+            "(?-:a)",
+            "(?ii:a)",
+            "(?i-i:a)",
+            "(?i-mm:a)",
+            "(?x:a)",
+            "(?i",
+            "(?i)",
+            "(?i-s-m:a)",
+            "(?g:a)",
+            "(?-u:a)",
+        ] {
+            assert!(compile(pattern, "").is_err(), "{pattern}");
+        }
+    }
+
+    #[test]
+    fn unicode_sets() {
+        // Union, différence, intersection, imbrication et complément.
+        assert_eq!(
+            find(r"[[a-z]--[aeiou]]+", "v", "eau bcd").as_deref(),
+            Some("bcd")
+        );
+        assert_eq!(
+            find(r"[\p{L}&&\p{ASCII}]+", "v", "éabcé").as_deref(),
+            Some("abc")
+        );
+        assert_eq!(
+            find(r"[[a-c][x-z]\d]+", "v", "-a9z-").as_deref(),
+            Some("a9z")
+        );
+        assert_eq!(
+            find(r"[^[a-z]--[aeiou]]+", "v", "bcd eau!f").as_deref(),
+            Some(" eau!")
+        );
+        assert_eq!(
+            find(r"[\w--[\d_]--[a-f]]+", "v", "a1_gz").as_deref(),
+            Some("gz")
+        );
+        assert_eq!(find(r"[]", "v", "a"), None);
+        assert_eq!(find(r"[^]", "v", "a").as_deref(), Some("a"));
+        // Chaînes : la plus longue d'abord, avec retour sur les plus courtes.
+        assert_eq!(
+            find(r"[\q{abc|d|}x]+", "v", "xabcdy").as_deref(),
+            Some("xabcd")
+        );
+        assert_eq!(find(r"[\q{ab|a}]b", "v", "ab").as_deref(), Some("ab"));
+        assert_eq!(find(r"^[\q{ab|a}]$", "v", "ab").as_deref(), Some("ab"));
+        assert_eq!(
+            find(r"[\q{ab|cd}--\q{ab}]", "v", "abcd").as_deref(),
+            Some("cd")
+        );
+        assert_eq!(
+            find(r"[\q{ab|cd}&&\q{cd|ef}]", "v", "abcd").as_deref(),
+            Some("cd")
+        );
+        assert_eq!(find(r"(?<=[\q{ab}])c", "v", "abc").as_deref(), Some("c"));
+        // Propriétés de chaînes.
+        assert_eq!(
+            find(r"^\p{Emoji_Keycap_Sequence}$", "v", "1\u{fe0f}\u{20e3}").as_deref(),
+            Some("1\u{fe0f}\u{20e3}")
+        );
+        assert_eq!(
+            find(
+                r"[\p{Emoji_Keycap_Sequence}--\q{1\uFE0F\u20E3}]",
+                "v",
+                "1\u{fe0f}\u{20e3}"
+            ),
+            None
+        );
+        assert_eq!(
+            find(
+                r"\p{RGI_Emoji_Modifier_Sequence}",
+                "v",
+                "x\u{1f44d}\u{1f3fd}"
+            )
+            .as_deref(),
+            Some("\u{1f44d}\u{1f3fd}")
+        );
+        assert!(compile(r"\p{Basic_Emoji}", "v").is_ok());
+        // Insensible à la casse : le complément se prend après le repli.
+        assert_eq!(find(r"[^\P{Lu}]", "vi", "a").as_deref(), Some("a"));
+        assert_eq!(find(r"\P{Lu}", "vi", "aA"), None);
+        assert_eq!(find(r"[\q{AB}]", "vi", "xab").as_deref(), Some("ab"));
+        // Syntaxe propre au mode `v`.
+        for pattern in [
+            r"[a-z&&[aeiou]]",
+            r"[a&&b--c]",
+            r"[ab&&c]",
+            r"[a--b&&c]",
+            r"[a&&&b]",
+            r"[(]",
+            r"[a-]",
+            r"[a|b]",
+            r"[a!!b]",
+            r"[^\q{ab}]",
+            r"[^\p{Emoji_Keycap_Sequence}]",
+            r"\P{Emoji_Keycap_Sequence}",
+            r"[\q{a[b]}]",
+            r"[z-a]",
+            r"[\d-a]",
+        ] {
+            assert!(compile(pattern, "v").is_err(), "{pattern}");
+        }
+        for pattern in [
+            r"[\(\)\-\|\&]",
+            r"[a&&b&&c]",
+            r"[^[a]&&[b]]",
+            r"[\q{}]",
+            r"[a\-b]",
+        ] {
+            assert!(compile(pattern, "v").is_ok(), "{pattern}");
+        }
+        assert!(compile(r"\p{Emoji_Keycap_Sequence}", "u").is_err());
+        assert!(Flags::parse("uv").is_err());
+        assert_eq!(Flags::parse("yvg").expect("valide").canonical(), "gvy");
+    }
+
+    #[test]
     fn sticky_and_start_position() {
         let regex = compile("b", "y").expect("valide");
         let chars: Vec<char> = "abc".chars().collect();
@@ -1545,7 +2697,7 @@ mod tests {
         }
         assert!(compile("a", "gg").is_err());
         assert!(compile("a", "x").is_err());
-        assert!(compile("a", "v").is_err());
+        assert!(compile("a", "uv").is_err());
         assert_eq!(Flags::parse("ygi").expect("valide").canonical(), "giy");
         assert!(compile(&"(".repeat(500), "").is_err());
     }

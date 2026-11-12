@@ -12,7 +12,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 286 fichiers de test entièrement réussis sur 693 (41,3 %) ; 42936 sous-tests sur 49891, détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 538 fichiers entièrement réussis sur 2 267 (23,7 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 50 fichiers entièrement réussis sur 363 (13,8 %) ; détail dans [wpt-animations.md](wpt-animations.md). L'API Web Animations (`getAnimations`, `Element.animate`), dont dépendent la plupart de ces tests, reste à faire |
-| test262 | `oxyde_js` | **branchée** : 40 768 tests réussis sur 48 795 (83,5 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 43 411 tests réussis sur 48 795 (89,0 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.
@@ -30,9 +30,8 @@ pilotés par WebDriver (`testdriver.js`), `Observable`.
 
 test262 se lance avec `cargo run -p oxyde_test262 --release -- --publier` après avoir cloné la
 suite dans `vendor/test262` (non versionné). Le taux publié ne doit jamais régresser. Les plus
-gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul), erreurs de syntaxe précoces
-non détectées, `Proxy`, les méthodes d'`Iterator`, `with`, `SharedArrayBuffer` et `Atomics`,
-les membres privés statiques et `#x in obj`, `await` de premier niveau dans les modules.
+gros manques qu'il révèle : `Temporal` (4 600 tests à lui seul) et les importations
+différées (`import defer`).
 
 ## Écarts connus
 
@@ -92,8 +91,10 @@ les membres privés statiques et `#x in obj`, `await` de premier niveau dans les
   n'est pas résolu (pas de carte d'importation).
 - `BigInt` : arithmétique en précision arbitraire écrite pour Oxyde, bornée à 2^22 bits
   (au-delà, `RangeError`).
-- Tableaux typés, `ArrayBuffer` (redimensionnable, transférable) et `DataView` : pas de
-  `SharedArrayBuffer` ni d'`Atomics` ; `Symbol.species` n'est pas consulté.
+- Tableaux typés, `ArrayBuffer` (redimensionnable, transférable, immuable), `DataView`,
+  `SharedArrayBuffer` et `Atomics` passent tous leurs tests. Dans une page, la promesse
+  d'`Atomics.waitAsync` se règle à la fin de la tâche suivante : rien ne réveille encore
+  une page au repos, et il n'y a pas de workers pour partager un tampon.
 - `Array` : méthodes génériques (tout objet muni d'une longueur) ; `Symbol.species` et
   `Symbol.isConcatSpreadable` ne sont pas consultés.
 - `Symbol` : `Symbol.toPrimitive` et `Symbol.hasInstance` existent mais ne sont pas consultés
@@ -105,12 +106,16 @@ les membres privés statiques et `#x in obj`, `await` de premier niveau dans les
   pas au générateur délégué les valeurs de `next(v)` ni `throw()` ; les arguments par défaut
   sont évalués au premier `next()` ; des générateurs récursifs imbriqués au-delà d'une
   soixantaine de niveaux lèvent `RangeError`.
-- Expressions rationnelles : moteur à retour sur trace écrit pour Oxyde (groupes nommés,
-  références, assertions avant et arrière, drapeaux `g i m s u y`). Le texte est parcouru par
-  points de code même sans `u` ; `\p{…}` ne connaît que quelques propriétés ; pas de drapeau
-  `v` ; `d` est accepté sans effet ; un motif littéral invalide n'est signalé qu'à
-  l'exécution ; les méthodes de `String` ne passent pas par `Symbol.match`, `Symbol.replace`…
-  Une recherche trop coûteuse (motif à coût exponentiel) lève `RangeError`.
+- Expressions rationnelles : moteur à retour sur trace écrit pour Oxyde (groupes nommés, y
+  compris de même nom dans des alternatives distinctes, références, assertions avant et
+  arrière, modificateurs `(?ims-ims:…)`, drapeaux `d g i m s u v y`). `\p{…}` s'appuie sur les
+  tables d'ICU4X, en Unicode 18, alors que la suite test262 utilisée vise Unicode 17 : 91 de
+  ses tests échouent sur des caractères dont les propriétés ont changé entre les deux
+  versions. Avec `v`, les propriétés de chaînes `RGI_Emoji`, `RGI_Emoji_Flag_Sequence` et
+  `RGI_Emoji_ZWJ_Sequence` manquent (pas de tables). Le texte est parcouru par points de code
+  même sans `u` : un `.` y prend une paire de substituts entière. L'insensibilité à la casse
+  en mode Unicode approche le repli simple par la minuscule de la majuscule. Une recherche
+  trop coûteuse (motif à coût exponentiel) lève `RangeError`.
 - Générateurs async et `for await` : mêmes limites que les générateurs pour `return()` et
   `yield*` ; un itérateur abandonné par `break` ne reçoit pas d'appel à `return()`.
 - `Promise` : `then`, `catch`, `finally`, `resolve`, `reject`, `all`, `allSettled`, `any`,

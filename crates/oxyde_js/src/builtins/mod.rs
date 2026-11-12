@@ -5,9 +5,13 @@
 
 mod array;
 mod async_generator;
+mod atomics;
+pub(crate) use atomics::AsyncWait;
+mod base64;
 pub(crate) mod bigint;
 mod collections;
 mod date;
+mod disposable;
 mod extras;
 mod generator;
 mod iterator;
@@ -17,9 +21,11 @@ pub(crate) mod proxy;
 mod reflect;
 pub(crate) mod regexp;
 mod regexp_symbols;
+mod shadow_realm;
 mod string;
 pub(crate) mod symbol;
 mod typed_array;
+pub use typed_array::SharedStorage;
 mod weak;
 
 use std::sync::Arc;
@@ -66,10 +72,12 @@ pub(crate) fn relative_index(
     }
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     let len_f = len as f64;
+    // La troncature précède le test du signe : -0,9 vaut 0, pas « depuis la fin ».
+    let n = n.trunc();
     let clamped = if n < 0.0 {
-        (len_f + n.trunc()).max(0.0)
+        (len_f + n).max(0.0)
     } else {
-        n.trunc().min(len_f)
+        n.min(len_f)
     };
     #[expect(
         clippy::cast_possible_truncation,
@@ -135,6 +143,7 @@ pub(crate) fn install(vm: &mut Vm) {
     bigint::install(vm);
     date::install(vm);
     typed_array::install(vm);
+    atomics::install(vm);
     generator::install(vm);
     async_generator::install(vm);
     promise::install(vm);
@@ -145,6 +154,8 @@ pub(crate) fn install(vm: &mut Vm) {
     extras::install(vm);
     install_function_kinds(vm);
     array::install_from_async(vm);
+    disposable::install(vm);
+    shadow_realm::install(vm);
     let iterator = PropertyKey::Symbol(vm.well_known.iterator.clone());
     let values = vm.get_key(&Value::Object(vm.intrinsics.array_proto), &iterator);
     let next = vm.get(&Value::Object(vm.intrinsics.iterator_proto), "next");

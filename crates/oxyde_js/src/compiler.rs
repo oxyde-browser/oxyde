@@ -99,6 +99,22 @@ enum Exit {
     Finally(Arc<Vec<Stmt>>),
     /// Itérateur d'un `for…of` à fermer quand on sort de la boucle.
     IterClose(Reg),
+    /// Ressources `using` d'une portée, à libérer quand on en sort : le
+    /// registre de leur pile, et si la libération s'attend.
+    Dispose(Reg, bool),
+}
+
+/// `Some(asynchrone)` si `body` déclare directement des ressources `using`.
+fn using_kind(body: &[Stmt]) -> Option<bool> {
+    let mut found = None;
+    for stmt in body {
+        if let Stmt::VarDecl(kind, _) = stmt
+            && kind.is_using()
+        {
+            found = Some(found.unwrap_or(false) || *kind == VarKind::AwaitUsing);
+        }
+    }
+    found
 }
 
 /// Cible de `break` / `continue`.
@@ -233,7 +249,9 @@ pub(crate) fn compile_script(
     // Registre 0 : valeur d'achèvement du script.
     let completion = compiler.alloc()?;
     compiler.emit(Op::LoadUndefined { dst: completion });
-    check_declarations(body, true, &[], strict)?;
+    // Dans un module, une fonction de premier niveau est une liaison
+    // lexicale : elle ne se redéclare pas.
+    check_declarations(body, !module, &[], strict)?;
     if !module && !(eval && strict) {
         // Collisions avec les scripts précédents, vérifiées avant toute liaison.
         let mut lexical = Vec::new();
@@ -285,9 +303,7 @@ pub(crate) fn compile_script(
         compiler.hoist_vars(body, &[])?;
     }
     compiler.declare_block(body)?;
-    for stmt in body {
-        compiler.statement(stmt)?;
-    }
+    compiler.statement_list(body)?;
     compiler.emit(Op::Return { src: completion });
     Ok(Arc::new(compiler.pop_function()?))
 }
@@ -428,9 +444,7 @@ pub(crate) fn compile_direct_eval(
         compiler.hoist_vars(body, &[])?;
     }
     compiler.declare_block(body)?;
-    for stmt in body {
-        compiler.statement(stmt)?;
-    }
+    compiler.statement_list(body)?;
     compiler.emit(Op::Return { src: completion });
     Ok(Arc::new(compiler.pop_function()?))
 }
@@ -450,7 +464,7 @@ fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr], strict: bool) -
     let mut plain: Vec<bool> = Vec::new();
     for stmt in body {
         match stmt {
-            Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
+            Stmt::VarDecl(kind, decls) if *kind != VarKind::Var => {
                 for (pattern, _) in decls {
                     pattern_names(pattern, &mut lexical);
                 }
@@ -500,7 +514,7 @@ fn check_declarations(body: &[Stmt], top: bool, outer: &[JsStr], strict: bool) -
 pub(crate) fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
     for stmt in body {
         match stmt {
-            Stmt::VarDecl(VarKind::Let | VarKind::Const, decls) => {
+            Stmt::VarDecl(kind, decls) if *kind != VarKind::Var => {
                 for (pattern, _) in decls {
                     pattern_names(pattern, out);
                 }
@@ -557,7 +571,9 @@ fn block_functions_in(stmt: &Stmt, nested: bool, shadow: &mut Vec<JsStr>, out: &
         }
         Stmt::For { init, body, .. } => {
             let mark = shadow.len();
-            if let Some(ForInit::Decl(VarKind::Let | VarKind::Const, decls)) = init {
+            if let Some(ForInit::Decl(kind, decls)) = init
+                && *kind != VarKind::Var
+            {
                 for (pattern, _) in decls {
                     pattern_names(pattern, shadow);
                 }
@@ -567,7 +583,9 @@ fn block_functions_in(stmt: &Stmt, nested: bool, shadow: &mut Vec<JsStr>, out: &
         }
         Stmt::ForIn { target, body, .. } => {
             let mark = shadow.len();
-            if let ForTarget::Decl(VarKind::Let | VarKind::Const, pattern) = target {
+            if let ForTarget::Decl(kind, pattern) = target
+                && *kind != VarKind::Var
+            {
                 pattern_names(pattern, shadow);
             }
             block_functions_in(body, true, shadow, out);
@@ -1384,8 +1402,8 @@ impl Compiler {
         if !script {
             for stmt in body {
                 match stmt {
-                    Stmt::VarDecl(kind @ (VarKind::Let | VarKind::Const), decls) => {
-                        let bind = if *kind == VarKind::Const {
+                    Stmt::VarDecl(kind, decls) if *kind != VarKind::Var => {
+                        let bind = if *kind != VarKind::Let {
                             BindKind::Const
                         } else {
                             BindKind::Let
@@ -1651,9 +1669,7 @@ impl Compiler {
             self.emit_yield(scratch, scratch, None)?;
             self.free_to(mark);
         }
-        for stmt in &func.body {
-            self.statement(stmt)?;
-        }
+        self.statement_list(&func.body)?;
         let tmp = self.alloc()?;
         self.emit(Op::LoadUndefined { dst: tmp });
         self.emit(Op::Return { src: tmp });
@@ -2004,10 +2020,93 @@ impl Compiler {
         check_declarations(body, false, &[], strict)?;
         self.push_scope();
         self.declare_block(body)?;
-        for stmt in body {
-            self.statement(stmt)?;
-        }
+        self.statement_list(body)?;
         self.pop_scope();
+        Ok(())
+    }
+
+    /// Compile les instructions de `body`, dont les liaisons sont déjà
+    /// déclarées. Si certaines sont des `using`, leurs ressources sont
+    /// libérées à la sortie, quelle qu'en soit la cause.
+    fn statement_list(&mut self, body: &[Stmt]) -> CResult<()> {
+        let compile = |compiler: &mut Self| {
+            for stmt in body {
+                compiler.statement(stmt)?;
+            }
+            Ok(())
+        };
+        match using_kind(body) {
+            Some(is_async) => self.with_disposal(is_async, compile),
+            None => compile(self),
+        }
+    }
+
+    /// Registre de la pile de ressources de la portée `using` la plus proche.
+    fn dispose_stack(&mut self) -> Option<Reg> {
+        self.f().exits.iter().rev().find_map(|exit| match exit {
+            Exit::Dispose(stack, _) => Some(*stack),
+            _ => None,
+        })
+    }
+
+    /// Émet la libération des ressources de `stack` ; `error` : registre de
+    /// l'exception en cours, que la libération relance ou enveloppe.
+    fn emit_dispose(&mut self, stack: Reg, error: Option<Reg>, is_async: bool) -> CResult<()> {
+        let mark = self.mark();
+        let result = self.alloc()?;
+        self.emit(Op::UsingDispose {
+            dst: result,
+            stack,
+            error: error.unwrap_or(result),
+            has_error: error.is_some(),
+            is_async,
+        });
+        if is_async {
+            // `false` : aucune ressource n'était inscrite, rien à attendre.
+            let skip = self.emit(Op::JumpIfFalse {
+                src: result,
+                target: 0,
+            });
+            self.emit(Op::Await {
+                dst: result,
+                src: result,
+            });
+            self.patch(skip);
+        }
+        self.free_to(mark);
+        Ok(())
+    }
+
+    /// Compile `body` dans une portée de ressources : une pile reçoit les
+    /// `using`, et elle est vidée à la fin du corps, à chaque saut qui en
+    /// sort, et quand une exception le traverse.
+    fn with_disposal(
+        &mut self,
+        is_async: bool,
+        body: impl FnOnce(&mut Self) -> CResult<()>,
+    ) -> CResult<()> {
+        let stack = self.alloc()?;
+        self.emit(Op::UsingStack { dst: stack });
+        let exception = self.alloc()?;
+        self.f().exits.push(Exit::Dispose(stack, is_async));
+        let handler = self.emit(Op::PushHandler {
+            target: 0,
+            reg: exception,
+        });
+        self.f().exits.push(Exit::Handler);
+        let result = body(self);
+        self.f().exits.pop();
+        self.f().exits.pop();
+        result?;
+        self.emit(Op::PopHandler);
+        self.emit_dispose(stack, None, is_async)?;
+        let end = self.emit(Op::Jump { target: 0 });
+        // Arrivée d'une exception : la libération la relance, enveloppée
+        // si une ressource lève à son tour.
+        self.patch(handler);
+        self.emit_dispose(stack, Some(exception), is_async)?;
+        self.emit(Op::Throw { src: exception });
+        self.patch(end);
         Ok(())
     }
 
@@ -2131,6 +2230,9 @@ impl Compiler {
                 Some(Exit::IterClose(iter)) => {
                     self.emit(Op::IterClose { iter, quiet: false });
                 }
+                Some(Exit::Dispose(stack, is_async)) => {
+                    self.emit_dispose(stack, None, is_async)?;
+                }
                 Some(Exit::Finally(body)) => {
                     // Le bloc `finally` est recopié sur ce chemin de sortie ; pendant sa
                     // compilation, lui-même et les zones internes ne sont plus actifs.
@@ -2208,6 +2310,18 @@ impl Compiler {
         for (pattern, value) in decls {
             let mark = self.mark();
             match (pattern, value) {
+                (Pattern::Ident(name), Some(value)) if kind.is_using() => {
+                    let reg = self.expr_named(value, name, None)?;
+                    let Some(stack) = self.dispose_stack() else {
+                        return error("déclaration « using » hors d'une portée de ressources");
+                    };
+                    self.emit(Op::UsingAdd {
+                        stack,
+                        src: reg,
+                        is_async: kind == VarKind::AwaitUsing,
+                    });
+                    self.store(name, reg, true)?;
+                }
                 (Pattern::Ident(name), Some(value))
                     if !init && !self.with_chain(name).is_empty() =>
                 {
@@ -2527,12 +2641,30 @@ impl Compiler {
         update: Option<&Expr>,
         body: &Stmt,
     ) -> CResult<()> {
+        // `for (using x = e; …; …)` : la ressource vit autant que la boucle.
+        if let Some(ForInit::Decl(kind, decls)) = init
+            && kind.is_using()
+        {
+            let labels = std::mem::take(&mut self.f().pending_labels);
+            self.push_scope();
+            for (pattern, _) in decls {
+                self.declare_pattern(pattern, BindKind::Const)?;
+            }
+            let is_async = *kind == VarKind::AwaitUsing;
+            self.with_disposal(is_async, |compiler| {
+                compiler.var_declaration(*kind, decls)?;
+                compiler.f().pending_labels = labels;
+                compiler.for_statement(None, test, update, body)
+            })?;
+            self.pop_scope();
+            return Ok(());
+        }
         let labels = std::mem::take(&mut self.f().pending_labels);
         self.push_scope();
         match init {
             Some(ForInit::Decl(kind, decls)) => {
                 if *kind != VarKind::Var {
-                    let bind = if *kind == VarKind::Const {
+                    let bind = if *kind != VarKind::Let {
                         BindKind::Const
                     } else {
                         BindKind::Let
@@ -2605,6 +2737,16 @@ impl Compiler {
     ) -> CResult<()> {
         let labels = std::mem::take(&mut self.f().pending_labels);
         let iter = self.alloc()?;
+        // Les noms d'une déclaration lexicale sont en zone morte temporelle
+        // pendant l'évaluation de l'objet parcouru.
+        let dead_zone = match target {
+            ForTarget::Decl(kind, pattern) if *kind != VarKind::Var => Some(pattern),
+            _ => None,
+        };
+        if let Some(pattern) = dead_zone {
+            self.push_scope();
+            self.declare_pattern(pattern, BindKind::Let)?;
+        }
         let source = self.expr(object, None)?;
         self.emit(if is_await {
             Op::AsyncIterStart {
@@ -2622,6 +2764,9 @@ impl Compiler {
                 obj: source,
             }
         });
+        if dead_zone.is_some() {
+            self.pop_scope();
+        }
         self.free_to(iter + 1);
         self.f().pending_labels = labels;
         // `for…of` : l'itérateur est fermé si l'on quitte la boucle avant son
@@ -2656,7 +2801,7 @@ impl Compiler {
             ForTarget::Decl(kind, pattern) => {
                 let init = *kind != VarKind::Var;
                 if init {
-                    let bind = if *kind == VarKind::Const {
+                    let bind = if *kind != VarKind::Let {
                         BindKind::Const
                     } else {
                         BindKind::Let
@@ -2667,7 +2812,22 @@ impl Compiler {
             }
             ForTarget::Pattern(pattern) => self.assign_pattern(pattern, value, false)?,
         }
-        self.statement(body)?;
+        match target {
+            ForTarget::Decl(kind, _) if kind.is_using() => {
+                let is_async = *kind == VarKind::AwaitUsing;
+                self.with_disposal(is_async, |compiler| {
+                    if let Some(stack) = compiler.dispose_stack() {
+                        compiler.emit(Op::UsingAdd {
+                            stack,
+                            src: value,
+                            is_async,
+                        });
+                    }
+                    compiler.statement(body)
+                })?;
+            }
+            _ => self.statement(body)?,
+        }
         self.pop_scope();
         self.emit(Op::Jump { target: head });
         let Some((handler, exception)) = on_throw else {
@@ -3356,17 +3516,26 @@ impl Compiler {
                 self.emit(Op::LoadNewTarget { dst });
                 Ok(dst)
             }
-            Expr::ImportCall(specifier, options) => {
+            Expr::ImportCall(specifier, options, source) => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
                 let src = self.alloc()?;
                 self.expr(specifier, Some(src))?;
-                if let Some(options) = options {
-                    // Évaluées pour leurs effets ; les attributs sont ignorés.
-                    let ignored = self.alloc()?;
-                    self.expr(options, Some(ignored))?;
+                let options_reg = self.alloc()?;
+                match options {
+                    Some(options) => {
+                        self.expr(options, Some(options_reg))?;
+                    }
+                    None => {
+                        self.emit(Op::LoadUndefined { dst: options_reg });
+                    }
                 }
-                self.emit(Op::ImportCall { dst, src });
+                self.emit(Op::ImportCall {
+                    dst,
+                    src,
+                    options: options_reg,
+                    source: *source,
+                });
                 self.free_to(mark);
                 Ok(dst)
             }
@@ -3980,6 +4149,15 @@ impl Compiler {
                         PropKey::Computed(_) => {
                             let key = self.key_reg(&prop.key)?;
                             let src = self.expr_to_temp(value)?;
+                            // Une fonction anonyme prend le nom de sa clé.
+                            let anonymous = match value {
+                                Expr::Function(func) => func.name.is_none(),
+                                Expr::Class(class) => class.name.is_none(),
+                                _ => false,
+                            };
+                            if anonymous {
+                                self.emit(Op::NameMember { func: src, key });
+                            }
                             if is_method {
                                 self.emit(Op::SetHome {
                                     func: src,

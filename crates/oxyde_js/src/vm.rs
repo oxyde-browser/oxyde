@@ -116,6 +116,8 @@ pub(crate) struct WellKnown {
     pub(crate) replace: Symbol,
     pub(crate) search: Symbol,
     pub(crate) split: Symbol,
+    pub(crate) dispose: Symbol,
+    pub(crate) async_dispose: Symbol,
 }
 
 struct Frame {
@@ -193,6 +195,8 @@ pub struct Vm {
     template_objects: std::collections::HashMap<(usize, u32), (Arc<FunctionProto>, ObjId)>,
     /// Dernier texte préparé pour une recherche.
     pub(crate) regex_input: Option<(JsStr, Arc<crate::builtins::regexp::RegexInput>)>,
+    /// Trace de la dernière recherche réussie, pour `RegExp.$1`, `lastMatch`…
+    pub(crate) regexp_legacy: crate::builtins::regexp::LegacyStatics,
     /// Prototypes des tableaux typés, dans l'ordre de leurs types d'éléments.
     pub(crate) typed_protos: Vec<ObjId>,
     /// Modules chargés, par identifiant.
@@ -215,6 +219,12 @@ pub struct Vm {
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
     pub(crate) native_new_target: Value,
+    /// Prototype que le constructeur natif en cours a déjà lu sur
+    /// `new.target` ; `None` : il sera lu après la construction.
+    native_proto: Option<ObjId>,
+    /// Vrai si cet agent a le droit de s'endormir dans `Atomics.wait` : pas
+    /// le fil principal d'une page, qui doit rester réactif.
+    pub(crate) can_block: bool,
     /// `Function.prototype[Symbol.hasInstance]` d'origine : `instanceof` s'en
     /// passe et applique directement la règle ordinaire.
     pub(crate) has_instance_function: Option<ObjId>,
@@ -233,6 +243,12 @@ pub struct Vm {
     pub(crate) eval_function: Option<ObjId>,
     /// Racines déclarées par l'hôte (écouteurs, minuteurs…).
     roots: Vec<Value>,
+    /// Attentes d'`Atomics.waitAsync` en cours pour cet agent.
+    pub(crate) async_waits: Vec<crate::builtins::AsyncWait>,
+    /// Boîte où les autres agents déposent les réveils de ces attentes.
+    pub(crate) async_mailbox: Arc<crate::heap::AsyncMailbox>,
+    /// Dernier jeton donné à une attente asynchrone.
+    pub(crate) wait_tokens: u64,
     /// Données de l'hôte accessibles aux fonctions natives.
     pub host: Option<Box<dyn Any + Send>>,
     pub(crate) host_hooks: Option<HostHooks>,
@@ -249,6 +265,9 @@ pub struct Vm {
     realms: Vec<Option<RealmState>>,
     /// Numéro du royaume courant.
     realm: u16,
+    /// Pour chaque royaume, la plage d'emplacements (début, taille) où son
+    /// installation a créé ses intrinsèques, dans le même ordre pour tous.
+    realm_spans: Vec<(u32, u32)>,
 }
 
 /// Objets de base d'un royaume neuf : ses intrinsèques, son objet global
@@ -418,6 +437,8 @@ impl Vm {
             replace: known(11, "Symbol.replace"),
             search: known(12, "Symbol.search"),
             split: known(13, "Symbol.split"),
+            dispose: known(14, "Symbol.dispose"),
+            async_dispose: known(15, "Symbol.asyncDispose"),
         };
         let mut vm = Self {
             heap,
@@ -428,7 +449,7 @@ impl Vm {
             intrinsics,
             error_protos: IndexMap::new(),
             well_known,
-            next_symbol: 14,
+            next_symbol: 16,
             symbol_registry: IndexMap::new(),
             native_depth: 0,
             regex_cache: std::collections::HashMap::new(),
@@ -438,6 +459,7 @@ impl Vm {
             global_vars: std::collections::HashSet::new(),
             template_objects: std::collections::HashMap::new(),
             regex_input: None,
+            regexp_legacy: crate::builtins::regexp::LegacyStatics::default(),
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
             module_loader: None,
@@ -448,6 +470,8 @@ impl Vm {
             rejections: Vec::new(),
             constructing: false,
             native_new_target: Value::Undefined,
+            native_proto: None,
+            can_block: false,
             has_instance_function: None,
             slot_keys: std::collections::HashMap::new(),
             promise_ctor: None,
@@ -455,6 +479,9 @@ impl Vm {
             array_ctor: None,
             eval_function: None,
             roots: Vec::new(),
+            async_waits: Vec::new(),
+            async_mailbox: Arc::default(),
+            wait_tokens: 0,
             host: None,
             host_hooks: None,
             budget: None,
@@ -463,9 +490,20 @@ impl Vm {
             console: Vec::new(),
             realms: vec![None],
             realm: 0,
+            realm_spans: Vec::new(),
         };
+        vm.heap.append_only = true;
         crate::builtins::install(&mut vm);
+        vm.heap.append_only = false;
+        vm.realm_spans.push((0, vm.heap.slots()));
         vm
+    }
+
+    /// Autorise ou non cet agent à s'endormir dans `Atomics.wait`. Un fil
+    /// principal de page ne le peut pas ; un agent de travail, ou un
+    /// lanceur de tests, le peut.
+    pub fn set_can_block(&mut self, can_block: bool) {
+        self.can_block = can_block;
     }
 
     /// Limite le nombre d'instructions exécutées jusqu'au prochain appel de
@@ -474,6 +512,14 @@ impl Vm {
     pub fn set_budget(&mut self, instructions: Option<u64>) {
         self.budget = instructions;
         self.interrupted = false;
+    }
+
+    /// Erreur d'accès à une liaison de module avant son initialisation.
+    fn dead_zone(&mut self, name: &str) -> Value {
+        self.error(
+            "ReferenceError",
+            &format!("{name} est utilisé avant son initialisation"),
+        )
     }
 
     /// Impute `steps` pas de travail natif (recherche d'expression
@@ -552,6 +598,8 @@ impl Vm {
         let id = u16::try_from(self.realms.len()).ok()?;
         let previous = self.realm;
         self.heap.realm = id;
+        self.heap.append_only = true;
+        let base = self.heap.slots();
         let (intrinsics, global, global_lexicals) = fresh_realm_objects(&mut self.heap);
         self.heap.realm = previous;
         self.realms.push(Some(RealmState {
@@ -572,6 +620,9 @@ impl Vm {
         self.switch_realm(id);
         crate::builtins::install(self);
         self.switch_realm(previous);
+        self.heap.append_only = false;
+        self.realm_spans
+            .push((base, self.heap.slots().saturating_sub(base)));
         Some(usize::from(id))
     }
 
@@ -706,6 +757,7 @@ impl Vm {
             .chain(self.stack.iter().cloned())
             .chain(frame_values)
             .chain(self.roots.iter().cloned())
+            .chain(self.async_waits.iter().map(|w| Value::Object(w.promise)))
             .chain(job_values)
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
             .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
@@ -1466,10 +1518,86 @@ impl Vm {
         result
     }
 
-    /// Prototype à donner aux instances créées par `new_target`.
-    fn instance_proto(&mut self, new_target: &Value) -> JsResult<ObjId> {
+    /// Royaume d'une fonction (ECMA-262 §7.3.24) : celui de la cible pour une
+    /// fonction liée ou un mandataire.
+    pub(crate) fn function_realm(&mut self, function: &Value) -> JsResult<u16> {
+        let mut current = function.as_object();
+        for _ in 0..10_000 {
+            let Some(id) = current else { break };
+            let object = self.heap.get(id);
+            current = match &object.kind {
+                Kind::Bound { target, .. } => Some(*target),
+                Kind::Proxy(proxy) => match proxy.target {
+                    Some(target) => Some(target),
+                    None => return Err(self.type_error("le mandataire est révoqué")),
+                },
+                _ => return Ok(object.realm),
+            };
+        }
+        Ok(self.realm)
+    }
+
+    /// L'intrinsèque du royaume `realm` qui correspond à `object`,
+    /// intrinsèque d'un autre royaume : les royaumes s'installent dans le
+    /// même ordre, l'objet cherché est au même rang. `None` si `object`
+    /// n'est pas un intrinsèque.
+    fn intrinsic_in_realm(&self, object: ObjId, realm: u16) -> Option<ObjId> {
+        let from = self.heap.get(object).realm;
+        if from == realm {
+            return Some(object);
+        }
+        let (from_base, from_len) = *self.realm_spans.get(usize::from(from))?;
+        let (to_base, to_len) = *self.realm_spans.get(usize::from(realm))?;
+        let rank = object.0.checked_sub(from_base)?;
+        if from_len != to_len || rank >= from_len {
+            return None;
+        }
+        let twin = ObjId(to_base.checked_add(rank)?);
+        let same_kind = std::mem::discriminant(&self.heap.get(twin).kind)
+            == std::mem::discriminant(&self.heap.get(object).kind);
+        (self.heap.get(twin).realm == realm && same_kind).then_some(twin)
+    }
+
+    /// Lit dès maintenant le prototype que `new.target` destine à l'instance
+    /// du constructeur natif en cours (`default` : son prototype habituel).
+    /// Pour les constructeurs dont l'algorithme fait cette lecture, visible
+    /// du script, avant ses dernières vérifications.
+    pub(crate) fn fetch_new_target_proto(&mut self, default: ObjId) -> JsResult<()> {
+        let new_target = self.native_new_target.clone();
+        if new_target.as_object().is_some() {
+            let proto = self.instance_proto(&new_target, Some(default))?;
+            self.native_proto = Some(proto);
+        }
+        Ok(())
+    }
+
+    /// `Object.prototype` du royaume `realm`.
+    fn object_proto_of(&self, realm: u16) -> ObjId {
+        if realm == self.realm {
+            return self.intrinsics.object_proto;
+        }
+        self.realms
+            .get(usize::from(realm))
+            .and_then(Option::as_ref)
+            .map_or(self.intrinsics.object_proto, |state| {
+                state.intrinsics.object_proto
+            })
+    }
+
+    /// Prototype à donner aux instances créées par `new_target` (ECMA-262
+    /// §10.1.14) : sa propriété `prototype` si c'est un objet, sinon le
+    /// prototype par défaut `default` pris dans le royaume de `new_target`
+    /// (`None` : `Object.prototype`).
+    fn instance_proto(&mut self, new_target: &Value, default: Option<ObjId>) -> JsResult<ObjId> {
         let proto = self.get(new_target, "prototype")?;
-        Ok(proto.as_object().unwrap_or(self.intrinsics.object_proto))
+        if let Some(proto) = proto.as_object() {
+            return Ok(proto);
+        }
+        let realm = self.function_realm(new_target)?;
+        Ok(match default {
+            Some(default) => self.intrinsic_in_realm(default, realm).unwrap_or(default),
+            None => self.object_proto_of(realm),
+        })
     }
 
     /// `new callee(...args)`, avec `new_target` comme constructeur d'origine.
@@ -1491,11 +1619,13 @@ impl Vm {
                 let saved = std::mem::replace(&mut self.constructing, true);
                 let saved_target =
                     std::mem::replace(&mut self.native_new_target, new_target.clone());
+                let saved_proto = self.native_proto.take();
                 let caller = self.realm;
                 self.switch_realm(self.heap.get(id).realm);
                 let result = func(self, &Value::Undefined, args);
                 self.switch_realm(caller);
                 self.native_new_target = saved_target;
+                let fetched = std::mem::replace(&mut self.native_proto, saved_proto);
                 self.constructing = saved;
                 self.native_depth -= 1;
                 let result = result?;
@@ -1504,7 +1634,13 @@ impl Vm {
                 if new_target != callee
                     && let Some(instance) = result.as_object()
                 {
-                    let proto = self.instance_proto(new_target)?;
+                    let proto = match fetched {
+                        Some(proto) => proto,
+                        None => {
+                            let default = self.heap.get(instance).proto;
+                            self.instance_proto(new_target, default)?
+                        }
+                    };
                     self.heap.get_mut(instance).proto = Some(proto);
                 }
                 Ok(result)
@@ -1534,7 +1670,14 @@ impl Vm {
                 let this = if kind == (FunctionKind::ClassConstructor { derived: true }) {
                     Value::Hole
                 } else {
-                    let proto = self.instance_proto(new_target)?;
+                    // Un intégré écrit en JavaScript garde son prototype
+                    // d'origine quand `new.target` n'en fournit pas.
+                    let default = if self.self_hosted.contains(&id) {
+                        self.get(callee, "prototype")?.as_object()
+                    } else {
+                        None
+                    };
+                    let proto = self.instance_proto(new_target, default)?;
                     let instance = self.heap.alloc(Object::new(Some(proto), Kind::Ordinary));
                     if let Some(fields) = fields {
                         self.call(&Value::Object(fields), &Value::Object(instance), &[])?;
@@ -1586,7 +1729,7 @@ impl Vm {
             let this = if kind == (FunctionKind::ClassConstructor { derived: true }) {
                 Value::Hole
             } else {
-                let proto = self.instance_proto(callee)?;
+                let proto = self.instance_proto(callee, None)?;
                 let instance = self.heap.alloc(Object::new(Some(proto), Kind::Ordinary));
                 if let Some(fields) = fields {
                     self.call(&Value::Object(fields), &Value::Object(instance), &[])?;
@@ -1765,10 +1908,16 @@ impl Vm {
                     .map_or(Value::Undefined, |f| f.new_target.clone());
                 self.set_reg(dst, value);
             }
-            Op::ImportCall { dst, src } => {
+            Op::ImportCall {
+                dst,
+                src,
+                options,
+                source,
+            } => {
                 let specifier = self.reg(src).clone();
+                let options = self.reg(options);
                 let scope = self.frames.last().and_then(|f| f.scope);
-                let promise = self.dynamic_import(&specifier, scope);
+                let promise = self.dynamic_import(&specifier, scope, source, &options);
                 self.set_reg(dst, promise);
             }
             Op::LoadCallee { dst } => {
@@ -1797,6 +1946,9 @@ impl Vm {
                     return Ok(None);
                 }
                 let value = self.get(&Value::Object(scope), &name)?;
+                if value == Value::Hole {
+                    return Err(self.dead_zone(&name));
+                }
                 self.set_reg(dst, value);
             }
             Op::SetGlobal { name, src } => {
@@ -1824,6 +1976,13 @@ impl Vm {
                 } else {
                     scope
                 };
+                let uninitialized = matches!(
+                    self.heap.get(target).props.get(&*name).map(|p| &p.slot),
+                    Some(Slot::Data(Value::Hole))
+                );
+                if uninitialized {
+                    return Err(self.dead_zone(&name));
+                }
                 if self.strict() {
                     // Affecter une variable non déclarée est une erreur.
                     if !self.has_property(target, &name) {
@@ -1926,6 +2085,9 @@ impl Vm {
                 } else {
                     Value::Undefined
                 };
+                if value == Value::Hole {
+                    return Err(self.dead_zone(&name));
+                }
                 let type_name = self.type_of(&value);
                 self.set_reg(dst, Value::string(type_name));
             }
@@ -2264,6 +2426,58 @@ impl Vm {
                         .get_mut(id)
                         .insert_prop(key, Property::data(value));
                 }
+            }
+            Op::UsingStack { dst } => {
+                let create = self.using_operation("newStack")?;
+                let stack = self.call(&create, &Value::Undefined, &[])?;
+                self.set_reg(dst, stack);
+            }
+            Op::UsingAdd {
+                stack,
+                src,
+                is_async,
+            } => {
+                let add = self.using_operation("addResource")?;
+                let args = [self.reg(stack), self.reg(src), Value::Bool(is_async)];
+                self.call(&add, &Value::Undefined, &args)?;
+            }
+            Op::UsingDispose {
+                dst,
+                stack,
+                error,
+                has_error,
+                is_async,
+            } => {
+                let name = if is_async {
+                    "disposeAsync"
+                } else {
+                    "disposeSync"
+                };
+                let dispose = self.using_operation(name)?;
+                let pending = if has_error {
+                    self.reg(error)
+                } else {
+                    Value::Undefined
+                };
+                let stack_value = self.reg(stack);
+                let empty = is_async && self.get(&stack_value, "top")? == Value::Null;
+                if empty && has_error {
+                    // Aucune ressource : l'exception en cours repart telle quelle.
+                    return Err(pending);
+                }
+                let result = if empty {
+                    // Rien à libérer, donc rien à attendre.
+                    Value::Bool(false)
+                } else {
+                    let args = [stack_value, Value::Bool(has_error), pending];
+                    self.call(&dispose, &Value::Undefined, &args)?
+                };
+                self.set_reg(dst, result);
+            }
+            Op::NameMember { func, key } => {
+                let key = self.to_key(&self.reg(key))?;
+                let value = self.reg(func);
+                self.name_member(&value, &key, "");
             }
             Op::InitMethod { obj, key, func } => {
                 let key = self.to_key(&self.reg(key))?;

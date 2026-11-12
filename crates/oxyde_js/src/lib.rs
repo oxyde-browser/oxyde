@@ -34,7 +34,7 @@ mod regexp;
 pub mod value;
 mod vm;
 
-pub use builtins::ConsoleMessage;
+pub use builtins::{ConsoleMessage, SharedStorage};
 pub use lexer::SyntaxError;
 pub use module::{ModuleLoader, module_requests};
 pub use value::{JsStr, ObjId, PropertyKey, Symbol, Value};

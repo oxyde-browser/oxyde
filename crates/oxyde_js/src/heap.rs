@@ -8,7 +8,8 @@
 //! emplacement occupé. Un identifiant périmé ne peut pas provoquer d'accès
 //! mémoire invalide : il désigne au pire un autre objet ou l'objet vide.
 
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use indexmap::IndexMap;
 
@@ -274,14 +275,391 @@ pub(crate) struct PromiseData {
     pub(crate) handled: bool,
 }
 
-/// Octets d'un `ArrayBuffer`.
+/// Boîte où `Atomics.notify` dépose, pour un agent, les jetons des attentes
+/// asynchrones qu'il vient de réveiller. L'agent la relève entre deux tâches.
+#[derive(Debug, Default)]
+pub(crate) struct AsyncMailbox {
+    woken: Mutex<Vec<u64>>,
+    signal: Condvar,
+}
+
+impl AsyncMailbox {
+    fn deliver(&self, token: u64) {
+        relock(&self.woken).push(token);
+        self.signal.notify_all();
+    }
+
+    /// Retire et rend les jetons déposés.
+    pub(crate) fn take(&self) -> Vec<u64> {
+        std::mem::take(&mut *relock(&self.woken))
+    }
+
+    /// Attend, `max` au plus, qu'un jeton soit déposé ; revient aussitôt
+    /// s'il y en a déjà un.
+    pub(crate) fn park(&self, max: std::time::Duration) {
+        let woken = relock(&self.woken);
+        if woken.is_empty() {
+            drop(
+                self.signal
+                    .wait_timeout(woken, max)
+                    .unwrap_or_else(PoisonError::into_inner),
+            );
+        }
+    }
+}
+
+/// Agent endormi par `Atomics.wait`, ou attente d'`Atomics.waitAsync`, sur
+/// un octet d'un tampon partagé.
+#[derive(Debug)]
+struct Waiter {
+    id: u64,
+    /// Décalage, dans le tampon, de l'élément attendu.
+    index: usize,
+    notified: bool,
+    /// Attente asynchrone : la boîte de son agent et le jeton à y déposer.
+    mailbox: Option<(Arc<AsyncMailbox>, u64)>,
+}
+
+#[derive(Debug, Default)]
+struct WaitList {
+    waiters: Vec<Waiter>,
+    next_id: u64,
+}
+
+/// Octets d'un `SharedArrayBuffer`. Plusieurs agents peuvent les lire et
+/// les écrire en même temps : chaque octet est atomique, et les opérations
+/// d'`Atomics`, qui portent sur plusieurs octets, se sérialisent par
+/// [`SharedBytes::atomically`].
+///
+/// INVARIANT : `len` ne dépasse jamais `bytes.len()` (la capacité, fixée à
+/// la création) et ne fait que croître.
+#[derive(Debug)]
+pub(crate) struct SharedBytes {
+    bytes: Box<[AtomicU8]>,
+    len: AtomicUsize,
+    /// Verrou des opérations d'`Atomics`.
+    operations: Mutex<()>,
+    waiting: Mutex<WaitList>,
+    wake: Condvar,
+}
+
+/// Verrou repris même empoisonné : les données qu'il garde restent
+/// cohérentes après la panique d'un autre fil.
+fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+impl SharedBytes {
+    /// Tampon partagé de `len` octets nuls, extensible jusqu'à `capacity`.
+    pub(crate) fn new(len: usize, capacity: usize) -> Arc<Self> {
+        let capacity = capacity.max(len);
+        Arc::new(Self {
+            bytes: (0..capacity).map(|_| AtomicU8::new(0)).collect(),
+            len: AtomicUsize::new(len),
+            operations: Mutex::new(()),
+            waiting: Mutex::new(WaitList::default()),
+            wake: Condvar::new(),
+        })
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.len.load(Ordering::SeqCst)
+    }
+
+    /// Porte la longueur à `len` ; `false` si ce serait la réduire ou
+    /// dépasser la capacité.
+    pub(crate) fn grow(&self, len: usize) -> bool {
+        if len > self.bytes.len() {
+            return false;
+        }
+        // `fetch_max` : deux agents qui agrandissent en même temps ne se
+        // font pas rétrécir l'un l'autre.
+        let previous = self.len.fetch_max(len, Ordering::SeqCst);
+        previous <= len
+    }
+
+    fn read(&self, start: usize, out: &mut [u8]) -> bool {
+        let Some(cells) = start
+            .checked_add(out.len())
+            .filter(|end| *end <= self.len())
+            .and_then(|end| self.bytes.get(start..end))
+        else {
+            return false;
+        };
+        for (slot, cell) in out.iter_mut().zip(cells) {
+            *slot = cell.load(Ordering::Relaxed);
+        }
+        true
+    }
+
+    fn write(&self, start: usize, data: &[u8]) -> bool {
+        let Some(cells) = start
+            .checked_add(data.len())
+            .filter(|end| *end <= self.len())
+            .and_then(|end| self.bytes.get(start..end))
+        else {
+            return false;
+        };
+        for (cell, byte) in cells.iter().zip(data) {
+            cell.store(*byte, Ordering::Relaxed);
+        }
+        true
+    }
+
+    /// Exécute `operation` sans qu'aucune autre opération d'`Atomics` ne
+    /// s'intercale sur ce tampon.
+    pub(crate) fn atomically<R>(&self, operation: impl FnOnce() -> R) -> R {
+        let _guard = relock(&self.operations);
+        operation()
+    }
+
+    /// `Atomics.wait` : endort l'agent sur l'élément de décalage `index`
+    /// si `still_expected` est vrai au moment de s'endormir, `timeout` au
+    /// plus. Renvoie `None` si la valeur avait changé, sinon `true` s'il a
+    /// été réveillé par `notify`, `false` au terme du délai.
+    pub(crate) fn wait(
+        &self,
+        index: usize,
+        timeout: Option<std::time::Duration>,
+        still_expected: impl FnOnce() -> bool,
+    ) -> Option<bool> {
+        let deadline = timeout.map(|t| std::time::Instant::now() + t);
+        let mut list = relock(&self.waiting);
+        // La comparaison se fait sous le verrou des dormeurs : un `notify`
+        // ne peut pas passer entre elle et l'endormissement.
+        if !self.atomically(still_expected) {
+            return None;
+        }
+        list.next_id = list.next_id.wrapping_add(1);
+        let id = list.next_id;
+        list.waiters.push(Waiter {
+            id,
+            index,
+            notified: false,
+            mailbox: None,
+        });
+        loop {
+            let position = list.waiters.iter().position(|w| w.id == id);
+            if let Some(position) = position
+                && list.waiters[position].notified
+            {
+                list.waiters.remove(position);
+                return Some(true);
+            }
+            let remaining = match deadline {
+                Some(deadline) => {
+                    let now = std::time::Instant::now();
+                    if now >= deadline {
+                        list.waiters.retain(|w| w.id != id);
+                        return Some(false);
+                    }
+                    Some(deadline - now)
+                }
+                None => None,
+            };
+            list = match remaining {
+                Some(remaining) => {
+                    self.wake
+                        .wait_timeout(list, remaining)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0
+                }
+                None => self.wake.wait(list).unwrap_or_else(PoisonError::into_inner),
+            };
+        }
+    }
+
+    /// `Atomics.waitAsync` : inscrit une attente sur l'élément de décalage
+    /// `index` si `still_expected` est vrai à cet instant. Renvoie son
+    /// numéro, ou `None` si la valeur avait changé. Au réveil, `token` est
+    /// déposé dans `mailbox`.
+    pub(crate) fn wait_async(
+        &self,
+        index: usize,
+        mailbox: &Arc<AsyncMailbox>,
+        token: u64,
+        still_expected: impl FnOnce() -> bool,
+    ) -> Option<u64> {
+        let mut list = relock(&self.waiting);
+        if !self.atomically(still_expected) {
+            return None;
+        }
+        list.next_id = list.next_id.wrapping_add(1);
+        let id = list.next_id;
+        list.waiters.push(Waiter {
+            id,
+            index,
+            notified: false,
+            mailbox: Some((Arc::clone(mailbox), token)),
+        });
+        Some(id)
+    }
+
+    /// Retire l'attente asynchrone `id`, arrivée au terme de son délai.
+    /// `false` si elle n'y est plus : un `notify` l'a réveillée entre-temps.
+    pub(crate) fn cancel_async(&self, id: u64) -> bool {
+        let mut list = relock(&self.waiting);
+        let before = list.waiters.len();
+        list.waiters.retain(|w| w.id != id);
+        list.waiters.len() != before
+    }
+
+    /// `Atomics.notify` : réveille, dans l'ordre où ils se sont inscrits,
+    /// `count` dormeurs au plus qui attendent sur `index`. Renvoie leur
+    /// nombre. Une attente asynchrone quitte la liste aussitôt.
+    pub(crate) fn notify(&self, index: usize, count: usize) -> usize {
+        let mut list = relock(&self.waiting);
+        let mut woken = 0;
+        let mut asleep = false;
+        let waiters = std::mem::take(&mut list.waiters);
+        for mut waiter in waiters {
+            if woken < count && waiter.index == index && !waiter.notified {
+                woken += 1;
+                if let Some((mailbox, token)) = waiter.mailbox.take() {
+                    mailbox.deliver(token);
+                    continue;
+                }
+                waiter.notified = true;
+                asleep = true;
+            }
+            list.waiters.push(waiter);
+        }
+        drop(list);
+        if asleep {
+            self.wake.notify_all();
+        }
+        woken
+    }
+}
+
+/// Octets d'un `ArrayBuffer` ou d'un `SharedArrayBuffer`.
 #[derive(Clone, Debug)]
 pub(crate) struct BufferData {
-    pub(crate) bytes: Vec<u8>,
+    /// Octets d'un tampon ordinaire ; vide pour un tampon partagé.
+    bytes: Vec<u8>,
     /// Tampon détaché : il n'a plus d'octets et ses vues sont vides.
     pub(crate) detached: bool,
+    /// Tampon immuable : ses octets ne changent plus, il ne se détache ni ne
+    /// se redimensionne.
+    pub(crate) immutable: bool,
     /// Taille maximale d'un tampon redimensionnable ; `None` : taille fixe.
     pub(crate) max_len: Option<usize>,
+    /// Octets d'un `SharedArrayBuffer`.
+    pub(crate) shared: Option<Arc<SharedBytes>>,
+}
+
+impl BufferData {
+    /// Tampon ordinaire de `len` octets nuls.
+    pub(crate) fn new(len: usize, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: vec![0; len],
+            detached: false,
+            immutable: false,
+            max_len,
+            shared: None,
+        }
+    }
+
+    /// Tampon partagé de `len` octets nuls.
+    pub(crate) fn new_shared(len: usize, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: Vec::new(),
+            detached: false,
+            immutable: false,
+            max_len,
+            shared: Some(SharedBytes::new(len, max_len.unwrap_or(len))),
+        }
+    }
+
+    /// Vue sur un stockage partagé existant (tampon reçu d'un autre agent).
+    pub(crate) fn from_shared(shared: Arc<SharedBytes>, max_len: Option<usize>) -> Self {
+        Self {
+            bytes: Vec::new(),
+            detached: false,
+            immutable: false,
+            max_len,
+            shared: Some(shared),
+        }
+    }
+
+    /// Longueur courante, en octets.
+    pub(crate) fn len(&self) -> usize {
+        match &self.shared {
+            Some(shared) => shared.len(),
+            None => self.bytes.len(),
+        }
+    }
+
+    /// Lit `size` octets (8 au plus) à partir de `start` ; `None` hors bornes.
+    pub(crate) fn read(&self, start: usize, size: usize) -> Option<[u8; 8]> {
+        let mut out = [0u8; 8];
+        let slot = out.get_mut(..size)?;
+        match &self.shared {
+            Some(shared) => shared.read(start, slot).then_some(out),
+            None => {
+                let end = start.checked_add(size)?;
+                slot.copy_from_slice(self.bytes.get(start..end)?);
+                Some(out)
+            }
+        }
+    }
+
+    /// Écrit `data` à partir de `start` ; `false`, sans rien écrire, hors
+    /// bornes.
+    pub(crate) fn write(&mut self, start: usize, data: &[u8]) -> bool {
+        match &self.shared {
+            Some(shared) => shared.write(start, data),
+            None => {
+                let Some(slot) = start
+                    .checked_add(data.len())
+                    .and_then(|end| self.bytes.get_mut(start..end))
+                else {
+                    return false;
+                };
+                slot.copy_from_slice(data);
+                true
+            }
+        }
+    }
+
+    /// Copie des `count` octets à partir de `start` ; vide hors bornes.
+    pub(crate) fn copy_range(&self, start: usize, count: usize) -> Vec<u8> {
+        match &self.shared {
+            Some(shared) => {
+                let mut out = vec![0; count];
+                if shared.read(start, &mut out) {
+                    out
+                } else {
+                    Vec::new()
+                }
+            }
+            None => start
+                .checked_add(count)
+                .and_then(|end| self.bytes.get(start..end))
+                .map(<[u8]>::to_vec)
+                .unwrap_or_default(),
+        }
+    }
+
+    /// Change la longueur d'un tampon ordinaire ; les octets ajoutés sont
+    /// nuls. Sans effet sur un tampon partagé (voir [`SharedBytes::grow`]).
+    pub(crate) fn resize(&mut self, len: usize) {
+        if self.shared.is_none() {
+            self.bytes.resize(len, 0);
+        }
+    }
+
+    /// Retire ses octets à un tampon ordinaire, qui devient vide.
+    pub(crate) fn take_bytes(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.bytes)
+    }
+
+    /// Donne ses octets à un tampon ordinaire.
+    pub(crate) fn set_bytes(&mut self, bytes: Vec<u8>) {
+        if self.shared.is_none() {
+            self.bytes = bytes;
+        }
+    }
 }
 
 /// Type des éléments d'un tableau typé.
@@ -343,6 +721,9 @@ pub(crate) enum Kind {
     RegExp {
         regex: Arc<crate::regexp::Regex>,
         source: JsStr,
+        /// Créée par le constructeur `RegExp` lui-même, et non par une
+        /// sous-classe : elle alimente `RegExp.$1` et accepte `compile`.
+        legacy: bool,
     },
     Bound {
         target: ObjId,
@@ -399,11 +780,42 @@ pub(crate) enum HelperKind {
     FlatMap,
     /// `Iterator.concat` : parcourt `sources` l'une après l'autre.
     Concat,
+    /// `chunks` : paquets de `remaining` valeurs.
+    Chunks,
+    /// `windows` : fenêtres glissantes de `remaining` valeurs.
+    Windows,
+    /// `Iterator.zip` et `zipKeyed` : état dans `zip`.
+    Zip,
     /// Enveloppe de `Iterator.from` autour d'un itérateur étranger.
     Wrap,
     /// Itérateur de `String.prototype.matchAll` : `iterator` est
     /// l'expression, `next` le texte, `func` le drapeau global.
     RegExpString,
+}
+
+/// Ce que fait `Iterator.zip` quand ses itérateurs n'ont pas la même longueur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ZipMode {
+    /// S'arrête au premier épuisé.
+    Shortest,
+    /// Continue jusqu'au dernier, en complétant par le remplissage.
+    Longest,
+    /// Exige des longueurs égales.
+    Strict,
+}
+
+/// État de `Iterator.zip` et `Iterator.zipKeyed`.
+#[derive(Clone, Debug)]
+pub(crate) struct ZipState {
+    /// Itérateurs et leur `next` ; `None` : épuisé, le remplissage le remplace.
+    pub(crate) iters: Vec<Option<(Value, Value)>>,
+    /// Pour chaque rang, l'itérateur s'il est encore ouvert : c'est ce
+    /// qu'il faut fermer si l'on s'arrête.
+    pub(crate) open: Vec<Option<Value>>,
+    pub(crate) mode: ZipMode,
+    pub(crate) padding: Vec<Value>,
+    /// `zipKeyed` : clés des résultats ; `None` : résultats en tableaux.
+    pub(crate) keys: Option<Vec<crate::value::PropertyKey>>,
 }
 
 /// État d'une aide d'itérateur.
@@ -423,6 +835,10 @@ pub(crate) struct IteratorHelper {
     pub(crate) inner: Option<(Value, Value)>,
     /// `concat` : (méthode d'itération, itérable) restant à parcourir.
     pub(crate) sources: Vec<(Value, Value)>,
+    /// Valeurs en attente (`chunks`, `windows`).
+    pub(crate) buffer: Vec<Value>,
+    /// État de `Iterator.zip` et `zipKeyed`.
+    pub(crate) zip: Option<Box<ZipState>>,
     pub(crate) started: bool,
     pub(crate) running: bool,
     pub(crate) done: bool,
@@ -518,6 +934,10 @@ pub(crate) struct Heap {
     pub(crate) collections: usize,
     /// Royaume courant, inscrit dans chaque objet créé.
     pub(crate) realm: u16,
+    /// Vrai pendant l'installation d'un royaume : les objets sont créés à la
+    /// suite, sans réemployer d'emplacement libre, pour que tous les royaumes
+    /// rangent leurs intrinsèques dans le même ordre.
+    pub(crate) append_only: bool,
 }
 
 impl Heap {
@@ -533,13 +953,15 @@ impl Heap {
             threshold: GC_MIN_THRESHOLD,
             collections: 0,
             realm: 0,
+            append_only: false,
         }
     }
 
     pub(crate) fn alloc(&mut self, mut object: Object) -> ObjId {
         object.realm = self.realm;
         self.allocated_since_gc += 1;
-        if let Some(index) = self.free.pop()
+        if !self.append_only
+            && let Some(index) = self.free.pop()
             && let Some(slot) = self.objects.get_mut(index as usize)
         {
             *slot = Some(object);
@@ -548,6 +970,11 @@ impl Heap {
         let index = u32::try_from(self.objects.len()).unwrap_or(u32::MAX);
         self.objects.push(Some(object));
         ObjId(index)
+    }
+
+    /// Nombre d'emplacements d'objets, libres ou occupés.
+    pub(crate) fn slots(&self) -> u32 {
+        u32::try_from(self.objects.len()).unwrap_or(u32::MAX)
     }
 
     pub(crate) fn get(&self, id: ObjId) -> &Object {
@@ -688,6 +1115,18 @@ impl Heap {
                     for (a, b) in helper.inner.iter().chain(&helper.sources) {
                         push(a, &mut pending);
                         push(b, &mut pending);
+                    }
+                    for value in &helper.buffer {
+                        push(value, &mut pending);
+                    }
+                    if let Some(zip) = &helper.zip {
+                        for (a, b) in zip.iters.iter().flatten() {
+                            push(a, &mut pending);
+                            push(b, &mut pending);
+                        }
+                        for value in zip.open.iter().flatten().chain(&zip.padding) {
+                            push(value, &mut pending);
+                        }
                     }
                 }
                 Kind::NativeData { data, .. } => data.iter().for_each(|v| push(v, &mut pending)),

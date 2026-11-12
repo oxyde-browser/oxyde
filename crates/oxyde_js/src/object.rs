@@ -624,6 +624,7 @@ impl Vm {
             && *n >= 0.0
             && n.fract() == 0.0
             && *n < 9_007_199_254_740_992.0
+            && !self.typed_immutable(*id)
         {
             #[expect(
                 clippy::cast_possible_truncation,
@@ -997,8 +998,29 @@ impl Vm {
             } => {
                 let (target, i, kind) = (target.clone(), *index, *kind);
                 // La longueur est relue à chaque tour : l'objet peut changer.
-                let length = self.get(&target, "length")?;
-                let length = self.to_number(&length)?;
+                let typed = target
+                    .as_object()
+                    .filter(|t| self.typed_array(*t).is_some());
+                let length = match typed {
+                    // Itérateur déjà épuisé : il le reste.
+                    Some(_) if i == usize::MAX => return Ok(None),
+                    Some(typed) => match self.typed_length(typed) {
+                        #[expect(
+                            clippy::cast_precision_loss,
+                            reason = "longueur petite devant 2^53"
+                        )]
+                        Some(length) => length as f64,
+                        None => {
+                            return Err(self.type_error(
+                                "le tableau typé est détaché ou hors des bornes de son tampon",
+                            ));
+                        }
+                    },
+                    None => {
+                        let length = self.get(&target, "length")?;
+                        self.to_number(&length)?
+                    }
+                };
                 #[expect(clippy::cast_precision_loss, reason = "index petit devant 2^53")]
                 let position = i as f64;
                 if length.is_nan() || position >= length {

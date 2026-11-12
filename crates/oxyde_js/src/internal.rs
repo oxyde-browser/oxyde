@@ -389,9 +389,14 @@ impl Vm {
                 }
                 Kind::TypedArray(_) => {
                     if let Some(index) = canonical_numeric_index(name) {
-                        return index
-                            .and_then(|i| self.typed_get(id, i))
-                            .map(Descriptor::plain);
+                        let immutable = self.typed_immutable(id);
+                        return index.and_then(|i| self.typed_get(id, i)).map(|value| {
+                            if immutable {
+                                Descriptor::data(value, false, true, false)
+                            } else {
+                                Descriptor::plain(value)
+                            }
+                        });
                     }
                 }
                 Kind::Closure(c) => {
@@ -651,6 +656,19 @@ impl Vm {
         desc: &Descriptor,
     ) -> JsResult<bool> {
         let valid = index.is_some_and(|i| self.typed_length(id).is_some_and(|len| i < len));
+        if valid && self.typed_immutable(id) {
+            // Élément figé : seule une redéfinition à l'identique passe.
+            let current = index.and_then(|i| self.typed_get(id, i));
+            let same = match (&desc.value, &current) {
+                (Some(wanted), Some(current)) => same_value(wanted, current),
+                _ => true,
+            };
+            return Ok(same
+                && desc.configurable != Some(true)
+                && desc.enumerable != Some(false)
+                && !desc.is_accessor()
+                && desc.writable != Some(true));
+        }
         if !valid
             || desc.configurable == Some(false)
             || desc.enumerable == Some(false)
@@ -722,6 +740,9 @@ impl Vm {
                         && let Some(index) = canonical_numeric_index(name)
                     {
                         if receiver.as_object() == Some(obj) {
+                            if self.typed_immutable(obj) {
+                                return Ok(false);
+                            }
                             self.typed_store(obj, index, &value)?;
                             return Ok(true);
                         }
@@ -844,6 +865,15 @@ impl Vm {
             Some(property) if !property.configurable => false,
             Some(_) => {
                 object.props.shift_remove(&**name);
+                // Le nom ou la longueur d'une fermeture, une fois redéfinis
+                // puis supprimés, ne reparaissent pas sous leur forme d'origine.
+                if matches!(object.kind, Kind::Closure(_)) {
+                    match &**name {
+                        "name" => object.deleted_virtual |= DELETED_NAME,
+                        "length" => object.deleted_virtual |= DELETED_LENGTH,
+                        _ => {}
+                    }
+                }
                 true
             }
             None => true,

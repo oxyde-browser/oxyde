@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **40 768 tests de test262 sur 48 795 (83,5 %)** ; il en reste 8 027.
+- `oxyde_js` réussit **43 411 tests de test262 sur 48 795 (89,0 %)** ; il en reste 5 384.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -16,7 +16,7 @@ ordres de grandeur, car corriger un domaine fait souvent passer des tests rangé
 |---|---:|---:|---|
 | A et B — langage, `eval` direct | 1 839 | 352 | presque terminées |
 | C — intégrés courants | 1 743 | 217 | presque terminée |
-| D — tampons partagés, tableaux typés | 1 024 | 1 016 | à faire |
+| D — tampons partagés, tableaux typés | 1 024 | 298 | en cours |
 | E — expressions rationnelles | 855 | 859 | à faire |
 | F — propositions récentes | 938 | 928 | à faire |
 | G — Temporal | 4 614 | 4 622 | à faire |
@@ -84,28 +84,86 @@ faut donner aux fonctions qui contiennent `eval` une portée dynamique, comme po
 - **WeakRef, FinalizationRegistry, WeakMap, WeakSet** (130) : demande des références faibles
   dans le ramasse-miettes ; aujourd'hui `WeakMap` et `WeakSet` retiennent leurs clés.
 
-### D — Tampons partagés et tableaux typés (1 024 tests)
+### D — Tampons partagés et tableaux typés (1 024 tests) — faite
 
-- **SharedArrayBuffer et Atomics** (495) : absents. `Atomics.wait` et `waitAsync` supposent des
-  agents concurrents, donc des fils d'exécution ; à faire avec le jalon 5 (multi-processus).
-- **TypedArray, ArrayBuffer, DataView** (529) : tampons redimensionnables, `transfer`,
-  `Uint8Array.fromBase64` et `toHex`, constructeurs d'espèce.
+- **SharedArrayBuffer et Atomics** (495) : `SharedArrayBuffer` est là (104 tests sur 104), sur
+  un stockage dont les octets se partagent entre agents, ainsi qu'`Atomics` pour un agent
+  et plusieurs (389 sur 389) : `add`, `and`, `compareExchange`, `exchange`, `load`, `or`,
+  `store`, `sub`, `xor`, `isLockFree`, `wait`, `waitAsync`, `notify`, `pause`. Le lanceur
+  fournit `$262.agent` : chaque agent est un moteur sur son propre fil, et les tests
+  vérifient la mémoire réellement partagée et le réveil par `notify`. `waitAsync` inscrit
+  une attente et rend une promesse, réglée entre deux tâches par l'agent qui attend ; le
+  lanceur a pour cela une boucle d'événements (`setTimeout`, attentes en cours).
+- **TypedArray, ArrayBuffer, DataView** (529) : les constructeurs d'espèce sont consultés
+  (`slice`, `filter`, `map`, `subarray`, `from`, `of`), les parcours lisent les éléments au
+  fil de l'eau, `toLocaleString` appelle celui de chaque élément (TypedArray : 1 405 tests
+  sur 1 453). `Uint8Array` lit et écrit le base64 et l'hexadécimal (`fromBase64`,
+  `fromHex`, `toBase64`, `toHex`, `setFromBase64`, `setFromHex` : 68 tests sur 70).
+  Les tampons immuables sont là (`immutable`, `transferToImmutable`, `sliceToImmutable`) :
+  toute écriture y est refusée, par les tableaux typés, `DataView` et `Atomics` (61 tests
+  dédiés sur 66 ; les 5 autres demandent les attributs d'importation). Quand `new.target`
+  n'a pas de `prototype` objet, le prototype par défaut est pris dans son royaume, pour
+  tous les constructeurs natifs (80 tests, dont une cinquantaine hors de cette étape).
+  Tableaux typés, `ArrayBuffer`, `DataView` et `SharedArrayBuffer` passent désormais tous
+  leurs tests.
 
-### E — Expressions rationnelles (855 tests)
+### E — Expressions rationnelles (855 tests) — faite
 
-- **Propriétés Unicode** `\p{…}` (464) : il faut les tables Unicode (catégories, écritures,
-  propriétés binaires). Elles sont déjà prévues au plan par ICU4X, qui est en Rust pur.
-- **Drapeau `v`** et **modificateurs** `(?i:…)` (221).
-- **Reste** (170) : `RegExp.prototype.compile`, propriétés statiques héritées (`RegExp.$1`),
-  drapeau `d` (indices), groupes nommés en double.
+- **Propriétés Unicode** `\p{…}` (464) : faites, sur les tables d'ICU4X (catégories
+  générales, écritures et leurs extensions, propriétés binaires). 357 tests de plus. Les
+  tables sont en Unicode 18 et la suite vise Unicode 17 : 91 tests échouent sur des
+  caractères dont les propriétés ont changé. Les propriétés de chaînes (`RGI_Emoji`…)
+  viennent avec le drapeau `v`. Au passage, la répétition d'un atome d'un seul caractère
+  (`a*`, `\p{L}+`) ne coûte plus de place de pile par tour.
+- **Modificateurs** `(?ims-ims:…)` : faits (66 tests sur 70). Les drapeaux `i`, `m` et `s`
+  sont portés par chaque instruction ; avec `u`, la casse suit le repli simple d'Unicode.
+  Les 4 tests restants demandent qu'un `.` sans `u` ne prenne qu'une moitié de paire de
+  substituts, ce que des chaînes en UTF-8 ne permettent pas.
+- **Drapeau `v`** : fait (184 tests). Classes imbriquées, différence `--`, intersection
+  `&&`, chaînes `\q{…}`, propriétés de chaînes (`Basic_Emoji`, `Emoji_Keycap_Sequence`,
+  `RGI_Emoji_Modifier_Sequence`, `RGI_Emoji_Tag_Sequence`). `RGI_Emoji` et ses séquences
+  de drapeaux et à liant manquent, faute de tables (14 tests).
+- **Reste** (170) : faits, `RegExp.escape`, `RegExp.prototype.compile`, les propriétés
+  statiques héritées (`RegExp.$1`, `lastMatch`…), le drapeau `d` (indices) et le
+  constructeur pour les objets qui se disent expressions rationnelles (93 tests), puis
+  les groupes nommés en double (permis dans des alternatives distinctes) et les noms de
+  groupe en Unicode, échappements compris (27 tests).
+
+Il reste 115 échecs dans `RegExp` : 91 tiennent à la version d'Unicode de la suite, 14
+aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isolés).
 
 ### F — Propositions récentes (938 tests)
 
-- **`using` et `DisposableStack`** (338).
-- **`import defer`, `import source`, attributs d'importation** (320).
-- **Aides d'`Iterator` restantes** (216) : `zip`, `zipKeyed`, `chunks`, `windows`, `includes`,
-  `join`.
-- **ShadowRealm** (64) : demande plusieurs royaumes dans une même machine.
+- **`using` et `DisposableStack`** (338) : les intégrés sont faits (`Symbol.dispose`,
+  `Symbol.asyncDispose`, `DisposableStack`, `AsyncDisposableStack`, libération des
+  itérateurs : 236 tests), écrits en JavaScript embarqué, ainsi que les déclarations
+  `using` et `await using` (131 tests) : dans les blocs, les corps de fonction et de
+  module, et les têtes de boucle. Une portée qui en déclare tient une pile de ressources,
+  vidée à sa sortie, par un saut comme par une exception. Au passage, les noms liés par
+  la tête d'un `for…in` ou `for…of` sont en zone morte pendant l'évaluation de l'objet
+  parcouru.
+- **`import defer`, `import source`, attributs d'importation** (320) : les formes
+  d'appel `import.source(x)` et `import.defer(x)` sont lues (149 tests). `import.source`
+  charge le module puis rejette sa promesse, un module JavaScript n'ayant pas de source à
+  rendre. LIMITE : `import.defer(x)` évalue encore le module aussitôt, comme `import(x)`.
+  Les attributs d'importation sont faits (24 tests) : `with { type: "json" }` et
+  `with { type: "text" }` donnent un module dont le seul export, `default`, est la
+  valeur du fichier ; `import()` les reçoit par son second argument. Le type `bytes`
+  manque (5 tests) : le chargeur de modules ne fournit que du texte. Restent les
+  déclarations `import defer` et `import source`, et l'évaluation différée.
+- **Liaisons de module** : les `let`, `const` et classes de premier niveau d'un module
+  sont en zone morte dès son chargement, ses `var` valent `undefined` (26 tests, dont
+  21 que le lanceur faussait en chargeant deux fois un module qui s'importe lui-même).
+  Erreurs précoces des modules (25 tests) : une fonction de premier niveau ne se
+  redéclare pas, un nom exporté doit être déclaré, `export default function () {}` est
+  une déclaration. Restent les fonctions, créées seulement à l'évaluation, et l'objet
+  d'espace de noms, qui n'est pas encore un objet exotique.
+- **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
+  `includes` et `join` (210 tests). Restent 3 tests qui écrivent `length = 2^32 - 1` sur
+  un tableau : les tableaux d'Oxyde sont denses.
+- **ShadowRealm** (64) : fait, les 64 tests passent. `evaluate` exécute le code dans un
+  royaume à part ; seules les primitives et les fonctions, enveloppées, passent la
+  frontière. Un royaume ainsi créé vit autant que la machine.
 
 ### G — Temporal (4 614 tests)
 
@@ -179,6 +237,73 @@ Reste :
 Processus navigateur, réseau, rendu par site et GPU ; `oxyde_ipc` ; bac à sable Windows
 (AppContainer, jetons restreints) ; isolation des sites ; écran « Onglet planté ». C'est aussi
 le moment de `SharedArrayBuffer` et des workers, qui supposent plusieurs fils.
+
+Branche `jalon-5-multi-processus`, empilée sur `jalon-6-mise-en-page`.
+
+Fait :
+
+- **Messages entre processus** (`oxyde_ipc`) : codec binaire écrit sur la bibliothèque
+  standard (`Encode`, `Decode`, macros `ipc_struct!` et `ipc_enum!`), trames bornées, canal
+  avec fil de lecture, lancement d'un processus enfant relié par son entrée et sa sortie
+  standard — il ne lui faut donc aucun droit sur le système pour parler à son parent. Un
+  message reçu est tenu pour hostile : le décodage vérifie chaque longueur avant d'allouer
+  et ne panique pas.
+
+- **Liste d'affichage sur le fil** (`oxyde_paint::wire`) : polices et images ne voyagent
+  qu'une fois ; le destinataire rejette toute liste incohérente.
+- **Processus de rendu par onglet** (`oxyde --type=renderer`) : chaque page du web ou
+  fichier local est chargée, scriptée, mise en page et peinte dans son propre processus,
+  qui n'ouvre ni fichier ni connexion — il demande ses ressources au navigateur, lequel ne
+  lit un fichier que pour un document local. Le navigateur garde la fenêtre, le réseau, les
+  cookies et la composition : la molette fait défiler sans attendre le processus de rendu.
+  Si ce processus disparaît, seul son onglet affiche « Cet onglet a planté » ; si le
+  navigateur disparaît, ses processus de rendu s'arrêtent. `--single-process` garde tout
+  dans le navigateur ; `about:crash` fait planter le processus de rendu, pour vérifier.
+  Une capture `--screenshot --page-only --multi-process` passe par un processus de rendu :
+  les tests d'intégration la comparent, pixel pour pixel, au rendu dans le navigateur.
+
+- **Écran « Cet onglet a planté »** : « Recharger la page » relance un processus de rendu,
+  « Fermer l'onglet » ferme l'onglet.
+- **Bac à sable Windows** (`oxyde_sandbox`) : le processus de rendu est lancé avec un jeton
+  restreint (privilèges retirés ; accès limité à ce qui est ouvert à tous, aux utilisateurs
+  ou à la session, donc ni les fichiers du profil ni le registre de l'utilisateur), un
+  niveau d'intégrité bas (aucune écriture), un objet de travail (il meurt avec le
+  navigateur, ne lance aucun processus, n'a ni presse-papiers ni réglages du système) et
+  les seules poignées de ses tubes. Il se durcit ensuite lui-même : pas de code produit à
+  l'exécution, pas de points d'extension, pas de bibliothèque distante. Un test lance une
+  sonde dans le bac à sable et constate ces refus, témoin hors bac à sable à l'appui.
+  `--no-sandbox` y renonce, pour le diagnostic. C'est le seul crate du projet qui contient
+  du code `unsafe` (appels Win32), chaque bloc étant justifié.
+
+- **Processus réseau** (`oxyde --type=network`) : HTTP, TLS et cookies quittent le
+  navigateur pour un processus à part, auquel il adresse ses requêtes par un canal ; les
+  requêtes sont servies en parallèle. Si ce processus disparaît, les requêtes en cours
+  échouent et un autre est lancé à la suivante. Son bac à sable est moins serré que celui
+  du rendu (`Policy::Networked`) : privilèges retirés, intégrité basse, objet de travail,
+  mais pas de restriction par identifiants, que la résolution de noms refuse. Les fichiers
+  locaux restent lus par le navigateur.
+
+- **Isolation des sites** : un processus de rendu est voué à un site. Une navigation vers
+  un autre site — y compris par redirection — passe par un processus neuf. Le navigateur
+  tient ce verrou d'après ce qu'il a lui-même demandé et reçu du réseau, jamais d'après ce
+  que le processus affirme : il ne lui sert un document que pour la navigation qu'il lui a
+  confiée, et des ressources, des requêtes de script ou des cookies qu'au nom d'un
+  document de son site ; l'adresse affichée et les changements d'adresse sans chargement
+  restent sur ce site ; une page du web n'ouvre pas un fichier local.
+
+Limites à ce stade : les cadres vivent dans le processus de leur page, quel que soit leur
+site ; deux onglets du même site ont chacun leur processus ; le site est approché sans la
+liste des suffixes publics ; une redirection vers un autre site est demandée deux fois au
+serveur ; l'accessibilité ne voit pas le contenu d'une page distante. Le bac
+à sable n'est pas un `AppContainer` : le processus de rendu peut encore lire ce qui est
+lisible par tous sur la machine et ouvrir des connexions réseau ; le processus réseau peut
+lire ce que l'utilisateur peut lire ; `win32k` n'est pas verrouillé. Les cookies vivent en
+mémoire dans le processus réseau et sont perdus s'il s'arrête. Pas de processus GPU : la
+rastérisation reste dans le navigateur.
+
+Reste : les workers (`SharedArrayBuffer` et `Atomics` sont faits, étape D de test262) ; le
+processus GPU ;
+les cadres d'un autre site dans leur propre processus.
 
 ### Jalon 6 — Mise en page complète et compositeur
 

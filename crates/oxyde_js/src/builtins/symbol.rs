@@ -124,6 +124,8 @@ pub(super) fn install(vm: &mut Vm) {
         ("replace", &known.replace),
         ("search", &known.search),
         ("split", &known.split),
+        ("dispose", &known.dispose),
+        ("asyncDispose", &known.async_dispose),
     ] {
         // Les symboles connus sont des propriétés figées de `Symbol`.
         vm.heap.get_mut(ctor).props.insert(

@@ -14,6 +14,7 @@ mod cors;
 #[path = "generated/dom.rs"]
 mod dom_idl;
 mod script;
+pub mod wire;
 
 pub use cors::preflight_allows;
 
@@ -1322,6 +1323,18 @@ impl Page {
         self.scrolling.lock().offset(id)
     }
 
+    /// Fait défiler la zone `id` jusqu'à (`x`, `y`), dans ses bornes : pour
+    /// un compositeur qui a déjà fait défiler la zone de son côté.
+    pub fn set_scroll(&mut self, id: u32, x: f32, y: f32) -> bool {
+        self.scrolling.lock().scroll_within_limit(id, x, y)
+    }
+
+    /// Décalages de défilement non nuls : (zone, x, y).
+    #[must_use]
+    pub fn scroll_offsets(&self) -> Vec<(u32, f32, f32)> {
+        self.scrolling.lock().offsets()
+    }
+
     /// Molette de (`dx`, `dy`) au point (`x`, `y`) de la fenêtre : fait
     /// défiler la zone située sous le pointeur, ou la fenêtre. Renvoie
     /// `true` si quelque chose a défilé ; seule la composition est à
@@ -1453,6 +1466,14 @@ impl Page {
     #[must_use]
     pub fn display_list(&self) -> &DisplayList {
         &self.list
+    }
+
+    /// Largeur et hauteur du contenu, en pixels CSS.
+    #[must_use]
+    pub fn content_size(&self) -> (f32, f32) {
+        self.tree
+            .as_ref()
+            .map_or((0.0, 0.0), |t| (t.width, t.height))
     }
 
     /// Hauteur totale du contenu, en pixels CSS.

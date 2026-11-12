@@ -298,6 +298,14 @@ fn text_key(name: &str) -> PropertyKey {
     PropertyKey::String(Arc::from(name))
 }
 
+impl Vm {
+    /// Valeur du texte JSON `text` (module JSON) ; `SyntaxError` s'il est
+    /// invalide.
+    pub(crate) fn parse_json_text(&mut self, text: &str) -> JsResult {
+        parse_text(self, text, false).map(|(value, _)| value)
+    }
+}
+
 /// `JSON.parse(text, reviver)` (ECMA-262 §25.5.1).
 fn json_parse(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let text = vm.to_string(&arg(args, 0))?;

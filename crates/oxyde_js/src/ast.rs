@@ -7,6 +7,17 @@ pub(crate) enum VarKind {
     Var,
     Let,
     Const,
+    /// `using x = …` : constante dont la ressource est libérée en sortie de portée.
+    Using,
+    /// `await using x = …` : de même, la libération étant attendue.
+    AwaitUsing,
+}
+
+impl VarKind {
+    /// Vrai pour `using` et `await using`.
+    pub(crate) fn is_using(self) -> bool {
+        matches!(self, Self::Using | Self::AwaitUsing)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -176,8 +187,9 @@ pub(crate) enum Expr {
     /// `super(...)`
     SuperCall(Vec<Expr>),
     NewTarget,
-    /// `import(spécificateur)` et son second argument éventuel (options).
-    ImportCall(Box<Expr>, Option<Box<Expr>>),
+    /// `import(spécificateur)` et son second argument éventuel (options) ;
+    /// le booléen distingue `import.source(spécificateur)`.
+    ImportCall(Box<Expr>, Option<Box<Expr>>, bool),
     /// `yield expr`, `yield* expr` (dans un générateur seulement).
     Yield {
         arg: Option<Box<Expr>>,
