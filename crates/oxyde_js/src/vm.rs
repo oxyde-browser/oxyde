@@ -1512,7 +1512,7 @@ impl Vm {
 
     /// Royaume d'une fonction (ECMA-262 §7.3.24) : celui de la cible pour une
     /// fonction liée ou un mandataire.
-    fn function_realm(&mut self, function: &Value) -> JsResult<u16> {
+    pub(crate) fn function_realm(&mut self, function: &Value) -> JsResult<u16> {
         let mut current = function.as_object();
         for _ in 0..10_000 {
             let Some(id) = current else { break };

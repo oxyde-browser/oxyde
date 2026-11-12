@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `test262-conformite`, commit `73d6cdb`.
 
-- `oxyde_js` réussit **43 272 tests de test262 sur 48 795 (88,7 %)** ; il en reste 5 523.
+- `oxyde_js` réussit **43 336 tests de test262 sur 48 795 (88,8 %)** ; il en reste 5 459.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Le jalon 4 (JavaScript) est en cours : le moteur et le DOM scriptable existent, la conformité monte.
 - Les jalons 5 à 10 ne sont pas commencés.
@@ -151,7 +151,9 @@ aux tables d'émojis, et une dizaine aux chaînes en UTF-8 (demi-substituts isol
 - **Aides d'`Iterator` restantes** (216) : faites, `zip`, `zipKeyed`, `chunks`, `windows`,
   `includes` et `join` (210 tests). Restent 3 tests qui écrivent `length = 2^32 - 1` sur
   un tableau : les tableaux d'Oxyde sont denses.
-- **ShadowRealm** (64) : demande plusieurs royaumes dans une même machine.
+- **ShadowRealm** (64) : fait, les 64 tests passent. `evaluate` exécute le code dans un
+  royaume à part ; seules les primitives et les fonctions, enveloppées, passent la
+  frontière. Un royaume ainsi créé vit autant que la machine.
 
 ### G — Temporal (4 614 tests)
 

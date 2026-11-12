@@ -3041,3 +3041,44 @@ fn using_declarations() {
     );
     assert_eq!(step(&mut vm, "log.join()"), "corps,b,a,suite,tour,c,fin");
 }
+
+#[test]
+fn shadow_realm_boundary() {
+    // Les primitives passent ; les objets sont refusés ; le royaume a ses
+    // propres intrinsèques et son propre objet global.
+    assert_eq!(
+        eval(
+            "var realm = new ShadowRealm(); globalThis.marque = 1; \
+             [realm.evaluate('1 + 1'), realm.evaluate('typeof marque'), \
+              realm.evaluate('Array.prototype.ajout = 1; 2'), [].ajout].join()"
+        ),
+        "2,undefined,2,"
+    );
+    assert!(eval("new ShadowRealm().evaluate('({})')").contains("TypeError"));
+    assert!(eval("new ShadowRealm().evaluate('throw new RangeError()')").contains("TypeError"));
+    assert!(eval("new ShadowRealm().evaluate('1 +')").contains("SyntaxError"));
+    assert!(eval("new ShadowRealm().evaluate(1)").contains("TypeError"));
+    assert!(eval("ShadowRealm()").contains("TypeError"));
+    assert!(eval("ShadowRealm.prototype.evaluate.call({}, '1')").contains("TypeError"));
+    // Une fonction est enveloppée : arguments et résultat traversent la
+    // frontière, les fonctions dans les deux sens.
+    assert_eq!(
+        eval(
+            "var realm = new ShadowRealm(); \
+             var add = realm.evaluate('(function add(a, b) { return a + b; })'); \
+             var apply = realm.evaluate('(f, x) => f(x) * 2'); \
+             [add(2, 3), add.name, add.length, typeof add.prototype, \
+              apply(x => x + 1, 4), add instanceof Function, \
+              Object.getPrototypeOf(add) === Function.prototype].join()"
+        ),
+        "5,add,2,undefined,10,true,true"
+    );
+    assert!(
+        eval("new ShadowRealm().evaluate('(f) => f()')(() => { throw 1; })").contains("TypeError")
+    );
+    assert!(eval("new ShadowRealm().evaluate('(x) => x')({})").contains("TypeError"));
+    assert_eq!(
+        eval("Object.prototype.toString.call(new ShadowRealm())"),
+        "[object ShadowRealm]"
+    );
+}

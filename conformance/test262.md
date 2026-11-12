@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 43272 réussis sur 48795 (88.7 %).**
+**Total : 43336 réussis sur 48795 (88.8 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -49,7 +49,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 378 | 98.7 % |
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
-| `built-ins/ShadowRealm` | 64 | 0 | 0.0 % |
+| `built-ins/ShadowRealm` | 64 | 64 | 100.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
 | `built-ins/String` | 1223 | 1186 | 97.0 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |

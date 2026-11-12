@@ -244,7 +244,11 @@ impl Vm {
         loaded
     }
 
-    fn import_namespace(&mut self, specifier: &JsStr, referrer: &JsStr) -> JsResult<ObjId> {
+    pub(crate) fn import_namespace(
+        &mut self,
+        specifier: &JsStr,
+        referrer: &JsStr,
+    ) -> JsResult<ObjId> {
         let Some(loader) = self.module_loader else {
             return Err(self.type_error(&format!(
                 "module « {specifier} » introuvable : aucun chargeur de modules"
