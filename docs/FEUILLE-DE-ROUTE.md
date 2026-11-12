@@ -499,7 +499,7 @@ Trois paliers, à franchir dans l'ordre :
 |---|---|---|
 | **Alpha** | lire et utiliser les sites courants, sans y passer la journée | H, I, J |
 | **Bêta** | s'en servir tous les jours, le confier à des testeurs | K, L, M, N |
-| **1.0** | le recommander à quelqu'un | O, P, Q |
+| **1.0** | le recommander à quelqu'un, chiffres à l'appui | O, P, Q, R |
 
 L'ordre met d'abord ce sans quoi rien d'autre ne se voit : tant que les sites courants ne se
 chargent pas et qu'on ne peut pas y taper, ni les écrans restants ni la vitesse ne comptent.
@@ -582,8 +582,8 @@ Fin du jalon 5. Un navigateur lit du contenu hostile : sans ce bloc, pas de test
 
 ### L — Il est assez rapide (bêta)
 
-Jalon 8. Mesure : `oxyde_bench`, à compléter par des bancs publics (Speedometer, JetStream)
-dès que le moteur les fait tourner ; chiffres publiés, jamais en régression.
+Jalon 8. Mesure : `oxyde_bench`, puis les bancs publics de l'étape R dès que le moteur les
+fait tourner ; chiffres publiés, jamais en régression.
 
 - [ ] Caches en ligne pour les accès aux propriétés ; formes cachées des objets.
 - [ ] Chaînes UTF-16 ou à double représentation (règle aussi une cause d'échec de test262).
@@ -652,6 +652,37 @@ Fin du jalon 7 : les écrans de la maquette qui manquent.
 
 Jalon 10, par `oxyde_platform` : Linux, macOS, puis Android ; iOS et iPadOS restreignent les
 moteurs tiers et le JIT, à trancher le moment venu.
+
+### R — Les bancs d'essai publics (1.0)
+
+La version 1.0 ne se contente pas de fonctionner : elle doit tenir son rang sur les bancs
+d'essai que tout le monde peut lancer, et la comparaison avec Chrome, Edge et Firefox est
+publiée dans [bench/comparaisons.md](../bench/comparaisons.md), avec sa méthode.
+
+Bancs retenus : [Speedometer 3](https://browserbench.org/Speedometer3.0/) (réactivité
+d'applications web réelles, le plus proche de l'usage), JetStream (JavaScript et
+WebAssembly), MotionMark (rendu graphique), [ApexMark](https://apexmark.tech/fr/)
+(processeur, carte graphique, WebGPU et mémoire vus du navigateur), WebXPRT 4 (tâches de
+tous les jours) et Basemark Web 3.0 (panorama).
+
+- [ ] Lancer chaque banc dans Oxyde et noter où il s'arrête : c'est l'état de départ, et
+      la liste de ce qui manque en découle (elle recoupe H, I, L, O et P).
+- [ ] Mesurer Chrome, Edge et Firefox sur la machine de référence, selon la méthode du
+      document (même jour, cinq passes, médiane, versions exactes).
+- [ ] **Speedometer 3 se termine**, puis atteint la moitié du meilleur score.
+- [ ] **JetStream se termine** (WebAssembly et JIT, étape L), puis atteint le tiers.
+- [ ] **MotionMark se termine** (`canvas`, SVG, compositeur, étape I), puis atteint la moitié.
+- [ ] **ApexMark se termine** (workers, WebGL et WebGPU, étape O) ; score publié avec la
+      version du banc, qui se dit encore expérimental.
+- [ ] WebXPRT 4 et Basemark Web 3.0 se terminent ; scores publiés.
+- [ ] Chaque version publiée relance les bancs ; un score qui recule est expliqué ou corrigé
+      avant la sortie.
+
+Les seuils sont des propositions, volontairement sous la parité : un chiffre honnête et
+tenu vaut mieux qu'une promesse. Un banc qui ne se termine pas est noté comme tel, jamais
+par un score partiel.
+
+**1.0** quand O à R sont cochés.
 
 ### Règles tenues jusqu'au bout
 
