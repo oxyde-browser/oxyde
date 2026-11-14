@@ -1418,6 +1418,16 @@
       }
       return proceed;
     },
+    // Un module inséré par un script : `load` ou `error` selon l'import.
+    moduleScript(element, imported) {
+      imported.then(
+        () => element.dispatchEvent(new Event("load")),
+        (error) => {
+          reportError(error);
+          element.dispatchEvent(new Event("error"));
+        },
+      );
+    },
     // Fabrique des exceptions du DOM levées par le moteur.
     domException(name, message) {
       return new DOMException(message, name);

@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 128 tests de test262 sur 48 795 (98,6 %)** ; il en reste 667.
+- `oxyde_js` réussit **48 138 tests de test262 sur 48 795 (98,7 %)** ; il en reste 657.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -543,14 +543,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       images et feuilles de style ajoutées après le chargement, `<noscript>` inerte,
       décompression `gzip` et `deflate`, sélecteurs `:has()`, `:scope`, `:nth-of-type`,
       `crypto.getRandomValues`, `MessageChannel`, `postMessage` (vers la fenêtre elle-même).
-- [ ] Vus à la mesure des sites et encore absents : `Intl`, `DOMParser`, cartes d'import
-      (`<script type="importmap">`), modules insérés par script, `document.write`,
+- [x] `Intl` réduit (français et anglais : nombres, dates, pluriels, listes, durées relatives,
+      comparaison, découpage), `String.prototype.normalize`, modules chargés à la demande
+      (`import()`, module inséré par script), cartes d'import (table `imports`).
+- [ ] Vus à la mesure des sites et encore absents : `DOMParser`, `Path2D` et le canevas,
+      `document.write`,
       `postMessage` entre fenêtres (la source n'est pas connue), `crypto.subtle`, Brotli
       (demande un crate à télécharger), chargement des ressources en parallèle.
 - [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.
 - [ ] `WebSocket` et `EventSource`.
 - [ ] Liste des suffixes publics (frontière des sites, cookies).
-- [ ] Les 667 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
+- [ ] Les 657 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
       isolés), tableaux denses, objet de type `document.all`.
 
 Terminé quand 40 des 50 sites s'affichent correctement et que 25 permettent leur action

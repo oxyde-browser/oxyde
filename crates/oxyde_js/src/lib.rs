@@ -36,7 +36,7 @@ mod vm;
 
 pub use builtins::{ConsoleMessage, SharedStorage};
 pub use lexer::SyntaxError;
-pub use module::{ModuleLoader, module_requests};
+pub use module::{ImportPreparer, ModuleLoader, module_requests};
 pub use value::{JsStr, ObjId, PropertyKey, Symbol, Value};
 pub use vm::{HostHooks, JsResult, NativeDataFn, NativeFn, Vm};
 

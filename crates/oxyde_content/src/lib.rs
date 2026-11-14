@@ -573,6 +573,8 @@ pub struct Page {
     /// Modules importés par les scripts de type module, par adresse ; `None` :
     /// module indisponible.
     modules: HashMap<Url, Option<String>>,
+    /// Carte d'import de la page.
+    import_map: std::sync::Arc<ImportMap>,
     /// Cadres du document dont le contenu vient d'une adresse ou de `srcdoc`.
     frames: Vec<FrameSlot>,
     engine: Option<Box<ScriptEngine>>,
@@ -618,12 +620,169 @@ pub(crate) fn is_classic_script(kind: Option<&str>) -> bool {
 }
 
 /// Vrai si l'attribut `type` d'un `<script>` désigne un module.
-fn is_module_script(kind: Option<&str>) -> bool {
+pub(crate) fn is_module_script(kind: Option<&str>) -> bool {
     kind.is_some_and(|k| k.trim().eq_ignore_ascii_case("module"))
 }
 
 /// Nombre maximal de modules importés par une page.
 const MAX_MODULES: usize = 512;
+
+/// Carte d'import (`<script type="importmap">`) : elle donne une adresse aux
+/// spécificateurs « nus » (`"react"`, `"lodash/merge"`).
+///
+/// LIMITE : seule la table `imports` est lue ; les portées (`scopes`) et
+/// l'intégrité sont ignorées.
+#[derive(Debug, Default)]
+pub(crate) struct ImportMap {
+    /// (clé, adresse), dans l'ordre de la carte.
+    imports: Vec<(String, Url)>,
+}
+
+impl ImportMap {
+    /// Lit le texte JSON d'une carte ; les adresses relatives se résolvent
+    /// par rapport à `base`. Une carte illisible est vide.
+    fn parse(text: &str, base: &Url) -> Self {
+        let imports = json_string_table(text, "imports")
+            .into_iter()
+            .filter_map(|(key, target)| Some((key, base.join(&target).ok()?)))
+            .collect();
+        Self { imports }
+    }
+
+    /// Adresse du module désigné par `specifier` dans le module `referrer` :
+    /// la carte d'abord (clé exacte, sinon le plus long préfixe terminé par
+    /// `/`), puis les règles ordinaires.
+    pub(crate) fn resolve(&self, referrer: &Url, specifier: &str) -> Option<Url> {
+        if let Some((_, target)) = self.imports.iter().find(|(key, _)| key == specifier) {
+            return Some(target.clone());
+        }
+        let prefixed = self
+            .imports
+            .iter()
+            .filter(|(key, _)| key.ends_with('/') && specifier.starts_with(key.as_str()))
+            .max_by_key(|(key, _)| key.len());
+        if let Some((key, target)) = prefixed {
+            return target.join(specifier.get(key.len()..)?).ok();
+        }
+        resolve_module(referrer, specifier)
+    }
+}
+
+/// Lit, dans l'objet JSON `text`, la table de chaînes rangée sous la clé
+/// `wanted` : ses couples (clé, valeur) dont la valeur est une chaîne. Rend
+/// une table vide si le texte n'a pas cette forme.
+fn json_string_table(text: &str, wanted: &str) -> Vec<(String, String)> {
+    /// Lecteur JSON minimal : il ne garde que les chaînes.
+    struct Reader<'a> {
+        chars: std::iter::Peekable<std::str::Chars<'a>>,
+        /// Profondeur d'imbrication restante : borne la récursion.
+        budget: usize,
+    }
+    impl Reader<'_> {
+        fn space(&mut self) {
+            while self.chars.next_if(|c| c.is_ascii_whitespace()).is_some() {}
+        }
+        fn eat(&mut self, wanted: char) -> Option<()> {
+            self.space();
+            self.chars.next_if_eq(&wanted).map(|_| ())
+        }
+        fn string(&mut self) -> Option<String> {
+            self.eat('"')?;
+            let mut out = String::new();
+            loop {
+                match self.chars.next()? {
+                    '"' => return Some(out),
+                    '\\' => match self.chars.next()? {
+                        'n' => out.push('\n'),
+                        't' => out.push('\t'),
+                        'r' => out.push('\r'),
+                        'b' => out.push('\u{8}'),
+                        'f' => out.push('\u{c}'),
+                        'u' => {
+                            let code: String = self.chars.by_ref().take(4).collect();
+                            out.push(char::from_u32(u32::from_str_radix(&code, 16).ok()?)?);
+                        }
+                        other => out.push(other),
+                    },
+                    other => out.push(other),
+                }
+            }
+        }
+        /// Saute une valeur ; rend la chaîne si c'en est une.
+        fn value(&mut self) -> Option<Option<String>> {
+            self.space();
+            match *self.chars.peek()? {
+                '"' => self.string().map(Some),
+                '{' => self.object(None).map(|_| None),
+                '[' => {
+                    self.budget = self.budget.checked_sub(1)?;
+                    self.chars.next();
+                    if self.eat(']').is_none() {
+                        loop {
+                            self.value()?;
+                            if self.eat(',').is_none() {
+                                self.eat(']')?;
+                                break;
+                            }
+                        }
+                    }
+                    self.budget += 1;
+                    Some(None)
+                }
+                _ => {
+                    // Nombre, `true`, `false`, `null`.
+                    let mut any = false;
+                    while self
+                        .chars
+                        .next_if(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '+' | '.'))
+                        .is_some()
+                    {
+                        any = true;
+                    }
+                    any.then_some(None)
+                }
+            }
+        }
+        /// Lit un objet ; avec `wanted`, rend la table rangée sous cette clé,
+        /// sinon les couples de l'objet dont la valeur est une chaîne.
+        fn object(&mut self, wanted: Option<&str>) -> Option<Vec<(String, String)>> {
+            self.budget = self.budget.checked_sub(1)?;
+            self.eat('{')?;
+            let mut found = Vec::new();
+            if self.eat('}').is_none() {
+                loop {
+                    let key = self.string()?;
+                    self.eat(':')?;
+                    self.space();
+                    match wanted {
+                        Some(name) if key == name && self.chars.peek() == Some(&'{') => {
+                            found = self.object(None)?;
+                        }
+                        Some(_) => {
+                            self.value()?;
+                        }
+                        None => {
+                            if let Some(text) = self.value()? {
+                                found.push((key, text));
+                            }
+                        }
+                    }
+                    if self.eat(',').is_none() {
+                        self.eat('}')?;
+                        break;
+                    }
+                }
+            }
+            self.budget += 1;
+            Some(found)
+        }
+    }
+    let mut reader = Reader {
+        chars: text.chars().peekable(),
+        budget: 64,
+    };
+    reader.object(Some(wanted)).unwrap_or_default()
+}
 
 /// Adresse du module désigné par `specifier` dans le module `referrer`.
 /// Comme dans un navigateur, un spécificateur « nu » (`"lodash"`) ne désigne
@@ -754,6 +913,7 @@ impl Page {
         let images = collect_images(&doc, &base, HashMap::new());
         let mut scripts = Vec::new();
         let mut script_nodes = Vec::new();
+        let mut import_map = ImportMap::default();
         let mut frames: Vec<FrameSlot> = Vec::new();
         for node in doc.descendants(doc.root()) {
             let Some(el) = doc.element(node) else {
@@ -785,6 +945,15 @@ impl Page {
                 {
                     slot.url = target;
                     frames.push(slot);
+                }
+            } else if el.is_html("script")
+                && el
+                    .attr("type")
+                    .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("importmap"))
+            {
+                // La première carte d'import de la page fait foi.
+                if import_map.imports.is_empty() {
+                    import_map = ImportMap::parse(&doc.text_content(node), &base);
                 }
             } else if el.is_html("script")
                 && (is_classic_script(el.attr("type")) || is_module_script(el.attr("type")))
@@ -833,6 +1002,7 @@ impl Page {
             images,
             scripts,
             script_nodes,
+            import_map: std::sync::Arc::new(import_map),
             modules: HashMap::new(),
             frames,
             engine: None,
@@ -1139,7 +1309,7 @@ impl Page {
         for (referrer, source) in known {
             // Un module invalide n'importe rien : son erreur sera signalée à l'exécution.
             for specifier in oxyde_js::module_requests(source).unwrap_or_default() {
-                if let Some(url) = resolve_module(&referrer, &specifier)
+                if let Some(url) = self.import_map.resolve(&referrer, &specifier)
                     && !self.modules.contains_key(&url)
                     && !pending.contains(&url)
                     && self.modules.len() + pending.len() < MAX_MODULES
@@ -1178,6 +1348,7 @@ impl Page {
         let scripts = std::mem::take(&mut self.scripts);
         let script_nodes = std::mem::take(&mut self.script_nodes);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
+        engine.set_import_map(std::sync::Arc::clone(&self.import_map));
         // Les cadres relevés à l'analyse sont chargés ici, pas à la demande.
         let noted: Vec<(NodeId, String)> = self
             .frames
@@ -3365,6 +3536,150 @@ mod tests {
             "vu haut true 1;",
             "vu bas false;",
             "taille 50 50;",
+        ] {
+            assert!(seen.contains(expected), "{expected} absent de {seen}");
+        }
+    }
+
+    #[test]
+    fn intl_formats_numbers_dates_and_lists() {
+        let mut p = page(
+            "<p id=p></p><script>
+               const lignes = [];
+               const noter = (...valeurs) => lignes.push(valeurs.join('|'));
+               const espaces = texte => texte.replace(/[\\u00a0\\u202f]/g, '_');
+               const fr = new Intl.NumberFormat('fr-FR');
+               noter(espaces(fr.format(1234567.891)), Intl.NumberFormat('en-US').format(1234567.891));
+               noter(espaces(new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(-12.5)),
+                     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(1234.5));
+               noter(espaces(new Intl.NumberFormat('fr', { style: 'percent' }).format(0.256)),
+                     new Intl.NumberFormat('en', { maximumFractionDigits: 0 }).format(2.5),
+                     new Intl.NumberFormat('en', { minimumFractionDigits: 2 }).format(3),
+                     new Intl.NumberFormat('en', { notation: 'compact' }).format(1250000),
+                     (12345.6).toLocaleString('en-US'));
+               noter(fr.formatToParts(1.5).map(part => part.type).join('+'), typeof fr.format, fr.resolvedOptions().locale);
+               const date = new Date(Date.UTC(2026, 10, 14, 9, 5, 7));
+               const utc = { timeZone: 'UTC' };
+               noter(new Intl.DateTimeFormat('fr-FR', utc).format(date),
+                     new Intl.DateTimeFormat('en-US', utc).format(date),
+                     new Intl.DateTimeFormat('en-GB', utc).format(date));
+               noter(new Intl.DateTimeFormat('fr-FR', { dateStyle: 'full', ...utc }).format(date),
+                     new Intl.DateTimeFormat('en-US', { dateStyle: 'long', ...utc }).format(date));
+               noter(espaces(new Intl.DateTimeFormat('fr-FR', { dateStyle: 'medium', timeStyle: 'short', ...utc }).format(date)),
+                     espaces(new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', ...utc }).format(date)),
+                     date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', ...utc }),
+                     date.toLocaleTimeString('fr-FR', utc));
+               noter(new Intl.DateTimeFormat('fr', utc).resolvedOptions().timeZone,
+                     typeof Intl.DateTimeFormat().resolvedOptions().timeZone);
+               noter(new Intl.PluralRules('en').select(1), new Intl.PluralRules('en').select(2),
+                     new Intl.PluralRules('fr').select(0), new Intl.PluralRules('en', { type: 'ordinal' }).select(22));
+               noter(new Intl.RelativeTimeFormat('fr').format(-3, 'day'),
+                     new Intl.RelativeTimeFormat('en').format(2, 'hours'),
+                     new Intl.RelativeTimeFormat('fr', { numeric: 'auto' }).format(-1, 'day'));
+               noter(new Intl.ListFormat('fr').format(['a', 'b', 'c']),
+                     new Intl.ListFormat('en', { type: 'disjunction' }).format(['a', 'b', 'c']));
+               noter(['z', 'é', 'a', 'E'].sort(new Intl.Collator('fr').compare).join(''),
+                     ['a10', 'a2'].sort(new Intl.Collator('fr', { numeric: true }).compare).join(','),
+                     'a'.localeCompare('b'));
+               noter(Array.from(new Intl.Segmenter('fr', { granularity: 'word' }).segment('Bonjour à tous'))
+                       .filter(piece => piece.isWordLike).map(piece => piece.segment).join('/'),
+                     new Intl.DisplayNames('fr', { type: 'region' }).of('US'),
+                     new Intl.Locale('FR-fr').toString(), Intl.getCanonicalLocales('EN-us')[0],
+                     Intl.NumberFormat.supportedLocalesOf(['de', 'en-GB']).join(','));
+               try { new Intl.NumberFormat('fr', { style: 'currency' }); } catch (e) { noter(e.name); }
+               try { new Intl.DateTimeFormat('pas une langue'); } catch (e) { noter(e.name); }
+               document.getElementById('p').textContent = lignes.join(' ; ');
+             </script>",
+        );
+        p.run_scripts();
+        let console: Vec<String> = p.take_console().into_iter().map(|m| m.text).collect();
+        assert_eq!(
+            body_text(&p),
+            "1_234_567,891|1,234,567.891 ; -12,50_€|$1,234.50 ; 26_%|3|3.00|1.3M|12,345.6 ; \
+             integer+decimal+fraction|function|fr-FR ; 14/11/2026|11/14/2026|14/11/2026 ; \
+             samedi 14 novembre 2026|November 14, 2026 ; 14 nov. 2026 à 09:05|9:05_AM|novembre 2026|09:05:07 ; \
+             UTC|string ; one|other|one|two ; il y a 3 jours|in 2 hours|hier ; a, b et c|a, b, or c ; \
+             aEéz|a2,a10|-1 ; Bonjour/à/tous|États-Unis|fr-FR|en-US|en-GB ; TypeError ; RangeError",
+            "{console:?}"
+        );
+    }
+
+    #[test]
+    fn modules_load_on_demand_and_through_the_import_map() {
+        let mut p = page(
+            "<p id=p></p>
+             <script type=importmap>
+               { \"scopes\": { \"/x/\": { \"a\": \"/b.js\" } }, \"entier\": 3, \"liste\": [1, {\"a\": \"b\"}],
+                 \"imports\": { \"outil\": \"/libs/outil.js\", \"paquet/\": \"https://cdn.test/paquet@2/\" } }
+             </script>
+             <script>
+               const sortie = document.getElementById('p');
+               const noter = texte => { sortie.textContent += texte + ';'; };
+               import('./chemin/a.js').then(m => noter('a ' + m.valeur + ' ' + m.venu));
+               import('outil').then(m => noter('outil ' + m.default));
+               import('paquet/sous/module.js').then(m => noter('paquet ' + m.nom));
+               import('/absent.js').catch(e => noter('absent ' + e.name));
+               import('inconnu').catch(e => noter('inconnu ' + e.name));
+               const inséré = document.createElement('script');
+               inséré.type = 'module';
+               inséré.src = '/tardif.js';
+               inséré.onload = () => noter('load tardif');
+               document.head.appendChild(inséré);
+             </script>",
+        );
+        p.run_scripts();
+        let respond = |request: &FetchRequest, status: u16, body: &str| {
+            Ok(FetchResponse {
+                url: request.url.clone(),
+                status,
+                headers: Vec::new(),
+                body: body.as_bytes().to_vec(),
+            })
+        };
+        let mut asked = Vec::new();
+        // Chaque vague de réponses peut demander d'autres modules.
+        for _ in 0..4 {
+            for request in p.take_fetches() {
+                asked.push(request.url.to_string());
+                let answer = match request.url.path() {
+                    "/dossier/chemin/a.js" => respond(
+                        &request,
+                        200,
+                        "import { venu } from './b.js'; export const valeur = 1; export { venu };",
+                    ),
+                    "/dossier/chemin/b.js" => respond(&request, 200, "export const venu = 'de b';"),
+                    "/libs/outil.js" => respond(&request, 200, "export default 'marteau';"),
+                    "/paquet@2/sous/module.js" => {
+                        respond(&request, 200, "export const nom = 'paquet';")
+                    }
+                    "/tardif.js" => respond(&request, 200, "noter('tardif exécuté');"),
+                    _ => respond(&request, 404, ""),
+                };
+                // Le booléen dit seulement si la page doit être redessinée.
+                let _ = p.complete_fetch(request.id, answer);
+            }
+        }
+        asked.sort();
+        assert_eq!(
+            asked,
+            [
+                "https://cdn.test/paquet@2/sous/module.js",
+                "https://exemple.test/absent.js",
+                "https://exemple.test/dossier/chemin/a.js",
+                "https://exemple.test/dossier/chemin/b.js",
+                "https://exemple.test/libs/outil.js",
+                "https://exemple.test/tardif.js",
+            ]
+        );
+        let seen = body_text(&p);
+        for expected in [
+            "a 1 de b;",
+            "outil marteau;",
+            "paquet paquet;",
+            "absent TypeError;",
+            "inconnu TypeError;",
+            "tardif exécuté;",
+            "load tardif;",
         ] {
             assert!(seen.contains(expected), "{expected} absent de {seen}");
         }

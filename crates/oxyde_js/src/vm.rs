@@ -207,6 +207,8 @@ pub struct Vm {
     pub(crate) deferred_namespaces: std::collections::HashMap<ObjId, JsStr>,
     /// Fonction de l'hôte qui fournit le texte des modules importés.
     pub(crate) module_loader: Option<crate::module::ModuleLoader>,
+    /// Préparation des `import()` par l'hôte.
+    pub(crate) import_preparer: Option<crate::module::ImportPreparer>,
     /// `Array.prototype[Symbol.iterator]` et `next` des itérateurs internes,
     /// tels qu'installés : tant qu'ils sont en place, un tableau s'itère
     /// sans passer par le protocole.
@@ -473,6 +475,7 @@ impl Vm {
             typed_protos: Vec::new(),
             modules: IndexMap::new(),
             module_loader: None,
+            import_preparer: None,
             iteration_intrinsics: None,
             script_url: Arc::from(""),
             pending_throw: None,

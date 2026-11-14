@@ -1,7 +1,6 @@
 //! `String`, `Number` et `Math`.
 //!
-//! LIMITES CONNUES : pas de `normalize`, `toPrecision` ni
-//! `toExponential` ; `localeCompare` compare les unités UTF-16 sans tenir
+//! LIMITE CONNUE : `localeCompare` compare les unités UTF-16 sans tenir
 //! compte de la langue.
 
 use std::sync::Arc;
@@ -387,6 +386,29 @@ fn to_lower_case(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 
 fn is_js_space(c: char) -> bool {
     c.is_whitespace() || c == '\u{feff}'
+}
+
+/// `String.prototype.normalize(forme)` : formes de normalisation Unicode.
+fn normalize(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    use icu_normalizer::{ComposingNormalizerBorrowed, DecomposingNormalizerBorrowed};
+    let text = this_str(vm, this)?;
+    let form = match arg(args, 0) {
+        Value::Undefined => Arc::from("NFC"),
+        other => vm.to_string(&other)?,
+    };
+    let normalized = match &*form {
+        "NFC" => ComposingNormalizerBorrowed::new_nfc().normalize(&text),
+        "NFKC" => ComposingNormalizerBorrowed::new_nfkc().normalize(&text),
+        "NFD" => DecomposingNormalizerBorrowed::new_nfd().normalize(&text),
+        "NFKD" => DecomposingNormalizerBorrowed::new_nfkd().normalize(&text),
+        _ => {
+            return Err(vm.error(
+                "RangeError",
+                "normalize : la forme doit être NFC, NFD, NFKC ou NFKD",
+            ));
+        }
+    };
+    string(&normalized)
 }
 
 fn trim(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -1153,6 +1175,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("toLowerCase", 0, to_lower_case),
         ("toLocaleUpperCase", 0, to_upper_case),
         ("toLocaleLowerCase", 0, to_lower_case),
+        ("normalize", 0, normalize),
         ("trim", 0, trim),
         ("trimStart", 0, trim_start),
         ("trimEnd", 0, trim_end),
