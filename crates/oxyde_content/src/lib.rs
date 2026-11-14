@@ -5485,4 +5485,43 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn collections_hold_their_indices_and_names() {
+        let mut p = page(
+            "<body><p id=x name=y data-user-id=7 data-a=1></p><i></i><script>
+               'use strict';
+               const out = [];
+               const c = document.body.children;
+               out.push(Object.keys(c).join(','), Object.getOwnPropertyNames(c).join(','));
+               for (const run of [() => { c[0] = 1; }, () => { delete c[0]; }, () => { delete c.x; },
+                 () => Object.defineProperty(c, 0, { value: 5 }), () => { c[9] = 1; }, () => { c.x = 1; }]) {
+                 try { run(); out.push('ok'); } catch (e) { out.push(e.name); }
+               }
+               c.plus = 3;
+               out.push(c.plus, c[0] === document.getElementById('x'), delete c[9]);
+               out.push('values' in c, 'map' in c, typeof c[Symbol.iterator], [...c].length);
+               const all = document.querySelectorAll('p');
+               out.push(typeof all.forEach, 'map' in all, typeof document.body.childNodes.forEach);
+               const p = document.getElementById('x');
+               out.push(Object.getOwnPropertyNames(p.attributes).join(','), Object.keys(p.dataset).join(','));
+               out.push(delete p.dataset.userId, p.hasAttribute('data-user-id'));
+               c.late = 'posé';
+               document.body.appendChild(document.createElement('b')).id = 'late';
+               out.push(c.late, c['4294967295']);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "0,1,2 0,1,2,x,y TypeError TypeError TypeError TypeError TypeError TypeError \
+                 3 true true false false function 3 function false function \
+                 0,1,2,3,id,name,data-user-id,data-a userId,a true false posé "
+            )
+        );
+    }
 }

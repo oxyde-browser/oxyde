@@ -149,6 +149,9 @@ impl Vm {
             Kind::Host { class, data } => {
                 let (class, data) = (*class, *data);
                 let hooks = self.host_hooks?;
+                if self.host_shadowed(id, class, key) {
+                    return None;
+                }
                 (hooks.get)(self, class, data, key)
             }
             // Tableau typé : une clé numérique désigne un élément ou rien, sans

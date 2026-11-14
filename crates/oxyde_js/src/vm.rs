@@ -198,6 +198,22 @@ struct Frame {
     prev_realm: u16,
 }
 
+/// Ce que l'hôte dit d'une clé d'un de ses objets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HostKey {
+    /// Clé ordinaire : l'objet se comporte comme un objet du langage.
+    Ordinary,
+    /// Propriété tenue par l'hôte : un script ne peut ni l'écrire ni la
+    /// redéfinir. `enumerable` : elle paraît dans `Object.keys`.
+    Fixed {
+        /// La propriété est énumérable.
+        enumerable: bool,
+    },
+    /// Clé réservée à l'hôte mais absente (un rang au-delà de la fin d'une
+    /// collection) : un script ne peut ni l'écrire ni la définir.
+    Reserved,
+}
+
 /// Classes d'objets de l'hôte et crochets d'accès à leurs propriétés.
 #[derive(Clone, Copy)]
 pub struct HostHooks {
@@ -208,6 +224,14 @@ pub struct HostHooks {
     /// Clés propres qu'un objet hôte ajoute aux siennes (les rangs d'une
     /// collection, par exemple), dans l'ordre.
     pub keys: fn(&mut Vm, u32, u64) -> Vec<String>,
+    /// Statut d'une clé : ordinaire, tenue par l'hôte ou réservée.
+    pub policy: fn(&mut Vm, u32, u64, &str) -> HostKey,
+    /// Suppression d'une propriété d'un objet hôte ; `None` : propriété
+    /// ordinaire, sinon le résultat de `delete`.
+    pub delete: fn(&mut Vm, u32, u64, &str) -> Option<bool>,
+    /// Vrai pour une classe dont les propriétés ordinaires posées par un
+    /// script passent avant celles que l'hôte sert sous le même nom.
+    pub own_first: fn(u32) -> bool,
     /// Valeur d'une variable globale que ni les scripts ni l'objet global ne
     /// définissent (accès nommé aux éléments d'une page) ; `None` : la
     /// variable n'existe pas.
