@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 138 tests de test262 sur 48 795 (98,7 %)** ; il en reste 657.
+- `oxyde_js` réussit **48 139 tests de test262 sur 48 795 (98,7 %)** ; il en reste 656.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -514,13 +514,19 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
       banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ :
       [conformance/sites.md](../conformance/sites.md). Départ : 14 pages lisibles sur 50 ;
-      au 14 novembre 2026 : 18. Seul l'affichage de la page d'accueil est mesuré ; la
+      au 14 novembre 2026 : 20, et plus aucun site ne dépasse 60 secondes. Seul l'affichage de la page d'accueil est mesuré ; la
       connexion et l'action principale restent à essayer.
 - [x] Mise en page de conteneurs flex et grille imbriqués en temps linéaire (elle doublait à
       chaque niveau : GitHub ne s'affichait jamais) ; les erreurs de script disent où elles
       sont nées (fonctions en cours, ligne et colonne de leur définition, adresse du script).
-- [ ] Vu à la mesure : l'épreuve Cloudflare de Vimeo ne se termine pas (le site s'affichait
-      avant que ses scripts insérés ne soient exécutés).
+- [x] Moteur JavaScript : lecture des chaînes par indice en temps linéaire (elle était
+      quadratique : X, Vimeo et Mastodon ne rendaient pas la main), retour de fonction
+      indépendant du nombre de variables capturées, chemin rapide pour les instructions
+      simples. Mesures face à V8 : [bench/moteur-js.md](../bench/moteur-js.md).
+- [ ] Moteur JavaScript, ce qui reste avant le JIT du jalon 8 : concaténation de chaînes
+      (quadratique), coût des appels (allocation des arguments), formes d'objets et cache
+      d'accès aux propriétés, compilateur moins naïf. Objectif : l'ordre de grandeur de
+      l'interpréteur de V8.
 - [x] **Saisie dans les pages** : focus (`focus()`, `blur()`, `document.activeElement`,
       `:focus`, `:checked`, `:disabled`, tabulation), champs de texte éditables avec curseur
       (flèches, Début, Fin, Retour arrière, Suppr, `maxlength`, `readonly`, mot de passe
@@ -559,7 +565,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.
 - [ ] `WebSocket` et `EventSource`.
 - [ ] Liste des suffixes publics (frontière des sites, cookies).
-- [ ] Les 657 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
+- [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
       isolés), tableaux denses, objet de type `document.all`.
 
 Terminé quand 40 des 50 sites s'affichent correctement et que 25 permettent leur action

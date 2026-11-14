@@ -35,12 +35,12 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 
 | | Départ | 14 novembre 2026 |
 |---|---|---|
-| lisible | 14 | 18 |
+| lisible | 14 | 20 |
 | partiel | 8 | 12 |
 | vide | 13 | 9 |
-| erreur | 3 | 0 |
+| erreur | 3 | 1 |
 | mur | 7 | 8 |
-| délai | 5 | 3 |
+| délai | 5 | 0 |
 
 « Départ » : état avant tout travail sur l'étape H (branche principale au 14 novembre 2026).
 
@@ -65,7 +65,7 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | 17 | youtube.com | vidéo | vide | partiel | squelette de la page, sans vidéos |
 | 18 | twitch.tv | vidéo | vide | vide | |
 | 19 | dailymotion.com | vidéo | vide | vide | |
-| 20 | vimeo.com | vidéo | lisible | délai | RÉGRESSION : l'épreuve Cloudflare s'exécute désormais et ne se termine pas |
+| 20 | vimeo.com | vidéo | lisible | lisible | en 16 s ; l'épreuve Cloudflare passe (elle ne finissait pas : lecture de chaînes en temps quadratique) |
 | 21 | amazon.fr | commerce | mur | mur | épreuve anti-robot |
 | 22 | leboncoin.fr | commerce | mur | mur | 403 (DataDome) |
 | 23 | cdiscount.com | commerce | mur | mur | épreuve anti-robot |
@@ -84,12 +84,12 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | 36 | stackoverflow.com | documentation | mur | mur | épreuve Cloudflare |
 | 37 | github.com | documentation | délai | **lisible** | en 20 s ; des conteneurs flex et grille imbriqués coûtaient un temps exponentiel ; mise en forme encore grossière |
 | 38 | crates.io | documentation | vide | vide | |
-| 39 | x.com | réseaux sociaux | lisible | délai | RÉGRESSION : l'application démarre désormais (elle butait avant sur une API absente) et ne se termine pas |
+| 39 | x.com | réseaux sociaux | lisible | lisible | page de connexion, en 15 s |
 | 40 | facebook.com | réseaux sociaux | vide | vide | |
 | 41 | instagram.com | réseaux sociaux | délai | **lisible** | page de connexion, en 9 s |
 | 42 | linkedin.com | réseaux sociaux | lisible | lisible | avec son bandeau de cookies |
 | 43 | reddit.com | réseaux sociaux | vide | vide | |
-| 44 | mastodon.social | réseaux sociaux | vide | délai | l'application se charge (une centaine de modules) puis ne rend pas la main ; cause non élucidée |
+| 44 | mastodon.social | réseaux sociaux | vide | erreur | l'application se charge en 12 s (une centaine de modules) puis affiche sa page d'erreur |
 | 45 | openstreetmap.org | outils | délai | partiel | en-tête ; la carte reste vide |
 | 46 | deepl.com | outils | partiel | partiel | texte sans mise en forme |
 | 47 | sncf-connect.com | outils | vide | vide | |
@@ -110,5 +110,7 @@ ils sont comptés « mur » (Amazon, Cdiscount, Stack Overflow) ou « vide » (M
    Cdiscount, Stack Overflow, Vimeo : épreuve en JavaScript). Oxyde s'annonce sous son nom et
    ne cherche pas à se faire passer pour un autre navigateur ; ces sites s'ouvriront quand
    leurs épreuves s'exécuteront correctement.
-3. **Scripts qui ne rendent pas la main** : X, Mastodon, Vimeo.
+3. **Lenteur** : plus aucun site ne dépasse 60 secondes, mais Twitch, YouTube et eBay en
+   demandent plus de 30 ; le moteur JavaScript reste 6 à 7 fois plus lent que l'interpréteur de
+   V8 ([bench/moteur-js.md](../bench/moteur-js.md)).
 4. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants.

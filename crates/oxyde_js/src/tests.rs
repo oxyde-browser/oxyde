@@ -3366,3 +3366,20 @@ fn simple_instructions_keep_their_semantics() {
     );
     assert!(eval("let x = 1; { x; let y = y + 1; }").contains("ReferenceError"));
 }
+
+#[test]
+fn string_slices_and_searches_use_utf16_positions() {
+    assert_eq!(
+        eval(
+            "var s = 'aé😀b'.repeat(20000), out = [];
+             // Tranches successives, comme le fait un analyseur de texte.
+             var n = 0; for (var i = 0; i < s.length; i += 5) n += s.slice(i, i + 5).length;
+             out.push(n, s.slice(0, 5), s.substring(5, 7), s.substr(99995, 5), s.slice(-1), s.slice(3, 4).length,
+                      s.indexOf('b'), s.indexOf('b', 5), s.indexOf('😀', 99990), s.lastIndexOf('a'),
+                      s.includes('éa'), s.startsWith('😀b', 2), s.endsWith('b'), s.at(-2).length,
+                      s.codePointAt(2), s.codePointAt(3));
+             out.join()"
+        ),
+        "100000,aé😀b,aé,aé😀b,b,1,4,9,99992,99995,false,true,true,1,128512,56832"
+    );
+}

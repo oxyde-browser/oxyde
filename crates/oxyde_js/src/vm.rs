@@ -1073,6 +1073,68 @@ impl Vm {
         }
     }
 
+    /// Octet où commence l'unité UTF-16 de rang `unit` dans `text` ; si
+    /// l'unité est la seconde moitié d'un caractère, l'octet du caractère
+    /// suivant ; la longueur en octets au-delà de la fin. Le booléen dit si
+    /// `unit` tombe exactement au début d'un caractère (ou à la fin).
+    pub(crate) fn string_byte_of_unit(&mut self, text: &JsStr, unit: usize) -> (usize, bool) {
+        let cursor = self.cursor_for(text);
+        if unit >= cursor.units {
+            return (text.len(), unit == cursor.units);
+        }
+        if cursor.ascii {
+            return (unit, true);
+        }
+        if unit < cursor.unit {
+            (cursor.unit, cursor.byte) = (0, 0);
+        }
+        for c in text.get(cursor.byte..).unwrap_or("").chars() {
+            if cursor.unit >= unit {
+                break;
+            }
+            cursor.unit += c.len_utf16();
+            cursor.byte += c.len_utf8();
+        }
+        (cursor.byte, cursor.unit == unit)
+    }
+
+    /// Rang, en unités UTF-16, du caractère qui commence à l'octet `byte`
+    /// de `text` (`byte` doit être un début de caractère).
+    pub(crate) fn string_unit_of_byte(&mut self, text: &JsStr, byte: usize) -> usize {
+        let cursor = self.cursor_for(text);
+        if cursor.ascii {
+            return byte.min(text.len());
+        }
+        if byte < cursor.byte {
+            (cursor.unit, cursor.byte) = (0, 0);
+        }
+        for c in text.get(cursor.byte..).unwrap_or("").chars() {
+            if cursor.byte >= byte {
+                break;
+            }
+            cursor.unit += c.len_utf16();
+            cursor.byte += c.len_utf8();
+        }
+        cursor.unit
+    }
+
+    /// Sous-chaîne de `text` entre les unités UTF-16 `start` et `end`.
+    ///
+    /// LIMITE : une borne qui coupe un caractère en deux laisse un
+    /// demi-substitut isolé, rendu U+FFFD.
+    pub(crate) fn string_slice(&mut self, text: &JsStr, start: usize, end: usize) -> String {
+        if end <= start {
+            return String::new();
+        }
+        let (first, first_exact) = self.string_byte_of_unit(text, start);
+        let (last, last_exact) = self.string_byte_of_unit(text, end);
+        if first_exact && last_exact {
+            return text.get(first..last).unwrap_or("").to_owned();
+        }
+        let units: Vec<u16> = text.encode_utf16().skip(start).take(end - start).collect();
+        String::from_utf16_lossy(&units)
+    }
+
     // ---- Variables capturées -----------------------------------------------
 
     fn capture(&mut self, index: usize) -> UpId {

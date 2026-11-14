@@ -106,37 +106,9 @@ fn position(vm: &mut Vm, value: &Value, len: usize, default: usize) -> JsResult<
     Ok(clamped as usize)
 }
 
-/// Sous-chaîne entre deux positions exprimées en unités UTF-16.
-fn substring_units(s: &str, start: usize, end: usize) -> String {
-    if s.is_ascii() {
-        return s.get(start..end.max(start)).unwrap_or("").to_owned();
-    }
-    let units: Vec<u16> = s
-        .encode_utf16()
-        .skip(start)
-        .take(end.saturating_sub(start))
-        .collect();
-    String::from_utf16_lossy(&units)
-}
-
 /// Position en unités UTF-16 de l'octet `byte` de `s`.
 fn units_before(s: &str, byte: usize) -> usize {
     utf16_len(s.get(..byte).unwrap_or(s))
-}
-
-/// Position en octets de l'unité UTF-16 `unit` de `s`.
-fn byte_of_unit(s: &str, unit: usize) -> usize {
-    if s.is_ascii() {
-        return unit.min(s.len());
-    }
-    let mut units = 0;
-    for (byte, c) in s.char_indices() {
-        if units >= unit {
-            return byte;
-        }
-        units += c.len_utf16();
-    }
-    s.len()
 }
 
 fn string_ctor(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -270,10 +242,17 @@ fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 fn code_point_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+    let length = vm.string_units(&s);
+    let Some(index) = unit_index(vm, &arg(args, 0), length)? else {
         return Ok(Value::Undefined);
     };
-    let byte = byte_of_unit(&s, index);
+    let (byte, exact) = vm.string_byte_of_unit(&s, index);
+    if !exact {
+        // Seconde moitié d'un caractère : l'unité elle-même.
+        return Ok(vm
+            .string_unit_at(&s, index)
+            .map_or(Value::Undefined, |unit| Value::Number(f64::from(unit))));
+    }
     Ok(s.get(byte..)
         .and_then(|rest| rest.chars().next())
         .map_or(Value::Undefined, |c| Value::Number(f64::from(u32::from(c)))))
@@ -285,7 +264,7 @@ fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let n = if n.is_nan() { 0.0 } else { n };
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     let index = if n < 0.0 {
-        utf16_len(&s) as f64 + n.trunc()
+        vm.string_units(&s) as f64 + n.trunc()
     } else {
         n.trunc()
     };
@@ -303,12 +282,13 @@ fn at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
     let needle = vm.to_string(&arg(args, 0))?;
-    let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
-    let start = byte_of_unit(&s, from);
+    let length = vm.string_units(&s);
+    let from = position(vm, &arg(args, 1), length, 0)?;
+    let start = vm.string_byte_of_unit(&s, from).0;
     let found = s
         .get(start..)
         .and_then(|rest| rest.find(&*needle))
-        .map(|i| units_before(&s, start + i));
+        .map(|i| vm.string_unit_of_byte(&s, start + i));
     Ok(found.map_or(Value::Number(-1.0), number))
 }
 
@@ -325,9 +305,10 @@ fn includes(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         return Err(vm.type_error("includes : une expression rationnelle n'est pas acceptée"));
     }
     let needle = vm.to_string(&arg(args, 0))?;
-    let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
+    let length = vm.string_units(&s);
+    let from = position(vm, &arg(args, 1), length, 0)?;
     Ok(Value::Bool(
-        s.get(byte_of_unit(&s, from)..)
+        s.get(vm.string_byte_of_unit(&s, from).0..)
             .is_some_and(|rest| rest.contains(&*needle)),
     ))
 }
@@ -338,9 +319,10 @@ fn starts_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         return Err(vm.type_error("startsWith : une expression rationnelle n'est pas acceptée"));
     }
     let needle = vm.to_string(&arg(args, 0))?;
-    let from = position(vm, &arg(args, 1), utf16_len(&s), 0)?;
+    let length = vm.string_units(&s);
+    let from = position(vm, &arg(args, 1), length, 0)?;
     Ok(Value::Bool(
-        s.get(byte_of_unit(&s, from)..)
+        s.get(vm.string_byte_of_unit(&s, from).0..)
             .is_some_and(|rest| rest.starts_with(&*needle)),
     ))
 }
@@ -351,36 +333,36 @@ fn ends_with(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         return Err(vm.type_error("endsWith : une expression rationnelle n'est pas acceptée"));
     }
     let needle = vm.to_string(&arg(args, 0))?;
-    let len = utf16_len(&s);
+    let len = vm.string_units(&s);
     let end = position(vm, &arg(args, 1), len, len)?;
     Ok(Value::Bool(
-        s.get(..byte_of_unit(&s, end))
+        s.get(..vm.string_byte_of_unit(&s, end).0)
             .is_some_and(|head| head.ends_with(&*needle)),
     ))
 }
 
 fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let len = utf16_len(&s);
+    let len = vm.string_units(&s);
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let end = super::relative_index(vm, &arg(args, 1), len, len)?;
-    string(&substring_units(&s, start, end))
+    string(&vm.string_slice(&s, start, end))
 }
 
 fn substring(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let len = utf16_len(&s);
+    let len = vm.string_units(&s);
     let a = position(vm, &arg(args, 0), len, 0)?;
     let b = position(vm, &arg(args, 1), len, len)?;
-    string(&substring_units(&s, a.min(b), a.max(b)))
+    string(&vm.string_slice(&s, a.min(b), a.max(b)))
 }
 
 fn substr(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let len = utf16_len(&s);
+    let len = vm.string_units(&s);
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let count = position(vm, &arg(args, 1), len - start, len - start)?;
-    string(&substring_units(&s, start, start + count))
+    string(&vm.string_slice(&s, start, start + count))
 }
 
 fn to_upper_case(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -437,7 +419,7 @@ fn pad(vm: &mut Vm, this: &Value, args: &[Value], at_start: bool) -> JsResult {
         Value::Undefined => Arc::from(" "),
         other => vm.to_string(&other)?,
     };
-    let len = utf16_len(&s);
+    let len = vm.string_units(&s);
     #[expect(clippy::cast_precision_loss, reason = "longueur petite devant 2^53")]
     if target.is_nan() || target <= len as f64 || filler.is_empty() {
         return Ok(Value::String(s));
@@ -579,7 +561,7 @@ fn split(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             let separator = vm.to_string(&separator)?;
             if separator.is_empty() {
                 // Découpe en unités UTF-16, comme le prescrit le langage.
-                (0..utf16_len(&s))
+                (0..vm.string_units(&s))
                     .filter_map(|i| char_at(&s, i))
                     .map(|c| Value::string(&c))
                     .take(limit)
