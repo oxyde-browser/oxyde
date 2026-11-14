@@ -721,7 +721,26 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
-- [ ] Web Platform Tests `html/` branché et mesuré.
+- [x] Encodages de texte : une page, une feuille de style ou un script qui n'est pas en
+      UTF-8 est décodé d'après l'en-tête HTTP `Content-Type`, sa marque d'ordre d'octets,
+      son `<meta charset>`, et à défaut en UTF-8 s'il en est, sinon en `windows-1252`
+      (tout était lu en UTF-8). Encodages lus : UTF-8, UTF-16, les 28 encodages à un
+      octet de la norme, `x-user-defined`. `TextDecoder` les lit aussi, flux UTF-16
+      compris.
+      Limites : pas d'encodages à plusieurs octets (`Shift_JIS`, `EUC-JP`, `Big5`,
+      `EUC-KR`, `GBK`, `gb18030`, `ISO-2022-JP`) : une page qui en déclare un est lue en
+      `windows-1252` ; la recherche de `<meta charset>` lit les 1024 premiers octets
+      sans suivre l'algorithme de pré-analyse de la norme ; pas de `TextEncoder` autre
+      qu'UTF-8 (conforme à la norme) ; l'encodage des formulaires reste UTF-8.
+- [x] Adresse de base : `a.href`, `img.src` et `baseURI` se résolvent contre le
+      `<base href>` du document, même posé par un script ; `URLSearchParams` se
+      parcourt en suivant les suppressions en cours de route.
+      Limite : les liens suivis au clic gardent la base relevée au chargement.
+- [x] Web Platform Tests `url/` (16 fichiers sur 32) et `encoding/` (18 sur 153) branchés
+      et mesurés.
+- [ ] Encodages à plusieurs octets (index `jis0208`, `big5`, `euc-kr`, `gb18030`).
+- [ ] Web Platform Tests `html/` branché et mesuré (le dossier manque dans la copie
+      locale de la suite : téléchargement à autoriser).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

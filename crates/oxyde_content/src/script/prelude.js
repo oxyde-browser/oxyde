@@ -8,16 +8,21 @@
 //   navigate(nature, valeur)     -> demande de navigation à l'embarqueur ;
 //   focusedElement()             -> élément qui a le focus, ou null ;
 //   randomBytes(n)               -> tableau de n octets aléatoires (source du système) ;
-//   fireTrusted(cible, événement) -> distribue un événement du navigateur (`isTrusted`).
+//   fireTrusted(cible, événement) -> distribue un événement du navigateur (`isTrusted`) ;
+//   encodingName(étiquette)      -> nom de l'encodage désigné, ou null ;
+//   decodeBytes(nom, octets, strict) -> texte décodé (`octets` : une chaîne, un
+//                                   caractère par octet), ou null si `strict` et invalide.
 // Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
 //
-// LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
+// LIMITES CONNUES : `TextDecoder` ne lit pas les encodages à plusieurs octets
+// (`Shift_JIS`, `EUC-JP`, `Big5`, `EUC-KR`, `GBK`, `gb18030`, `ISO-2022-JP`), et
+// son option `stream` est sans effet en UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
 (function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes,
-  fireTrusted) {
+  fireTrusted, encodingName, decodeBytes) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -159,12 +164,18 @@
       this.#list.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
       this.#update();
     }
+    // Le parcours suit la liste telle qu'elle est à chaque pas : une
+    // suppression ou un ajout en cours de route se voit.
     forEach(callback, thisArg) {
-      for (const [name, value] of this.#list) callback.call(thisArg, value, name, this);
+      if (typeof callback !== "function") throw new TypeError("forEach : une fonction est attendue");
+      for (let i = 0; i < this.#list.length; i++) {
+        const [name, value] = this.#list[i];
+        callback.call(thisArg, value, name, this);
+      }
     }
-    *entries() { for (const [name, value] of this.#list) yield [name, value]; }
-    *keys() { for (const [name] of this.#list) yield name; }
-    *values() { for (const [, value] of this.#list) yield value; }
+    *entries() { for (let i = 0; i < this.#list.length; i++) yield [...this.#list[i]]; }
+    *keys() { for (let i = 0; i < this.#list.length; i++) yield this.#list[i][0]; }
+    *values() { for (let i = 0; i < this.#list.length; i++) yield this.#list[i][1]; }
     [Symbol.iterator]() { return this.entries(); }
     toString() { return serializeForm(this.#list); }
   }
@@ -493,19 +504,52 @@
   class TextDecoder {
     #fatal;
     #ignoreBOM;
+    #name;
+    // Octets d'un flux pas encore décodés, et début de flux déjà passé.
+    #pending = "";
+    #started = false;
     constructor(label = "utf-8", options = {}) {
-      const name = String(label).trim().toLowerCase();
-      if (!["utf-8", "utf8", "unicode-1-1-utf-8"].includes(name)) {
-        throw new RangeError("TextDecoder : encodage non pris en charge : " + name);
+      const name = encodingName(String(label));
+      if (name === null) {
+        throw new RangeError("TextDecoder : encodage non pris en charge : " + String(label));
       }
+      this.#name = name;
       this.#fatal = Boolean(options && options.fatal);
       this.#ignoreBOM = Boolean(options && options.ignoreBOM);
     }
-    get encoding() { return "utf-8"; }
+    get encoding() { return this.#name.toLowerCase(); }
     get fatal() { return this.#fatal; }
     get ignoreBOM() { return this.#ignoreBOM; }
-    decode(input) {
+    // Encodages autres qu'UTF-8 : le moteur décode ; ici, la marque d'ordre
+    // d'octets et les unités UTF-16 coupées entre deux morceaux d'un flux.
+    #legacy(bytes, stream) {
+      const parts = [];
+      for (let i = 0; i < bytes.length; i++) parts.push(String.fromCharCode(bytes[i]));
+      let data = this.#pending + parts.join("");
+      const wide = this.#name.startsWith("UTF-16");
+      const little = this.#name === "UTF-16LE";
+      if (wide && !this.#started && data.length >= 2) {
+        this.#started = true;
+        if (!this.#ignoreBOM && data.startsWith(little ? "\xff\xfe" : "\xfe\xff")) data = data.slice(2);
+      }
+      let cut = data.length;
+      if (stream && wide) {
+        cut -= cut % 2;
+        // Une unité haute attend sa moitié basse.
+        if (cut >= 2) {
+          const high = data.charCodeAt(little ? cut - 1 : cut - 2);
+          if (high >= 0xd8 && high <= 0xdb) cut -= 2;
+        }
+      }
+      this.#pending = stream ? data.slice(cut) : "";
+      if (!stream) this.#started = false;
+      const text = decodeBytes(this.#name, data.slice(0, cut), this.#fatal);
+      if (text === null) throw new TypeError("TextDecoder : suite d'octets invalide en " + this.#name);
+      return text;
+    }
+    decode(input, options) {
       const bytes = bytesOf(input);
+      if (this.#name !== "UTF-8") return this.#legacy(bytes, Boolean(options?.stream));
       let out = "";
       let i = 0;
       if (!this.#ignoreBOM && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) i = 3;
