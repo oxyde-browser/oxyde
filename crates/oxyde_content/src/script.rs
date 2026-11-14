@@ -33,6 +33,7 @@ mod focus;
 mod frames;
 mod geometry;
 mod lists;
+mod modules;
 mod mutation;
 mod range;
 mod scripts;
@@ -160,6 +161,10 @@ struct DomHost {
     fetches: HashMap<u64, PendingFetch>,
     /// Texte des modules importables, par adresse.
     modules: HashMap<String, String>,
+    /// Carte d'import de la page (`<script type="importmap">`).
+    import_map: std::sync::Arc<crate::ImportMap>,
+    /// Imports en attente de leurs modules ; un emplacement libre vaut `None`.
+    module_loads: Vec<Option<modules::ModuleLoad>>,
 }
 
 /// État du DOM propre à un royaume : un cadre a sa fenêtre, donc ses
@@ -1340,7 +1345,11 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 /// Signale une exception non rattrapée dans la console de la page.
 fn report(vm: &mut Vm, thrown: &Value) {
-    let message = vm.display(thrown);
+    let mut message = vm.display(thrown);
+    if let Some(site) = vm.throw_site(thrown) {
+        message.push_str("\n    dans ");
+        message.push_str(&site);
+    }
     let console = Value::Object(vm.global());
     if let Ok(console) = vm.get(&console, "console")
         && let Ok(error) = vm.get(&console, "error")
@@ -1929,6 +1938,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             fetch_queue: Vec::new(),
             fetches: HashMap::new(),
             modules: HashMap::new(),
+            import_map: std::sync::Arc::default(),
+            module_loads: Vec::new(),
             next_timer: 0,
             dirty: false,
             focus_value: None,
@@ -2038,6 +2049,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(h) = host(vm) {
         h.hooks = Some(hooks);
     }
+    // `Intl` : mise en forme des nombres et des dates selon la langue.
+    vm.eval_script(include_str!("script/intl.js"))?;
     // Interfaces des éléments HTML et formulaires.
     let elements = vm.eval_script(include_str!("script/elements.js"))?;
     let helpers = [
@@ -2109,6 +2122,11 @@ impl ScriptEngine {
         if let Err(thrown) = install(&mut vm, url) {
             report(&mut vm, &thrown);
         }
+        // Les modules : fournis d'avance par l'embarqueur, ou chargés à la
+        // demande d'un `import()`.
+        vm.set_module_loader(load_module);
+        vm.set_import_preparer(modules::prepare);
+        vm.set_script_url(url.as_str());
         Self {
             vm,
             task_budget: TASK_BUDGET,
@@ -2236,11 +2254,18 @@ impl ScriptEngine {
         self.run(doc, |vm| scripts::run_classic(vm, element, source));
     }
 
-    /// Fournit le texte des modules que les scripts pourront importer.
+    /// Fournit le texte des modules que les scripts pourront importer ; ceux
+    /// qu'un `import()` a déjà fait charger restent connus.
     pub(crate) fn set_modules(&mut self, modules: HashMap<String, String>) {
-        self.vm.set_module_loader(load_module);
         if let Some(h) = host(&mut self.vm) {
-            h.modules = modules;
+            h.modules.extend(modules);
+        }
+    }
+
+    /// Fixe la carte d'import de la page.
+    pub(crate) fn set_import_map(&mut self, map: std::sync::Arc<crate::ImportMap>) {
+        if let Some(h) = host(&mut self.vm) {
+            h.import_map = map;
         }
     }
 
@@ -2499,7 +2524,9 @@ impl ScriptEngine {
 /// l'embarqueur (voir `Page::pending_modules`).
 fn load_module(vm: &mut Vm, specifier: &str, referrer: &str) -> Result<(String, String), String> {
     let referrer = Url::parse(referrer).map_err(|e| e.to_string())?;
-    let url = crate::resolve_module(&referrer, specifier)
+    let map = host(vm).map(|h| std::sync::Arc::clone(&h.import_map));
+    let url = map
+        .and_then(|map| map.resolve(&referrer, specifier))
         .ok_or("ce spécificateur ne désigne ni un chemin ni une adresse")?;
     let id = url.to_string();
     let source = host(vm)
@@ -2531,6 +2558,8 @@ struct PendingFetch {
     /// Élément `<script>` dont la réponse est le source : elle n'est pas
     /// remise à un script, donc pas soumise à la politique de même origine.
     script: Option<NodeId>,
+    /// Chargement de modules auquel la réponse est destinée.
+    module: Option<usize>,
 }
 
 /// Rejette la promesse d'un `fetch` avec une `TypeError`.
@@ -2742,6 +2771,7 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                     resolve: resolve.clone(),
                     reject: reject.clone(),
                     script: None,
+                    module: None,
                 },
             );
             None
@@ -2794,6 +2824,10 @@ fn settle_fetch(vm: &mut Vm, id: u64, result: Result<crate::FetchResponse, Strin
     };
     if let Some(script) = pending.script {
         scripts::loaded(vm, script, result);
+        return;
+    }
+    if let Some(load) = pending.module {
+        modules::loaded(vm, load, &pending.url, result);
         return;
     }
     let document = h.url.clone();

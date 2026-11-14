@@ -959,6 +959,7 @@ impl Engine<'_> {
         }
 
         // Tailles de pistes utilisées, pour `getComputedStyle`.
+        self.grid_log.push(parent);
         self.grids.insert(
             parent,
             crate::GridTracks {
@@ -1069,7 +1070,7 @@ impl Engine<'_> {
             cb_h: height,
             fixed_h: None,
         };
-        let fragment = self.layout_box(node, &style, space, depth);
+        let fragment = self.layout_item(node, &style, space, depth);
         self.out_of_flow.truncate(waiting);
         let max = fragment.border_box.w;
         // Une largeur en pourcentage ne se résout qu'une fois la piste connue.
@@ -1186,7 +1187,7 @@ impl Engine<'_> {
             cb_h: area_h,
             fixed_h,
         };
-        let fragment = self.layout_box(node, &style, space, depth);
+        let fragment = self.layout_item(node, &style, space, depth);
         item.out_of_flow = self.out_of_flow.split_off(waiting);
         item.fragment = Some(fragment);
     }

@@ -619,7 +619,7 @@ impl Engine<'_> {
         } else {
             space
         };
-        let fragment = self.layout_box(node, &style, space, depth);
+        let fragment = self.layout_item(node, &style, space, depth);
         // Mesure seulement : les boîtes hors flux seront revues à la passe finale.
         self.out_of_flow.truncate(waiting);
         if !row {
@@ -707,7 +707,7 @@ impl Engine<'_> {
             cb_h: height,
             fixed_h,
         };
-        let fragment = self.layout_box(node, &style, space, depth);
+        let fragment = self.layout_item(node, &style, space, depth);
         // Les boîtes hors flux de cette passe remplacent celles de la précédente.
         item.out_of_flow = self.out_of_flow.split_off(waiting);
         item.cross = if row {

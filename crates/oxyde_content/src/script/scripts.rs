@@ -6,7 +6,8 @@
 //! un script externe est demandé par le circuit de `fetch`, s'exécute à
 //! l'arrivée de sa réponse, puis reçoit `load` (ou `error`).
 //!
-//! LIMITES CONNUES : un module inséré (`type="module"`) n'est pas chargé ;
+//! LIMITES CONNUES : un module en ligne inséré n'est pas exécuté (un module
+//! inséré avec `src` est importé, voir `modules`) ;
 //! les scripts externes s'exécutent dans l'ordre d'arrivée (`async`), même
 //! avec `async = false` ; l'adresse se résout par rapport à celle de la page,
 //! sans tenir compte de `<base>` ; un script inséré dans un cadre n'est pas
@@ -47,7 +48,22 @@ pub(super) fn note_existing(vm: &mut Vm) {
 pub(super) fn run_classic(vm: &mut Vm, element: Option<NodeId>, source: &str) {
     let previous = host(vm).and_then(|h| std::mem::replace(&mut h.current_script, element));
     if let Err(error) = vm.eval(source) {
-        let message = Value::string(&format!("Exception non rattrapée : {error}"));
+        let mut text = format!("Exception non rattrapée : {error}");
+        // Où l'erreur est née, et dans quel script.
+        if let oxyde_js::EvalError::Thrown { value, .. } = &error
+            && let Some(site) = vm.throw_site(value)
+        {
+            text.push_str("\n    dans ");
+            text.push_str(&site);
+        }
+        let origin = element.and_then(|node| {
+            let h = host(vm)?;
+            let src = h.doc.element(node)?.attr("src")?;
+            Some(src.to_owned())
+        });
+        text.push_str("\n    script : ");
+        text.push_str(origin.as_deref().unwrap_or("en ligne"));
+        let message = Value::string(&text);
         let global = Value::Object(vm.global());
         if let Ok(console) = vm.get(&global, "console")
             && let Ok(log) = vm.get(&console, "error")
@@ -96,8 +112,21 @@ pub(super) fn scan(vm: &mut Vm) {
             let Some(element) = h.doc.element(node) else {
                 continue;
             };
-            // Seuls les scripts classiques ; `nomodule` est un repli pour les
-            // navigateurs sans modules.
+            // Un module inséré avec `src` est importé.
+            if crate::is_module_script(element.attr("type")) {
+                let target = element
+                    .attr("src")
+                    .map(str::trim)
+                    .filter(|src| !src.is_empty())
+                    .and_then(|src| h.url.join(src).ok());
+                if let Some(url) = target {
+                    super::modules::import_for_element(vm, node, &url);
+                    vm.run_microtasks();
+                }
+                continue;
+            }
+            // Sinon, seuls les scripts classiques ; `nomodule` est un repli
+            // pour les navigateurs sans modules.
             if !crate::is_classic_script(element.attr("type")) || element.has_attr("nomodule") {
                 continue;
             }
@@ -139,6 +168,7 @@ pub(super) fn scan(vm: &mut Vm) {
                             resolve: Value::Undefined,
                             reject: Value::Undefined,
                             script: Some(node),
+                            module: None,
                         },
                     );
                 }

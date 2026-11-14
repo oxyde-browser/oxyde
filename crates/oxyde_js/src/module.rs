@@ -31,6 +31,44 @@ use crate::{EvalError, compiler, parser};
 /// rend l'identifiant du module importé (son adresse résolue) et son texte.
 pub type ModuleLoader = fn(&mut Vm, &str, &str) -> Result<(String, String), String>;
 
+/// Préparation, par l'hôte, d'un `import()` dont le module n'est pas encore
+/// disponible : reçoit le spécificateur, le référent et une fonction `prêt`.
+/// S'il rend `true`, l'import attend ; l'hôte appellera `prêt()` une fois le
+/// module (et ce qu'il importe) fourni au chargeur, ou `prêt(message)` pour
+/// le faire échouer. S'il rend `false`, l'import se poursuit aussitôt.
+///
+/// L'hôte doit garder `prêt` en vie (racine du ramasse-miettes) tant qu'il
+/// ne l'a pas appelée.
+pub type ImportPreparer = fn(&mut Vm, &str, &str, &Value) -> bool;
+
+/// Fonction `prêt` d'un import en attente : `data` porte la promesse, le
+/// spécificateur, le référent et la nature de l'import.
+fn import_ready(vm: &mut Vm, data: &[Value], _this: &Value, args: &[Value]) -> JsResult {
+    let (Some(promise), Some(Value::String(specifier)), Some(Value::String(referrer))) = (
+        data.first().and_then(Value::as_object),
+        data.get(1),
+        data.get(2),
+    ) else {
+        return Ok(Value::Undefined);
+    };
+    let source = match data.get(3) {
+        Some(Value::Number(kind)) if *kind == 1.0 => 1,
+        Some(Value::Number(kind)) if *kind == 2.0 => 2,
+        _ => 0,
+    };
+    match args.first() {
+        Some(Value::String(message)) => {
+            let thrown = vm.type_error(&format!("module « {specifier} » introuvable : {message}"));
+            vm.settle(promise, true, thrown);
+        }
+        _ => {
+            let (specifier, referrer) = (Arc::clone(specifier), Arc::clone(referrer));
+            vm.run_import_now(promise, &specifier, &referrer, source);
+        }
+    }
+    Ok(Value::Undefined)
+}
+
 /// Nombre maximal de modules chargés dans une machine.
 const MAX_MODULES: usize = 10_000;
 /// Profondeur maximale d'une chaîne d'importations.
@@ -296,6 +334,28 @@ impl Vm {
         referrer: &JsStr,
         source: u8,
     ) {
+        // L'hôte peut avoir à aller chercher le module : l'import attend.
+        if let Some(prepare) = self.import_preparer {
+            let ready = self.new_native_data(
+                import_ready,
+                vec![
+                    Value::Object(promise),
+                    Value::String(Arc::clone(specifier)),
+                    Value::String(Arc::clone(referrer)),
+                    Value::Number(f64::from(source)),
+                ],
+            );
+            let (bare, _) = split_request(specifier);
+            let bare = bare.to_owned();
+            if prepare(self, &bare, referrer, &ready) {
+                return;
+            }
+        }
+        self.run_import_now(promise, specifier, referrer, source);
+    }
+
+    /// Suite de [`Vm::run_import`], une fois le module disponible.
+    fn run_import_now(&mut self, promise: ObjId, specifier: &JsStr, referrer: &JsStr, source: u8) {
         if source == 2 {
             // `import.defer(…)` : chargé et lié, évalué au premier usage.
             let before = self.modules.len();
@@ -455,6 +515,25 @@ impl Vm {
             };
             self.without_gc(|vm| vm.run_job(job));
         }
+    }
+
+    /// Installe la fonction qui prépare les `import()` (voir
+    /// [`ImportPreparer`]).
+    pub fn set_import_preparer(&mut self, preparer: ImportPreparer) {
+        self.import_preparer = Some(preparer);
+    }
+
+    /// `import(specifier)` lancé par l'hôte, depuis le référent `referrer` :
+    /// rend la promesse de l'espace de noms du module.
+    pub fn import_module(&mut self, specifier: &str, referrer: &str) -> Value {
+        let promise = self.new_promise();
+        self.jobs.push_back(crate::builtins::promise::Job::Import {
+            promise,
+            specifier: Arc::from(specifier),
+            referrer: Arc::from(referrer),
+            source: 0,
+        });
+        Value::Object(promise)
     }
 
     /// Installe la fonction qui fournit le texte des modules importés.

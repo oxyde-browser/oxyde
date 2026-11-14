@@ -307,7 +307,11 @@ impl Vm {
                     _ => None,
                 };
                 if let Some(reason) = reason {
-                    let shown = vm.display(&reason);
+                    let mut shown = vm.display(&reason);
+                    if let Some(site) = vm.throw_site(&reason) {
+                        shown.push_str("\n    dans ");
+                        shown.push_str(&site);
+                    }
                     super::console_message(
                         vm,
                         "error",

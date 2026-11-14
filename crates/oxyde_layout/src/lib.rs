@@ -200,6 +200,8 @@ pub fn layout_document(
         table_sizes: std::collections::HashMap::new(),
         cell_sizes: std::collections::HashMap::new(),
         control_widths: std::collections::HashMap::new(),
+        item_cache: std::collections::HashMap::new(),
+        grid_log: Vec::new(),
     };
     engine.measure_controls();
     let root = doc
@@ -463,6 +465,7 @@ struct Space {
 
 /// Boîte hors flux (`position: absolute` ou `fixed`) en attente de son bloc
 /// conteneur.
+#[derive(Clone)]
 struct OutOfFlow {
     node: NodeId,
     style: Arc<ComputedStyle>,
@@ -470,6 +473,30 @@ struct OutOfFlow {
     static_x: f32,
     static_y: f32,
     depth: usize,
+}
+
+/// Clé de la mémoire des éléments flex et grille : l'élément et tout ce
+/// dont sa mise en page dépend (les flottants des décimaux sont comparés
+/// bit à bit).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ItemKey {
+    node: NodeId,
+    cb_w: u32,
+    /// Règle de largeur : sa nature, et la largeur imposée s'il y en a une.
+    mode: (u8, u32),
+    cb_h: Option<u32>,
+    fixed_h: Option<u32>,
+    shrink_depth: usize,
+}
+
+/// Résultat mémorisé de la mise en page d'un élément flex ou grille, avec
+/// ce qu'elle a laissé dans le moteur.
+struct CachedItem {
+    fragment: BoxFragment,
+    /// Boîtes hors flux mises en attente pendant la mise en page.
+    out_of_flow: Vec<OutOfFlow>,
+    /// Pistes des grilles dimensionnées pendant la mise en page.
+    grids: Vec<(NodeId, GridTracks)>,
 }
 
 /// Résout une hauteur : un pourcentage n'a de sens que si la hauteur du bloc
@@ -526,6 +553,11 @@ struct Engine<'a> {
     control_widths: std::collections::HashMap<NodeId, f32>,
     /// Largeurs de contenu minimale et maximale des cellules déjà mesurées.
     cell_sizes: std::collections::HashMap<NodeId, (f32, f32)>,
+    /// Éléments flex et grille déjà mis en page, par contraintes.
+    item_cache: std::collections::HashMap<ItemKey, CachedItem>,
+    /// Grilles dimensionnées, dans l'ordre : ce qu'une mise en page
+    /// mémorisée doit rejouer.
+    grid_log: Vec<NodeId>,
 }
 
 fn px(size: Size, base: f32) -> f32 {
@@ -704,6 +736,73 @@ impl Engine<'_> {
             *slot = Some(result);
         }
         result
+    }
+
+    /// Met en page un élément flex ou grille, en mémorisant le résultat.
+    ///
+    /// Un conteneur met en page chacun de ses éléments plusieurs fois (mesure
+    /// du contenu, puis taille finale, puis étirement) : sans mémoire, des
+    /// conteneurs imbriqués multiplient le travail à chaque niveau. Un tel
+    /// élément ouvre son propre contexte de formatage : sa mise en page ne
+    /// dépend que de `space` ; ce qu'elle laisse dans le moteur (boîtes hors
+    /// flux en attente, pistes des grilles) est rejoué à chaque réemploi.
+    fn layout_item(
+        &mut self,
+        node: NodeId,
+        style: &Arc<ComputedStyle>,
+        space: Space,
+        depth: usize,
+    ) -> BoxFragment {
+        // Seules les positions nulles sont mémorisées : c'est ainsi que les
+        // conteneurs flex et grille mettent en page leurs éléments.
+        if space.cb_x != 0.0 || space.y != 0.0 {
+            return self.layout_box(node, style, space, depth);
+        }
+        let key = ItemKey {
+            node,
+            cb_w: space.cb_w.to_bits(),
+            mode: match space.mode {
+                Width::Stretch => (0, 0),
+                Width::ShrinkToFit => (1, 0),
+                Width::Fixed(w) => (2, w.to_bits()),
+            },
+            cb_h: space.cb_h.map(f32::to_bits),
+            fixed_h: space.fixed_h.map(f32::to_bits),
+            shrink_depth: self.shrink_depth,
+        };
+        if let Some(cached) = self.item_cache.get(&key) {
+            self.out_of_flow.extend(cached.out_of_flow.iter().cloned());
+            for (grid, tracks) in &cached.grids {
+                self.grids.insert(*grid, tracks.clone());
+                self.grid_log.push(*grid);
+            }
+            return cached.fragment.clone();
+        }
+        let waiting = self.out_of_flow.len();
+        let logged = self.grid_log.len();
+        let fragment = self.layout_box(node, style, space, depth);
+        let out_of_flow = self.out_of_flow.get(waiting..).unwrap_or_default().to_vec();
+        // Chaque grille une seule fois : un réemploi rejoue les siennes, et
+        // le journal les compterait sinon à chaque niveau.
+        let mut logged_grids: Vec<NodeId> =
+            self.grid_log.get(logged..).unwrap_or_default().to_vec();
+        logged_grids.sort_unstable();
+        logged_grids.dedup();
+        self.grid_log.truncate(logged);
+        self.grid_log.extend(logged_grids.iter().copied());
+        let grids = logged_grids
+            .iter()
+            .filter_map(|grid| Some((*grid, self.grids.get(grid)?.clone())))
+            .collect();
+        self.item_cache.insert(
+            key,
+            CachedItem {
+                fragment: fragment.clone(),
+                out_of_flow,
+                grids,
+            },
+        );
+        fragment
     }
 
     /// Met en page une boîte dans l'espace de contraintes `space`.
@@ -1925,6 +2024,41 @@ mod tests {
         // Trop larges pour le conteneur : chacun rétrécit de moitié du dépassement.
         assert_eq!(at("s1"), (0.0, 220.0, 50.0, 10.0));
         assert_eq!(at("s2"), (50.0, 220.0, 50.0, 10.0));
+    }
+
+    #[test]
+    fn nested_flex_and_grid_containers_stay_linear() {
+        // Un conteneur met en page chaque élément plusieurs fois : sans
+        // mémoire, quarante niveaux demanderaient plus de 2^40 passes.
+        for display in ["flex", "grid", "flex; flex-direction: column"] {
+            let depth = 40;
+            let html = format!(
+                "<style>body{{margin:0}} div{{display:{display}}} #f{{display:block; width:50px; height:20px}}</style>{}<div id=f></div>{}",
+                "<div>".repeat(depth),
+                "</div>".repeat(depth),
+            );
+            let (doc, tree) = layout(&html, 800.0);
+            let leaf = rect(&doc, &tree, "f");
+            assert_eq!(
+                (leaf.x, leaf.y, leaf.w, leaf.h),
+                (0.0, 0.0, 50.0, 20.0),
+                "{display}"
+            );
+        }
+        // Les pistes d'une grille imbriquée restent connues après un réemploi.
+        let (doc, tree) = layout(
+            "<style>body{margin:0} #a{display:flex} #b{display:grid; grid-template-columns:30px 40px}</style>
+             <div id=a><div id=b><div></div><div></div></div></div>",
+            800.0,
+        );
+        let inner = doc
+            .descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("b")))
+            .expect("grille");
+        assert_eq!(
+            tree.grids.get(&inner).map(|g| g.columns.clone()),
+            Some(vec![30.0, 40.0])
+        );
     }
 
     #[test]
