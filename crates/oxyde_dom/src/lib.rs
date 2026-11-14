@@ -498,6 +498,12 @@ impl Document {
         data
     }
 
+    /// Vrai si le journal tient des modifications pas encore relevées.
+    #[must_use]
+    pub fn has_mutations(&self) -> bool {
+        self.mutations.as_ref().is_some_and(|log| !log.is_empty())
+    }
+
     /// Tient (ou cesse de tenir) le journal des modifications.
     pub fn record_mutations(&mut self, enabled: bool) {
         if enabled {

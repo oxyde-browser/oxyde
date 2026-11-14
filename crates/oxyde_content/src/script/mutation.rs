@@ -1,5 +1,6 @@
 //! `MutationObserver` (DOM Standard §4.3) : le document consigne ses
-//! modifications, et la fin de chaque tâche les remet aux observateurs.
+//! modifications ; une micro-tâche, mise en file dès la première, les remet
+//! aux observateurs. La fin de chaque tâche rattrape ce qui reste.
 //!
 //! LIMITES CONNUES : un nœud retiré cesse aussitôt d'être suivi par les
 //! observations de sous-arbre.
@@ -311,39 +312,76 @@ fn collect(vm: &mut Vm) {
     }
 }
 
+/// Crochet de la file des micro-tâches : rend la fonction de remise si un
+/// observateur a des enregistrements en attente et qu'elle n'est pas déjà
+/// en file. Une modification qui n'intéresse personne ne la met pas en file.
+pub(super) fn pending(vm: &mut Vm) -> Option<Value> {
+    let h = host(vm)?;
+    if h.observers.is_empty() {
+        return None;
+    }
+    if h.doc.has_mutations() {
+        collect(vm);
+    }
+    let h = host(vm)?;
+    if h.observers_queued || h.observers.iter().all(|observer| observer.queue.is_empty()) {
+        return None;
+    }
+    h.observers_queued = true;
+    h.observers_notify.clone()
+}
+
+/// La micro-tâche de remise : un tour de remise aux observateurs.
+pub(super) fn notify(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    if let Some(h) = host(vm) {
+        h.observers_queued = false;
+    }
+    round(vm);
+    Ok(Value::Undefined)
+}
+
+/// Un tour de remise : relève le journal et appelle chaque observateur qui
+/// a des enregistrements. Renvoie `true` si l'un d'eux a été appelé.
+fn round(vm: &mut Vm) -> bool {
+    collect(vm);
+    let Some(h) = host(vm) else { return false };
+    let pending: Vec<(ObjId, Value, Vec<Value>)> = h
+        .observers
+        .iter_mut()
+        .filter(|observer| !observer.queue.is_empty())
+        .map(|observer| {
+            (
+                observer.object,
+                observer.callback.clone(),
+                std::mem::take(&mut observer.queue),
+            )
+        })
+        .collect();
+    if pending.is_empty() {
+        return false;
+    }
+    for (object, callback, records) in pending {
+        for record in &records {
+            vm.remove_root(record);
+        }
+        let observer = Value::Object(object);
+        let list = vm.new_array(records);
+        if let Err(thrown) = vm.call(&callback, &observer, &[list, observer.clone()]) {
+            report(vm, &thrown);
+        }
+        if vm.was_interrupted() {
+            break;
+        }
+    }
+    true
+}
+
 /// Fin de tâche : remet aux observateurs leurs enregistrements, puis
 /// recommence tant que leurs rappels modifient le document.
 pub(super) fn deliver(vm: &mut Vm) {
     for _ in 0..MAX_ROUNDS {
-        collect(vm);
-        let Some(h) = host(vm) else { return };
-        let pending: Vec<(ObjId, Value, Vec<Value>)> = h
-            .observers
-            .iter_mut()
-            .filter(|observer| !observer.queue.is_empty())
-            .map(|observer| {
-                (
-                    observer.object,
-                    observer.callback.clone(),
-                    std::mem::take(&mut observer.queue),
-                )
-            })
-            .collect();
-        if pending.is_empty() {
+        if !round(vm) || vm.was_interrupted() {
             return;
-        }
-        for (object, callback, records) in pending {
-            for record in &records {
-                vm.remove_root(record);
-            }
-            let observer = Value::Object(object);
-            let list = vm.new_array(records);
-            if let Err(thrown) = vm.call(&callback, &observer, &[list, observer.clone()]) {
-                report(vm, &thrown);
-            }
-            if vm.was_interrupted() {
-                return;
-            }
         }
         vm.run_microtasks();
     }

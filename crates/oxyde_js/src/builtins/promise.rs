@@ -82,6 +82,8 @@ impl Vm {
     /// Met une microtâche en file. Au-delà de [`MAX_JOBS`], la tâche est
     /// abandonnée et l'incident signalé une fois dans la console.
     fn enqueue(&mut self, job: Job) {
+        // Les micro-tâches de l'hôte nées avant celle-ci passent devant.
+        self.enqueue_host_job();
         if self.jobs.len() < MAX_JOBS {
             self.jobs.push_back(job);
         } else if self.jobs.len() == MAX_JOBS {
@@ -93,6 +95,23 @@ impl Vm {
             );
             // Dépasse la borne d'un cran pour ne signaler l'incident qu'une fois.
             self.jobs.push_back(job);
+        }
+    }
+
+    /// Met en file la micro-tâche que l'hôte a éventuellement à placer.
+    fn enqueue_host_job(&mut self) {
+        let Some(hook) = self.microtask_hook else {
+            return;
+        };
+        if let Some(handler) = hook(self)
+            && self.jobs.len() < MAX_JOBS
+        {
+            self.jobs.push_back(Job::Reaction {
+                handler,
+                argument: Value::Undefined,
+                rejected: false,
+                target: Derived::None,
+            });
         }
     }
 
@@ -284,6 +303,7 @@ impl Vm {
         // Signaler un rejet peut exécuter du code de la page (événement
         // `unhandledrejection`) et donc relancer des microtâches.
         loop {
+            self.enqueue_host_job();
             self.settle_async_waits();
             while let Some(job) = self.jobs.pop_front() {
                 if self.is_interrupted() {
@@ -300,15 +320,15 @@ impl Vm {
                 }
             }
             let pending = std::mem::take(&mut self.rejections);
-            if pending.is_empty() {
-                break;
+            if !pending.is_empty() {
+                self.without_gc(|vm| {
+                    for promise in pending {
+                        vm.report_rejection(promise);
+                    }
+                });
             }
-            self.without_gc(|vm| {
-                for promise in pending {
-                    vm.report_rejection(promise);
-                }
-            });
-            if self.jobs.is_empty() {
+            self.enqueue_host_job();
+            if self.jobs.is_empty() || self.is_interrupted() {
                 break;
             }
         }

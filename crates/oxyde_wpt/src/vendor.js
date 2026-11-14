@@ -72,6 +72,8 @@
     const lines = [];
     try {
       const pointer = { x: 0, y: 0 };
+      // Doigts : position et contact de chaque source tactile.
+      const fingers = new Map();
       const ticks = Math.max(0, ...sources.map((source) => source.actions.length));
       for (let tick = 0; tick < ticks; tick++) {
         for (const source of sources) {
@@ -79,6 +81,25 @@
           if (!action || action.type === "pause") continue;
           if (source.type === "pointer") {
             const kind = source.parameters?.pointerType ?? "mouse";
+            if (kind === "touch") {
+              if (!fingers.has(source)) fingers.set(source, { id: fingers.size, x: 0, y: 0, down: false });
+              const finger = fingers.get(source);
+              if (action.type === "pointerMove") {
+                const at = point(action, finger);
+                finger.x = at.x;
+                finger.y = at.y;
+                if (finger.down) lines.push(["touch", "move", finger.id, at.x, at.y]);
+              } else if (action.type === "pointerDown") {
+                finger.down = true;
+                lines.push(["touch", "start", finger.id, finger.x, finger.y]);
+              } else if (action.type === "pointerUp") {
+                finger.down = false;
+                lines.push(["touch", "end", finger.id, finger.x, finger.y]);
+              } else {
+                throw new Error(`action « ${action.type} » non prise en charge`);
+              }
+              continue;
+            }
             if (kind !== "mouse") throw new Error(`pointeur « ${kind} » non pris en charge`);
             if (action.type === "pointerMove") {
               const at = point(action, pointer);

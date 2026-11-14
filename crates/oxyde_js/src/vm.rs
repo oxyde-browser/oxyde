@@ -289,6 +289,10 @@ pub struct Vm {
     /// promesse rejetée sans gestionnaire ; elle rend `true` si le rejet a
     /// été pris en charge (rien n'est alors écrit dans la console).
     pub(crate) rejection_handler: Option<Value>,
+    /// Crochet de l'hôte, consulté avant chaque mise en file d'une
+    /// micro-tâche et à chaque point de contrôle : la fonction qu'il rend
+    /// est mise en file d'abord (remise des observateurs de mutation).
+    pub(crate) microtask_hook: Option<fn(&mut Vm) -> Option<Value>>,
     /// Vrai pendant l'appel d'un constructeur natif par `new`.
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
@@ -550,6 +554,7 @@ impl Vm {
             jobs: VecDeque::new(),
             rejections: Vec::new(),
             rejection_handler: None,
+            microtask_hook: None,
             constructing: false,
             native_new_target: Value::Undefined,
             native_proto: None,
@@ -657,6 +662,14 @@ impl Vm {
     /// `true` si l'hôte a pris le rejet en charge.
     pub fn set_rejection_handler(&mut self, handler: Value) {
         self.rejection_handler = Some(handler);
+    }
+
+    /// Installe le crochet consulté avant chaque mise en file d'une
+    /// micro-tâche et à chaque point de contrôle : s'il rend une fonction,
+    /// elle est mise en file à cet instant. L'hôte y range ses propres
+    /// micro-tâches, à leur place parmi celles des scripts.
+    pub fn set_microtask_hook(&mut self, hook: fn(&mut Vm) -> Option<Value>) {
+        self.microtask_hook = Some(hook);
     }
 
     /// Installe les crochets d'accès aux objets de l'hôte.

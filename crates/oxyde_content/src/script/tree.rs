@@ -324,7 +324,9 @@ pub(super) fn move_before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
     let node = node_arg(vm, &arg(args, 0))?;
     let child = nullable_node(vm, args, 1)?;
     ensure(vm, |doc| {
-        let root = |n: NodeId| doc.ancestors(n).last().unwrap_or(n);
+        // Racines à travers les arbres fantômes : un déplacement peut
+        // franchir la frontière d'un arbre fantôme du même document.
+        let root = |n: NodeId| doc.composed_root(n);
         // « Ensure pre-move validity ».
         if !matches!(
             doc.node(parent).data,
@@ -343,11 +345,14 @@ pub(super) fn move_before(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
             ));
         }
         let movable = matches!(doc.node(node).data, NodeData::Element(_))
-            || (doc.character_data(node).is_some() && !doc.is_document(parent));
+            || doc.character_data(node).is_some();
         if !movable || (is_text(doc, node) && doc.is_document(parent)) {
             return Err((HIERARCHY, "seuls un élément ou un texte se déplacent"));
         }
-        if doc.is_document(parent) && doc.node(node).parent != Some(parent) {
+        if doc.is_document(parent)
+            && doc.node(node).parent != Some(parent)
+            && doc.element(node).is_some()
+        {
             return validity(doc, node, parent, child, false);
         }
         Ok(())
