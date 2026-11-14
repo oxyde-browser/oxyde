@@ -1065,7 +1065,9 @@ impl Page {
     /// Analyse `html` comme le document situé à `url`.
     #[must_use]
     pub fn from_html(url: Url, html: &str) -> Self {
-        let doc = oxyde_html::parse_document(html);
+        let mut doc = oxyde_html::parse_document(html);
+        // `<template shadowrootmode>` : arbres fantômes posés par l'analyseur.
+        doc.adopt_declarative_shadow_roots();
         let base = doc
             .find_html_element(doc.root(), "base")
             .and_then(|n| doc.element(n)?.attr("href").and_then(|h| url.join(h).ok()))
@@ -5672,6 +5674,55 @@ mod tests {
                 "object true  img form  true true false true true true false \
                  connecté déconnecté:true connecté"
             )
+        );
+    }
+
+    #[test]
+    fn declarative_shadow_roots_reach_scripts() {
+        let mut p = page(
+            "<body><div id=h><template shadowrootmode=open><p id=dedans>ombre</p><slot></slot></template><b>clair</b></div>
+             <div id=f><template shadowrootmode=closed><i></i></template></div>
+             <script>
+               const out = [];
+               const h = document.getElementById('h');
+               out.push(h.shadowRoot instanceof ShadowRoot, h.shadowRoot.mode, h.shadowRoot.host === h);
+               out.push(h.shadowRoot.querySelector('#dedans').textContent, document.getElementById('dedans'));
+               out.push(h.querySelector('template'), h.children.length, h.querySelector('b').assignedSlot.localName);
+               out.push(document.getElementById('f').shadowRoot);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("true open true ombre   1 slot ")
+        );
+    }
+
+    #[test]
+    fn radio_groups_follow_their_tree() {
+        let mut p = page(
+            "<body><input type=radio name=g id=a checked><input type=radio name=g id=b>
+             <div id=h></div><script>
+               const out = [];
+               const root = document.getElementById('h').attachShadow({ mode: 'open' });
+               root.innerHTML = '<input type=radio name=g id=c checked><input type=radio name=g id=d>';
+               root.getElementById('d').click();
+               out.push(root.getElementById('c').checked, root.getElementById('d').checked,
+                 document.getElementById('a').checked);
+               document.getElementById('b').click();
+               out.push(document.getElementById('a').checked, root.getElementById('d').checked);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("false true true false true")
         );
     }
 }

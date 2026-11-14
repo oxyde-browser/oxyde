@@ -7,7 +7,8 @@
 //   shadowHostOf(nœud)          -> l'hôte dont il est la racine fantôme, ou null ;
 //   assignedSlotOf(nœud)        -> l'emplacement où il est distribué, ou null ;
 //   assignedNodesOf(emplacement) -> tableau des nœuds qui y sont distribués ;
-//   deepFocused()               -> l'élément qui a le focus, fût-il dans un arbre fantôme.
+//   deepFocused()               -> l'élément qui a le focus, fût-il dans un arbre fantôme ;
+//   shadowRootList()            -> [racine, ouverte, …] pour chaque arbre fantôme du document.
 //
 // LIMITES CONNUES
 // - `Path2D` enregistre ses commandes ; rien ne les dessine (pas de canevas).
@@ -19,8 +20,10 @@
 //   (`extends`, attribut `is`), pas de `adoptedCallback`, pas
 //   d'`ElementInternals`.
 // - Shadow DOM : pas de `adoptedStyleSheets` (les bibliothèques se replient
-//   sur des éléments `<style>`), pas d'arbre fantôme déclaratif
-//   (`<template shadowrootmode>`), pas de `slot.assign()` ; `innerHTML`
+//   sur des éléments `<style>`) ; l'arbre fantôme déclaratif
+//   (`<template shadowrootmode>`) n'est pris qu'à l'analyse du document de
+//   la page (ni cadres, ni `setHTMLUnsafe`), sans ses options
+//   (`shadowrootdelegatesfocus`…) ; pas de `slot.assign()` ; `innerHTML`
 //   d'une racine fantôme analyse son texte comme le contenu d'un `<div>` ;
 //   `slotchange` ne part que pour un hôte relié au document, à la fin de
 //   la tâche ; `delegatesFocus` est retenu sans effet ; les rappels d'un
@@ -30,7 +33,7 @@
 //   déclarées) ; un document XML mal formé rend un document `parsererror`.
 // - `template.content` : le fragment appartient au document de la page.
 (function (parseHtmlDocument, attachShadowRoot, shadowRootOf, shadowHostOf, assignedSlotOf,
-  assignedNodesOf, deepFocused) {
+  assignedNodesOf, deepFocused, shadowRootList) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -514,12 +517,37 @@
   Object.setPrototypeOf(ShadowRoot, global.DocumentFragment);
   tag(ShadowRoot, "ShadowRoot");
   expose("ShadowRoot", ShadowRoot);
+  // Les arbres fantômes que l'analyseur a posés (`<template
+  // shadowrootmode>`) n'ont pas encore leurs interfaces : elles leur sont
+  // données à la première occasion.
+  let knownRoots = 0;
+  function discover() {
+    const list = shadowRootList();
+    if (list.length / 2 === knownRoots) return;
+    knownRoots = list.length / 2;
+    for (let i = 0; i < list.length; i += 2) {
+      const root = list[i];
+      if (shadowInit.has(root)) continue;
+      Object.setPrototypeOf(root, ShadowRoot.prototype);
+      shadowInit.set(root, {
+        mode: list[i + 1] ? "open" : "closed", delegatesFocus: false, slotAssignment: "named",
+        clonable: false, serializable: false,
+      });
+      shadowRoots.push(root);
+      if (observer !== null) observer.observe(root, OBSERVED);
+      watchSlots(root);
+    }
+  }
+  const initOf = (root) => {
+    if (root !== null && typeof root === "object" && !shadowInit.has(root)) discover();
+    return shadowInit.get(root);
+  };
   const shadowGetter = (name, get, set) => {
     define(ShadowRoot.prototype, name, { get, set, enumerable: true, configurable: true });
   };
   shadowGetter("host", function () { return shadowHostOf(this); });
   for (const name of ["mode", "delegatesFocus", "slotAssignment", "clonable", "serializable"]) {
-    shadowGetter(name, function () { return shadowInit.get(this)?.[name]; });
+    shadowGetter(name, function () { return initOf(this)?.[name]; });
   }
   const setShadowHtml = function (html) {
     const holder = document.createElement("div");
@@ -572,8 +600,14 @@
     if (slotObserver === null) {
       slotObserver = new MutationObserver((records) => {
         const roots = new Set();
+        // Emplacements sans nœud distribué dont le contenu de repli change.
+        const fallbacks = new Set();
         for (const record of records) {
           const target = record.target;
+          if (record.type === "childList" && target.nodeType === 1 && target.localName === "slot"
+            && shadowHostOf(target.getRootNode()) !== null && assignedNodesOf(target).length === 0) {
+            fallbacks.add(target);
+          }
           // Enfant d'un hôte ajouté, retiré, ou qui demande un autre emplacement.
           const parent = record.type === "attributes" ? target.parentNode : target;
           const own = parent !== null && parent.nodeType === 1 ? shadowRootOf(parent) : null;
@@ -583,6 +617,7 @@
           if (shadowHostOf(tree) !== null) roots.add(tree);
         }
         for (const root of roots) signalSlots(root);
+        for (const slot of fallbacks) slot.dispatchEvent(new Event("slotchange", { bubbles: true }));
       });
       slotObserver.observe(document, SLOT_OBSERVED);
     }
@@ -617,6 +652,7 @@
         serializable: Boolean(init.serializable),
       });
       shadowRoots.push(root);
+      knownRoots += 1;
       if (observer !== null) observer.observe(root, OBSERVED);
       watchSlots(root);
       return root;
@@ -626,7 +662,7 @@
   define(global.Element.prototype, "shadowRoot", {
     get() {
       const root = shadowRootOf(this);
-      return root !== null && shadowInit.get(root)?.mode === "open" ? root : null;
+      return root !== null && initOf(root)?.mode === "open" ? root : null;
     },
     enumerable: true, configurable: true,
   });
@@ -635,7 +671,7 @@
     define(Interface.prototype, "assignedSlot", {
       get() {
         const slot = assignedSlotOf(this);
-        return slot !== null && shadowInit.get(slot.getRootNode())?.mode === "open" ? slot : null;
+        return slot !== null && initOf(slot.getRootNode())?.mode === "open" ? slot : null;
       },
       enumerable: true, configurable: true,
     });
@@ -687,6 +723,7 @@
       definitions.set(text, definition);
       byConstructor.set(constructor, definition);
       watch();
+      discover();
       // Les éléments déjà dans le document sont mis à niveau, dans l'ordre.
       // Par nom d'élément, pas par sélecteur : un nom peut porter un point.
       for (const element of Array.from(document.getElementsByTagName(text))) upgrade(element, definition);
