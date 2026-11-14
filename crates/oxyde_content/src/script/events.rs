@@ -225,7 +225,7 @@ fn new_event(
     vm.set_slot(event, TARGET, Value::Null);
     vm.set_slot(event, CURRENT, Value::Null);
     vm.set_slot(event, PHASE, Value::Number(NONE));
-    vm.set_slot(event, TIME, Value::Number(elapsed));
+    vm.set_slot(event, TIME, Value::Number(super::coarsen(elapsed)));
     for (name, value) in [
         (BUBBLES, bubbles),
         (CANCELABLE, cancelable),
@@ -581,6 +581,17 @@ const WINDOW_HANDLERS: [&str; 22] = [
 
 /// Appelle les écouteurs de `item` pour la phase en cours. Renvoie `false`
 /// si la propagation doit s'arrêter là.
+/// Ancien nom, préfixé, d'un type d'événement d'animation ou de transition.
+fn legacy_type(kind: &str) -> Option<&'static str> {
+    Some(match kind {
+        "animationend" => "webkitAnimationEnd",
+        "animationiteration" => "webkitAnimationIteration",
+        "animationstart" => "webkitAnimationStart",
+        "transitionend" => "webkitTransitionEnd",
+        _ => return None,
+    })
+}
+
 fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, capture: bool) -> bool {
     if flag(vm, event, STOP) {
         return false;
@@ -617,6 +628,22 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
     } else if !capture && let Some(handler) = attribute_handler(vm, item, kind) {
         calls.push((None, handler, false, false));
     }
+    // Personne n'attend ce type sur cette cible : un événement du
+    // navigateur est alors proposé sous son ancien nom préfixé.
+    if calls.is_empty()
+        && flag(vm, event, TRUSTED)
+        && let Some(legacy) = legacy_type(kind)
+        && !host(vm).is_some_and(|h| {
+            h.listeners
+                .iter()
+                .any(|l| l.target == item && l.kind == kind)
+        })
+    {
+        vm.set_slot(event, TYPE, Value::string(legacy));
+        let go_on = invoke(vm, event, item, legacy, phase, capture);
+        vm.set_slot(event, TYPE, Value::string(kind));
+        return go_on;
+    }
     let event_value = Value::Object(event);
     for (id, callback, once, passive) in calls {
         if let Some(id) = id {
@@ -645,6 +672,14 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
             (Value::Object(current), Some(known)) => *current == known,
             _ => false,
         };
+        // Un écouteur posé dans un arbre fantôme ne voit pas l'événement
+        // par `window.event`.
+        let in_shadow = matches!(item, Target::Node(index) if host(vm).is_some_and(|h| {
+            h.doc
+                .id_from_index(index as usize)
+                .is_some_and(|node| h.doc.containing_shadow_root(node).is_some())
+        }));
+        let ours = ours && !in_shadow;
         if ours {
             vm.define_hidden(global, "event", event_value.clone());
             if let Some(h) = host(vm) {

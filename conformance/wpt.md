@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 43921 / 50203 (87,5 %)** — fichiers entièrement réussis : 418 / 693 (60,3 %).
+**Sous-tests réussis : 44404 / 50203 (88,4 %)** — fichiers entièrement réussis : 433 / 693 (62,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,19 +13,19 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `dom` | 5 / 9 | 120 / 142 (84,5 %) |
+| `dom` | 6 / 9 | 121 / 142 (85,2 %) |
 | `dom/abort` | 5 / 6 | 36 / 37 (97,3 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
-| `dom/events` | 69 / 100 | 476 / 636 (74,8 %) |
+| `dom/events` | 72 / 100 | 483 / 636 (75,9 %) |
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 4 / 39 | 15 / 94 (16,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 183 / 265 | 10739 / 13109 (81,9 %) |
+| `dom/nodes` | 192 / 265 | 10840 / 13109 (82,7 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
-| `dom/nodes/insertion-removing-steps` | 13 / 22 | 19 / 38 (50,0 %) |
-| `dom/nodes/moveBefore` | 16 / 64 | 80 / 177 (45,2 %) |
+| `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
+| `dom/nodes/moveBefore` | 17 / 64 | 81 / 177 (45,8 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
-| `dom/ranges` | 37 / 49 | 30343 / 33613 (90,3 %) |
+| `dom/ranges` | 38 / 49 | 30715 / 33613 (91,4 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
 | `dom/traversal` | 14 / 18 | 1598 / 1608 (99,4 %) |
 
@@ -48,10 +48,8 @@ est le plus honnête des deux.
 | `dom/events/Event-dispatch-on-disabled-elements.html` | 4 / 9 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-single-activation-behavior.html` | 80 / 132 |  |
 | `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 |  |
-| `dom/events/Event-init-while-dispatching.html` | 2 / 5 |  |
 | `dom/events/Event-isTrusted.any.js` | 0 / 1 |  |
 | `dom/events/Event-timestamp-high-resolution.https.html` | 0 / 1 |  |
-| `dom/events/Event-timestamp-safe-resolution.html` | 0 / 1 |  |
 | `dom/events/EventListener-handleEvent-cross-realm.html` | 0 / 5 |  |
 | `dom/events/EventListener-incumbent-global-1.sub.html` | 0 / 1 |  |
 | `dom/events/EventListener-incumbent-global-2.sub.html` | 0 / 1 |  |
@@ -61,7 +59,6 @@ est le plus honnête des deux.
 | `dom/events/event-global-extra.window.js` | 0 / 6 |  |
 | `dom/events/event-global-is-still-set-when-coercing-beforeunload-result.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/event-global-is-still-set-when-reporting-exception-onerror.html` | 0 / 1 |  |
-| `dom/events/event-global.html` | 5 / 8 |  |
 | `dom/events/event-listener-not-fully-active-adopted-node.html` | 3 / 5 |  |
 | `dom/events/event-listener-not-fully-active-callback.html` | 1 / 4 |  |
 | `dom/events/event-listener-not-fully-active-navigated.html` | 0 / 3 |  |
@@ -112,8 +109,6 @@ est le plus honnête des deux.
 | `dom/lists/DOMTokenList-coverage-for-attributes.html` | 167 / 175 |  |
 | `dom/lists/DOMTokenList-stringifier.html` | 0 / 1 |  |
 | `dom/nodes/Attr-prefix.html` | 4 / 6 |  |
-| `dom/nodes/CharacterData-appendData.html` | 12 / 14 |  |
-| `dom/nodes/CharacterData-substringData.html` | 26 / 28 |  |
 | `dom/nodes/CharacterData-surrogates.html` | 2 / 8 |  |
 | `dom/nodes/DOMImplementation-createDocument-no-browsing-context.html` | 2 / 5 |  |
 | `dom/nodes/DOMImplementation-createDocument.html` | 325 / 434 |  |
@@ -145,7 +140,6 @@ est le plus honnête des deux.
 | `dom/nodes/Document-createElement.html` | 49 / 147 |  |
 | `dom/nodes/Document-createElementNS.html` | 205 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 213 / 279 |  |
-| `dom/nodes/Document-getElementById.html` | 16 / 18 |  |
 | `dom/nodes/Document-getElementsByTagName.html` | 15 / 18 |  |
 | `dom/nodes/Element-children.html` | 0 / 2 |  |
 | `dom/nodes/Element-classlist.html` | 1415 / 1420 |  |
@@ -162,31 +156,27 @@ est le plus honnête des deux.
 | `dom/nodes/MutationObserver-cross-realm-callback-report-exception.html` | 0 / 1 |  |
 | `dom/nodes/MutationObserver-disconnect.html` | 1 / 2 |  |
 | `dom/nodes/MutationObserver-document.html` | 1 / 4 |  |
-| `dom/nodes/MutationObserver-inner-outer.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `dom/nodes/MutationObserver-transient-registered-observers.window.js` | 4 / 15 |  |
 | `dom/nodes/Node-appendChild-cereactions-vs-script.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-svg.html` | 2 / 4 |  |
 | `dom/nodes/Node-cloneNode.html` | 114 / 135 |  |
-| `dom/nodes/Node-isEqualNode.html` | 6 / 9 |  |
 | `dom/nodes/Node-normalize-2.html` | 0 / 2 |  |
 | `dom/nodes/Node-properties.html` | 724 / 726 |  |
 | `dom/nodes/Node-removeChild.html` | 25 / 28 |  |
-| `dom/nodes/Node-textContent.html` | 73 / 81 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-3.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-3.html` | 0 / 1 |  |
-| `dom/nodes/ParentNode-querySelector-All.html` | 1481 / 1975 |  |
+| `dom/nodes/ParentNode-querySelector-All.html` | 1549 / 1975 |  |
 | `dom/nodes/ParentNode-querySelector-escapes.html` | 63 / 68 |  |
-| `dom/nodes/ParentNode-querySelector-hyphen-prefix.html` | 2 / 4 |  |
-| `dom/nodes/ParentNode-querySelector-invalid-comment-like.html` | 0 / 3 |  |
-| `dom/nodes/ParentNode-querySelector-namespace-tagname-attribute.html` | 2 / 8 |  |
+| `dom/nodes/ParentNode-querySelector-hyphen-prefix.html` | 3 / 4 |  |
+| `dom/nodes/ParentNode-querySelector-namespace-tagname-attribute.html` | 4 / 8 |  |
 | `dom/nodes/ParentNode-querySelector-xml-capitalization.window.js` | 2 / 3 |  |
 | `dom/nodes/ParentNode-querySelectors-namespaces.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/ParentNode-replaceChildren.html` | 50 / 62 | harnais : Uncaught { message: 'assert_equals: mutations.length expected 3 but got 7', stack: 'Error' } |
+| `dom/nodes/ParentNode-replaceChildren.html` | 50 / 62 | harnais : Uncaught { message: 'assert_equals: mutations.length expected 3 but got 5', stack: 'Error' } |
 | `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 2 / 5 |  |
 | `dom/nodes/attributes.html` | 59 / 67 |  |
@@ -200,9 +190,8 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/Node-appendChild-script-and-style.html` | 0 / 5 |  |
 | `dom/nodes/insertion-removing-steps/Node-appendChild-text-and-script-in-style.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/frame-post-connection-steps.html` | 0 / 4 |  |
-| `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 2 / 4 |  |
+| `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 3 / 4 |  |
 | `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
-| `dom/nodes/moveBefore/Node-moveBefore.html` | 31 / 32 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-transition-left-pseudo.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -256,12 +245,10 @@ est le plus honnête des deux.
 | `dom/nodes/node-realm-mixed-across-adoption.html` | 0 / 4 |  |
 | `dom/nodes/node-realm-preserved-across-adoption.html` | 4 / 5 |  |
 | `dom/nodes/node-realm-preserved-across-frameless-adoption.html` | 0 / 4 |  |
-| `dom/nodes/post-connection-steps-shadow-tree.html` | 0 / 1 |  |
 | `dom/nodes/processing-instruction-attributes.html` | 10 / 140 |  |
 | `dom/nodes/query-target-in-load-event.html` | 0 / 1 |  |
 | `dom/nodes/querySelector-mixed-case.html` | 0 / 1 |  |
 | `dom/nodes/remove-and-adopt-thcrash.html` | 0 / 1 |  |
-| `dom/nodes/remove-unscopable.html` | 0 / 6 |  |
 | `dom/observable/tentative/idlharness.html` | 0 / 1 |  |
 | `dom/observable/tentative/observable-constructor.any.js` | 36 / 44 |  |
 | `dom/observable/tentative/observable-constructor.window.js` | 0 / 4 |  |
@@ -271,17 +258,16 @@ est le plus honnête des deux.
 | `dom/observable/tentative/observable-takeUntil.window.js` | 1 / 2 |  |
 | `dom/observable/tentative/observable-toArray.any.js` | 4 / 6 |  |
 | `dom/ranges/Range-cloneContents-around-shadow.tentative.html` | 4 / 5 |  |
-| `dom/ranges/Range-cloneContents.html` | 109 / 187 |  |
-| `dom/ranges/Range-deleteContents.html` | 65 / 125 |  |
+| `dom/ranges/Range-cloneContents.html` | 117 / 187 |  |
+| `dom/ranges/Range-deleteContents.html` | 70 / 125 |  |
 | `dom/ranges/Range-expand-shadow.tentative.html` | 0 / 13 |  |
 | `dom/ranges/Range-extractContents-around-shadow.tentative.html` | 12 / 13 |  |
-| `dom/ranges/Range-extractContents.html` | 123 / 187 |  |
+| `dom/ranges/Range-extractContents.html` | 129 / 187 |  |
 | `dom/ranges/Range-in-shadow-after-the-shadow-removed.html` | 0 / 2 |  |
-| `dom/ranges/Range-insertNode.html` | 360 / 1840 |  |
+| `dom/ranges/Range-insertNode.html` | 544 / 1840 |  |
 | `dom/ranges/Range-mutations-normalize.html` | 1 / 4 |  |
 | `dom/ranges/Range-set.html` | 0 / 0 | le harnais n'a pas terminé |
-| `dom/ranges/Range-surroundContents.html` | 289 / 1840 |  |
-| `dom/ranges/StaticRange-constructor.html` | 0 / 17 |  |
+| `dom/ranges/Range-surroundContents.html` | 441 / 1840 |  |
 | `dom/ranges/tentative/OpaqueRange-auto-disconnect.html` | 0 / 17 |  |
 | `dom/ranges/tentative/OpaqueRange-basic.html` | 0 / 3 |  |
 | `dom/ranges/tentative/OpaqueRange-disconnect.html` | 0 / 5 |  |
@@ -305,6 +291,5 @@ est le plus honnête des deux.
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm-null-browsing-context.html` | 0 / 1 |  |
 | `dom/traversal/TreeWalker-acceptNode-filter-cross-realm.html` | 0 / 5 |  |
 | `dom/traversal/TreeWalker-realm.html` | 0 / 2 |  |
-| `dom/window-extends-event-target.html` | 2 / 3 |  |
 | `dom/xpath-evaluation-detached-nodes.html` | 0 / 19 |  |
 | `dom/xpath-result-single-node-value-nullable.html` | 0 / 1 |  |

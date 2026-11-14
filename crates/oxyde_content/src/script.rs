@@ -489,6 +489,8 @@ fn set_inner_html(doc: &mut Document, node: NodeId, html: &str) {
     // LIMITE : le fragment est analysé comme le contenu d'un `<body>`, quel
     // que soit l'élément de contexte.
     let fragment = oxyde_html::parse_document(&format!("<!DOCTYPE html><body>{html}"));
+    // Un seul enregistrement de mutation : enfants retirés, enfants ajoutés.
+    let opened = doc.begin_group();
     doc.remove_children(node);
     if let Some(body) = fragment.find_html_element(fragment.root(), "body") {
         let children: Vec<NodeId> = fragment.children(body).collect();
@@ -497,13 +499,47 @@ fn set_inner_html(doc: &mut Document, node: NodeId, html: &str) {
             doc.append_child(node, copy);
         }
     }
+    if opened {
+        doc.end_group();
+    }
+}
+
+/// `outerHTML` en écriture : remplace `node` par le résultat de l'analyse
+/// de `html`. Sans effet hors d'un parent ; renvoie `false` si le parent
+/// est un document, où le remplacement est interdit.
+fn set_outer_html(doc: &mut Document, node: NodeId, html: &str) -> bool {
+    let Some(parent) = doc.node(node).parent else {
+        return true;
+    };
+    if doc.is_document(parent) {
+        return false;
+    }
+    // LIMITE : même contexte d'analyse que `innerHTML` (un `<body>`).
+    let fragment = oxyde_html::parse_document(&format!("<!DOCTYPE html><body>{html}"));
+    let opened = doc.begin_group();
+    if let Some(body) = fragment.find_html_element(fragment.root(), "body") {
+        let children: Vec<NodeId> = fragment.children(body).collect();
+        for child in children {
+            let copy = doc.import(&fragment, child);
+            doc.insert_before(parent, copy, Some(node));
+        }
+    }
+    doc.detach(node);
+    if opened {
+        doc.end_group();
+    }
+    true
 }
 
 fn selectors(vm: &mut Vm, source: &Value) -> JsResult<Vec<Selector>> {
     let text = vm.to_string(source)?;
     match parse_selector_list(&tokenize(&text)) {
         Some(list) => Ok(list),
-        None => Err(vm.error("SyntaxError", &format!("sélecteur invalide : {text}"))),
+        None => Err(dom_exception(
+            vm,
+            "SyntaxError",
+            &format!("sélecteur invalide : {text}"),
+        )),
     }
 }
 
@@ -1014,6 +1050,7 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         "textContent"
             | "innerText"
             | "innerHTML"
+            | "outerHTML"
             | "nodeValue"
             | "data"
             | "className"
@@ -1028,12 +1065,14 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         Err(thrown) => return Some(Err(thrown)),
     };
     // `null` vaut la chaîne vide pour le contenu textuel.
-    let text: String =
-        if matches!(value, Value::Null) && matches!(key, "textContent" | "nodeValue" | "data") {
-            String::new()
-        } else {
-            text.to_string()
-        };
+    let text: String = if (matches!(value, Value::Null)
+        && matches!(key, "textContent" | "nodeValue" | "data"))
+        || (matches!(value, Value::Undefined) && matches!(key, "textContent" | "nodeValue"))
+    {
+        String::new()
+    } else {
+        text.to_string()
+    };
     let truthy = value.truthy();
     let h = host(vm)?;
     let doc = &mut h.doc;
@@ -1061,6 +1100,15 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             doc.replace_data(node, 0, u32::MAX, &text);
         }
         "innerHTML" if !is_document => set_inner_html(doc, node, &text),
+        "outerHTML" if !is_document => {
+            if !set_outer_html(doc, node, &text) {
+                return Some(Err(dom_exception(
+                    vm,
+                    "NoModificationAllowedError",
+                    "l'élément racine d'un document ne se remplace pas ainsi",
+                )));
+            }
+        }
         "className" => doc.set_attr(node, "class", &text),
         "title" if is_document => {
             if let Some(title) = doc.find_html_element(node, "title") {
@@ -1593,9 +1641,15 @@ fn clear_timer(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
+/// Ramène un instant, en millisecondes, à une résolution de 0,1 ms : une
+/// horloge plus fine sert aux attaques par mesure du temps.
+fn coarsen(milliseconds: f64) -> f64 {
+    (milliseconds * 10.0).floor() / 10.0
+}
+
 fn performance_now(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     let elapsed = host(vm).map_or(0.0, |h| h.elapsed_ms());
-    Ok(Value::Number(elapsed))
+    Ok(Value::Number(coarsen(elapsed)))
 }
 
 fn window_alert(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
@@ -2125,6 +2179,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let performance = vm.new_object();
     vm.define_method(performance, "now", 0, performance_now);
     vm.define_hidden(global, "performance", Value::Object(performance));
+    // `window.event` existe d'emblée, sans valeur hors d'un écouteur.
+    vm.define_hidden(global, "event", Value::Undefined);
 
     let navigator = Value::Object(vm.new_object());
     vm.set(

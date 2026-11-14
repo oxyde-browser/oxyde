@@ -5415,4 +5415,74 @@ mod tests {
             Some("avant mo2 apres mo1 fin")
         );
     }
+
+    #[test]
+    fn small_dom_conformance_points() {
+        let mut p = page(
+            "<body><div id=a>x</div><script>
+               const out = [];
+               const a = document.getElementById('a');
+               try { document.querySelector('('); } catch (e) { out.push(e instanceof DOMException, e.name, e.code); }
+               try { a.firstChild.appendData(); } catch (e) { out.push(e.name); }
+               a.textContent = undefined;
+               out.push(JSON.stringify(a.textContent));
+               const mouse = new MouseEvent('x');
+               mouse.initMouseEvent('clic', true, true, window, 2, 1, 2, 30, 40, true, false, false, false, 1, a);
+               out.push(mouse.type, mouse.detail, mouse.clientX, mouse.ctrlKey, mouse.button, mouse.relatedTarget === a);
+               const key = new KeyboardEvent('x');
+               key.initKeyboardEvent('touche', true, true, window, 'k', 1, false, true);
+               out.push(key.type, key.key, key.location, key.altKey);
+               const range = new StaticRange({ startContainer: a, startOffset: 0, endContainer: a, endOffset: 0 });
+               out.push(range.collapsed, range.startContainer === a);
+               try { new StaticRange({ startContainer: a, startOffset: 0 }); } catch (e) { out.push(e.name); }
+               out.push(Element.prototype[Symbol.unscopables].remove, 'event' in window, window.event);
+               const pi = document.createProcessingInstruction('cible', 'd');
+               out.push(pi.isEqualNode(pi), pi.isEqualNode(document.createProcessingInstruction('cible', 'e')));
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "true SyntaxError 12 TypeError \"\" clic 2 30 true 1 true touche k 1 true \
+                 true true TypeError true true  true false"
+            )
+        );
+    }
+
+    #[test]
+    fn outer_html_replaces_the_element() {
+        let mut p = page(
+            "<body><div id=a><p id=b>x</p></div><script>
+               const out = [];
+               const a = document.getElementById('a');
+               const b = document.getElementById('b');
+               const records = [];
+               new MutationObserver((list) => records.push(...list)).observe(a, { childList: true });
+               b.outerHTML = '<i id=c>un</i><b id=d>deux</b>';
+               out.push(a.innerHTML, b.parentNode === null, document.getElementById('b') === null);
+               const loose = document.createElement('p');
+               loose.outerHTML = '<i></i>';
+               out.push(loose.localName);
+               try { document.documentElement.outerHTML = '<html></html>'; } catch (e) { out.push(e.name); }
+               a.innerHTML = '<u>trois</u>';
+               Promise.resolve().then(() => {
+                 out.push(records.map((r) => r.addedNodes.length + '+' + r.removedNodes.length).join(','));
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "<i id=\"c\">un</i><b id=\"d\">deux</b> true true p NoModificationAllowedError 2+1,1+2"
+            )
+        );
+    }
 }

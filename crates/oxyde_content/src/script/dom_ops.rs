@@ -151,13 +151,39 @@ fn nodes_equal(doc: &Document, a: NodeId, b: NodeId, depth: usize) -> bool {
         (NodeData::Text(x), NodeData::Text(y)) | (NodeData::Comment(x), NodeData::Comment(y)) => {
             x == y
         }
+        (
+            NodeData::ProcessingInstruction {
+                target: t1,
+                data: d1,
+            },
+            NodeData::ProcessingInstruction {
+                target: t2,
+                data: d2,
+            },
+        ) => t1 == t2 && d1 == d2,
         (NodeData::Element(x), NodeData::Element(y)) => {
+            // Nom local d'un attribut : son nom qualifié sans préfixe.
+            let local = |attr: &oxyde_dom::Attribute| -> String {
+                match &attr.prefix {
+                    Some(prefix) => attr
+                        .name
+                        .get(prefix.len() + 1..)
+                        .unwrap_or(&attr.name)
+                        .to_owned(),
+                    None => attr.name.clone(),
+                }
+            };
             x.ns == y.ns
+                && x.prefix == y.prefix
                 && x.name == y.name
                 && x.attrs.len() == y.attrs.len()
-                && x.attrs
-                    .iter()
-                    .all(|attr| y.attr(&attr.name) == Some(attr.value.as_str()))
+                && x.attrs.iter().all(|attr| {
+                    y.attrs.iter().any(|other| {
+                        other.ns == attr.ns
+                            && other.value == attr.value
+                            && local(other) == local(attr)
+                    })
+                })
         }
         _ => false,
     };
@@ -359,8 +385,20 @@ fn replace_units(
     Ok(())
 }
 
+/// Refuse un appel à `name` qui reçoit moins de `count` arguments.
+fn require(vm: &mut Vm, args: &[Value], count: usize, name: &str) -> JsResult<()> {
+    if args.len() < count {
+        return Err(vm.error(
+            "TypeError",
+            &format!("{name} : {count} argument(s) attendu(s)"),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn substring_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
+    require(vm, args, 2, "substringData")?;
     let offset = offset_arg(vm, &arg(args, 0))?;
     let count = offset_arg(vm, &arg(args, 1))?;
     let units = data_units(vm, node);
@@ -379,6 +417,7 @@ pub(super) fn substring_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRes
 
 pub(super) fn append_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
+    require(vm, args, 1, "appendData")?;
     let data = vm.to_string(&arg(args, 0))?;
     let length = data_units(vm, node).len();
     replace_units(vm, node, length, 0, &data)?;
@@ -387,6 +426,7 @@ pub(super) fn append_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
 
 pub(super) fn insert_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
+    require(vm, args, 2, "insertData")?;
     let offset = offset_arg(vm, &arg(args, 0))?;
     let data = vm.to_string(&arg(args, 1))?;
     replace_units(vm, node, offset, 0, &data)?;
@@ -395,6 +435,7 @@ pub(super) fn insert_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
 
 pub(super) fn delete_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
+    require(vm, args, 2, "deleteData")?;
     let offset = offset_arg(vm, &arg(args, 0))?;
     let count = offset_arg(vm, &arg(args, 1))?;
     replace_units(vm, node, offset, count, "")?;
@@ -403,6 +444,7 @@ pub(super) fn delete_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult
 
 pub(super) fn replace_data(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
+    require(vm, args, 3, "replaceData")?;
     let offset = offset_arg(vm, &arg(args, 0))?;
     let count = offset_arg(vm, &arg(args, 1))?;
     let data = vm.to_string(&arg(args, 2))?;

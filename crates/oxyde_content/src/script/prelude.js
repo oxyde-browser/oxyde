@@ -562,6 +562,54 @@
   tag(TextDecoder, "TextDecoder");
   expose("TextDecoder", TextDecoder);
 
+  // ---- StaticRange (DOM Standard §5.4) ----------------------------------------------------------------------------
+  {
+    const ranges = new WeakMap();
+    const boundary = (init, name) => {
+      const node = init[name + "Container"];
+      const offset = init[name + "Offset"];
+      if (node === undefined || offset === undefined) {
+        throw new TypeError("StaticRange : " + name + "Container et " + name + "Offset sont requis");
+      }
+      if (node === null || typeof node !== "object" || typeof node.nodeType !== "number") {
+        throw new TypeError("StaticRange : un nœud est attendu");
+      }
+      // Ni DOCTYPE ni attribut.
+      if (node.nodeType === 10 || node.nodeType === 2) {
+        throw new DOMException("ce nœud ne peut pas borner une plage", "InvalidNodeTypeError");
+      }
+      return [node, Number(offset) >>> 0];
+    };
+    class StaticRange {
+      constructor(init) {
+        if (init === null || typeof init !== "object") {
+          throw new TypeError("StaticRange : un dictionnaire est attendu");
+        }
+        const [endContainer, endOffset] = boundary(init, "end");
+        const [startContainer, startOffset] = boundary(init, "start");
+        ranges.set(this, { startContainer, startOffset, endContainer, endOffset });
+      }
+      get startContainer() { return ranges.get(this).startContainer; }
+      get startOffset() { return ranges.get(this).startOffset; }
+      get endContainer() { return ranges.get(this).endContainer; }
+      get endOffset() { return ranges.get(this).endOffset; }
+      get collapsed() {
+        const range = ranges.get(this);
+        return range.startContainer === range.endContainer && range.startOffset === range.endOffset;
+      }
+    }
+    tag(StaticRange, "StaticRange");
+    expose("StaticRange", StaticRange);
+  }
+  // Les méthodes de ChildNode et de ParentNode ne masquent pas les variables
+  // d'un gestionnaire en attribut (`with`).
+  if (global.Node !== undefined) {
+    const hidden = Object.create(null);
+    for (const name of ["before", "after", "replaceWith", "remove", "prepend", "append",
+      "replaceChildren", "moveBefore", "slot"]) hidden[name] = true;
+    define(global.Node.prototype, Symbol.unscopables, { value: hidden, configurable: true });
+  }
+
   // ---- AbortController et AbortSignal (DOM Standard §3) -----------------------------------------------------------
   const EventTargetBase = EventTarget;
   const EventCtor = Event;
@@ -696,6 +744,12 @@
       },
       writable: true, enumerable: true, configurable: true,
     });
+    // La fenêtre répond par les mêmes fonctions.
+    for (const name of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
+      if (Object.getOwnPropertyDescriptor(global, name)?.configurable !== true) continue;
+      if (Object.getPrototypeOf(global)?.[name] === proto[name]) delete global[name];
+      else define(global, name, { value: proto[name], writable: true, enumerable: true, configurable: true });
+    }
   }
   class AbortController {
     #signal = new AbortSignal(signalKey);
@@ -767,6 +821,9 @@
   // Fabrique une interface d'événement : chaque membre de `defaults` devient
   // un attribut en lecture seule, initialisé depuis le dictionnaire reçu et
   // converti au type de sa valeur par défaut.
+  // Par interface : fixe les champs d'un événement déjà construit (pour
+  // les anciennes méthodes `init…Event`).
+  const eventSetters = new Map();
   function eventInterface(name, Base, defaults) {
     const data = new WeakMap();
     const keys = Object.keys(defaults);
@@ -800,15 +857,40 @@
         configurable: true,
       });
     }
+    eventSetters.set(name, (event, values) => {
+      const own = data.get(event);
+      if (own === undefined) return;
+      for (const key of keys) {
+        if (key in values) own[key] = values[key];
+      }
+    });
     tag(Interface, name);
     expose(name, Interface);
     return Interface;
   }
+  // Ancienne méthode `method(type, bubbles, cancelable, …fields)` de
+  // l'interface `name` : sans effet pendant la distribution.
+  const legacyInit = (name, method, fields) => {
+    define(global[name].prototype, method, {
+      value: { [method](type, bubbles, cancelable, ...rest) {
+        if (arguments.length === 0) throw new TypeError(method + " : le type est attendu");
+        if (this.eventPhase !== 0) return;
+        this.initEvent(type, bubbles, cancelable);
+        const values = {};
+        fields.forEach(([key, convert], index) => { values[key] = convert(rest[index]); });
+        for (const setter of [eventSetters.get("UIEvent"), eventSetters.get(name)]) setter(this, values);
+      } }[method],
+      writable: true, enumerable: true, configurable: true,
+    });
+  };
+  const asView = (value) => (value === undefined ? null : value);
+  const asLong = (value) => Number(value) | 0;
+  const asText = (value) => (value === undefined ? "" : String(value));
   const modifiers = { ctrlKey: false, shiftKey: false, altKey: false, metaKey: false };
   const UIEvent = eventInterface("UIEvent", EventCtor, { view: null, detail: 0 });
   const MouseEvent = eventInterface("MouseEvent", UIEvent, {
     screenX: 0, screenY: 0, clientX: 0, clientY: 0, ...modifiers,
-    button: 0, buttons: 0, relatedTarget: null, movementX: 0, movementY: 0,
+    button: 0, buttons: 0, relatedTarget: null, movementX: 0, movementY: 0, pseudoTarget: null,
   });
   // Position dans la page : celle dans la fenêtre, plus le défilement.
   for (const [name, source, scroll] of [["pageX", "clientX", "scrollX"],
@@ -846,6 +928,17 @@
     key: "", code: "", location: 0, repeat: false, isComposing: false, ...modifiers,
     keyCode: 0, charCode: 0, which: 0,
   });
+  legacyInit("UIEvent", "initUIEvent", [["view", asView], ["detail", asLong]]);
+  legacyInit("MouseEvent", "initMouseEvent", [
+    ["view", asView], ["detail", asLong], ["screenX", asLong], ["screenY", asLong],
+    ["clientX", asLong], ["clientY", asLong], ["ctrlKey", Boolean], ["altKey", Boolean],
+    ["shiftKey", Boolean], ["metaKey", Boolean], ["button", asLong],
+    ["relatedTarget", asView],
+  ]);
+  legacyInit("KeyboardEvent", "initKeyboardEvent", [
+    ["view", asView], ["key", asText], ["location", asLong], ["ctrlKey", Boolean],
+    ["altKey", Boolean], ["shiftKey", Boolean], ["metaKey", Boolean],
+  ]);
   eventInterface("InputEvent", UIEvent, { data: null, inputType: "", isComposing: false });
   eventInterface("FocusEvent", UIEvent, { relatedTarget: null });
   eventInterface("ProgressEvent", EventCtor, { lengthComputable: false, loaded: 0, total: 0 });
@@ -857,6 +950,7 @@
   eventInterface("SubmitEvent", EventCtor, { submitter: null });
   eventInterface("HashChangeEvent", EventCtor, { oldURL: "", newURL: "" });
   eventInterface("CompositionEvent", UIEvent, { data: "" });
+  legacyInit("CompositionEvent", "initCompositionEvent", [["view", asView], ["data", asText]]);
   eventInterface("TextEvent", UIEvent, { data: "" });
   eventInterface("BeforeUnloadEvent", EventCtor, { returnValue: "" });
   eventInterface("DragEvent", MouseEvent, { dataTransfer: null });
