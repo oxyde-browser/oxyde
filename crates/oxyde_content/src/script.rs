@@ -116,6 +116,9 @@ struct DomHost {
     /// Valeur du champ de texte qui a le focus, telle qu'elle était quand il
     /// l'a reçu : pour l'événement `change` à la perte du focus.
     focus_value: Option<String>,
+    /// Texte copié ou coupé dans un champ (Ctrl C, Ctrl X), en attente du
+    /// presse-papiers de l'embarqueur.
+    copied: Option<String>,
     /// Prototype des éléments HTML de chaque balise.
     tag_protos: HashMap<String, ObjId>,
     /// Document de la fenêtre du royaume courant (`window.document`).
@@ -1947,6 +1950,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             next_timer: 0,
             dirty: false,
             focus_value: None,
+            copied: None,
             current_script: None,
             styles_only: None,
             scripts_started: None,
@@ -2515,6 +2519,16 @@ impl ScriptEngine {
     /// Échéance du prochain minuteur.
     pub(crate) fn next_due(&mut self) -> Option<Instant> {
         host(&mut self.vm)?.timers.iter().map(|t| t.due).min()
+    }
+
+    /// Texte copié ou coupé dans un champ depuis le dernier appel.
+    pub(crate) fn take_copied(&mut self) -> Option<String> {
+        host(&mut self.vm).and_then(|h| h.copied.take())
+    }
+
+    /// Colle `text` dans le champ qui a le focus.
+    pub(crate) fn paste(&mut self, doc: &mut Document, text: &str) {
+        self.run(doc, |vm| focus::paste(vm, text));
     }
 
     /// Vrai si le DOM a changé depuis le dernier appel.

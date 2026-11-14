@@ -247,6 +247,9 @@ pub struct Document {
     /// Position du curseur dans la valeur du champ de texte qui a le focus,
     /// en octets.
     caret: usize,
+    /// Autre bout de la sélection dans cette valeur, en octets ; égal à
+    /// `caret` quand rien n'est sélectionné.
+    anchor: usize,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -319,6 +322,7 @@ impl Document {
             version: 0,
             focus: None,
             caret: 0,
+            anchor: 0,
         }
     }
 
@@ -534,11 +538,25 @@ impl Document {
     /// Donne le focus à `node`, ou le retire ; le curseur va à `caret`. Le
     /// style dépend du focus (`:focus`) : la version du document avance.
     pub fn set_focus(&mut self, node: Option<NodeId>, caret: usize) {
-        if self.focus != node || self.caret != caret {
+        self.set_field_selection(node, caret, caret);
+    }
+
+    /// Donne le focus à `node` et y sélectionne le texte compris entre
+    /// `anchor` et `caret`, où se tient le curseur.
+    pub fn set_field_selection(&mut self, node: Option<NodeId>, anchor: usize, caret: usize) {
+        if self.focus != node || self.caret != caret || self.anchor != anchor {
             self.focus = node;
             self.caret = caret;
+            self.anchor = anchor;
             self.version = self.version.wrapping_add(1);
         }
+    }
+
+    /// Autre bout de la sélection dans la valeur du champ qui a le focus,
+    /// en octets ; égal à [`Document::caret`] quand rien n'est sélectionné.
+    #[must_use]
+    pub fn selection_anchor(&self) -> usize {
+        self.anchor
     }
 
     /// Position du curseur dans la valeur du champ qui a le focus, en

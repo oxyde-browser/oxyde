@@ -146,6 +146,8 @@ pub(crate) enum ToRenderer {
     /// Geste de sélection de texte au point (`x`, `y`) de la page :
     /// `gesture` est un [`SelectGesture`] (0 commencer, 1 étendre, 2 mot).
     Select { gesture: u8, x: f32, y: f32 },
+    /// Coller `text` (Ctrl V) dans le champ qui a le focus.
+    Paste { text: String },
 }
 ipc_enum!(ToRenderer {
     0 => Load { url, post, width, height },
@@ -159,6 +161,7 @@ ipc_enum!(ToRenderer {
     8 => Find { query },
     9 => FindStep { forward },
     10 => Select { gesture, x, y },
+    11 => Paste { text },
 });
 
 /// Image de la page, prête à composer.

@@ -319,6 +319,12 @@ impl Renderer {
                     }
                 }
             }
+            ToRenderer::Paste { text } => {
+                if let Some(page) = self.page.as_mut() {
+                    page.paste(&text);
+                    loader::report_console(page);
+                }
+            }
             ToRenderer::Select { gesture, x, y } => {
                 if let (Some(page), Some(gesture)) =
                     (self.page.as_mut(), SelectGesture::from_code(gesture))

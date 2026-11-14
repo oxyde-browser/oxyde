@@ -25,6 +25,7 @@ mod grid;
 mod selection;
 mod table;
 
+pub use controls::{PASSWORD_MASK, field_caret_at};
 pub use find::{MAX_MATCHES, find_text};
 pub use selection::{TextSelection, select_all, select_between, select_word};
 

@@ -573,6 +573,14 @@
       control.textContent = next;
       control.dispatchEvent(new Event("input", { bubbles: true }));
     },
+    // Texte collé dans une zone de texte : en fin de texte.
+    pasted(control, pasted) {
+      if (control.hasAttribute("readonly") || control.hasAttribute("disabled")) return;
+      const added = String(pasted).replace(/\r\n?/g, "\n");
+      if (added === "") return;
+      control.textContent += added;
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+    },
     // Avant `click` : une case ou un bouton radio change d'état tout de
     // suite, les écouteurs voient donc le nouvel état.
     before(target) {

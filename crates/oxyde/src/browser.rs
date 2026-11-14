@@ -2737,6 +2737,23 @@ impl Browser {
             .is_some_and(|tab| tab.page.select(gesture, x, y))
     }
 
+    /// Colle `text` (Ctrl V) dans la page de l'onglet actif, sauf pendant
+    /// une saisie de l'interface. Renvoie `true` si la page doit être
+    /// redessinée.
+    pub(crate) fn page_paste(&mut self, text: &str) -> bool {
+        if self.editing.is_some()
+            || self.library_open()
+            || self.palette.is_some()
+            || self.find.is_some()
+            || self.onboarding.is_some()
+        {
+            return false;
+        }
+        self.tabs
+            .get_mut(self.active)
+            .is_some_and(|tab| tab.page.paste(text))
+    }
+
     /// Texte copié dans une page (Ctrl C) depuis le dernier appel.
     pub(crate) fn take_copied(&mut self) -> Option<String> {
         self.tabs.iter_mut().find_map(|tab| tab.page.take_copied())
