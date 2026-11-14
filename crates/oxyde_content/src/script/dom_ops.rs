@@ -29,10 +29,67 @@ pub(super) fn is_same_node(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResul
     Ok(Value::Bool(node_of(vm, &arg(args, 0)) == Some(node)))
 }
 
-pub(super) fn get_root_node(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+pub(super) fn get_root_node(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
-    let root = host(vm).map(|h| h.doc.ancestors(node).last().unwrap_or(node));
+    // `{ composed: true }` : à travers les arbres fantômes.
+    let options = arg(args, 0);
+    let composed = match &options {
+        Value::Object(_) => vm.get(&options, "composed")?.truthy(),
+        _ => false,
+    };
+    let root = host(vm).map(|h| {
+        if composed {
+            h.doc.composed_root(node)
+        } else {
+            h.doc.tree_root(node)
+        }
+    });
     Ok(wrap_opt(vm, root))
+}
+
+// ---- Arbres fantômes (Shadow DOM) : opérations que `components.js` habille ----
+
+/// `attachShadow(hôte, ouvert)` : racine du nouvel arbre fantôme ; `null`
+/// si l'hôte en porte déjà un.
+pub(super) fn shadow_attach(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let element = node_arg(vm, &arg(args, 0))?;
+    let open = arg(args, 1).truthy();
+    let root = host(vm).and_then(|h| {
+        let root = h.doc.attach_shadow(element, open);
+        h.dirty |= root.is_some();
+        root
+    });
+    Ok(wrap_opt(vm, root))
+}
+
+/// `shadowRootOf(élément)` : sa racine fantôme, ouverte ou non, ou `null`.
+pub(super) fn shadow_root_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let root =
+        node_of(vm, &arg(args, 0)).and_then(|node| host(vm).and_then(|h| h.doc.shadow_root(node)));
+    Ok(wrap_opt(vm, root))
+}
+
+/// `shadowHostOf(nœud)` : l'hôte dont `nœud` est la racine fantôme, ou `null`.
+pub(super) fn shadow_host_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let element =
+        node_of(vm, &arg(args, 0)).and_then(|node| host(vm).and_then(|h| h.doc.shadow_host(node)));
+    Ok(wrap_opt(vm, element))
+}
+
+/// `assignedSlotOf(nœud)` : l'emplacement où il est distribué, ou `null`.
+pub(super) fn assigned_slot_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let slot = node_of(vm, &arg(args, 0))
+        .and_then(|node| host(vm).and_then(|h| h.doc.assigned_slot(node)));
+    Ok(wrap_opt(vm, slot))
+}
+
+/// `assignedNodesOf(emplacement)` : tableau des nœuds qui y sont distribués.
+pub(super) fn assigned_nodes_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let nodes = node_of(vm, &arg(args, 0))
+        .and_then(|node| host(vm).map(|h| h.doc.assigned_nodes(node)))
+        .unwrap_or_default();
+    let values: Vec<Value> = nodes.into_iter().map(|node| wrap(vm, node)).collect();
+    Ok(vm.new_array(values))
 }
 
 /// Fusionne les nœuds texte voisins du sous-arbre et retire ceux qui sont vides.

@@ -593,13 +593,30 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       fenêtre posés sur `<body>`) ; une boîte `position: fixed` reste cliquable hors
       d'un ancêtre qui découpe (`body { overflow: hidden }` sans hauteur : voiles et
       fenêtres modales). `dom/` : 309 → 339 fichiers (44,6 → 48,9 %).
-- [ ] Web Platform Tests `dom/` : de 48,9 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [ ] Web Platform Tests `dom/` : de 50,8 % à 70 % des fichiers ; `html/` branché et mesuré.
       Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (39 :
       `scrollend`, défilement tactile), gestes tactiles (20), `Observable` (27),
       `ranges/tentative` (19), `insertion-removing-steps` (19).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
-- [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;
-      `customElements` est fait.
+- [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
+      `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par
+      défaut avec contenu de repli, `assignedSlot`, `assignedNodes`, `assignedElements`,
+      `slotchange`, `getRootNode({ composed })`, `isConnected` à travers les arbres. Les
+      styles et la mise en page suivent l'arbre aplati ; une feuille ne vaut que dans son
+      arbre, avec `:host`, `:host(...)` et `::slotted(...)` (le document l'emporte sur
+      eux). Les événements composés sortent de l'arbre fantôme et sont reciblés sur
+      l'hôte ; les touches visent l'élément qui a vraiment le focus ; les éléments
+      personnalisés imbriqués sont mis à niveau et reliés.
+      Limites : pas de `adoptedStyleSheets` (les bibliothèques se replient sur
+      `<style>`), pas d'arbre fantôme déclaratif (`<template shadowrootmode>`), pas de
+      `slot.assign()`, pas de `:host-context()` ni de `::part()` ; `<link
+      rel=stylesheet>` ignoré dans un arbre fantôme ; `relatedTarget` et
+      `composedPath()` non reciblés pour un arbre fermé ; `delegatesFocus` sans effet ;
+      un hôte glissé dans son propre arbre fantôme n'est pas refusé ; la distribution
+      dans les emplacements est recalculée à chaque lecture (à reprendre à l'étape L).
+      Le dossier `shadow-dom/` de Web Platform Tests n'est pas dans la copie locale :
+      non mesuré. YouTube reste sur son squelette (une autre erreur de script le
+      retient).
 - [x] `IntersectionObserver`, `ResizeObserver`, `requestIdleCallback` : faits, par relevé de
       la géométrie toutes les 100 ms (pas à chaque image) ; l'intersection ne tient pas compte
       du rognage des ancêtres défilants.

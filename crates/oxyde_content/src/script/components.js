@@ -1,7 +1,13 @@
 // Éléments personnalisés, `DOMParser` et contenu des gabarits.
 //
 // Fonction appelée par le moteur avec :
-//   parseHtmlDocument(texte) -> nouveau document HTML analysé depuis `texte`.
+//   parseHtmlDocument(texte) -> nouveau document HTML analysé depuis `texte` ;
+//   attachShadowRoot(hôte, ouvert) -> racine du nouvel arbre fantôme, ou null ;
+//   shadowRootOf(élément)       -> sa racine fantôme (ouverte ou non), ou null ;
+//   shadowHostOf(nœud)          -> l'hôte dont il est la racine fantôme, ou null ;
+//   assignedSlotOf(nœud)        -> l'emplacement où il est distribué, ou null ;
+//   assignedNodesOf(emplacement) -> tableau des nœuds qui y sont distribués ;
+//   deepFocused()               -> l'élément qui a le focus, fût-il dans un arbre fantôme.
 //
 // LIMITES CONNUES
 // - `Path2D` enregistre ses commandes ; rien ne les dessine (pas de canevas).
@@ -11,11 +17,20 @@
 //   changement ; un élément créé par l'analyseur ou par `innerHTML` est mis à
 //   niveau à ce moment-là aussi ; pas d'éléments natifs personnalisés
 //   (`extends`, attribut `is`), pas de `adoptedCallback`, pas
-//   d'`ElementInternals`. Pas de Shadow DOM.
+//   d'`ElementInternals`.
+// - Shadow DOM : pas de `adoptedStyleSheets` (les bibliothèques se replient
+//   sur des éléments `<style>`), pas d'arbre fantôme déclaratif
+//   (`<template shadowrootmode>`), pas de `slot.assign()` ; `innerHTML`
+//   d'une racine fantôme analyse son texte comme le contenu d'un `<div>` ;
+//   `slotchange` ne part que pour un hôte relié au document, à la fin de
+//   la tâche ; `delegatesFocus` est retenu sans effet ; les rappels d'un
+//   élément personnalisé d'un arbre fantôme partent dans l'ordre des
+//   mutations, parfois avant ceux de son hôte.
 // - `DOMParser` : l'analyseur XML est réduit (pas de DTD, pas d'entités
 //   déclarées) ; un document XML mal formé rend un document `parsererror`.
 // - `template.content` : le fragment appartient au document de la page.
-(function (parseHtmlDocument) {
+(function (parseHtmlDocument, attachShadowRoot, shadowRootOf, shadowHostOf, assignedSlotOf,
+  assignedNodesOf, deepFocused) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -408,6 +423,13 @@
     if (node.nodeType !== 1 && node.nodeType !== 11 && node.nodeType !== 9) return [];
     const all = node.nodeType === 1 ? [node] : [];
     if (definitions.size > 0) all.push(...node.querySelectorAll("*"));
+    // Les arbres fantômes des éléments trouvés suivent leur hôte.
+    if (shadowRoots.length > 0) {
+      for (let i = 0; i < all.length; i++) {
+        const root = shadowRootOf(all[i]);
+        if (root !== null) all.push(...root.querySelectorAll("*"));
+      }
+    }
     return all;
   };
   function entered(node) {
@@ -430,6 +452,9 @@
       }
     }
   }
+  // Racines fantômes connues : l'observateur les suit comme le document.
+  const shadowRoots = [];
+  const OBSERVED = { childList: true, subtree: true, attributes: true, attributeOldValue: true };
   // Un seul observateur suit le document, dès la première définition.
   let observer = null;
   function watch() {
@@ -448,7 +473,170 @@
         }
       }
     });
-    observer.observe(document, { childList: true, subtree: true, attributes: true, attributeOldValue: true });
+    observer.observe(document, OBSERVED);
+    for (const root of shadowRoots) observer.observe(root, OBSERVED);
+  }
+
+  // ---- Shadow DOM -------------------------------------------------------------------------------------------
+  // L'arbre fantôme lui-même est tenu par le moteur ; ici, ses interfaces.
+  const SHADOW_HOSTS = new Set(["article", "aside", "blockquote", "body", "div", "footer", "h1", "h2",
+    "h3", "h4", "h5", "h6", "header", "main", "nav", "p", "section", "span"]);
+  const shadowInit = new WeakMap();
+  const ShadowRoot = illegal("ShadowRoot");
+  ShadowRoot.prototype = Object.create(global.DocumentFragment.prototype, {
+    constructor: { value: ShadowRoot, writable: true, configurable: true },
+  });
+  Object.setPrototypeOf(ShadowRoot, global.DocumentFragment);
+  tag(ShadowRoot, "ShadowRoot");
+  expose("ShadowRoot", ShadowRoot);
+  const shadowGetter = (name, get, set) => {
+    define(ShadowRoot.prototype, name, { get, set, enumerable: true, configurable: true });
+  };
+  shadowGetter("host", function () { return shadowHostOf(this); });
+  for (const name of ["mode", "delegatesFocus", "slotAssignment", "clonable", "serializable"]) {
+    shadowGetter(name, function () { return shadowInit.get(this)?.[name]; });
+  }
+  const setShadowHtml = function (html) {
+    const holder = document.createElement("div");
+    holder.innerHTML = String(html);
+    this.replaceChildren(...Array.from(holder.childNodes));
+  };
+  shadowGetter("innerHTML", function () {
+    const holder = document.createElement("div");
+    for (const child of Array.from(this.childNodes)) holder.appendChild(child.cloneNode(true));
+    return holder.innerHTML;
+  }, setShadowHtml);
+  // L'élément qui a le focus, vu de cet arbre : lui-même s'il y est,
+  // sinon l'hôte de l'arbre fantôme imbriqué qui le contient.
+  shadowGetter("activeElement", function () {
+    let node = deepFocused();
+    while (node !== null) {
+      const tree = node.getRootNode();
+      if (tree === this) return node;
+      node = shadowHostOf(tree);
+    }
+    return null;
+  });
+  for (const [name, value] of [
+    ["setHTMLUnsafe", function setHTMLUnsafe(html) { setShadowHtml.call(this, html); }],
+    ["getElementById", function getElementById(id) {
+      const wanted = String(id);
+      for (const element of this.querySelectorAll("*")) if (element.id === wanted) return element;
+      return null;
+    }],
+  ]) {
+    define(ShadowRoot.prototype, name, { value, writable: true, enumerable: true, configurable: true });
+  }
+
+  // `slotchange` : après un changement des enfants d'un hôte ou des
+  // emplacements d'un arbre fantôme, chaque emplacement dont la
+  // distribution a changé le signale.
+  const slotSnapshots = new WeakMap();
+  const sameNodes = (a, b) => a.length === b.length && a.every((node, i) => node === b[i]);
+  function signalSlots(root) {
+    for (const slot of root.querySelectorAll("slot")) {
+      const now = assignedNodesOf(slot);
+      const before = slotSnapshots.get(slot) ?? [];
+      slotSnapshots.set(slot, now);
+      if (!sameNodes(before, now)) slot.dispatchEvent(new Event("slotchange", { bubbles: true }));
+    }
+  }
+  const SLOT_OBSERVED = { childList: true, subtree: true, attributes: true, attributeFilter: ["slot", "name"] };
+  let slotObserver = null;
+  function watchSlots(root) {
+    if (slotObserver === null) {
+      slotObserver = new MutationObserver((records) => {
+        const roots = new Set();
+        for (const record of records) {
+          const target = record.target;
+          // Enfant d'un hôte ajouté, retiré, ou qui demande un autre emplacement.
+          const parent = record.type === "attributes" ? target.parentNode : target;
+          const own = parent !== null && parent.nodeType === 1 ? shadowRootOf(parent) : null;
+          if (own !== null) roots.add(own);
+          // Emplacement ajouté, retiré ou renommé dans un arbre fantôme.
+          const tree = target.getRootNode();
+          if (shadowHostOf(tree) !== null) roots.add(tree);
+        }
+        for (const root of roots) signalSlots(root);
+      });
+      slotObserver.observe(document, SLOT_OBSERVED);
+    }
+    slotObserver.observe(root, SLOT_OBSERVED);
+  }
+
+  define(global.Element.prototype, "attachShadow", {
+    value: function attachShadow(init) {
+      if (init === null || typeof init !== "object") {
+        throw new TypeError("attachShadow : un dictionnaire { mode } est attendu");
+      }
+      const mode = String(init.mode);
+      if (mode !== "open" && mode !== "closed") {
+        throw new TypeError("attachShadow : mode « " + mode + " » inconnu (open ou closed)");
+      }
+      const name = this.localName;
+      const allowed = this.namespaceURI === "http://www.w3.org/1999/xhtml"
+        && (SHADOW_HOSTS.has(name) || (VALID.test(name) && !RESERVED.has(name)));
+      if (!allowed) {
+        throw new DOMException("<" + name + "> ne peut pas porter d'arbre fantôme", "NotSupportedError");
+      }
+      const root = attachShadowRoot(this, mode === "open");
+      if (root === null) {
+        throw new DOMException("cet élément porte déjà un arbre fantôme", "NotSupportedError");
+      }
+      Object.setPrototypeOf(root, ShadowRoot.prototype);
+      shadowInit.set(root, {
+        mode,
+        delegatesFocus: Boolean(init.delegatesFocus),
+        slotAssignment: init.slotAssignment === "manual" ? "manual" : "named",
+        clonable: Boolean(init.clonable),
+        serializable: Boolean(init.serializable),
+      });
+      shadowRoots.push(root);
+      if (observer !== null) observer.observe(root, OBSERVED);
+      watchSlots(root);
+      return root;
+    },
+    writable: true, enumerable: true, configurable: true,
+  });
+  define(global.Element.prototype, "shadowRoot", {
+    get() {
+      const root = shadowRootOf(this);
+      return root !== null && shadowInit.get(root)?.mode === "open" ? root : null;
+    },
+    enumerable: true, configurable: true,
+  });
+  // L'emplacement où un nœud est distribué, si son arbre fantôme est ouvert.
+  for (const Interface of [global.Element, global.Text]) {
+    define(Interface.prototype, "assignedSlot", {
+      get() {
+        const slot = assignedSlotOf(this);
+        return slot !== null && shadowInit.get(slot.getRootNode())?.mode === "open" ? slot : null;
+      },
+      enumerable: true, configurable: true,
+    });
+  }
+  // Nœuds distribués, emplacements imbriqués et contenu de repli développés.
+  const inShadowTree = (node) => shadowHostOf(node.getRootNode()) !== null;
+  function flattened(slot) {
+    let nodes = assignedNodesOf(slot);
+    if (nodes.length === 0 && inShadowTree(slot)) {
+      nodes = Array.from(slot.childNodes).filter((node) => node.nodeType === 1 || node.nodeType === 3);
+    }
+    const out = [];
+    for (const node of nodes) {
+      if (node.nodeType === 1 && node.localName === "slot" && inShadowTree(node)) out.push(...flattened(node));
+      else out.push(node);
+    }
+    return out;
+  }
+  const slotMembers = {
+    assignedNodes(options) { return options?.flatten ? flattened(this) : assignedNodesOf(this); },
+    assignedElements(options) {
+      return slotMembers.assignedNodes.call(this, options).filter((node) => node.nodeType === 1);
+    },
+  };
+  for (const [name, value] of Object.entries(slotMembers)) {
+    define(global.HTMLSlotElement.prototype, name, { value, writable: true, enumerable: true, configurable: true });
   }
 
   class CustomElementRegistry {
@@ -476,6 +664,9 @@
       watch();
       // Les éléments déjà dans le document sont mis à niveau, dans l'ordre.
       for (const element of document.querySelectorAll(text)) upgrade(element, definition);
+      for (const root of shadowRoots) {
+        for (const element of root.querySelectorAll(text)) upgrade(element, definition);
+      }
       const pending = waiting.get(text);
       if (pending !== undefined) {
         waiting.delete(text);

@@ -188,6 +188,10 @@ pub struct Stylesheet {
     pub font_faces: Vec<FontFace>,
     /// Règles `@keyframes`, dans l'ordre du source.
     pub keyframes: Vec<crate::animation::Keyframes>,
+    /// Racine fantôme dont la feuille est issue : ses règles ne valent que
+    /// dans cet arbre (et, par `:host` et `::slotted()`, pour son hôte et
+    /// les nœuds qu'il y distribue). `None` : feuille du document.
+    pub scope: Option<oxyde_dom::NodeId>,
 }
 
 /// Police déclarée par une règle `@font-face`.

@@ -967,7 +967,18 @@ fn collect_sheets(doc: &Document, base: &Url, previous: Vec<SheetSlot>) -> Vec<S
         })
         .collect();
     let mut sheets = Vec::new();
-    for node in doc.descendants(doc.root()) {
+    // Le document, puis chaque arbre fantôme : ses feuilles ne valent que
+    // pour lui.
+    //
+    // LIMITE : un `<link rel=stylesheet>` dans un arbre fantôme est ignoré.
+    let trees = std::iter::once((doc.root(), None)).chain(
+        doc.shadow_root_list()
+            .into_iter()
+            .map(|root| (root, Some(root))),
+    );
+    for (node, scope) in
+        trees.flat_map(|(root, scope)| doc.descendants(root).map(move |n| (n, scope)))
+    {
         let Some(el) = doc.element(node) else {
             continue;
         };
@@ -976,8 +987,12 @@ fn collect_sheets(doc: &Document, base: &Url, previous: Vec<SheetSlot>) -> Vec<S
             continue;
         }
         if el.is_html("style") {
-            sheets.push(SheetSlot::Inline(parse_stylesheet(&doc.text_content(node))));
-        } else if el.is_html("link")
+            sheets.push(SheetSlot::Inline(Stylesheet {
+                scope,
+                ..parse_stylesheet(&doc.text_content(node))
+            }));
+        } else if scope.is_none()
+            && el.is_html("link")
             && el
                 .attr("rel")
                 .is_some_and(|r| attr_has_token(r, "stylesheet"))
@@ -4844,5 +4859,201 @@ mod tests {
         assert_eq!(p.wheel_listeners(), 2);
         assert!(p.wheel_event(&input, 0.0, 100.0));
         assert_eq!(seen(&mut p), "wheel true mousewheel ");
+    }
+
+    #[test]
+    fn shadow_trees_are_scripted_styled_and_laid_out() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'><style>p { color: rgb(5, 5, 5) }</style>
+               <div id=hote><span slot=titre id=t>Titre</span>corps</div>
+               <script>
+                 const journal = [];
+                 const host = document.getElementById('hote');
+                 const root = host.attachShadow({ mode: 'open' });
+                 root.innerHTML = '<style>:host { display: block; color: rgb(1, 2, 3) } p { color: rgb(9, 9, 9); margin: 0 }</style>'
+                   + '<p id=dedans>dedans</p><slot name=titre></slot><slot id=reste></slot>';
+                 const inner = root.getElementById('dedans');
+                 const out = [
+                   root instanceof ShadowRoot, root instanceof DocumentFragment, String(root),
+                   host.shadowRoot === root, root.host === host, root.mode,
+                   document.querySelector('#dedans') === null, inner.isConnected,
+                   inner.getRootNode() === root, inner.getRootNode({ composed: true }) === document,
+                   document.getElementById('t').assignedSlot === root.querySelector('slot'),
+                   root.getElementById('reste').assignedNodes().length,
+                   root.querySelector('slot').assignedElements()[0].id,
+                   getComputedStyle(inner).color,
+                   root.innerHTML.includes('<p id=\"dedans\">dedans</p>'),
+                 ];
+                 try { host.attachShadow({ mode: 'open' }); } catch (e) { out.push(e.name); }
+                 try { document.createElement('a').attachShadow({ mode: 'open' }); } catch (e) { out.push(e.name); }
+                 try { document.createElement('div').attachShadow({}); } catch (e) { out.push(e.name); }
+                 const closed = document.createElement('div');
+                 closed.attachShadow({ mode: 'closed' });
+                 out.push(closed.shadowRoot);
+                 document.documentElement.setAttribute('data-out', out.join(' '));
+
+                 // Éléments personnalisés imbriqués et `slotchange`.
+                 class Inner extends HTMLElement {
+                   connectedCallback() { journal.push('interne relié'); }
+                 }
+                 customElements.define('x-inner', Inner);
+                 class Outer extends HTMLElement {
+                   constructor() {
+                     super();
+                     this.attachShadow({ mode: 'open' }).innerHTML = '<x-inner></x-inner><slot></slot>';
+                   }
+                   connectedCallback() { journal.push('externe relié'); }
+                 }
+                 customElements.define('x-outer', Outer);
+                 document.body.appendChild(document.createElement('x-outer'));
+                 root.getElementById('reste').addEventListener('slotchange', () => journal.push('slotchange'));
+                 host.append('plus');
+                 addEventListener('keydown', () => {
+                   document.documentElement.setAttribute('data-journal', journal.join(', '));
+                 });
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let attr = |p: &Page, name: &str| {
+            let doc = p.document();
+            let html = doc.find_html_element(doc.root(), "html").expect("html");
+            doc.element(html)
+                .and_then(|e| e.attr(name))
+                .unwrap_or("")
+                .to_owned()
+        };
+        assert_eq!(
+            attr(&p, "data-out"),
+            "true true [object ShadowRoot] true true open true true true true true 1 t \
+             rgb(9, 9, 9) true NotSupportedError NotSupportedError TypeError "
+        );
+        // L'affichage suit l'arbre aplati : l'arbre fantôme, puis ce que
+        // l'hôte y distribue.
+        p.select_all();
+        assert_eq!(p.selected_text(), "dedans\nTitrecorpsplus");
+        // Les rappels et `slotchange` sont partis à la fin de la tâche.
+        p.key_event(
+            true,
+            &KeyInput {
+                key: "j",
+                code: "",
+                ctrl: false,
+                shift: false,
+                alt: false,
+                meta: false,
+                repeat: false,
+            },
+        );
+        // LIMITE : l'ordre est celui des mutations, pas celui de l'arbre
+        // (un navigateur relie l'élément externe avant l'interne).
+        let journal = attr(&p, "data-journal");
+        let mut seen: Vec<&str> = journal.split(", ").collect();
+        seen.sort_unstable();
+        assert_eq!(seen, ["externe relié", "interne relié", "slotchange"]);
+    }
+
+    #[test]
+    fn events_cross_shadow_trees_with_retargeting() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'><div id=hote></div>
+               <script>
+                 const host = document.getElementById('hote');
+                 const root = host.attachShadow({ mode: 'open' });
+                 root.innerHTML = '<button id=b>ok</button><input id=champ>';
+                 const journal = [];
+                 const note = (who) => (e) => journal.push(
+                   who + ':' + e.type + ':' + (e.target.id || e.target.nodeName) + ':' + e.eventPhase);
+                 const button = root.getElementById('b');
+                 const field = root.getElementById('champ');
+                 for (const kind of ['click', 'prive', 'focusin', 'keydown']) {
+                   button.addEventListener(kind, note('bouton'));
+                   field.addEventListener(kind, note('champ'));
+                   root.addEventListener(kind, note('racine'));
+                   host.addEventListener(kind, note('hote'));
+                   document.addEventListener(kind, note('document'));
+                 }
+                 // Un événement non composé ne sort pas de l'arbre fantôme.
+                 button.dispatchEvent(new Event('prive', { bubbles: true }));
+                 journal.push('|');
+                 document.addEventListener('prive', (e) => journal.push('chemin ' + e.composedPath().length));
+                 button.dispatchEvent(new Event('prive', { bubbles: true, composed: true }));
+                 globalThis.lire = () => {
+                   document.documentElement.setAttribute('data-journal', journal.join(' '));
+                   document.documentElement.setAttribute('data-actif',
+                     document.activeElement.id + ' ' + (root.activeElement && root.activeElement.id));
+                   journal.length = 0;
+                 };
+                 addEventListener('keyup', () => lire());
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let attr = |p: &Page, name: &str| {
+            let doc = p.document();
+            let html = doc.find_html_element(doc.root(), "html").expect("html");
+            doc.element(html)
+                .and_then(|e| e.attr(name))
+                .unwrap_or("")
+                .to_owned()
+        };
+        let key = |key: &'static str| KeyInput {
+            key,
+            code: "",
+            ctrl: false,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        let read = |p: &mut Page| {
+            p.key_event(false, &key("j"));
+            attr(p, "data-journal")
+        };
+        assert_eq!(
+            read(&mut p),
+            "bouton:prive:b:2 racine:prive:b:3 | bouton:prive:b:2 racine:prive:b:3 \
+             hote:prive:hote:2 document:prive:hote:3 chemin 7"
+        );
+        // Un clic dans l'arbre fantôme : dedans, la cible est le bouton ;
+        // dehors, c'est l'hôte, qui est lui-même une cible.
+        let inside = |p: &Page, name: &str| {
+            let doc = p.document();
+            let host = doc
+                .descendants(doc.root())
+                .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("hote")))
+                .expect("hôte");
+            let root = doc.shadow_root(host).expect("racine fantôme");
+            doc.descendants(root)
+                .find(|n| doc.element(*n).is_some_and(|e| e.is_html(name)))
+                .expect("élément de l'arbre fantôme")
+        };
+        let button = inside(&p, "button");
+        p.click_node(button);
+        assert_eq!(
+            read(&mut p),
+            "bouton:focusin:b:2 racine:focusin:b:3 hote:focusin:hote:2 document:focusin:hote:3 \
+             bouton:click:b:2 racine:click:b:3 hote:click:hote:2 document:click:hote:3"
+        );
+        assert_eq!(attr(&p, "data-actif"), "hote b");
+        // Une touche vise l'élément qui a vraiment le focus, et la frappe
+        // entre dans le champ de l'arbre fantôme.
+        let field = inside(&p, "input");
+        p.click_node(field);
+        read(&mut p);
+        p.key_event(true, &key("a"));
+        assert_eq!(
+            read(&mut p),
+            "champ:keydown:champ:2 racine:keydown:champ:3 hote:keydown:hote:2 document:keydown:hote:3"
+        );
+        assert_eq!(
+            p.document().element(field).and_then(|e| e.attr("value")),
+            Some("a")
+        );
+        assert_eq!(attr(&p, "data-actif"), "hote champ");
     }
 }

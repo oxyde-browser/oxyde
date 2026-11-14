@@ -735,7 +735,8 @@ impl Engine<'_> {
         if self.doc.element(node).is_some_and(|e| e.is_html("select")) {
             return;
         }
-        for child in self.doc.children(node) {
+        // L'arbre affiché est l'arbre aplati (arbres fantômes, emplacements).
+        for child in self.doc.flat_children(node) {
             match &self.doc.node(child).data {
                 NodeData::Text(_) => out.push(child),
                 NodeData::Element(_) => match self.style(child).map(|s| s.display) {

@@ -767,9 +767,7 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "childElementCount" => Ok(number(
             doc.children(node).filter(|c| is_element(doc, *c)).count(),
         )),
-        "isConnected" => Ok(Value::Bool(
-            doc.is_document(doc.ancestors(node).last().unwrap_or(node)),
-        )),
+        "isConnected" => Ok(Value::Bool(doc.is_document(doc.composed_root(node)))),
         "parentNode" => return Some(Ok(wrap_opt(vm, parent))),
         "parentElement" => {
             let parent = parent.filter(|p| is_element(doc, *p));
@@ -2149,11 +2147,15 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     vm.call(&cssom, &Value::Undefined, &helpers)?;
     // Éléments personnalisés, `DOMParser`, contenu des gabarits.
     let components = vm.eval_script(include_str!("script/components.js"))?;
-    let helpers = [Value::Object(vm.new_function(
-        "parseHtmlDocument",
-        1,
-        documents::parse_html_document,
-    ))];
+    let helpers = [
+        Value::Object(vm.new_function("parseHtmlDocument", 1, documents::parse_html_document)),
+        Value::Object(vm.new_function("attachShadowRoot", 2, dom_ops::shadow_attach)),
+        Value::Object(vm.new_function("shadowRootOf", 1, dom_ops::shadow_root_of)),
+        Value::Object(vm.new_function("shadowHostOf", 1, dom_ops::shadow_host_of)),
+        Value::Object(vm.new_function("assignedSlotOf", 1, dom_ops::assigned_slot_of)),
+        Value::Object(vm.new_function("assignedNodesOf", 1, dom_ops::assigned_nodes_of)),
+        Value::Object(vm.new_function("deepFocused", 0, focus::deep_focused_element)),
+    ];
     vm.call(&components, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
     let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
@@ -2526,6 +2528,9 @@ impl ScriptEngine {
             let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
                 return false;
             };
+            // La cible : l'élément qui a le focus, fût-il dans un arbre fantôme.
+            let focused = host(vm).and_then(|h| h.doc.focus());
+            let focused = wrap_opt(vm, focused);
             let args = [
                 Value::Bool(down),
                 Value::string(input.key),
@@ -2535,6 +2540,7 @@ impl ScriptEngine {
                 Value::Bool(input.alt),
                 Value::Bool(input.meta),
                 Value::Bool(input.repeat),
+                focused,
             ];
             match vm
                 .get(&hooks, "key")

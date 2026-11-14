@@ -117,6 +117,23 @@ pub enum Pseudo {
     Where(Vec<Selector>),
     /// Pseudo-classe d'état connue mais jamais vraie pour l'instant.
     Never,
+    /// `:host`, `:host(...)` : l'hôte de l'arbre fantôme d'où vient la
+    /// règle, s'il correspond à l'un des sélecteurs (aucun : toujours).
+    Host(Vec<Selector>),
+    /// `::slotted(...)` : les nœuds distribués dans l'emplacement que
+    /// désigne le reste du composé.
+    Slotted(Vec<Selector>),
+}
+
+/// Rôle particulier de l'élément présenté à un composé.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Special {
+    /// Élément ordinaire : `:host` et `::slotted()` ne correspondent pas.
+    None,
+    /// Hôte vu depuis son arbre fantôme : `:host` peut correspondre.
+    Host,
+    /// Emplacement d'un sélecteur `::slotted()`, déjà vérifié.
+    Slot,
 }
 
 /// Sélecteur composé (`div.a#b[c]:d`).
@@ -205,9 +222,48 @@ impl Selector {
         let Some(el) = doc.element(node) else {
             return false;
         };
-        compound_matches(&self.subject, doc, node, el, scope)
+        compound_matches(&self.subject, doc, node, el, scope, Special::None)
             && match_ancestors(&self.ancestors, doc, node, scope, anchor)
     }
+
+    /// Vrai si ce sélecteur, issu de l'arbre fantôme de `host`, désigne
+    /// l'hôte lui-même : son sujet porte `:host`, et rien ne le précède.
+    #[must_use]
+    pub fn matches_host(&self, doc: &Document, host: NodeId) -> bool {
+        self.ancestors.is_empty() && host_matches(&self.subject, doc, host, None)
+    }
+
+    /// Vrai si ce sélecteur, issu de l'arbre fantôme qui contient `slot`,
+    /// désigne par `::slotted()` le nœud `node` distribué dans `slot`.
+    #[must_use]
+    pub fn matches_slotted(&self, doc: &Document, node: NodeId, slot: NodeId) -> bool {
+        let Some(inner) = self.subject.pseudos.iter().find_map(|p| match p {
+            Pseudo::Slotted(list) => Some(list),
+            _ => None,
+        }) else {
+            return false;
+        };
+        let Some(slot_element) = doc.element(slot) else {
+            return false;
+        };
+        inner.iter().any(|s| s.matches(doc, node))
+            && compound_matches(&self.subject, doc, slot, slot_element, None, Special::Slot)
+            && match_ancestors(&self.ancestors, doc, slot, None, None)
+    }
+}
+
+/// Hôte de l'arbre fantôme dont `node` est un enfant de la racine.
+fn crossing_host(doc: &Document, node: NodeId) -> Option<NodeId> {
+    doc.shadow_host(doc.node(node).parent?)
+}
+
+/// Vrai si le composé `c`, lu depuis l'arbre fantôme de `host`, désigne
+/// cet hôte : il doit porter `:host`.
+fn host_matches(c: &Compound, doc: &Document, host: NodeId, scope: Option<NodeId>) -> bool {
+    c.pseudos.iter().any(|p| matches!(p, Pseudo::Host(_)))
+        && doc
+            .element(host)
+            .is_some_and(|el| compound_matches(c, doc, host, el, scope, Special::Host))
 }
 
 fn prev_element(doc: &Document, node: NodeId) -> Option<NodeId> {
@@ -263,21 +319,33 @@ fn match_ancestors(
     };
     let test = |candidate: NodeId| {
         doc.element(candidate)
-            .is_some_and(|el| compound_matches(compound, doc, candidate, el, scope))
+            .is_some_and(|el| compound_matches(compound, doc, candidate, el, scope, Special::None))
             && match_ancestors(tail, doc, candidate, scope, anchor)
     };
+    // Au sommet d'un arbre fantôme, l'ancêtre suivant est l'hôte : seul
+    // `:host` le désigne, et rien n'est visible au-dessus de lui.
+    let host = |top: NodeId| {
+        tail.is_empty()
+            && anchor.is_none()
+            && crossing_host(doc, top).is_some_and(|host| host_matches(compound, doc, host, scope))
+    };
     match combinator {
-        Combinator::Child => parent_element(doc, node).is_some_and(test),
+        Combinator::Child => match parent_element(doc, node) {
+            Some(parent) => test(parent),
+            None => host(node),
+        },
         Combinator::NextSibling => prev_element(doc, node).is_some_and(test),
         Combinator::Descendant => {
+            let mut top = node;
             let mut cur = parent_element(doc, node);
             while let Some(c) = cur {
                 if test(c) {
                     return true;
                 }
+                top = c;
                 cur = parent_element(doc, c);
             }
-            false
+            host(top)
         }
         Combinator::SubsequentSibling => {
             let mut cur = prev_element(doc, node);
@@ -376,6 +444,7 @@ fn compound_matches(
     node: NodeId,
     el: &ElementData,
     scope: Option<NodeId>,
+    special: Special,
 ) -> bool {
     if let Some(tag) = &c.tag
         && !el.name.eq_ignore_ascii_case(tag)
@@ -459,6 +528,11 @@ fn compound_matches(
             list.iter().any(|s| s.matches_in(doc, node, scope))
         }
         Pseudo::Never => false,
+        Pseudo::Host(list) => {
+            special == Special::Host
+                && (list.is_empty() || list.iter().any(|s| s.matches_in(doc, node, scope)))
+        }
+        Pseudo::Slotted(_) => special == Special::Slot,
     })
 }
 
@@ -615,7 +689,20 @@ fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
                     c.pseudos.push(functional_pseudo(name, args)?);
                     i = close + 1;
                 }
-                // `::pseudo-élément` : non pris en charge.
+                // `::slotted(...)` : le seul pseudo-élément pris en charge.
+                Some(Token::Colon) => {
+                    let Some(Token::Function(name)) = tokens.get(i + 2) else {
+                        return None;
+                    };
+                    if !name.eq_ignore_ascii_case("slotted") {
+                        return None;
+                    }
+                    let close = matching_close(tokens, i + 2);
+                    let args = trim(tokens.get(i + 3..close)?);
+                    c.pseudos.push(Pseudo::Slotted(parse_selector_list(args)?));
+                    i = close + 1;
+                }
+                // Autre `::pseudo-élément` : non pris en charge.
                 _ => return None,
             },
             _ => break,
@@ -687,6 +774,7 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
         "read-only" => Pseudo::ReadOnly,
         "scope" => Pseudo::Scope,
         "defined" => Pseudo::Always,
+        "host" => Pseudo::Host(Vec::new()),
         "link" | "any-link" => Pseudo::Link,
         "focus" | "focus-visible" => Pseudo::Focus,
         "focus-within" => Pseudo::FocusWithin,
@@ -724,6 +812,7 @@ fn functional_pseudo(name: &str, args: &[Token]) -> Option<Pseudo> {
             Pseudo::NthLastOfType(a, b)
         }
         "has" => Pseudo::Has(parse_relative_list(args)?),
+        "host" => Pseudo::Host(parse_selector_list(args)?),
         _ => return None,
     })
 }

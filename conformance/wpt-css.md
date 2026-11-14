@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 10070 / 28950 (34,8 %)** — fichiers entièrement réussis : 572 / 2267 (25,2 %).
+**Sous-tests réussis : 10072 / 28978 (34,8 %)** — fichiers entièrement réussis : 572 / 2267 (25,2 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 66 / 233 | 882 / 1830 (48,2 %) |
+| `css/cssom-view` | 66 / 233 | 884 / 1858 (47,6 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1640,7 +1640,7 @@ est le plus honnête des deux.
 | `css/cssom-view/MediaQueryList-extends-EventTarget-interop.html` | 1 / 8 |  |
 | `css/cssom-view/MediaQueryList-extends-EventTarget.html` | 1 / 7 |  |
 | `css/cssom-view/MediaQueryListEvent.html` | 0 / 6 |  |
-| `css/cssom-view/checkVisibility.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/checkVisibility.html` | 0 / 21 |  |
 | `css/cssom-view/client-props-input.html` | 0 / 1 |  |
 | `css/cssom-view/client-scroll-props-input.html` | 0 / 2 |  |
 | `css/cssom-view/cssom-geometryutils-connected-callback.html` | 0 / 2 |  |
@@ -1680,7 +1680,7 @@ est le plus honnête des deux.
 | `css/cssom-view/elementsFromPoint-inline-vrl-ltr.html` | 0 / 1 |  |
 | `css/cssom-view/elementsFromPoint-inline-vrl-rtl.html` | 0 / 1 |  |
 | `css/cssom-view/elementsFromPoint-invalid-cases.html` | 2 / 3 |  |
-| `css/cssom-view/elementsFromPoint-shadowroot.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/elementsFromPoint-shadowroot.html` | 2 / 3 |  |
 | `css/cssom-view/elementsFromPoint-simple.html` | 1 / 6 |  |
 | `css/cssom-view/elementsFromPoint-svg-text.html` | 0 / 4 |  |
 | `css/cssom-view/elementsFromPoint-svg.html` | 0 / 6 |  |
@@ -1727,7 +1727,7 @@ est le plus honnête des deux.
 | `css/cssom-view/range-bounding-client-rect-rtl-ligature-split.html` | 0 / 1 |  |
 | `css/cssom-view/range-bounding-client-rect-with-display-contents.html` | 0 / 1 |  |
 | `css/cssom-view/range-bounding-client-rect-with-nested-text.html` | 0 / 1 |  |
-| `css/cssom-view/range-bounding-client-rect-with-shadow-dom.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/range-bounding-client-rect-with-shadow-dom.html` | 0 / 4 |  |
 | `css/cssom-view/range-client-rects-surrogate-indexing.html` | 0 / 1 |  |
 | `css/cssom-view/resizeTo-negative.html` | 0 / 1 |  |
 | `css/cssom-view/screen-detached-frame.html` | 0 / 1 |  |

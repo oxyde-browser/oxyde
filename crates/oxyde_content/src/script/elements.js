@@ -72,7 +72,7 @@
 
   // ---- Éléments sans membre propre notable ---------------------------------------------------
   for (const [name, tags] of [
-    ["HTMLHtmlElement", ["html"]], ["HTMLHeadElement", ["head"]],
+    ["HTMLHtmlElement", ["html"]], ["HTMLHeadElement", ["head"]], ["HTMLSlotElement", ["slot"]],
     ["HTMLTitleElement", ["title"]], ["HTMLDivElement", ["div"]], ["HTMLSpanElement", ["span"]],
     ["HTMLParagraphElement", ["p"]], ["HTMLPreElement", ["pre"]], ["HTMLBRElement", ["br"]],
     ["HTMLHRElement", ["hr"]], ["HTMLHeadingElement", ["h1", "h2", "h3", "h4", "h5", "h6"]],
