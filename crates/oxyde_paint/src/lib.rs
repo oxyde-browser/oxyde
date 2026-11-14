@@ -16,7 +16,7 @@ pub mod wire;
 pub use kurbo::BezPath;
 pub use oxyde_layout::Rect;
 
-use oxyde_css::{Color, Overflow, Position, Side, Size, Viewport, Visibility};
+use oxyde_css::{Color, Overflow, Overscroll, Position, Side, Size, Viewport, Visibility};
 use oxyde_dom::NodeId;
 use oxyde_layout::{BoxFragment, Fragment, LayoutTree, TextFragment};
 use oxyde_text::TextLayout;
@@ -214,6 +214,9 @@ pub struct Scroller {
     /// Axes que l'utilisateur peut faire défiler (`overflow: scroll` ou
     /// `auto`) ; `overflow: hidden` ne défile que par script.
     pub wheel: (bool, bool),
+    /// Axes sur lesquels un défilement arrivé en bout de course se
+    /// propage à la zone englobante (`overscroll-behavior: auto`).
+    pub chain: (bool, bool),
 }
 
 /// Liste d'affichage : primitives dans l'ordre de peinture.
@@ -427,6 +430,10 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
             port,
             content,
             wheel: (by_user(style.overflow_x), by_user(style.overflow_y)),
+            chain: (
+                style.overscroll_x == Overscroll::Auto,
+                style.overscroll_y == Overscroll::Auto,
+            ),
         });
         list.open_scrollers.push(index);
         list.items.push(DisplayItem::PushScroll { id });

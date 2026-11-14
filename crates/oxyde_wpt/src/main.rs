@@ -213,6 +213,8 @@ struct Driver {
     text: Option<TextContext>,
     /// Position du pointeur, dans le repère de la fenêtre.
     pointer: (f32, f32),
+    /// Dernière position de chaque doigt posé, dans le repère de la fenêtre.
+    fingers: std::collections::HashMap<u32, (f32, f32)>,
     /// Touches de modification tenues.
     ctrl: bool,
     shift: bool,
@@ -306,7 +308,24 @@ impl Driver {
                     return;
                 };
                 let (scroll_x, scroll_y) = page.scroll_offset();
-                page.touch(phase, id, x + scroll_x, y + scroll_y);
+                let prevented = page.touch(phase, id, x + scroll_x, y + scroll_y);
+                // Comme une fenêtre tactile : un doigt qui glisse fait défiler
+                // la zone qu'il touche, sauf si un script l'a refusé.
+                match phase {
+                    TouchPhase::Start => {
+                        self.fingers.insert(id, (x, y));
+                    }
+                    TouchPhase::Move => {
+                        if let Some(last) = self.fingers.insert(id, (x, y))
+                            && !prevented
+                        {
+                            page.wheel(x, y, last.0 - x, last.1 - y);
+                        }
+                    }
+                    TouchPhase::End | TouchPhase::Cancel => {
+                        self.fingers.remove(&id);
+                    }
+                }
             }
             "key" => {
                 let (Some(state), Some(key)) = (rest.first(), rest.get(1)) else {

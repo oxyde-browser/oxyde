@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44457 / 50203 (88,6 %)** — fichiers entièrement réussis : 448 / 693 (64,6 %).
+**Sous-tests réussis : 44464 / 50203 (88,6 %)** — fichiers entièrement réussis : 452 / 693 (65,2 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -18,7 +18,7 @@ est le plus honnête des deux.
 | `dom/collections` | 10 / 12 | 58 / 60 (96,7 %) |
 | `dom/events` | 72 / 100 | 483 / 636 (75,9 %) |
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
-| `dom/events/scrolling` | 11 / 39 | 31 / 94 (33,0 %) |
+| `dom/events/scrolling` | 15 / 39 | 38 / 94 (40,4 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
 | `dom/nodes` | 194 / 265 | 10854 / 13109 (82,8 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
@@ -66,26 +66,22 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html` | 0 / 2 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 2 |  |
-| `dom/events/scrolling/scrollend-event-fired-after-snap.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 1 / 8 |  |
 | `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 2 / 8 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html` | 2 / 5 |  |
 | `dom/events/scrolling/scrollend-event-fired-to-document.html` | 0 / 2 | harnais : Uncaught { message: 'assert_true: expected true got false', stack: 'Error' } |
-| `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 |  |
+| `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : Unhandled rejection: pinchZoomIn n'est pas défini |
-| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 2 / 6 |  |
-| `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
+| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 0 / 6 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 4 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 2 / 4 | harnais : Uncaught { message: 'assert_true: Scrollend should not be called on: [object Document] expected true got false', stack:  |
 | `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
-| `dom/events/scrolling/wheel-event-transactions-basic.html` | 0 / 3 |  |
-| `dom/events/scrolling/wheel-event-transactions-multiple-action-chains.html` | 0 / 1 |  |
-| `dom/events/scrolling/wheel-event-transactions-target-display-change.html` | 0 / 2 |  |
+| `dom/events/scrolling/wheel-event-transactions-basic.html` | 1 / 3 |  |
+| `dom/events/scrolling/wheel-event-transactions-target-display-change.html` | 1 / 2 |  |
 | `dom/events/scrolling/wheel-event-transactions-target-elements.html` | 0 / 1 |  |
-| `dom/events/scrolling/wheel-event-transactions-target-move.html` | 0 / 1 |  |
-| `dom/events/scrolling/wheel-event-transactions-target-removal.html` | 0 / 1 |  |
 | `dom/events/scrolling/wheel-event-transactions-target-resize.html` | 0 / 2 |  |
 | `dom/events/shadow-relatedTarget.html` | 0 / 2 |  |
 | `dom/events/webkit-animation-end-event.html` | 0 / 0 | harnais : délai du harnais dépassé |

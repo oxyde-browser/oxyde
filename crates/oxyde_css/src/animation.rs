@@ -6,8 +6,10 @@
 //! superpose la valeur courante des transitions, puis celle des animations,
 //! et note les événements à distribuer (`animationstart`, `transitionend`…).
 //!
-//! LIMITES CONNUES : pas d'API Web Animations (`getAnimations`,
-//! `Element.animate`) ; `animation-composition` et les fonctions de
+//! Les animations créées par un script (`Element.animate()`) passent par
+//! le même animateur : voir [`ScriptAnimation`].
+//!
+//! LIMITES CONNUES : `animation-composition` et les fonctions de
 //! temporisation propres à une image clé ne sont pas pris en charge ; deux
 //! transformations de formes différentes sont interpolées coefficient par
 //! coefficient plutôt que par décomposition de matrice ; l'inversion d'une
@@ -338,6 +340,71 @@ struct Transition {
     started: bool,
 }
 
+/// Animation créée par un script (`Element.animate()`), telle qu'il la
+/// décrit.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptAnimation {
+    /// Images clés : position de 0 à 1 et déclarations CSS.
+    pub frames: Vec<(f32, String)>,
+    /// Durée d'une itération, en millisecondes.
+    pub duration: f32,
+    /// Délai avant le départ, en millisecondes.
+    pub delay: f32,
+    /// Nombre d'itérations ; l'infini pour une animation sans fin.
+    pub iterations: f32,
+    /// `normal`, `reverse`, `alternate` ou `alternate-reverse`.
+    pub direction: String,
+    /// `none`, `forwards`, `backwards`, `both` ou `auto`.
+    pub fill: String,
+    /// Fonction de temporisation (`linear`, `ease`, `cubic-bezier(…)`…).
+    pub easing: String,
+}
+
+/// Animation de script en cours.
+struct Scripted {
+    id: u64,
+    keyframes: Keyframes,
+    /// Durée, délai, itérations, direction et remplissage, sous la forme
+    /// qu'attend le calcul d'avancement des animations CSS.
+    timing: AnimationStyle,
+    easing: Easing,
+    /// Instant de départ (début du délai), en millisecondes.
+    start: f64,
+    /// Temps écoulé au moment de la mise en pause.
+    held: Option<f64>,
+    /// La fin a été atteinte et signalée.
+    done: bool,
+}
+
+impl Scripted {
+    /// Temps de fin : délai, puis toutes les itérations.
+    fn end(&self) -> f64 {
+        let duration = f64::from(self.timing.durations.first().copied().unwrap_or(0.0));
+        let delay = f64::from(self.timing.delays.first().copied().unwrap_or(0.0));
+        let iterations = f64::from(self.timing.iterations.first().copied().unwrap_or(1.0));
+        if iterations.is_infinite() && duration > 0.0 {
+            return f64::INFINITY;
+        }
+        (delay + duration * iterations.min(1.0e12)).max(0.0)
+    }
+
+    /// Temps courant à l'instant `now`.
+    fn time(&self, now: f64) -> f64 {
+        self.held.unwrap_or(now - self.start)
+    }
+
+    /// Vrai si l'animation garde son effet une fois terminée.
+    fn fills_forwards(&self) -> bool {
+        matches!(
+            self.timing.fill_modes.first(),
+            Some(FillMode::Forwards | FillMode::Both)
+        )
+    }
+}
+
+/// Nombre maximal d'animations de script suivies à la fois.
+const MAX_SCRIPT_ANIMATIONS: usize = 4096;
+
 #[derive(Default)]
 struct ElementState {
     animations: Vec<Running>,
@@ -361,6 +428,12 @@ pub struct Animator {
     effective: bool,
     /// Noms de propriété déjà résolus en propriétés élémentaires.
     resolved: HashMap<String, Vec<Longhand>>,
+    /// Animations créées par les scripts, par élément.
+    scripted: HashMap<NodeId, Vec<Scripted>>,
+    /// Vrai si une animation de script avance avec le temps.
+    scripted_running: bool,
+    /// Dernier identifiant donné à une animation de script.
+    last_script_id: u64,
 }
 
 impl std::fmt::Debug for Animator {
@@ -786,19 +859,232 @@ impl Animator {
     /// style doit être recalculé à chaque image.
     #[must_use]
     pub fn needs_frames(&self) -> bool {
-        self.running
+        self.running || self.scripted_running
     }
 
     /// Vrai si le dernier calcul de style dépendait de l'instant : une
     /// animation ou une transition y a contribué.
     #[must_use]
     pub fn is_effective(&self) -> bool {
-        self.effective || self.running
+        self.effective || self.running || self.scripted_running
     }
 
     /// Événements produits depuis le dernier appel, dans l'ordre.
     pub fn take_events(&mut self) -> Vec<AnimationEvent> {
         std::mem::take(&mut self.events)
+    }
+
+    /// Crée l'animation de script `spec` sur `node` à l'instant `now` et rend
+    /// son identifiant.
+    ///
+    /// # Errors
+    ///
+    /// Un message si la description est invalide (temporisation, direction,
+    /// remplissage, durée) ou si trop d'animations sont déjà suivies.
+    pub fn add_script_animation(
+        &mut self,
+        node: NodeId,
+        spec: &ScriptAnimation,
+        now: f64,
+    ) -> Result<u64, &'static str> {
+        let count: usize = self.scripted.values().map(Vec::len).sum();
+        if count >= MAX_SCRIPT_ANIMATIONS {
+            return Err("trop d'animations en cours");
+        }
+        let easing =
+            Easing::parse(&tokenize(&spec.easing)).ok_or("fonction de temporisation invalide")?;
+        let direction = match spec.direction.as_str() {
+            "normal" => Direction::Normal,
+            "reverse" => Direction::Reverse,
+            "alternate" => Direction::Alternate,
+            "alternate-reverse" => Direction::AlternateReverse,
+            _ => return Err("direction invalide"),
+        };
+        let fill = match spec.fill.as_str() {
+            "none" | "auto" => FillMode::None,
+            "forwards" => FillMode::Forwards,
+            "backwards" => FillMode::Backwards,
+            "both" => FillMode::Both,
+            _ => return Err("remplissage invalide"),
+        };
+        // Les comparaisons écartent aussi NaN.
+        let valid = spec.duration >= 0.0
+            && spec.duration.is_finite()
+            && spec.iterations >= 0.0
+            && spec.delay.is_finite();
+        if !valid {
+            return Err("durée, délai ou nombre d'itérations invalide");
+        }
+        let mut frames: Vec<Keyframe> = spec
+            .frames
+            .iter()
+            .filter(|(offset, _)| offset.is_finite())
+            .map(|(offset, css)| Keyframe {
+                offset: offset.clamp(0.0, 1.0),
+                declarations: parse_declarations(&tokenize(css)),
+            })
+            .collect();
+        frames.sort_by(|a, b| a.offset.total_cmp(&b.offset));
+        self.last_script_id += 1;
+        let id = self.last_script_id;
+        self.scripted.entry(node).or_default().push(Scripted {
+            id,
+            keyframes: Keyframes {
+                name: String::new(),
+                frames,
+            },
+            timing: AnimationStyle {
+                names: vec![String::new()],
+                durations: vec![spec.duration],
+                delays: vec![spec.delay],
+                easings: vec![easing],
+                iterations: vec![spec.iterations],
+                directions: vec![direction],
+                fill_modes: vec![fill],
+                paused: vec![false],
+            },
+            easing,
+            start: now,
+            held: None,
+            done: false,
+        });
+        self.scripted_running = true;
+        Ok(id)
+    }
+
+    fn scripted_ref(&self, id: u64) -> Option<&Scripted> {
+        self.scripted.values().flatten().find(|s| s.id == id)
+    }
+
+    fn scripted_mut(&mut self, id: u64) -> Option<&mut Scripted> {
+        self.scripted
+            .values_mut()
+            .flat_map(|list| list.iter_mut())
+            .find(|s| s.id == id)
+    }
+
+    /// État de l'animation de script `id` : 0 inconnue, 1 en cours, 2 en
+    /// pause, 3 terminée.
+    #[must_use]
+    pub fn script_animation_state(&self, id: u64, now: f64) -> u8 {
+        match self.scripted_ref(id) {
+            None => 0,
+            Some(scripted) if scripted.time(now) >= scripted.end() => 3,
+            Some(scripted) if scripted.held.is_some() => 2,
+            Some(_) => 1,
+        }
+    }
+
+    /// Temps courant, en millisecondes, de l'animation de script `id`.
+    #[must_use]
+    pub fn script_animation_time(&self, id: u64, now: f64) -> Option<f64> {
+        let scripted = self.scripted_ref(id)?;
+        Some(scripted.time(now).min(scripted.end()))
+    }
+
+    /// Place l'animation de script `id` au temps `time` (millisecondes).
+    /// Renvoie `false` si elle n'existe pas.
+    pub fn seek_script_animation(&mut self, id: u64, time: f64, now: f64) -> bool {
+        let Some(scripted) = self.scripted_mut(id) else {
+            return false;
+        };
+        scripted.start = now - time;
+        if scripted.held.is_some() {
+            scripted.held = Some(time);
+        }
+        scripted.done = time >= scripted.end();
+        self.scripted_running = true;
+        true
+    }
+
+    /// Met en pause l'animation de script `id`.
+    pub fn pause_script_animation(&mut self, id: u64, now: f64) -> bool {
+        let Some(scripted) = self.scripted_mut(id) else {
+            return false;
+        };
+        if scripted.held.is_none() {
+            scripted.held = Some((now - scripted.start).min(scripted.end()));
+        }
+        true
+    }
+
+    /// Reprend l'animation de script `id` ; terminée, elle repart du début.
+    pub fn play_script_animation(&mut self, id: u64, now: f64) -> bool {
+        let Some(scripted) = self.scripted_mut(id) else {
+            return false;
+        };
+        if let Some(held) = scripted.held.take() {
+            scripted.start = now - held;
+        }
+        if scripted.time(now) >= scripted.end() {
+            scripted.start = now;
+        }
+        scripted.done = false;
+        self.scripted_running = true;
+        true
+    }
+
+    /// Mène l'animation de script `id` à sa fin, sans produire d'événement :
+    /// l'appelant la signale lui-même. Sans remplissage, elle est oubliée.
+    pub fn finish_script_animation(&mut self, id: u64, now: f64) -> bool {
+        let Some(scripted) = self.scripted_mut(id) else {
+            return false;
+        };
+        let end = scripted.end();
+        if !end.is_finite() {
+            return false;
+        }
+        scripted.start = now - end;
+        scripted.held = None;
+        scripted.done = true;
+        let keep = scripted.fills_forwards();
+        if !keep {
+            self.cancel_script_animation(id);
+        }
+        true
+    }
+
+    /// Retire l'animation de script `id`. Renvoie `false` si elle n'existe
+    /// pas.
+    pub fn cancel_script_animation(&mut self, id: u64) -> bool {
+        let mut found = false;
+        for list in self.scripted.values_mut() {
+            let before = list.len();
+            list.retain(|s| s.id != id);
+            found |= list.len() != before;
+        }
+        self.scripted.retain(|_, list| !list.is_empty());
+        found
+    }
+
+    /// Fait avancer les animations de script jusqu'à `now` : celles qui
+    /// atteignent leur fin produisent un événement `finish` (son `name` est
+    /// l'identifiant) ; sans remplissage, elles sont oubliées. À appeler
+    /// avant chaque calcul de style.
+    pub fn advance_script_animations(&mut self, now: f64) {
+        let mut running = false;
+        for (node, list) in &mut self.scripted {
+            for scripted in list.iter_mut() {
+                if scripted.done || scripted.held.is_some() {
+                    continue;
+                }
+                let end = scripted.end();
+                if scripted.time(now) >= end {
+                    scripted.done = true;
+                    self.events.push(AnimationEvent {
+                        node: *node,
+                        kind: "finish",
+                        name: scripted.id.to_string(),
+                        elapsed: end / 1000.0,
+                    });
+                } else {
+                    running = true;
+                }
+            }
+            list.retain(|s| !s.done || s.fills_forwards());
+        }
+        self.scripted.retain(|_, list| !list.is_empty());
+        self.scripted_running = running;
     }
 
     /// Prépare un calcul de style sur un document de `len` nœuds.
@@ -852,7 +1138,11 @@ impl Animator {
             *slot = Some(Arc::clone(&base));
         }
         let has_state = self.elements.contains_key(&node);
-        if !has_state && base.animation.is_none() && base.transition.is_none() {
+        if !has_state
+            && base.animation.is_none()
+            && base.transition.is_none()
+            && !self.scripted.contains_key(&node)
+        {
             return base;
         }
         let mut state = self.elements.remove(&node).unwrap_or_default();
@@ -916,6 +1206,33 @@ impl Animator {
                 let easing = cycled(&spec.easings, index, Easing::EASE);
                 let target = out.get_or_insert_with(|| ComputedStyle::clone(&base));
                 Self::apply_keyframes(keyframes, &base, cx, important, progress, easing, target);
+            }
+        }
+
+        // Animations de script : elles l'emportent sur celles de CSS.
+        if let Some(list) = self.scripted.get(&node) {
+            for scripted in list {
+                let running = Running {
+                    name: String::new(),
+                    start: scripted.start,
+                    held: scripted.held,
+                    phase: Phase::Idle,
+                    iteration: 0,
+                };
+                let Some(progress) = Self::animation_progress(&scripted.timing, 0, &running, now)
+                else {
+                    continue;
+                };
+                let target = out.get_or_insert_with(|| ComputedStyle::clone(&base));
+                Self::apply_keyframes(
+                    &scripted.keyframes,
+                    &base,
+                    cx,
+                    important,
+                    progress,
+                    scripted.easing,
+                    target,
+                );
             }
         }
 
@@ -1674,5 +1991,49 @@ mod tests {
         assert_eq!((half.r, half.a), (128, 255));
         assert_eq!(longhand_name(Longhand::BackgroundColor), "background-color");
         assert_eq!(longhand_name(Longhand::Margin(Side::Left)), "margin-left");
+    }
+
+    #[test]
+    fn script_animation_runs_and_finishes() {
+        let mut animator = Animator::new();
+        let html = "<div id=a></div>";
+        let doc = oxyde_html::parse_document(html);
+        let node = doc
+            .descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("a")))
+            .expect("a");
+        let spec = ScriptAnimation {
+            frames: vec![(0.0, "opacity: 0".into()), (1.0, "opacity: 1".into())],
+            duration: 100.0,
+            delay: 0.0,
+            iterations: 1.0,
+            direction: "normal".into(),
+            fill: "auto".into(),
+            easing: "linear".into(),
+        };
+        let id = animator.add_script_animation(node, &spec, 0.0).expect("id");
+        assert_eq!(animator.script_animation_state(id, 10.0), 1);
+        animator.advance_script_animations(50.0);
+        assert!(animator.needs_frames());
+        let style = style_at(html, &mut animator, 50.0, "a");
+        assert!((style.opacity - 0.5).abs() < 0.01, "{}", style.opacity);
+        // Pause, puis reprise : le temps écoulé est conservé.
+        assert!(animator.pause_script_animation(id, 50.0));
+        assert_eq!(animator.script_animation_state(id, 500.0), 2);
+        assert!(animator.play_script_animation(id, 500.0));
+        assert_eq!(animator.script_animation_time(id, 510.0), Some(60.0));
+        // À la fin : un événement, puis l'oubli (pas de remplissage).
+        animator.advance_script_animations(600.0);
+        let events = animator.take_events();
+        assert_eq!(events.len(), 1);
+        assert_eq!((events[0].kind, events[0].name.as_str()), ("finish", "1"));
+        assert_eq!(animator.script_animation_state(id, 600.0), 0);
+        assert!(!animator.needs_frames());
+        // Description invalide.
+        let bad = ScriptAnimation {
+            easing: "pas-une-courbe".into(),
+            ..spec
+        };
+        assert!(animator.add_script_animation(node, &bad, 0.0).is_err());
     }
 }
