@@ -660,37 +660,63 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
         _ => String::new(),
     };
     // Chemin de propagation : la cible, ses ancêtres, puis la fenêtre.
-    let mut path = vec![target];
+    // Chaque étape porte la cible qu'elle voit : hors d'un arbre fantôme,
+    // c'est l'hôte de cet arbre (reciblage).
+    let composed = flag(vm, event, COMPOSED);
+    let mut path = vec![(target, target)];
     let mut frame_realm = None;
     if let Target::Node(index) = target
         && let Some(h) = host(vm)
         && let Some(node) = h.doc.id_from_index(index as usize)
     {
-        let ancestors: Vec<NodeId> = h.doc.ancestors(node).collect();
-        let root = ancestors.last().copied().unwrap_or(node);
-        let connected = root == h.doc.root();
+        let doc = &h.doc;
+        let as_target = |n: NodeId| Target::Node(u32::try_from(n.index()).unwrap_or(u32::MAX));
+        let mut seen = node;
+        let mut current = node;
+        // Borne : un arbre mal formé ne fait pas tourner sans fin.
+        for _ in 0..=doc.len() {
+            // L'étape suivante : l'emplacement d'un nœud distribué, sinon
+            // le parent ; au-dessus d'une racine fantôme, son hôte, que
+            // seul un événement composé atteint.
+            let next = if let Some(slot) = doc.assigned_slot(current) {
+                Some(slot)
+            } else if let Some(parent) = doc.node(current).parent {
+                Some(parent)
+            } else {
+                doc.shadow_host(current)
+                    .filter(|_| composed)
+                    .inspect(|host| {
+                        // Vue du dehors, la cible née dans cet arbre est l'hôte.
+                        if doc.tree_root(seen) == current {
+                            seen = *host;
+                        }
+                    })
+            };
+            let Some(next) = next else {
+                break;
+            };
+            path.push((as_target(next), as_target(seen)));
+            current = next;
+        }
+        let connected = current == doc.root();
         frame_realm = h
             .frames
             .values()
-            .find(|frame| frame.document == root)
+            .find(|frame| frame.document == current)
             .map(|frame| frame.realm);
-        path.extend(
-            ancestors
-                .into_iter()
-                .map(|n| Target::Node(u32::try_from(n.index()).unwrap_or(u32::MAX))),
-        );
         if connected {
-            path.push(Target::Window);
+            path.push((Target::Window, as_target(seen)));
         }
     }
     // Un événement né dans un cadre remonte jusqu'à la fenêtre du cadre.
     if let Some(window) = frame_realm.and_then(|realm| vm.realm_global(realm)) {
-        path.push(Target::Object(window));
+        let seen = path.last().map_or(target, |(_, seen)| *seen);
+        path.push((Target::Object(window), seen));
     }
     let target_object = target_value(vm, target);
     vm.set_slot(event, TARGET, target_object);
     let mut path_values = Vec::with_capacity(path.len());
-    for item in &path {
+    for (item, _) in &path {
         path_values.push(target_value(vm, *item));
     }
     let path_array = vm.new_array(path_values);
@@ -699,12 +725,14 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
 
     // Capture : de la fenêtre vers la cible.
     let mut running = true;
-    for item in path.iter().rev() {
-        let phase = if *item == target {
+    for (item, seen) in path.iter().rev() {
+        let phase = if item == seen {
             AT_TARGET
         } else {
             CAPTURING_PHASE
         };
+        let seen = target_value(vm, *seen);
+        vm.set_slot(event, TARGET, seen);
         if !invoke(vm, event, *item, &kind, phase, true) {
             running = false;
             break;
@@ -713,14 +741,17 @@ fn fire(vm: &mut Vm, target: Target, event: ObjId) -> bool {
     // Cible, puis bouillonnement vers la fenêtre.
     if running {
         let bubbles = flag(vm, event, BUBBLES);
-        for item in &path {
-            let phase = if *item == target {
+        for (item, seen) in &path {
+            let phase = if item == seen {
                 AT_TARGET
             } else if bubbles {
                 BUBBLING_PHASE
             } else {
-                break;
+                // Un hôte plus haut reste une cible, même sans bouillonnement.
+                continue;
             };
+            let seen = target_value(vm, *seen);
+            vm.set_slot(event, TARGET, seen);
             if !invoke(vm, event, *item, &kind, phase, false) {
                 break;
             }
@@ -753,6 +784,15 @@ pub(super) fn dispatch_event(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRes
 
 /// Distribue sur `node` un événement du navigateur de type `kind`, non
 /// annulable.
+/// Comme [`dispatch_simple`], pour un événement qui traverse les arbres
+/// fantômes (`focus`, `input`…).
+pub(super) fn dispatch_composed(vm: &mut Vm, node: NodeId, kind: &str, bubbles: bool) {
+    let event = new_event(vm, "Event", kind, bubbles, false, true);
+    set_flag(vm, event, COMPOSED, true);
+    let target = Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX));
+    fire(vm, target, event);
+}
+
 pub(super) fn dispatch_simple(vm: &mut Vm, node: NodeId, kind: &str, bubbles: bool) {
     let event = new_event(vm, "Event", kind, bubbles, false, true);
     let target = Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX));

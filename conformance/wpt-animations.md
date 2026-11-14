@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 599 / 4341 (13,8 %)** — fichiers entièrement réussis : 58 / 363 (16,0 %).
+**Sous-tests réussis : 601 / 4342 (13,8 %)** — fichiers entièrement réussis : 60 / 363 (16,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -17,10 +17,10 @@ est le plus honnête des deux.
 | `css/css-animations/parsing` | 10 / 41 | 150 / 574 (26,1 %) |
 | `css/css-animations/responsive` | 1 / 4 | 1 / 7 (14,3 %) |
 | `css/css-animations/stability` | 0 / 1 | 0 / 1 (0,0 %) |
-| `css/css-transforms` | 16 / 43 | 66 / 197 (33,5 %) |
+| `css/css-transforms` | 17 / 43 | 67 / 198 (33,8 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
-| `css/css-transitions` | 17 / 98 | 126 / 2386 (5,3 %) |
+| `css/css-transitions` | 18 / 98 | 127 / 2386 (5,3 %) |
 | `css/css-transitions/animations` | 0 / 11 | 0 / 11 (0,0 %) |
 | `css/css-transitions/parsing` | 2 / 18 | 73 / 252 (29,0 %) |
 
@@ -219,7 +219,6 @@ est le plus honnête des deux.
 | `css/css-transforms/transform-hit-testing.html` | 0 / 5 |  |
 | `css/css-transforms/transform-important.html` | 0 / 1 |  |
 | `css/css-transforms/transform-origin-014.html` | 0 / 4 |  |
-| `css/css-transforms/transform-origin-in-shadow.html` | 0 / 0 | harnais : TypeError: .attachShadow n'est pas une fonction (c'est undefined) |
 | `css/css-transforms/transform-percent-009.html` | 0 / 4 |  |
 | `css/css-transforms/transform-with-sign-function.html` | 0 / 11 |  |
 | `css/css-transforms/transformed-table-section-containing-block.html` | 0 / 2 |  |
@@ -303,7 +302,6 @@ est le plus honnête des deux.
 | `css/css-transitions/pseudo-elements-001.html` | 0 / 4 |  |
 | `css/css-transitions/pseudo-elements-002.html` | 0 / 1 |  |
 | `css/css-transitions/retargetted-transition-with-box-sizing.html` | 0 / 1 |  |
-| `css/css-transitions/shadow-root-insertion.html` | 0 / 1 |  |
 | `css/css-transitions/starting-style-adjustment.html` | 0 / 1 |  |
 | `css/css-transitions/starting-style-cascade.html` | 0 / 0 | harnais : ReferenceError: CSSStyleSheet n'est pas défini |
 | `css/css-transitions/starting-style-name-defining-rules.html` | 0 / 2 |  |

@@ -1450,12 +1450,12 @@
     // Touche enfoncée (`down`) ou relâchée : `keydown` (puis `keypress` pour
     // un caractère) ou `keyup`, sur l'élément actif. Rend `false` si
     // l'action par défaut a été annulée.
-    key(down, key, code, ctrlKey, shiftKey, altKey, metaKey, repeat) {
-      const target = document.activeElement ?? document;
+    key(down, key, code, ctrlKey, shiftKey, altKey, metaKey, repeat, focused) {
+      const target = focused ?? document.activeElement ?? document;
       const keyCode = legacyCode(key);
       const init = {
         key, code, ctrlKey, shiftKey, altKey, metaKey, repeat, keyCode, which: keyCode,
-        bubbles: true, cancelable: true, view: global,
+        bubbles: true, cancelable: true, composed: true, view: global,
       };
       let proceed = target.dispatchEvent(new global.KeyboardEvent(down ? "keydown" : "keyup", init));
       if (down && proceed && key.length === 1 && !ctrlKey && !altKey && !metaKey) {

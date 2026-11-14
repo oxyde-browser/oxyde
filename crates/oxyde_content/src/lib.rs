@@ -4954,4 +4954,106 @@ mod tests {
         seen.sort_unstable();
         assert_eq!(seen, ["externe relié", "interne relié", "slotchange"]);
     }
+
+    #[test]
+    fn events_cross_shadow_trees_with_retargeting() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'><div id=hote></div>
+               <script>
+                 const host = document.getElementById('hote');
+                 const root = host.attachShadow({ mode: 'open' });
+                 root.innerHTML = '<button id=b>ok</button><input id=champ>';
+                 const journal = [];
+                 const note = (who) => (e) => journal.push(
+                   who + ':' + e.type + ':' + (e.target.id || e.target.nodeName) + ':' + e.eventPhase);
+                 const button = root.getElementById('b');
+                 const field = root.getElementById('champ');
+                 for (const kind of ['click', 'prive', 'focusin', 'keydown']) {
+                   button.addEventListener(kind, note('bouton'));
+                   field.addEventListener(kind, note('champ'));
+                   root.addEventListener(kind, note('racine'));
+                   host.addEventListener(kind, note('hote'));
+                   document.addEventListener(kind, note('document'));
+                 }
+                 // Un événement non composé ne sort pas de l'arbre fantôme.
+                 button.dispatchEvent(new Event('prive', { bubbles: true }));
+                 journal.push('|');
+                 document.addEventListener('prive', (e) => journal.push('chemin ' + e.composedPath().length));
+                 button.dispatchEvent(new Event('prive', { bubbles: true, composed: true }));
+                 globalThis.lire = () => {
+                   document.documentElement.setAttribute('data-journal', journal.join(' '));
+                   document.documentElement.setAttribute('data-actif',
+                     document.activeElement.id + ' ' + (root.activeElement && root.activeElement.id));
+                   journal.length = 0;
+                 };
+                 addEventListener('keyup', () => lire());
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let attr = |p: &Page, name: &str| {
+            let doc = p.document();
+            let html = doc.find_html_element(doc.root(), "html").expect("html");
+            doc.element(html)
+                .and_then(|e| e.attr(name))
+                .unwrap_or("")
+                .to_owned()
+        };
+        let key = |key: &'static str| KeyInput {
+            key,
+            code: "",
+            ctrl: false,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        let read = |p: &mut Page| {
+            p.key_event(false, &key("j"));
+            attr(p, "data-journal")
+        };
+        assert_eq!(
+            read(&mut p),
+            "bouton:prive:b:2 racine:prive:b:3 | bouton:prive:b:2 racine:prive:b:3 \
+             hote:prive:hote:2 document:prive:hote:3 chemin 7"
+        );
+        // Un clic dans l'arbre fantôme : dedans, la cible est le bouton ;
+        // dehors, c'est l'hôte, qui est lui-même une cible.
+        let inside = |p: &Page, name: &str| {
+            let doc = p.document();
+            let host = doc
+                .descendants(doc.root())
+                .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("hote")))
+                .expect("hôte");
+            let root = doc.shadow_root(host).expect("racine fantôme");
+            doc.descendants(root)
+                .find(|n| doc.element(*n).is_some_and(|e| e.is_html(name)))
+                .expect("élément de l'arbre fantôme")
+        };
+        let button = inside(&p, "button");
+        p.click_node(button);
+        assert_eq!(
+            read(&mut p),
+            "bouton:focusin:b:2 racine:focusin:b:3 hote:focusin:hote:2 document:focusin:hote:3 \
+             bouton:click:b:2 racine:click:b:3 hote:click:hote:2 document:click:hote:3"
+        );
+        assert_eq!(attr(&p, "data-actif"), "hote b");
+        // Une touche vise l'élément qui a vraiment le focus, et la frappe
+        // entre dans le champ de l'arbre fantôme.
+        let field = inside(&p, "input");
+        p.click_node(field);
+        read(&mut p);
+        p.key_event(true, &key("a"));
+        assert_eq!(
+            read(&mut p),
+            "champ:keydown:champ:2 racine:keydown:champ:3 hote:keydown:hote:2 document:keydown:hote:3"
+        );
+        assert_eq!(
+            p.document().element(field).and_then(|e| e.attr("value")),
+            Some("a")
+        );
+        assert_eq!(attr(&p, "data-actif"), "hote champ");
+    }
 }

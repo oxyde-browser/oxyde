@@ -14,7 +14,7 @@
 use oxyde_dom::{Document, NodeId};
 use oxyde_js::{JsResult, Value, Vm};
 
-use super::events::dispatch_simple;
+use super::events::{dispatch_composed, dispatch_simple};
 use super::{host, report, this_node, wrap};
 
 /// Types d'`<input>` qui se saisissent comme du texte.
@@ -116,15 +116,15 @@ pub(super) fn move_focus(vm: &mut Vm, target: Option<NodeId>) {
         if changed {
             dispatch_simple(vm, old, "change", true);
         }
-        dispatch_simple(vm, old, "blur", false);
-        dispatch_simple(vm, old, "focusout", true);
+        dispatch_composed(vm, old, "blur", false);
+        dispatch_composed(vm, old, "focusout", true);
     }
     // Un écouteur de `blur` a pu déplacer le focus à son tour.
     if let Some(new) = target
         && host(vm).is_some_and(|h| h.doc.focus() == Some(new))
     {
-        dispatch_simple(vm, new, "focus", false);
-        dispatch_simple(vm, new, "focusin", true);
+        dispatch_composed(vm, new, "focus", false);
+        dispatch_composed(vm, new, "focusin", true);
     }
 }
 
@@ -146,8 +146,34 @@ pub(super) fn element_blur(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResu
     Ok(Value::Undefined)
 }
 
-/// Élément qui a le focus, ou `null` : pour `document.activeElement`.
+/// Élément qui a le focus vu du document, ou `null` : pour
+/// `document.activeElement`. Un élément d'un arbre fantôme est représenté
+/// par son hôte.
 pub(super) fn focused_element(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let seen = host(vm).and_then(|h| {
+        let doc = &h.doc;
+        let mut node = doc.focus()?;
+        // Borne : pas plus de sauts que de nœuds.
+        for _ in 0..=doc.len() {
+            match doc
+                .containing_shadow_root(node)
+                .and_then(|root| doc.shadow_host(root))
+            {
+                Some(shadow_host) => node = shadow_host,
+                None => break,
+            }
+        }
+        Some(node)
+    });
+    Ok(match seen {
+        Some(node) => wrap(vm, node),
+        None => Value::Null,
+    })
+}
+
+/// Élément qui a réellement le focus, fût-il dans un arbre fantôme, ou
+/// `null` : pour `ShadowRoot.activeElement`.
+pub(super) fn deep_focused_element(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Ok(match host(vm).and_then(|h| h.doc.focus()) {
         Some(node) => wrap(vm, node),
         None => Value::Null,
@@ -265,7 +291,7 @@ impl Field {
             .set_field_selection(Some(node), self.anchor, self.caret);
         h.dirty = true;
         if changed {
-            dispatch_simple(vm, node, "input", true);
+            dispatch_composed(vm, node, "input", true);
         }
     }
 }

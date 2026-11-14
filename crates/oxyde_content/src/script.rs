@@ -2154,6 +2154,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("shadowHostOf", 1, dom_ops::shadow_host_of)),
         Value::Object(vm.new_function("assignedSlotOf", 1, dom_ops::assigned_slot_of)),
         Value::Object(vm.new_function("assignedNodesOf", 1, dom_ops::assigned_nodes_of)),
+        Value::Object(vm.new_function("deepFocused", 0, focus::deep_focused_element)),
     ];
     vm.call(&components, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
@@ -2527,6 +2528,9 @@ impl ScriptEngine {
             let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
                 return false;
             };
+            // La cible : l'élément qui a le focus, fût-il dans un arbre fantôme.
+            let focused = host(vm).and_then(|h| h.doc.focus());
+            let focused = wrap_opt(vm, focused);
             let args = [
                 Value::Bool(down),
                 Value::string(input.key),
@@ -2536,6 +2540,7 @@ impl ScriptEngine {
                 Value::Bool(input.alt),
                 Value::Bool(input.meta),
                 Value::Bool(input.repeat),
+                focused,
             ];
             match vm
                 .get(&hooks, "key")

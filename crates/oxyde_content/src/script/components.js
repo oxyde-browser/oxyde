@@ -6,7 +6,8 @@
 //   shadowRootOf(élément)       -> sa racine fantôme (ouverte ou non), ou null ;
 //   shadowHostOf(nœud)          -> l'hôte dont il est la racine fantôme, ou null ;
 //   assignedSlotOf(nœud)        -> l'emplacement où il est distribué, ou null ;
-//   assignedNodesOf(emplacement) -> tableau des nœuds qui y sont distribués.
+//   assignedNodesOf(emplacement) -> tableau des nœuds qui y sont distribués ;
+//   deepFocused()               -> l'élément qui a le focus, fût-il dans un arbre fantôme.
 //
 // LIMITES CONNUES
 // - `Path2D` enregistre ses commandes ; rien ne les dessine (pas de canevas).
@@ -29,7 +30,7 @@
 //   déclarées) ; un document XML mal formé rend un document `parsererror`.
 // - `template.content` : le fragment appartient au document de la page.
 (function (parseHtmlDocument, attachShadowRoot, shadowRootOf, shadowHostOf, assignedSlotOf,
-  assignedNodesOf) {
+  assignedNodesOf, deepFocused) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -505,9 +506,16 @@
     for (const child of Array.from(this.childNodes)) holder.appendChild(child.cloneNode(true));
     return holder.innerHTML;
   }, setShadowHtml);
+  // L'élément qui a le focus, vu de cet arbre : lui-même s'il y est,
+  // sinon l'hôte de l'arbre fantôme imbriqué qui le contient.
   shadowGetter("activeElement", function () {
-    const active = document.activeElement;
-    return active !== null && active.getRootNode() === this ? active : null;
+    let node = deepFocused();
+    while (node !== null) {
+      const tree = node.getRootNode();
+      if (tree === this) return node;
+      node = shadowHostOf(tree);
+    }
+    return null;
   });
   for (const [name, value] of [
     ["setHTMLUnsafe", function setHTMLUnsafe(html) { setShadowHtml.call(this, html); }],
