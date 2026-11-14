@@ -219,7 +219,7 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 286 fichiers de test entièrement réussis sur 693 (41,3 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 287 fichiers de test entièrement réussis sur 693 (41,4 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
   documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
   `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
@@ -234,7 +234,8 @@ Reste :
   dessiné (jalon 6) ; faute d'isolation entre processus (jalon 5), seul un cadre de même
   origine que la page est chargé ; dans le navigateur, seuls les cadres présents dans le
   HTML reçu sont chargés, pas ceux qu'un script crée ensuite.
-- **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire, focus,
+- **Liés à la mise en page (jalon 6)** : dessin et saisie des contrôles de formulaire et focus
+  (faits, étape H),
   `getComputedStyle`, dimensions (`clientWidth`, `scrollTop`…), `IntersectionObserver`,
   `ResizeObserver`.
 - **Stockage et réseau** : faits — `Blob`, `File`, `FileReader`, `Request` et `Response`
@@ -332,7 +333,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 538 (23,7 %); une lecture force la
+  (9,4 %), aujourd'hui 541 (23,9 %); une lecture force la
   mise en page si le document a changé.
 - **Positionnement** : `position: relative`, `absolute`, `fixed`, décalages `inset`, blocs
   conteneurs, hauteurs en pourcentage, `calc()`, police de test Ahem (`@font-face`).
@@ -512,10 +513,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 
 - [ ] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
       banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ.
-- [ ] **Saisie dans les pages** : focus (`focus()`, `blur()`, `:focus`, tabulation), champs de
-      texte éditables (curseur, sélection, presse-papiers), cases, boutons radio, listes
-      déroulantes, `<textarea>`, bouton d'envoi, événements `input` et `change`.
-      Aujourd'hui une page reçoit les touches, mais on ne peut pas taper dans un champ.
+- [x] **Saisie dans les pages** : focus (`focus()`, `blur()`, `document.activeElement`,
+      `:focus`, `:checked`, `:disabled`, tabulation), champs de texte éditables avec curseur
+      (flèches, Début, Fin, Retour arrière, Suppr, `maxlength`, `readonly`, mot de passe
+      masqué, texte indicatif), cases, boutons radio, listes déroulantes (flèches), `<textarea>`,
+      bouton d'envoi, Entrée qui envoie le formulaire, événements `input`, `change`, `focus`,
+      `blur`. Page d'essai : `tests/pages/formulaires.html`.
+      Vérifié par tests et par captures ; pas encore essayé au clavier dans la fenêtre sur des
+      sites réels (ce sera fait avec la liste des 50 sites).
+- [ ] Saisie, ce qui reste : sélection dans un champ et presse-papiers (Ctrl C, X, V), clic qui
+      place le curseur, curseur et édition au milieu d'un `<textarea>`, liste déroulante qui
+      se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
 - [ ] Sélection de texte à la souris et copie ; menu contextuel de la page (jalon 7).
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).

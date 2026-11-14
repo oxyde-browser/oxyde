@@ -91,6 +91,14 @@ button, input, select, textarea {
   padding: 1px 6px;
 }
 input, textarea, select { background-color: white; }
-input[type=checkbox], input[type=radio] { padding: 0; border: none; margin: 3px 3px 3px 4px; }
+input, select, textarea { overflow: clip; }
+input[type=checkbox], input[type=radio] { padding: 0; border: 1px solid #767676; margin: 3px 3px 3px 4px; }
+input[type=radio] { border-radius: 8px; }
+textarea { white-space: pre-wrap; }
+input[type=checkbox]:checked, input[type=radio]:checked { border-color: #0075ff; }
+input[type=checkbox]:checked { background-color: #0075ff; }
+input[type=submit], input[type=button], input[type=reset] { background-color: #efefef; text-align: center; }
+input:disabled, select:disabled, textarea:disabled, button:disabled { color: #6d6d6d; background-color: #f4f4f4; }
+input:focus, select:focus, textarea:focus { border-color: #0075ff; }
 input[type=hidden] { display: none; }
 fieldset { margin-left: 2px; margin-right: 2px; padding: 0.35em 0.75em 0.625em; border: 2px groove silver; }

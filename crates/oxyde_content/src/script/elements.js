@@ -7,7 +7,9 @@
 // LIMITES CONNUES : l'état d'un contrôle (valeur, case cochée, option
 // choisie) vit dans ses attributs ; un contrôle est rattaché au formulaire
 // qui le contient (l'attribut `form` est ignoré) ; pas de fichiers ; la
-// validation des contraintes accepte tout.
+// validation des contraintes accepte tout ; une liste déroulante ne se
+// déroule pas (les flèches changent l'option) ; la frappe dans une zone de
+// texte se fait en fin de texte.
 (function (registerInterface, parseUrl, changeUrl, locationHref, navigate) {
   "use strict";
   const global = globalThis;
@@ -512,11 +514,51 @@
         && (other.closest("form") ?? document) === scope,
     );
   }
+  // Un contrôle détaché du document n'annonce pas son changement.
   const changed = (control) => {
+    if (!control.isConnected) return;
     control.dispatchEvent(new Event("input", { bubbles: true }));
     control.dispatchEvent(new Event("change", { bubbles: true }));
   };
   return {
+    // Entrée dans un champ de texte : soumission implicite du formulaire,
+    // par son bouton d'envoi s'il en a un.
+    enter(control) {
+      const form = control.closest("form");
+      if (form === null) return;
+      const submitter = Array.from(form.querySelectorAll("button, input")).find((candidate) => {
+        if (candidate.hasAttribute("disabled")) return false;
+        const type = candidate.localName === "button"
+          ? (candidate.getAttribute("type") ?? "submit").toLowerCase()
+          : inputType(candidate);
+        return type === "submit" || type === "image";
+      });
+      if (submitter !== undefined) submitter.click();
+      else form.requestSubmit();
+    },
+    // Flèche sur une liste déroulante : l'option voisine devient la choisie.
+    stepped(control, step) {
+      if (control.hasAttribute("disabled")) return;
+      const options = optionsOf(control).filter((option) => !option.hasAttribute("disabled"));
+      const current = options.findIndex(isSelected);
+      const next = Math.min(Math.max(current + step, 0), options.length - 1);
+      if (next === current || options.length === 0) return;
+      for (const option of options) option.removeAttribute("selected");
+      options[next].setAttribute("selected", "");
+      changed(control);
+    },
+    // Frappe dans une zone de texte : en fin de texte.
+    typed(control, key) {
+      if (control.hasAttribute("readonly") || control.hasAttribute("disabled")) return;
+      const text = control.textContent;
+      let next = text;
+      if (key === "Backspace") next = Array.from(text).slice(0, -1).join("");
+      else if (key === "Enter") next = text + "\n";
+      else if (Array.from(key).length === 1) next = text + key;
+      if (next === text) return;
+      control.textContent = next;
+      control.dispatchEvent(new Event("input", { bubbles: true }));
+    },
     // Avant `click` : une case ou un bouton radio change d'état tout de
     // suite, les écouteurs voient donc le nouvel état.
     before(target) {
@@ -556,9 +598,11 @@
         }
         return;
       }
-      if (prevented) return;
+      // Un contrôle qu'un écouteur vient de désactiver n'agit plus, et un
+      // formulaire détaché du document ne s'envoie pas.
+      if (prevented || control.hasAttribute("disabled")) return;
       const form = control.closest("form");
-      if (form === null) return;
+      if (form === null || !form.isConnected) return;
       const type = control.localName === "button"
         ? (control.getAttribute("type") ?? "submit").toLowerCase()
         : inputType(control);

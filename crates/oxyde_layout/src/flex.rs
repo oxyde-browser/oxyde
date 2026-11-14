@@ -543,11 +543,15 @@ impl Engine<'_> {
         } else {
             style.min_height
         };
-        let scrollable = if row {
-            style.overflow_x
-        } else {
-            style.overflow_y
-        } != Overflow::Visible;
+        // `clip` rogne sans faire défiler : le minimum automatique demeure.
+        let scrollable = !matches!(
+            if row {
+                style.overflow_x
+            } else {
+                style.overflow_y
+            },
+            Overflow::Visible | Overflow::Clip
+        );
         item.min = match resolve_main(min_size) {
             Some(min) => outer(min),
             None if scrollable => extras,

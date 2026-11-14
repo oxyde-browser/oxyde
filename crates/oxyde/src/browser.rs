@@ -2727,7 +2727,13 @@ impl Browser {
         down: bool,
         input: &oxyde_content::KeyInput<'_>,
     ) -> (bool, bool) {
-        if self.editing.is_some() || self.library_open() {
+        // Une saisie de l'interface (adresse, palette, recherche) ou un écran
+        // posé sur les pages garde la touche pour lui.
+        if self.editing.is_some()
+            || self.library_open()
+            || self.palette.is_some()
+            || self.find.is_some()
+        {
             return (false, false);
         }
         let Some(tab) = self.tabs.get_mut(self.active) else {
