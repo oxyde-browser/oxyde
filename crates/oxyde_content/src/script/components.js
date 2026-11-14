@@ -452,6 +452,31 @@
       }
     }
   }
+  // `moveBefore()` : un élément personnalisé déplacé sans quitter le
+  // document reçoit `connectedMoveCallback`, à défaut
+  // `disconnectedCallback` puis `connectedCallback`.
+  for (const owner of [global.Element, global.Document, global.DocumentFragment]) {
+    const nativeMove = owner.prototype.moveBefore;
+    if (typeof nativeMove !== "function") continue;
+    define(owner.prototype, "moveBefore", {
+      value: function moveBefore(node, child) {
+        const result = nativeMove.apply(this, arguments);
+        if (definitions.size > 0 && node !== null && typeof node === "object" && node.isConnected) {
+          for (const element of withDescendants(node)) {
+            if (!connected.has(element)) continue;
+            if (typeof element.connectedMoveCallback === "function") {
+              react(element, "connectedMoveCallback", []);
+            } else {
+              react(element, "disconnectedCallback", []);
+              react(element, "connectedCallback", []);
+            }
+          }
+        }
+        return result;
+      },
+      writable: true, enumerable: true, configurable: true,
+    });
+  }
   // Racines fantômes connues : l'observateur les suit comme le document.
   const shadowRoots = [];
   const OBSERVED = { childList: true, subtree: true, attributes: true, attributeOldValue: true };

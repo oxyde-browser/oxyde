@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44464 / 50203 (88,6 %)** — fichiers entièrement réussis : 452 / 693 (65,2 %).
+**Sous-tests réussis : 44538 / 50203 (88,7 %)** — fichiers entièrement réussis : 459 / 693 (66,2 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -20,10 +20,10 @@ est le plus honnête des deux.
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 15 / 39 | 38 / 94 (40,4 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 194 / 265 | 10854 / 13109 (82,8 %) |
+| `dom/nodes` | 195 / 265 | 10914 / 13109 (83,3 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
-| `dom/nodes/moveBefore` | 17 / 64 | 81 / 177 (45,8 %) |
+| `dom/nodes/moveBefore` | 23 / 64 | 95 / 177 (53,7 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 38 / 49 | 30715 / 33613 (91,4 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -129,10 +129,9 @@ est le plus honnête des deux.
 | `dom/nodes/Element-closest.html` | 28 / 29 |  |
 | `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 |  |
 | `dom/nodes/Element-getElementsByTagName.html` | 18 / 19 |  |
-| `dom/nodes/Element-matches-disabled-pseudo-class.html` | 3 / 11 |  |
 | `dom/nodes/Element-matches-namespaced-elements.html` | 4 / 6 |  |
-| `dom/nodes/Element-matches.html` | 584 / 669 |  |
-| `dom/nodes/Element-webkitMatchesSelector.html` | 584 / 669 |  |
+| `dom/nodes/Element-matches.html` | 594 / 669 |  |
+| `dom/nodes/Element-webkitMatchesSelector.html` | 594 / 669 |  |
 | `dom/nodes/MutationObserver-attributes.html` | 39 / 42 |  |
 | `dom/nodes/MutationObserver-callback-order.window.js` | 2 / 3 |  |
 | `dom/nodes/MutationObserver-childList.html` | 33 / 40 |  |
@@ -153,7 +152,7 @@ est le plus honnête des deux.
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-3.html` | 0 / 1 |  |
-| `dom/nodes/ParentNode-querySelector-All.html` | 1549 / 1975 |  |
+| `dom/nodes/ParentNode-querySelector-All.html` | 1581 / 1975 |  |
 | `dom/nodes/ParentNode-querySelector-escapes.html` | 63 / 68 |  |
 | `dom/nodes/ParentNode-querySelector-hyphen-prefix.html` | 3 / 4 |  |
 | `dom/nodes/ParentNode-querySelector-namespace-tagname-attribute.html` | 4 / 8 |  |
@@ -184,7 +183,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/css-transition-cross-shadow.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-to-disconnected-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-trigger.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/custom-element-move-reactions.html` | 0 / 7 |  |
+| `dom/nodes/moveBefore/custom-element-move-reactions.html` | 6 / 7 |  |
 | `dom/nodes/moveBefore/fire-focusin-focusout.html` | 1 / 5 |  |
 | `dom/nodes/moveBefore/focus-preserve.html` | 1 / 5 |  |
 | `dom/nodes/moveBefore/focus-within.html` | 3 / 5 |  |
@@ -195,16 +194,10 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/listed-form-element-reset.html` | 0 / 6 |  |
 | `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
-| `dom/nodes/moveBefore/moveBefore-dir.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 3 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-from-light-to-shadow.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-id-map.html` | 3 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-lang.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-name-map.html` | 0 / 3 |  |
+| `dom/nodes/moveBefore/moveBefore-name-map.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 1 / 8 |  |
-| `dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html` | 1 / 2 |  |
-| `dom/nodes/moveBefore/moveBefore-shadow-host-id-map.html` | 2 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-inside.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-root.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-size-query.html` | 0 / 1 |  |

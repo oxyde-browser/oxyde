@@ -203,6 +203,20 @@ impl Vm {
                 None => current = object.proto,
             }
         }
+        // Rien dans l'objet ni dans ses prototypes : l'hôte peut encore
+        // servir un accès nommé (`window.identifiant`, `document.nom`).
+        if let Some(hooks) = self.host_hooks {
+            if id == self.global {
+                if let Some(value) = (hooks.global)(self, key) {
+                    return Ok(value);
+                }
+            } else if let Kind::Host { class, data } = &self.heap.get(id).kind {
+                let (class, data) = (*class, *data);
+                if let Some(value) = (hooks.missing)(self, class, data, key) {
+                    return Ok(value);
+                }
+            }
+        }
         Ok(Value::Undefined)
     }
 

@@ -684,8 +684,20 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] `overscroll-behavior` (et `-x`, `-y`) : hors de `auto`, un défilement arrivé en
       bout de course ne se propage pas à la zone englobante. Le lanceur WPT fait
       défiler la page sous un doigt qui glisse, comme le ferait une fenêtre tactile.
-- [ ] Web Platform Tests `dom/` : de 65,2 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (43), `events/scrolling` (25 :
+- [x] Accès nommé : `window.identifiant` (et `typeof identifiant`) désigne l'élément de
+      cet identifiant ; `document.nom` désigne l'élément `embed`, `form`, `iframe`,
+      `img` ou `object` de ce nom. Seule une variable nue (`identifiant`) y parvenait.
+      Sélecteurs `:lang()` et `:dir()` ; `:disabled` et `:enabled` tiennent compte d'un
+      `<fieldset disabled>` englobant. Un élément personnalisé déplacé par
+      `moveBefore()` reçoit `connectedMoveCallback`, à défaut `disconnectedCallback`
+      puis `connectedCallback`.
+      Limites : `document.nom` rend le premier élément, jamais une collection, et
+      passe après les propriétés du prototype ; chaque accès nommé parcourt le
+      document ; `dir=auto` est lu comme `ltr`.
+- [ ] Arbres fantômes déclaratifs (`<template shadowrootmode>`), que plusieurs tests
+      `moveBefore` attendent.
+- [ ] Web Platform Tests `dom/` : de 66,2 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (36), `events/scrolling` (25 :
       défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).

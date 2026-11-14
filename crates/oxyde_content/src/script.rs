@@ -1310,6 +1310,36 @@ fn host_delete(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<bool> {
     }
 }
 
+/// Accès nommé sur un document (HTML Standard §3.1.6) : `document.nom`
+/// désigne l'élément `embed`, `form`, `iframe`, `img` ou `object` de ce
+/// nom, ou l'`object` (ou l'`img` nommée) de cet identifiant.
+///
+/// LIMITES : le premier élément trouvé, jamais une collection ; une
+/// propriété du prototype de `Document` passe avant.
+fn host_missing(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<Value> {
+    if class != CLASS_NODE || key.is_empty() {
+        return None;
+    }
+    let h = host(vm)?;
+    let doc = &h.doc;
+    let node = doc.id_from_index(usize::try_from(data).ok()?)?;
+    if !doc.is_document(node) {
+        return None;
+    }
+    let found = doc.descendants(node).find(|n| {
+        doc.element(*n).is_some_and(|e| {
+            let named = e.attr("name") == Some(key)
+                && ["embed", "form", "iframe", "img", "object"]
+                    .iter()
+                    .any(|tag| e.is_html(tag));
+            named
+                || (e.id() == Some(key)
+                    && (e.is_html("object") || (e.is_html("img") && e.has_attr("name"))))
+        })
+    })?;
+    Some(wrap(vm, found))
+}
+
 /// Classes dont une propriété posée par un script masque le nom que la
 /// collection servirait.
 fn host_own_first(class: u32) -> bool {
@@ -2180,6 +2210,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         policy: host_policy,
         delete: host_delete,
         own_first: host_own_first,
+        missing: host_missing,
         global: named_global,
     });
     events::install_attributes(vm)?;

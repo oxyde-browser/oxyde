@@ -5625,4 +5625,53 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn named_access_lang_dir_and_moved_custom_elements() {
+        let mut p = page(
+            "<body><div id=un></div><img name=deux><form name=trois></form>
+             <p lang=fr-CA dir=rtl><span id=s></span></p>
+             <fieldset disabled><legend><input id=libre></legend><input id=pris></fieldset>
+             <script>
+               const out = [];
+               out.push(typeof un, window.un === document.getElementById('un'), window.rien);
+               out.push(document.deux.localName, document.trois.localName, document.un);
+               const s = document.getElementById('s');
+               out.push(s.matches(':lang(fr)'), s.matches(':lang(en, \"fr-CA\")'), s.matches(':lang(f)'));
+               out.push(s.matches(':dir(rtl)'), document.body.matches(':dir(ltr)'));
+               out.push(document.getElementById('pris').matches(':disabled'),
+                 document.getElementById('libre').matches(':disabled'));
+               class Simple extends HTMLElement {
+                 connectedCallback() { out.push('connecté'); }
+                 disconnectedCallback() { out.push('déconnecté:' + this.isConnected); }
+               }
+               class Mobile extends HTMLElement {
+                 connectedMoveCallback() { out.push('déplacé'); }
+                 connectedCallback() { out.push('jamais'); }
+               }
+               customElements.define('x-simple', Simple);
+               const simple = document.body.appendChild(document.createElement('x-simple'));
+               const target = document.getElementById('un');
+               Promise.resolve().then(() => {
+                 target.moveBefore(simple, null);
+                 customElements.define('x-mobile', Mobile);
+                 const mobile = document.createElement('x-mobile');
+                 const loose = document.createElement('div');
+                 loose.appendChild(mobile);
+                 loose.moveBefore(mobile, null);
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "object true  img form  true true false true true true false \
+                 connecté déconnecté:true connecté"
+            )
+        );
+    }
 }

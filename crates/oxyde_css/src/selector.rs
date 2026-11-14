@@ -107,6 +107,13 @@ pub enum Pseudo {
     Scope,
     /// `:defined` : toujours vrai, faute d'éléments personnalisés.
     Always,
+    /// `:lang(fr, en-GB)` : la langue de l'élément (son attribut `lang` ou
+    /// celui de son plus proche ancêtre) commence par l'une des étiquettes.
+    Lang(Vec<String>),
+    /// `:dir(ltr)` (`false`) ou `:dir(rtl)` (`true`), d'après l'attribut
+    /// `dir` de l'élément ou de son plus proche ancêtre. `dir=auto` est lu
+    /// comme `ltr`.
+    Dir(bool),
     /// `:has(...)` : sélecteurs relatifs, chacun avec son combinateur de tête.
     Has(Vec<(Combinator, Selector)>),
     /// `:not(...)`
@@ -501,8 +508,34 @@ fn compound_matches(
             "option" => el.has_attr("selected"),
             _ => false,
         },
-        Pseudo::Disabled => is_control(el) && el.has_attr("disabled"),
-        Pseudo::Enabled => is_control(el) && !el.has_attr("disabled"),
+        Pseudo::Disabled => is_disabled(doc, node, el),
+        Pseudo::Enabled => is_control(el) && !is_disabled(doc, node, el),
+        Pseudo::Lang(ranges) => {
+            let lang = std::iter::once(node)
+                .chain(doc.ancestors(node))
+                .find_map(|n| doc.element(n).and_then(|e| e.attr("lang")))
+                .map(str::to_ascii_lowercase);
+            lang.is_some_and(|lang| {
+                ranges.iter().any(|range| {
+                    let range = range.to_ascii_lowercase();
+                    !range.is_empty()
+                        && (lang == range
+                            || lang
+                                .strip_prefix(range.as_str())
+                                .is_some_and(|rest| rest.starts_with('-')))
+                })
+            })
+        }
+        Pseudo::Dir(rtl) => {
+            let found = std::iter::once(node)
+                .chain(doc.ancestors(node))
+                .find_map(|n| {
+                    let dir = doc.element(n)?.attr("dir")?.to_ascii_lowercase();
+                    matches!(dir.as_str(), "ltr" | "rtl").then_some(dir == "rtl")
+                })
+                .unwrap_or(false);
+            found == *rtl
+        }
         Pseudo::Required => is_control(el) && el.has_attr("required"),
         Pseudo::PlaceholderShown => {
             matches!(el.name.as_str(), "input" | "textarea")
@@ -545,6 +578,33 @@ fn is_read_write(el: &oxyde_dom::ElementData) -> bool {
 }
 
 /// Vrai pour un contrôle de formulaire, qui peut être désactivé ou requis.
+/// Contrôle désactivé : par son attribut `disabled`, ou par un
+/// `<fieldset disabled>` qui le contient hors de sa première légende.
+fn is_disabled(doc: &Document, node: NodeId, el: &ElementData) -> bool {
+    if !is_control(el) {
+        return false;
+    }
+    if el.has_attr("disabled") {
+        return true;
+    }
+    let mut child = node;
+    for ancestor in doc.ancestors(node) {
+        if doc
+            .element(ancestor)
+            .is_some_and(|e| e.is_html("fieldset") && e.has_attr("disabled"))
+        {
+            let legend = doc
+                .children(ancestor)
+                .find(|c| doc.element(*c).is_some_and(|e| e.is_html("legend")));
+            if legend != Some(child) {
+                return true;
+            }
+        }
+        child = ancestor;
+    }
+    false
+}
+
 fn is_control(el: &oxyde_dom::ElementData) -> bool {
     matches!(
         el.name.as_str(),
@@ -793,6 +853,25 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
 fn functional_pseudo(name: &str, args: &[Token]) -> Option<Pseudo> {
     Some(match name {
         "not" => Pseudo::Not(parse_selector_list(args)?),
+        "lang" => {
+            let ranges: Vec<String> = split_top_level(args, &Token::Comma)
+                .into_iter()
+                .map(|part| match trim(part) {
+                    [Token::Ident(range) | Token::Str(range)] => Some(range.clone()),
+                    _ => None,
+                })
+                .collect::<Option<_>>()?;
+            if ranges.is_empty() {
+                return None;
+            }
+            Pseudo::Lang(ranges)
+        }
+        "dir" => match args {
+            [Token::Ident(dir)] if dir.eq_ignore_ascii_case("ltr") => Pseudo::Dir(false),
+            [Token::Ident(dir)] if dir.eq_ignore_ascii_case("rtl") => Pseudo::Dir(true),
+            [Token::Ident(_)] => Pseudo::Never,
+            _ => return None,
+        },
         "is" | "matches" | "-webkit-any" => Pseudo::Is(parse_selector_list(args)?),
         "where" => Pseudo::Where(parse_selector_list(args)?),
         "nth-child" => {
