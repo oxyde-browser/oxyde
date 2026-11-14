@@ -94,6 +94,10 @@ struct DomHost {
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
+    /// Événement que la distribution a placé dans `window.event` ; `None`
+    /// quand elle y a laissé `undefined`. Une autre valeur lue dans
+    /// `window.event` est celle de la page : on n'y touche plus.
+    window_event: Option<ObjId>,
     /// Écouteurs de molette posés depuis le chargement : 0 aucun, 1 des
     /// passifs seulement, 2 au moins un qui peut annuler le défilement.
     wheel_listeners: u8,
@@ -1070,6 +1074,12 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
         name => doc.set_attr(node, name, &text),
     }
     h.dirty = true;
+    // Un script relié au document qui reçoit son texte s'exécute aussitôt.
+    if matches!(key, "textContent" | "innerText")
+        && h.doc.element(node).is_some_and(|e| e.is_html("script"))
+    {
+        scripts::run_inserted(vm, &[node]);
+    }
     Some(Ok(()))
 }
 
@@ -1981,6 +1991,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             storage: [Vec::new(), Vec::new()],
             protos: fresh.protos,
             listeners: Vec::new(),
+            window_event: None,
             wheel_listeners: 0,
             observers: Vec::new(),
             navigations: Vec::new(),

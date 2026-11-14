@@ -78,8 +78,7 @@
     ["HTMLHRElement", ["hr"]], ["HTMLHeadingElement", ["h1", "h2", "h3", "h4", "h5", "h6"]],
     ["HTMLUListElement", ["ul"]], ["HTMLOListElement", ["ol"]], ["HTMLLIElement", ["li"]],
     ["HTMLDListElement", ["dl"]], ["HTMLQuoteElement", ["blockquote", "q"]],
-    ["HTMLTableElement", ["table"]], ["HTMLTableSectionElement", ["thead", "tbody", "tfoot"]],
-    ["HTMLTableRowElement", ["tr"]], ["HTMLTableCellElement", ["td", "th"]],
+    ["HTMLTableCaptionElement", ["caption"]],
     ["HTMLFieldSetElement", ["fieldset"]], ["HTMLLegendElement", ["legend"]],
     ["HTMLStyleElement", ["style"]], ["HTMLTemplateElement", ["template"]],
     ["HTMLPictureElement", ["picture"]], ["HTMLDetailsElement", ["details"]],
@@ -87,6 +86,146 @@
   ]) {
     elementInterface(name, tags);
   }
+
+  // ---- Tableaux ------------------------------------------------------------------------------------
+  // LIMITE : `rows`, `cells` et `tBodies` rendent une collection figée au
+  // moment de la lecture, pas une collection vivante.
+  const collection = (nodes) => Object.setPrototypeOf(nodes, global.HTMLCollection.prototype);
+  const childrenNamed = (element, names) => Array.from(element.children)
+    .filter((child) => names.includes(child.localName));
+  // Lignes d'un tableau : celles des en-têtes, puis celles du corps (et les
+  // lignes posées directement dans le tableau), puis celles des pieds.
+  const tableRows = (table) => {
+    const head = [];
+    const body = [];
+    const foot = [];
+    for (const child of Array.from(table.children)) {
+      if (child.localName === "tr") body.push(child);
+      else if (child.localName === "thead") head.push(...childrenNamed(child, ["tr"]));
+      else if (child.localName === "tbody") body.push(...childrenNamed(child, ["tr"]));
+      else if (child.localName === "tfoot") foot.push(...childrenNamed(child, ["tr"]));
+    }
+    return [...head, ...body, ...foot];
+  };
+  const rank = (index, fallback) => (index === undefined ? fallback : Math.trunc(Number(index)) || 0);
+  const outOfRange = () => new DOMException("rang hors du tableau", "IndexSizeError");
+  // Insère un nouvel élément `name` au rang `index` parmi `items`, enfants
+  // de `parent` ; -1 : à la fin.
+  function insertAt(parent, items, index, name) {
+    const at = rank(index, -1);
+    if (at < -1 || at > items.length) throw outOfRange();
+    const created = parent.ownerDocument.createElement(name);
+    if (at === -1 || at === items.length) parent.appendChild(created);
+    else items[at].parentNode.insertBefore(created, items[at]);
+    return created;
+  }
+  // Retire l'élément de rang `index` parmi `items` ; -1 : le dernier.
+  function deleteAt(items, index) {
+    let at = rank(index, 0);
+    if (at < -1 || at >= items.length) {
+      // Retirer le dernier d'une liste vide ne fait rien.
+      if (at === -1 && items.length === 0) return;
+      throw outOfRange();
+    }
+    if (at === -1) at = items.length - 1;
+    items[at].remove();
+  }
+  // Première section `name` du tableau (`caption`, `thead`, `tfoot`).
+  const section = (name) => accessor(
+    function () { return childrenNamed(this, [name])[0] ?? null; },
+    function (value) {
+      if (value !== null && (value?.nodeType !== 1 || value.localName !== name)) {
+        throw new TypeError("un élément <" + name + "> est attendu");
+      }
+      childrenNamed(this, [name])[0]?.remove();
+      if (value === null) return;
+      if (name === "caption") this.insertBefore(value, this.firstChild);
+      else if (name === "thead") {
+        const after = Array.from(this.children)
+          .find((child) => child.localName !== "caption" && child.localName !== "colgroup");
+        this.insertBefore(value, after ?? null);
+      } else this.appendChild(value);
+    },
+  );
+  // `createTHead()`… : la section existante, sinon une nouvelle, à sa place.
+  const creator = (name, property) => method(function () {
+    const existing = this[property];
+    if (existing !== null) return existing;
+    this[property] = this.ownerDocument.createElement(name);
+    return this[property];
+  });
+  const remover = (property) => method(function () { this[property]?.remove(); });
+  elementInterface("HTMLTableElement", ["table"], {
+    caption: section("caption"),
+    tHead: section("thead"),
+    tFoot: section("tfoot"),
+    tBodies: accessor(function () { return collection(childrenNamed(this, ["tbody"])); }),
+    rows: accessor(function () { return collection(tableRows(this)); }),
+    createCaption: creator("caption", "caption"),
+    deleteCaption: remover("caption"),
+    createTHead: creator("thead", "tHead"),
+    deleteTHead: remover("tHead"),
+    createTFoot: creator("tfoot", "tFoot"),
+    deleteTFoot: remover("tFoot"),
+    createTBody: method(function createTBody() {
+      const body = this.ownerDocument.createElement("tbody");
+      const bodies = childrenNamed(this, ["tbody"]);
+      const last = bodies[bodies.length - 1];
+      this.insertBefore(body, last === undefined ? null : last.nextSibling);
+      return body;
+    }),
+    insertRow: method(function insertRow(index) {
+      const rows = tableRows(this);
+      const at = rank(index, -1);
+      if (at < -1 || at > rows.length) throw outOfRange();
+      // Dans un tableau sans ligne, la ligne va dans un corps (créé au besoin).
+      if (rows.length === 0) {
+        const bodies = childrenNamed(this, ["tbody"]);
+        const body = bodies[bodies.length - 1] ?? this.appendChild(this.ownerDocument.createElement("tbody"));
+        return body.appendChild(this.ownerDocument.createElement("tr"));
+      }
+      const row = this.ownerDocument.createElement("tr");
+      if (at === -1 || at === rows.length) rows[rows.length - 1].parentNode.appendChild(row);
+      else rows[at].parentNode.insertBefore(row, rows[at]);
+      return row;
+    }),
+    deleteRow: method(function deleteRow(index) { deleteAt(tableRows(this), index); }),
+  });
+  elementInterface("HTMLTableSectionElement", ["thead", "tbody", "tfoot"], {
+    rows: accessor(function () { return collection(childrenNamed(this, ["tr"])); }),
+    insertRow: method(function insertRow(index) {
+      return insertAt(this, childrenNamed(this, ["tr"]), index, "tr");
+    }),
+    deleteRow: method(function deleteRow(index) { deleteAt(childrenNamed(this, ["tr"]), index); }),
+  });
+  const rowCells = (row) => childrenNamed(row, ["td", "th"]);
+  elementInterface("HTMLTableRowElement", ["tr"], {
+    cells: accessor(function () { return collection(rowCells(this)); }),
+    // Rang de la ligne dans son tableau, et dans sa section ; -1 hors d'eux.
+    rowIndex: accessor(function () {
+      const parent = this.parentNode;
+      const table = parent?.localName === "table" ? parent
+        : (["thead", "tbody", "tfoot"].includes(parent?.localName) ? parent.parentNode : null);
+      return table?.localName === "table" ? tableRows(table).indexOf(this) : -1;
+    }),
+    sectionRowIndex: accessor(function () {
+      const parent = this.parentNode;
+      return ["table", "thead", "tbody", "tfoot"].includes(parent?.localName)
+        ? childrenNamed(parent, ["tr"]).indexOf(this) : -1;
+    }),
+    insertCell: method(function insertCell(index) { return insertAt(this, rowCells(this), index, "td"); }),
+    deleteCell: method(function deleteCell(index) { deleteAt(rowCells(this), index); }),
+  });
+  elementInterface("HTMLTableCellElement", ["td", "th"], {
+    colSpan: integer("colspan", 1),
+    rowSpan: integer("rowspan", 1),
+    headers: text("headers"),
+    scope: keyword("scope", ["row", "col", "rowgroup", "colgroup"], ""),
+    abbr: text("abbr"),
+    cellIndex: accessor(function () {
+      return this.parentNode?.localName === "tr" ? rowCells(this.parentNode).indexOf(this) : -1;
+    }),
+  });
 
   // ---- Liens, images, scripts ---------------------------------------------------------------------
   const anchorParts = {};

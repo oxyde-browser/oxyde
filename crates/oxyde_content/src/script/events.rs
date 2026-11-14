@@ -633,6 +633,24 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
             }
         }
         set_flag(vm, event, IN_PASSIVE, passive);
+        // `window.event` désigne l'événement le temps de l'écouteur, tant
+        // que la page ne l'a pas remplacé par sa propre valeur.
+        let global = vm.global();
+        let outer = vm
+            .get(&Value::Object(global), "event")
+            .unwrap_or(Value::Undefined);
+        let installed = host(vm).and_then(|h| h.window_event);
+        let ours = match (&outer, installed) {
+            (Value::Undefined, None) => true,
+            (Value::Object(current), Some(known)) => *current == known,
+            _ => false,
+        };
+        if ours {
+            vm.define_hidden(global, "event", event_value.clone());
+            if let Some(h) = host(vm) {
+                h.window_event = Some(event);
+            }
+        }
         // Une fonction, ou un objet muni d'une méthode `handleEvent`.
         let outcome = match vm.get(&callback, "handleEvent") {
             Ok(method) if vm.type_of(&callback) != "function" => {
@@ -642,6 +660,17 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
             Err(thrown) => Err(thrown),
         };
         set_flag(vm, event, IN_PASSIVE, false);
+        // L'écouteur a pu remplacer `window.event` : sa valeur reste.
+        let untouched = matches!(
+            vm.get(&Value::Object(global), "event"),
+            Ok(Value::Object(current)) if current == event
+        );
+        if ours && untouched {
+            vm.define_hidden(global, "event", outer);
+            if let Some(h) = host(vm) {
+                h.window_event = installed;
+            }
+        }
         if let Err(thrown) = outcome {
             report(vm, &thrown);
         }

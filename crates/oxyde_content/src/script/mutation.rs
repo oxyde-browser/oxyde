@@ -191,7 +191,16 @@ struct Change<'a> {
 
 /// Objet `MutationRecord` décrivant `change` sur `target`.
 fn record(vm: &mut Vm, target: NodeId, change: &Change<'_>) -> JsResult {
-    let object = Value::Object(vm.new_object());
+    let object = vm.new_object();
+    // L'enregistrement est un `MutationRecord` pour `instanceof`.
+    let global = Value::Object(vm.global());
+    if let Ok(interface) = vm.get(&global, "MutationRecord")
+        && let Ok(Value::Object(prototype)) = vm.get(&interface, "prototype")
+    {
+        // Objet neuf et ordinaire : son prototype se change toujours.
+        let _ = vm.set_prototype(object, Some(prototype));
+    }
+    let object = Value::Object(object);
     let target = wrap(vm, target);
     let added = wrap_all(vm, change.added.to_vec());
     let removed = wrap_all(vm, change.removed.to_vec());

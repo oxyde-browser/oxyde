@@ -593,7 +593,15 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       fenêtre posés sur `<body>`) ; une boîte `position: fixed` reste cliquable hors
       d'un ancêtre qui découpe (`body { overflow: hidden }` sans hauteur : voiles et
       fenêtres modales). `dom/` : 309 → 339 fichiers (44,6 → 48,9 %).
-- [ ] Web Platform Tests `dom/` : de 50,8 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] Scripts insérés par un script : un script en ligne s'exécute dès son insertion
+      (`appendChild`, `append`, `replaceChild`, `textContent`…), au milieu du script qui
+      l'insère, et non plus à la fin de la tâche ; un script vide s'exécute quand il reçoit
+      son texte, une seule fois. API des tableaux (`rows`, `cells`, `tBodies`, `caption`,
+      `tHead`, `tFoot`, `insertRow`, `deleteRow`, `insertCell`, `deleteCell`, `rowIndex`,
+      `cellIndex`…), `window.event`, `MutationRecord` pour `instanceof`.
+      Limites : les collections des tableaux sont figées à la lecture ; un script posé
+      par `innerHTML` s'exécute encore en fin de tâche (il ne devrait pas s'exécuter).
+- [ ] Web Platform Tests `dom/` : de 53,5 % à 70 % des fichiers ; `html/` branché et mesuré.
       Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (39 :
       `scrollend`, défilement tactile), gestes tactiles (20), `Observable` (27),
       `ranges/tentative` (19), `insertion-removing-steps` (19).
