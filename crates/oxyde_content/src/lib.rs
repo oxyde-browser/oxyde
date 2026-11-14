@@ -111,6 +111,33 @@ pub struct MouseInput {
     pub meta: bool,
 }
 
+/// Étape d'un contact tactile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TouchPhase {
+    /// Le doigt se pose.
+    Start,
+    /// Le doigt glisse.
+    Move,
+    /// Le doigt se lève.
+    End,
+    /// Le système interrompt le contact.
+    Cancel,
+}
+
+/// Contact tactile en cours.
+#[derive(Clone, Copy, Debug)]
+struct TouchState {
+    /// Point de départ, dans le repère de la page.
+    start: (f32, f32),
+    /// Le doigt s'est écarté du point de départ : ce n'est plus un appui.
+    moved: bool,
+    /// Un script a annulé `touchstart` ou `touchmove`.
+    prevented: bool,
+}
+
+/// Écart, en pixels CSS, au-delà duquel un contact n'est plus un appui.
+const TAP_SLOP: f32 = 10.0;
+
 /// Corps d'une soumission de formulaire par la méthode `POST`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormPost {
@@ -700,6 +727,8 @@ pub struct Page {
     /// Pointeur au dernier bouton relâché : le clic qui suit en reprend
     /// le rang et les touches.
     released: MouseInput,
+    /// Contacts tactiles en cours, par identifiant.
+    touches: HashMap<u32, TouchState>,
     /// Nombre d'éléments de `list` qui viennent de la page ; les suivants
     /// sont le surlignage de la recherche.
     painted: usize,
@@ -1144,6 +1173,7 @@ impl Page {
             hovered: None,
             buttons: 0,
             released: MouseInput::default(),
+            touches: HashMap::new(),
             painted: 0,
         }
     }
@@ -2116,6 +2146,85 @@ impl Page {
         };
         self.fire_mouse(kinds, target, None, &pointer);
         self.dirty && !before
+    }
+
+    /// Contact tactile `id` au point (`x`, `y`) de la page : les scripts
+    /// reçoivent `touchstart`, `touchmove`, `touchend` ou `touchcancel`, sur
+    /// l'élément où le contact a commencé. Un appui bref que rien n'a annulé
+    /// se termine par les événements de souris et le clic. Renvoie `true`
+    /// si un script a annulé l'événement : l'embarqueur ne fait alors pas
+    /// défiler la page.
+    ///
+    /// LIMITES : pas d'événements `pointer…` de type `touch` ; la fenêtre
+    /// du navigateur ne transmet pas encore l'écran tactile.
+    pub fn touch(&mut self, phase: TouchPhase, id: u32, x: f32, y: f32) -> bool {
+        /// Nombre de contacts suivis à la fois.
+        const MAX_TOUCHES: usize = 16;
+        let scroll = self.scroll_offset();
+        let at = (x - scroll.0, y - scroll.1);
+        let (kind, target) = match phase {
+            TouchPhase::Start => {
+                if self.touches.len() >= MAX_TOUCHES && !self.touches.contains_key(&id) {
+                    return false;
+                }
+                ("touchstart", self.mouse_target(x, y))
+            }
+            TouchPhase::Move => ("touchmove", None),
+            TouchPhase::End => ("touchend", None),
+            TouchPhase::Cancel => ("touchcancel", None),
+        };
+        if phase != TouchPhase::Start && !self.touches.contains_key(&id) {
+            return false;
+        }
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        let prevented = engine.touch_event(&mut self.doc, kind, target, id, at, scroll);
+        if engine.take_dirty() {
+            self.dom_changed();
+        }
+        match phase {
+            TouchPhase::Start => {
+                self.touches.insert(
+                    id,
+                    TouchState {
+                        start: (x, y),
+                        moved: false,
+                        prevented,
+                    },
+                );
+            }
+            TouchPhase::Move => {
+                if let Some(state) = self.touches.get_mut(&id) {
+                    state.prevented |= prevented;
+                    state.moved |= (x - state.start.0).abs() > TAP_SLOP
+                        || (y - state.start.1).abs() > TAP_SLOP;
+                }
+            }
+            TouchPhase::End => {
+                // Un appui bref, que rien n'a annulé : souris et clic.
+                let tap = self
+                    .touches
+                    .remove(&id)
+                    .is_some_and(|state| !state.moved && !state.prevented);
+                if tap && !prevented {
+                    let input = MouseInput {
+                        x,
+                        y,
+                        detail: 1,
+                        ..MouseInput::default()
+                    };
+                    self.mouse_move(&input);
+                    self.mouse_button(true, &input);
+                    self.mouse_button(false, &input);
+                    self.click(x, y);
+                }
+            }
+            TouchPhase::Cancel => {
+                self.touches.remove(&id);
+            }
+        }
+        prevented
     }
 
     /// Clic droit au point (`x`, `y`) de la page : les scripts reçoivent
@@ -4353,7 +4462,7 @@ mod tests {
              construit neuf;créé true 1;construit neuf;direct mon-compteur;SyntaxError;TypeError;\
              gabarit 2 0 0 2;copie un;html Titre c salut 1 false;\
              xml r 1 & 2 urn:x té <b> vide 8;cassé parsererror;svg http://www.w3.org/2000/svg;\
-             défini true;branché cree;depart 3>4;débranché present;",
+             branché cree;depart 3>4;débranché present;défini true;",
             "{console:?}"
         );
     }
@@ -5229,6 +5338,81 @@ mod tests {
         assert_eq!(
             doc.element(body).and_then(|e| e.attr("data-out")),
             Some("click b1 20 b2 30 fin b3 b4 nettoyage 5+6 dernier4 1")
+        );
+    }
+
+    #[test]
+    fn touches_reach_scripts_and_a_tap_clicks() {
+        let mut p = page(
+            "<body style='margin:0'><div id=a style='width:100px;height:100px'></div>
+             <script>
+               const out = [];
+               const a = document.getElementById('a');
+               for (const kind of ['touchstart', 'touchmove', 'touchend']) {
+                 a.addEventListener(kind, (e) => {
+                   const t = e.changedTouches[0];
+                   out.push(kind + ':' + e.touches.length + ':' + e.targetTouches.length + ':'
+                     + t.clientX + ',' + t.clientY + ':' + (t.target === a) + ':' + e.cancelable
+                     + ':' + e.isTrusted + ':' + (e.touches instanceof TouchList));
+                   document.body.setAttribute('data-out', out.join(' '));
+                 }, { passive: kind !== 'touchmove' });
+               }
+               a.addEventListener('click', (e) => {
+                 out.push('click:' + e.clientX);
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let mut text = TextContext::new();
+        p.update(&mut text, VIEWPORT);
+        // Un appui bref : contact, lever, puis clic.
+        assert!(!p.touch(TouchPhase::Start, 1, 20.0, 30.0));
+        assert!(!p.touch(TouchPhase::End, 1, 20.0, 30.0));
+        // Un glissement : pas de clic ; le contact garde sa cible hors d'elle.
+        p.touch(TouchPhase::Start, 2, 20.0, 30.0);
+        p.touch(TouchPhase::Move, 2, 60.0, 300.0);
+        p.touch(TouchPhase::End, 2, 60.0, 300.0);
+        // Un contact inconnu est ignoré.
+        assert!(!p.touch(TouchPhase::Move, 9, 1.0, 1.0));
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "touchstart:1:1:20,30:true:false:true:true touchend:0:0:20,30:true:true:true:true \
+                 click:20 touchstart:1:1:20,30:true:false:true:true \
+                 touchmove:1:1:60,300:true:true:true:true touchend:0:0:60,300:true:true:true:true"
+            )
+        );
+    }
+
+    #[test]
+    fn mutation_observers_are_notified_in_a_microtask() {
+        let mut p = page(
+            "<body><div id=a></div><script>
+               const out = [];
+               const a = document.getElementById('a');
+               new MutationObserver((records) => out.push('mo' + records.length)).observe(a, { attributes: true });
+               queueMicrotask(() => out.push('avant'));
+               a.setAttribute('x', '1');
+               a.setAttribute('y', '2');
+               Promise.resolve().then(() => {
+                 out.push('apres');
+                 a.setAttribute('z', '3');
+                 Promise.resolve().then(() => {
+                   out.push('fin');
+                   document.body.setAttribute('data-out', out.join(' '));
+                 });
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("avant mo2 apres mo1 fin")
         );
     }
 }

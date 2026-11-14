@@ -625,9 +625,22 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       cadre chargé) ; un cadre inséré pendant le chargement d'un autre prend son contenu
       dans la même tâche ; un `<img>` inséré ou cloné par un script prend tout de suite
       la taille d'une image déjà reçue.
-- [ ] Web Platform Tests `dom/` : de 57,0 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (35 :
-      `scrollend`, défilement tactile), gestes tactiles (20), `ranges/tentative` (19),
+- [x] Événements tactiles : `Touch`, `TouchList`, `TouchEvent`, `touchstart`,
+      `touchmove`, `touchend`, `touchcancel` sur l'élément où le contact a commencé ;
+      `touchstart` et `touchmove` ne s'annulent que si un écouteur non passif les
+      attend ; un appui bref que rien n'annule se termine par les événements de souris
+      et le clic. Gestes tactiles de `testdriver.js` joués par le lanceur WPT.
+      Limites : pas d'événements `pointer…` de type `touch` ; la fenêtre du navigateur
+      ne transmet pas encore l'écran tactile (ni défilement au doigt).
+- [x] Observateurs de mutation prévenus par une micro-tâche, mise en file dès le
+      premier enregistrement qui intéresse un observateur, à sa place parmi les
+      réactions de promesses (ils attendaient la fin de la tâche). Les rappels des
+      éléments personnalisés, qui en dépendent, partent donc plus tôt.
+      `moveBefore()` franchit la frontière d'un arbre fantôme du même document et
+      déplace un commentaire dans un document.
+- [ ] Web Platform Tests `dom/` : de 60,3 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (35 :
+      `scrollend`, défilement tactile), `ranges/tentative` (19),
       collections exotiques (`HTMLCollection`, `NamedNodeMap`, `NodeList` : ~18),
       `Document-contentType` (12), royaumes des cadres (~15).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).

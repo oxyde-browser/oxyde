@@ -103,6 +103,10 @@ struct DomHost {
     wheel_listeners: u8,
     /// Observateurs de mutation en activité.
     observers: Vec<mutation::Observer>,
+    /// Micro-tâche de remise aux observateurs de mutation : la fonction à
+    /// mettre en file, et si elle y est déjà.
+    observers_notify: Option<Value>,
+    observers_queued: bool,
     /// Navigations demandées par les scripts, pas encore prises en charge
     /// par l'embarqueur.
     navigations: Vec<crate::Navigation>,
@@ -2014,6 +2018,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             window_event: None,
             wheel_listeners: 0,
             observers: Vec::new(),
+            observers_notify: None,
+            observers_queued: false,
             navigations: Vec::new(),
             hooks: None,
             activation: None,
@@ -2151,6 +2157,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(h) = host(vm) {
         h.hooks = Some(hooks.clone());
     }
+    // Observateurs de mutation : prévenus par une micro-tâche, mise en file
+    // dès la première modification.
+    let notify = Value::Object(vm.new_function("notifyMutationObservers", 0, mutation::notify));
+    vm.add_root(notify.clone());
+    if let Some(h) = host(vm) {
+        h.observers_notify = Some(notify);
+    }
+    vm.set_microtask_hook(mutation::pending);
     // Promesses rejetées sans gestionnaire : événement `unhandledrejection`.
     let rejection = vm.get(&hooks, "rejection")?;
     vm.set_rejection_handler(rejection);
@@ -2530,6 +2544,59 @@ impl ScriptEngine {
             let wheel = fire_mouse(vm, "wheel", target, None, input, delta, cancelable);
             let legacy = fire_mouse(vm, "mousewheel", target, None, input, delta, cancelable);
             wheel || legacy
+        })
+    }
+
+    /// Point de contact `id` au point (`x`, `y`) de la fenêtre, la page
+    /// ayant défilé de `scroll` : `kind` vaut `touchstart` (sur `target`),
+    /// `touchmove`, `touchend` ou `touchcancel` (sur l'élément où le contact
+    /// a commencé). `touchstart` et `touchmove` ne s'annulent que si un
+    /// écouteur non passif les attend. Renvoie `true` si un script a annulé
+    /// l'événement.
+    pub(crate) fn touch_event(
+        &mut self,
+        doc: &mut Document,
+        kind: &str,
+        target: Option<NodeId>,
+        id: u32,
+        at: (f32, f32),
+        scroll: (f32, f32),
+    ) -> bool {
+        self.run(doc, |vm| {
+            let cancelable = match kind {
+                "touchend" => true,
+                "touchcancel" => false,
+                _ => events::has_active_listener(vm, kind),
+            };
+            let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
+                return false;
+            };
+            let args = [
+                Value::string(kind),
+                wrap_opt(vm, target),
+                Value::Number(f64::from(id)),
+                Value::Number(f64::from(at.0)),
+                Value::Number(f64::from(at.1)),
+                Value::Number(f64::from(scroll.0)),
+                Value::Number(f64::from(scroll.1)),
+                Value::Bool(cancelable),
+            ];
+            let built = vm
+                .get(&hooks, "touch")
+                .and_then(|f| vm.call(&f, &hooks, &args));
+            match built {
+                Ok(pair @ Value::Object(_)) => {
+                    let event = vm.get(&pair, "0").unwrap_or(Value::Undefined);
+                    let origin = vm.get(&pair, "1").unwrap_or(Value::Undefined);
+                    let node = node_of(vm, &origin);
+                    events::fire_built(vm, node, &event)
+                }
+                Ok(_) => false,
+                Err(thrown) => {
+                    report(vm, &thrown);
+                    false
+                }
+            }
         })
     }
 

@@ -860,7 +860,72 @@
   eventInterface("TextEvent", UIEvent, { data: "" });
   eventInterface("BeforeUnloadEvent", EventCtor, { returnValue: "" });
   eventInterface("DragEvent", MouseEvent, { dataTransfer: null });
-  eventInterface("TouchEvent", UIEvent, { touches: null, targetTouches: null, changedTouches: null, ...modifiers });
+  // Points de contact (Touch Events) : `Touch`, `TouchList`, `TouchEvent`.
+  const touchListKey = {};
+  class Touch {
+    constructor(init) {
+      if (init === null || typeof init !== "object"
+        || init.identifier === undefined || init.target === undefined) {
+        throw new TypeError("Touch : `identifier` et `target` sont requis");
+      }
+      const number = (name, fallback) => (init[name] === undefined ? fallback : Number(init[name]));
+      const fields = {
+        identifier: Math.trunc(Number(init.identifier)) || 0, target: init.target,
+        clientX: number("clientX", 0), clientY: number("clientY", 0),
+        screenX: number("screenX", 0), screenY: number("screenY", 0),
+        pageX: number("pageX", 0), pageY: number("pageY", 0),
+        radiusX: number("radiusX", 0), radiusY: number("radiusY", 0),
+        rotationAngle: number("rotationAngle", 0), force: number("force", 0),
+      };
+      for (const [name, value] of Object.entries(fields)) {
+        define(this, name, { value, enumerable: true, configurable: true });
+      }
+    }
+  }
+  tag(Touch, "Touch");
+  expose("Touch", Touch);
+  class TouchList {
+    constructor(key) {
+      if (key !== touchListKey) throw new TypeError("TouchList : constructeur illégal");
+    }
+    item(index) { return this[Math.trunc(Number(index)) || 0] ?? null; }
+    [Symbol.iterator]() { return Array.prototype[Symbol.iterator].call(this); }
+  }
+  tag(TouchList, "TouchList");
+  expose("TouchList", TouchList);
+  const touchList = (touches) => {
+    const list = new TouchList(touchListKey);
+    Array.from(touches ?? []).forEach((touch, index) => {
+      define(list, index, { value: touch, enumerable: true, configurable: true });
+    });
+    define(list, "length", { value: touches?.length ?? 0, configurable: true });
+    return list;
+  };
+  {
+    const data = new WeakMap();
+    const lists = ["touches", "targetTouches", "changedTouches"];
+    class TouchEvent extends UIEvent {
+      constructor(type, init = {}) {
+        super(type, init);
+        const state = {};
+        for (const name of lists) {
+          const given = init?.[name];
+          state[name] = given instanceof TouchList ? given : touchList(given);
+        }
+        for (const name of Object.keys(modifiers)) state[name] = Boolean(init?.[name]);
+        data.set(this, state);
+      }
+    }
+    for (const name of [...lists, ...Object.keys(modifiers)]) {
+      define(TouchEvent.prototype, name, {
+        get() { return data.get(this)[name]; }, enumerable: true, configurable: true,
+      });
+    }
+    tag(TouchEvent, "TouchEvent");
+    expose("TouchEvent", TouchEvent);
+  }
+  // Points de contact en cours, par identifiant.
+  const activeTouches = new Map();
 
   // `document.createEvent(interface)` : un événement à initialiser ensuite.
   const legacyEvents = {
@@ -1613,6 +1678,27 @@
         });
       }
       return new global.MouseEvent(kind, init);
+    },
+    // Fabrique l'événement tactile `kind` pour le point de contact `id` au
+    // point (`x`, `y`) de la fenêtre ; `target` : l'élément touché, pour
+    // `touchstart`. Rend [événement, cible], la cible étant l'élément où le
+    // contact a commencé ; `null` si le contact est inconnu.
+    touch(kind, target, id, x, y, scrollX, scrollY, cancelable) {
+      const origin = kind === "touchstart" ? target : activeTouches.get(id)?.target;
+      if (origin === undefined || origin === null) return null;
+      const touch = new global.Touch({
+        identifier: id, target: origin, clientX: x, clientY: y, screenX: x, screenY: y,
+        pageX: x + scrollX, pageY: y + scrollY, radiusX: 1, radiusY: 1, force: 1,
+      });
+      if (kind === "touchend" || kind === "touchcancel") activeTouches.delete(id);
+      else activeTouches.set(id, touch);
+      const touches = [...activeTouches.values()];
+      const event = new global.TouchEvent(kind, {
+        bubbles: true, cancelable, composed: true, view: global,
+        touches, targetTouches: touches.filter((other) => other.target === origin),
+        changedTouches: [touch],
+      });
+      return [event, origin];
     },
     // Un module inséré par un script : `load` ou `error` selon l'import.
     moduleScript(element, imported) {

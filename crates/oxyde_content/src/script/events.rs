@@ -830,6 +830,12 @@ pub(super) fn dispatch_event(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRes
     Ok(Value::Bool(!canceled))
 }
 
+/// Vrai si un écouteur non passif attend les événements `kind` : eux seuls
+/// peuvent annuler un défilement tactile.
+pub(super) fn has_active_listener(vm: &mut Vm, kind: &str) -> bool {
+    host(vm).is_some_and(|h| h.listeners.iter().any(|l| l.kind == kind && !l.passive))
+}
+
 /// `fireTrusted(cible, événement)` du prélude : distribue `événement` sur
 /// `cible` comme un événement du navigateur (`isTrusted`).
 pub(super) fn dispatch_trusted(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {

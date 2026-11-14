@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 43883 / 50203 (87,4 %)** — fichiers entièrement réussis : 395 / 693 (57,0 %).
+**Sous-tests réussis : 43921 / 50203 (87,5 %)** — fichiers entièrement réussis : 418 / 693 (60,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -17,13 +17,13 @@ est le plus honnête des deux.
 | `dom/abort` | 5 / 6 | 36 / 37 (97,3 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
 | `dom/events` | 69 / 100 | 476 / 636 (74,8 %) |
-| `dom/events/non-cancelable-when-passive` | 22 / 42 | 33 / 53 (62,3 %) |
+| `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 4 / 39 | 15 / 94 (16,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 181 / 265 | 10732 / 13109 (81,9 %) |
+| `dom/nodes` | 183 / 265 | 10739 / 13109 (81,9 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
-| `dom/nodes/insertion-removing-steps` | 13 / 22 | 18 / 38 (47,4 %) |
-| `dom/nodes/moveBefore` | 15 / 64 | 70 / 177 (39,5 %) |
+| `dom/nodes/insertion-removing-steps` | 13 / 22 | 19 / 38 (50,0 %) |
+| `dom/nodes/moveBefore` | 16 / 64 | 80 / 177 (45,2 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 37 / 49 | 30343 / 33613 (90,3 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -67,26 +67,6 @@ est le plus honnête des deux.
 | `dom/events/event-listener-not-fully-active-navigated.html` | 0 / 3 |  |
 | `dom/events/event-listener-not-fully-active-target.html` | 3 / 16 |  |
 | `dom/events/mouse-event-retarget.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-body.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-div.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-document.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-root.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-window.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-body.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-div.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-document.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-root.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-window.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-body.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-div.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-document.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-root.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-window.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-body.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-div.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-document.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-root.html` | 0 / 1 |  |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-window.html` | 0 / 1 |  |
 | `dom/events/relatedTarget.window.js` | 0 / 6 |  |
 | `dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 2 | harnais : délai du harnais dépassé |
@@ -98,7 +78,7 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-fired-after-instant-scroll-in-microtask.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 2 |  |
-| `dom/events/scrolling/scrollend-event-fired-after-snap.html` | 0 / 2 |  |
+| `dom/events/scrolling/scrollend-event-fired-after-snap.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 0 / 8 | harnais : délai du harnais dépassé |
@@ -178,14 +158,12 @@ est le plus honnête des deux.
 | `dom/nodes/Element-webkitMatchesSelector.html` | 584 / 669 |  |
 | `dom/nodes/MutationObserver-attributes.html` | 39 / 42 |  |
 | `dom/nodes/MutationObserver-callback-order.window.js` | 2 / 3 |  |
-| `dom/nodes/MutationObserver-callback-tricky.html` | 0 / 2 |  |
 | `dom/nodes/MutationObserver-childList.html` | 33 / 40 |  |
 | `dom/nodes/MutationObserver-cross-realm-callback-report-exception.html` | 0 / 1 |  |
 | `dom/nodes/MutationObserver-disconnect.html` | 1 / 2 |  |
 | `dom/nodes/MutationObserver-document.html` | 1 / 4 |  |
 | `dom/nodes/MutationObserver-inner-outer.html` | 0 / 3 | harnais : délai du harnais dépassé |
-| `dom/nodes/MutationObserver-textContent.html` | 0 / 4 |  |
-| `dom/nodes/MutationObserver-transient-registered-observers.window.js` | 3 / 15 |  |
+| `dom/nodes/MutationObserver-transient-registered-observers.window.js` | 4 / 15 |  |
 | `dom/nodes/Node-appendChild-cereactions-vs-script.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-svg.html` | 2 / 4 |  |
@@ -222,9 +200,9 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/Node-appendChild-script-and-style.html` | 0 / 5 |  |
 | `dom/nodes/insertion-removing-steps/Node-appendChild-text-and-script-in-style.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/frame-post-connection-steps.html` | 0 / 4 |  |
-| `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 1 / 4 |  |
+| `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 2 / 4 |  |
 | `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
-| `dom/nodes/moveBefore/Node-moveBefore.html` | 29 / 32 |  |
+| `dom/nodes/moveBefore/Node-moveBefore.html` | 31 / 32 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-transition-left-pseudo.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -248,20 +226,19 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-dir.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 1 / 4 |  |
+| `dom/nodes/moveBefore/moveBefore-disconnected-id-map.html` | 3 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-from-light-to-shadow.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/moveBefore-id-map.html` | 1 / 4 |  |
+| `dom/nodes/moveBefore/moveBefore-id-map.html` | 3 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-lang.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 0 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 0 / 8 |  |
-| `dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html` | 0 / 2 |  |
+| `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 1 / 8 |  |
+| `dom/nodes/moveBefore/moveBefore-shadow-boundary-id-change.html` | 1 / 2 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-host-id-map.html` | 2 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-inside.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-root.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-size-query.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/mutation-observer-moved-subtree.window.js` | 0 / 1 |  |
-| `dom/nodes/moveBefore/mutation-observer.html` | 0 / 2 |  |
 | `dom/nodes/moveBefore/nonce.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/pointer-events.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/popover-preserve.html` | 0 / 1 |  |

@@ -21,7 +21,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use oxyde_content::{FetchResponse, KeyInput, MouseInput, Page, Url, Viewport, decode_image};
+use oxyde_content::{
+    FetchResponse, KeyInput, MouseInput, Page, TouchPhase, Url, Viewport, decode_image,
+};
 use oxyde_text::TextContext;
 
 /// Origine fictive sous laquelle les tests sont servis.
@@ -291,6 +293,20 @@ impl Driver {
                 if !page.wheel_event(&input, dx, dy) {
                     page.wheel(x, y, dx, dy);
                 }
+            }
+            "touch" => {
+                let phase = match rest.first().copied() {
+                    Some("start") => TouchPhase::Start,
+                    Some("move") => TouchPhase::Move,
+                    Some("end") => TouchPhase::End,
+                    _ => return,
+                };
+                let id = rest.get(1).and_then(|text| text.parse::<u32>().ok());
+                let (Some(id), Some(x), Some(y)) = (id, number(2), number(3)) else {
+                    return;
+                };
+                let (scroll_x, scroll_y) = page.scroll_offset();
+                page.touch(phase, id, x + scroll_x, y + scroll_y);
             }
             "key" => {
                 let (Some(state), Some(key)) = (rest.first(), rest.get(1)) else {
