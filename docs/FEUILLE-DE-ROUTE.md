@@ -219,7 +219,7 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 287 fichiers de test entièrement réussis sur 693 (41,4 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 296 fichiers de test entièrement réussis sur 693 (42,7 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
   documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
   `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
@@ -333,7 +333,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 541 (23,9 %); une lecture force la
+  (9,4 %), aujourd'hui 547 (24,1 %); une lecture force la
   mise en page si le document a changé.
 - **Positionnement** : `position: relative`, `absolute`, `fixed`, décalages `inset`, blocs
   conteneurs, hauteurs en pourcentage, `calc()`, police de test Ahem (`@font-face`).
@@ -373,7 +373,7 @@ Fait :
   horloge ; les événements `animationstart`/`iteration`/`end`/`cancel` et
   `transitionrun`/`start`/`end`/`cancel` sont distribués, et une animation en cours demande
   une image toutes les 16 ms. Les minuteurs suivent désormais l'horloge de la page, ce qui
-  donne aux tests un temps virtuel cohérent. Mesure : 50 fichiers sur 363 (13,8 %). Restent :
+  donne aux tests un temps virtuel cohérent. Mesure : 51 fichiers sur 363 (14,0 %). Restent :
   l'API Web Animations, dont dépendent la plupart des tests, et l'interpolation des
   transformations par décomposition de matrice.
 
@@ -511,8 +511,14 @@ Le manque le plus lourd. Mesure : une **liste de 50 sites de référence**, rang
 `conformance/sites.md`, essayée à la main et par capture à chaque palier ; pour chacun, la
 page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principale ?
 
-- [ ] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
-      banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ.
+- [x] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
+      banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ :
+      [conformance/sites.md](../conformance/sites.md). Départ : 14 pages lisibles sur 50 ;
+      au 14 novembre 2026 : 17. Seul l'affichage de la page d'accueil est mesuré ; la
+      connexion et l'action principale restent à essayer.
+- [ ] Vu à la mesure : la mise en page de GitHub ne se termine pas ; l'épreuve Cloudflare de
+      Vimeo ne se termine pas (le site s'affichait avant que ses scripts insérés ne soient
+      exécutés) ; les erreurs de script n'indiquent ni fichier ni ligne.
 - [x] **Saisie dans les pages** : focus (`focus()`, `blur()`, `document.activeElement`,
       `:focus`, `:checked`, `:disabled`, tabulation), champs de texte éditables avec curseur
       (flèches, Début, Fin, Retour arrière, Suppr, `maxlength`, `readonly`, mot de passe
@@ -528,7 +534,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] `customElements` et Shadow DOM : une grande part des sites récents en dépend.
-- [ ] `IntersectionObserver`, `ResizeObserver`, `requestIdleCallback`.
+- [x] `IntersectionObserver`, `ResizeObserver`, `requestIdleCallback` : faits, par relevé de
+      la géométrie toutes les 100 ms (pas à chaque image) ; l'intersection ne tient pas compte
+      du rognage des ancêtres défilants.
+- [x] Scripts insérés par les scripts (`createElement("script")`), `document.currentScript`,
+      images et feuilles de style ajoutées après le chargement, `<noscript>` inerte,
+      décompression `gzip` et `deflate`, sélecteurs `:has()`, `:scope`, `:nth-of-type`,
+      `crypto.getRandomValues`, `MessageChannel`, `postMessage` (vers la fenêtre elle-même).
+- [ ] Vus à la mesure des sites et encore absents : `Intl`, `DOMParser`, cartes d'import
+      (`<script type="importmap">`), modules insérés par script, `document.write`,
+      `postMessage` entre fenêtres (la source n'est pas connue), `crypto.subtle`, Brotli
+      (demande un crate à télécharger), chargement des ressources en parallèle.
 - [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.
 - [ ] `WebSocket` et `EventSource`.
 - [ ] Liste des suffixes publics (frontière des sites, cookies).

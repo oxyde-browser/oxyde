@@ -100,13 +100,13 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   `click`, poser des minuteurs, appeler `fetch` et `XMLHttpRequest`, envoyer des formulaires
   (on peut taper dans leurs champs : focus, curseur, Tab, Entrée, cases, listes)
   et charger des modules (`<script type="module">`, `import`/`export`, `import()`, `await`
-  de premier niveau). Manquent encore la sélection de texte et le collage dans les pages, les workers, les
+  de premier niveau). Manquent encore la sélection de texte et le collage dans les pages, `Intl`, les workers, les
   éléments personnalisés et une part du DOM : beaucoup de sites réels ne fonctionnent donc
   pas encore. Ce qui sépare Oxyde d'un navigateur de tous les jours est listé dans
   [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md), partie 3. Conformité mesurée : 98,6 % de test262
   ([conformance/test262.md](conformance/test262.md)) ; 96,2 % des membres des interfaces du DOM
   décrites par l'IDL d'Oxyde sont disponibles ([conformance/dom.md](conformance/dom.md)) ; sur le
-  dossier `dom/` des Web Platform Tests, 287 fichiers de test entièrement réussis sur 693 (41,4 %)
+  dossier `dom/` des Web Platform Tests, 296 fichiers de test entièrement réussis sur 693 (42,7 %)
   ([conformance/wpt.md](conformance/wpt.md)).
 - **Processeur au repos avec un pilote AMD** : sur Radeon (pilote 26.10.1), un fil interne du
   pilote graphique (`amdvlk64.dll` en Vulkan, `amdxc64.dll` en Direct3D 12) occupe un cœur en

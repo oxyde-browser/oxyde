@@ -230,6 +230,9 @@ struct AnimationClock {
     /// l'origine : un lanceur de tests fait avancer le temps plus vite que
     /// l'horloge réelle.
     latest: f64,
+    /// Instant figé pendant une tâche de script : le temps des animations
+    /// n'avance pas au milieu d'une tâche.
+    frozen: Option<f64>,
 }
 
 impl Animations {
@@ -239,6 +242,7 @@ impl Animations {
             state: std::sync::Mutex::new(AnimationClock {
                 animator: oxyde_css::Animator::new(),
                 latest: 0.0,
+                frozen: None,
             }),
         }
     }
@@ -254,7 +258,15 @@ impl Animations {
     /// Instant courant, en millisecondes depuis l'origine de la page.
     pub(crate) fn now(&self) -> f64 {
         let real = self.epoch.elapsed().as_secs_f64() * 1000.0;
-        real.max(self.lock().latest)
+        let state = self.lock();
+        state.frozen.unwrap_or_else(|| real.max(state.latest))
+    }
+
+    /// Fige l'horloge à l'instant courant (`true`) ou la relâche : une tâche
+    /// de script voit un seul instant, comme dans une image d'un navigateur.
+    pub(crate) fn freeze(&self, frozen: bool) {
+        let now = frozen.then(|| self.now());
+        self.lock().frozen = now;
     }
 
     /// Fait avancer l'horloge jusqu'à `instant`.
@@ -556,6 +568,8 @@ pub struct Page {
     fonts: Vec<FontSlot>,
     images: HashMap<NodeId, ImageSlot>,
     scripts: Vec<ScriptSlot>,
+    /// Élément `<script>` de chaque entrée de `scripts`, dans le même ordre.
+    script_nodes: Vec<NodeId>,
     /// Modules importés par les scripts de type module, par adresse ; `None` :
     /// module indisponible.
     modules: HashMap<Url, Option<String>>,
@@ -591,7 +605,7 @@ fn attr_has_token(value: &str, token: &str) -> bool {
 }
 
 /// Vrai si l'attribut `type` d'un `<script>` désigne un script classique.
-fn is_classic_script(kind: Option<&str>) -> bool {
+pub(crate) fn is_classic_script(kind: Option<&str>) -> bool {
     let kind = kind.unwrap_or("").trim().to_ascii_lowercase();
     matches!(
         kind.as_str(),
@@ -625,6 +639,68 @@ pub(crate) fn resolve_module(referrer: &Url, specifier: &str) -> Option<Url> {
     (matches!(url.scheme(), "http" | "https") || url.scheme() == referrer.scheme()).then_some(url)
 }
 
+/// Vrai si `node` est dans un `<noscript>` : les scripts étant actifs, son
+/// contenu est inerte.
+fn in_noscript(doc: &Document, node: NodeId) -> bool {
+    doc.ancestors(node)
+        .any(|a| doc.element(a).is_some_and(|e| e.is_html("noscript")))
+}
+
+/// Adresse de l'image d'un `<img>` : son `src`, à défaut la première
+/// candidate de son `srcset`.
+fn image_target(el: &oxyde_dom::ElementData, base: &Url) -> Option<Url> {
+    let src = el.attr("src").map(str::trim).filter(|s| !s.is_empty());
+    let first_candidate = || {
+        el.attr("srcset")?
+            .split(',')
+            .next()?
+            .split_ascii_whitespace()
+            .next()
+    };
+    base.join(src.or_else(first_candidate)?).ok()
+}
+
+/// Images du document. Celles de `previous` dont l'adresse n'a pas changé
+/// sont conservées ; une image déjà reçue sert à tous les éléments qui la
+/// montrent.
+fn collect_images(
+    doc: &Document,
+    base: &Url,
+    mut previous: HashMap<NodeId, ImageSlot>,
+) -> HashMap<NodeId, ImageSlot> {
+    let mut images = HashMap::new();
+    for node in doc.descendants(doc.root()) {
+        if images.len() >= MAX_IMAGES {
+            break;
+        }
+        let Some(el) = doc.element(node) else {
+            continue;
+        };
+        if !el.is_html("img") || in_noscript(doc, node) {
+            continue;
+        }
+        let Some(target) = image_target(el, base) else {
+            continue;
+        };
+        let slot = match previous.remove(&node) {
+            Some(slot) if slot.url == target => slot,
+            _ => {
+                let known = previous
+                    .values()
+                    .chain(images.values())
+                    .find(|slot: &&ImageSlot| slot.resolved && slot.url == target);
+                ImageSlot {
+                    resolved: known.is_some(),
+                    image: known.and_then(|slot| slot.image.clone()),
+                    url: target,
+                }
+            }
+        };
+        images.insert(node, slot);
+    }
+    images
+}
+
 /// Feuilles de style du document, dans l'ordre du source. Les feuilles
 /// externes déjà chargées dans `previous` sont conservées.
 fn collect_sheets(doc: &Document, base: &Url, previous: Vec<SheetSlot>) -> Vec<SheetSlot> {
@@ -640,6 +716,10 @@ fn collect_sheets(doc: &Document, base: &Url, previous: Vec<SheetSlot>) -> Vec<S
         let Some(el) = doc.element(node) else {
             continue;
         };
+        // Le contenu d'un `<noscript>` est inerte : ses feuilles aussi.
+        if in_noscript(doc, node) {
+            continue;
+        }
         if el.is_html("style") {
             sheets.push(SheetSlot::Inline(parse_stylesheet(&doc.text_content(node))));
         } else if el.is_html("link")
@@ -671,13 +751,19 @@ impl Page {
             .and_then(|n| doc.element(n)?.attr("href").and_then(|h| url.join(h).ok()))
             .unwrap_or_else(|| url.clone());
         let sheets = collect_sheets(&doc, &base, Vec::new());
-        let mut images = HashMap::new();
+        let images = collect_images(&doc, &base, HashMap::new());
         let mut scripts = Vec::new();
+        let mut script_nodes = Vec::new();
         let mut frames: Vec<FrameSlot> = Vec::new();
         for node in doc.descendants(doc.root()) {
             let Some(el) = doc.element(node) else {
                 continue;
             };
+            // Les scripts sont actifs : le contenu d'un `<noscript>` est
+            // inerte, ses images, cadres et scripts ne sont pas chargés.
+            if in_noscript(&doc, node) {
+                continue;
+            }
             if el.is_html("iframe") && frames.len() < MAX_FRAMES {
                 let mut slot = FrameSlot {
                     element: node,
@@ -700,26 +786,16 @@ impl Page {
                     slot.url = target;
                     frames.push(slot);
                 }
-            } else if el.is_html("img")
-                && images.len() < MAX_IMAGES
-                && let Some(target) = el
-                    .attr("src")
-                    .filter(|s| !s.trim().is_empty())
-                    .and_then(|s| base.join(s.trim()).ok())
-            {
-                images.insert(
-                    node,
-                    ImageSlot {
-                        url: target,
-                        resolved: false,
-                        image: None,
-                    },
-                );
             } else if el.is_html("script")
                 && (is_classic_script(el.attr("type")) || is_module_script(el.attr("type")))
                 && scripts.len() < MAX_SCRIPTS
             {
                 let module = is_module_script(el.attr("type"));
+                // `nomodule` : repli pour les navigateurs sans modules.
+                if !module && el.has_attr("nomodule") {
+                    continue;
+                }
+                let before = scripts.len();
                 match el.attr("src").filter(|s| !s.trim().is_empty()) {
                     Some(src) => {
                         if let Ok(target) = base.join(src.trim()) {
@@ -742,6 +818,9 @@ impl Page {
                         }
                     }
                 }
+                if scripts.len() > before {
+                    script_nodes.push(node);
+                }
             }
         }
         let fonts = collect_fonts(&sheets, &base, Vec::new());
@@ -753,6 +832,7 @@ impl Page {
             sheets,
             images,
             scripts,
+            script_nodes,
             modules: HashMap::new(),
             frames,
             engine: None,
@@ -1096,6 +1176,7 @@ impl Page {
             .collect();
         let modules = std::mem::take(&mut self.modules);
         let scripts = std::mem::take(&mut self.scripts);
+        let script_nodes = std::mem::take(&mut self.script_nodes);
         let mut engine = Box::new(ScriptEngine::new(&self.url));
         // Les cadres relevés à l'analyse sont chargés ici, pas à la demande.
         let noted: Vec<(NodeId, String)> = self
@@ -1116,7 +1197,7 @@ impl Page {
         engine.set_cookies(&self.cookies);
         engine.set_viewport(self.viewport.width, self.viewport.height);
         engine.set_layout_env(self.layout_env());
-        for slot in &scripts {
+        for (index, slot) in scripts.iter().enumerate() {
             let source = match slot {
                 ScriptSlot::Inline(source)
                 | ScriptSlot::External {
@@ -1126,7 +1207,7 @@ impl Page {
                 } => source,
                 _ => continue,
             };
-            engine.eval(&mut self.doc, source);
+            engine.eval_element(&mut self.doc, script_nodes.get(index).copied(), source);
         }
         // Les modules sont différés : ils s'exécutent après les scripts classiques.
         engine.set_modules(
@@ -1169,6 +1250,9 @@ impl Page {
     fn dom_changed(&mut self) {
         let previous = std::mem::take(&mut self.sheets);
         self.sheets = collect_sheets(&self.doc, &self.base, previous);
+        // Les images qu'un script a ajoutées, ou dont il a changé l'adresse.
+        let previous = std::mem::take(&mut self.images);
+        self.images = collect_images(&self.doc, &self.base, previous);
         self.dirty = true;
     }
 
@@ -3140,5 +3224,149 @@ mod tests {
         p.click_node(label);
         assert_eq!(attribute(&p, "c", "checked").as_deref(), Some(""));
         assert_eq!(p.document().focus(), Some(node_by_id(&p, "c")));
+    }
+
+    #[test]
+    fn scripts_inserted_by_scripts_run() {
+        let mut p = page(
+            "<p id=p></p><script id=premier>
+               const sortie = document.getElementById('p');
+               const noter = texte => { sortie.textContent += texte + ';'; };
+               noter('courant ' + document.currentScript.id);
+               const enLigne = document.createElement('script');
+               enLigne.id = 'enligne';
+               enLigne.textContent = \"noter('en ligne ' + document.currentScript.id);\";
+               document.head.appendChild(enLigne);
+               noter('après insertion');
+               for (const [id, src] of [['externe', 'lot.js'], ['ailleurs', 'https://ailleurs.test/x.js'], ['absent', '/absent.js']]) {
+                 const script = document.createElement('script');
+                 script.id = id;
+                 script.src = src;
+                 script.onload = () => noter('load ' + id + ' ' + (document.currentScript === null));
+                 script.onerror = () => noter('error ' + id);
+                 document.body.appendChild(script);
+               }
+               const inerte = document.createElement('script');
+               inerte.type = 'application/json';
+               inerte.textContent = '{';
+               document.body.appendChild(inerte);
+               const repli = document.createElement('script');
+               repli.noModule = true;
+               repli.setAttribute('nomodule', '');
+               repli.textContent = \"noter('repli');\";
+               document.body.appendChild(repli);
+             </script>
+             <script nomodule>noter('repli statique');</script>",
+        );
+        p.run_scripts();
+        // Le script en ligne s'exécute à la fin de la tâche qui l'a inséré.
+        assert_eq!(
+            body_text(&p),
+            "courant premier;après insertion;en ligne enligne;"
+        );
+        let requests = p.take_fetches();
+        let urls: Vec<&str> = requests.iter().map(|r| r.url.as_str()).collect();
+        assert_eq!(
+            urls,
+            [
+                "https://exemple.test/dossier/lot.js",
+                "https://ailleurs.test/x.js",
+                "https://exemple.test/absent.js",
+            ]
+        );
+        let respond = |request: &FetchRequest, status: u16, body: &str| {
+            Ok(FetchResponse {
+                url: request.url.clone(),
+                status,
+                headers: Vec::new(),
+                body: body.as_bytes().to_vec(),
+            })
+        };
+        // Une autre origine sans en-tête CORS : un script se charge quand même.
+        assert!(p.complete_fetch(
+            requests[1].id,
+            respond(
+                &requests[1],
+                200,
+                "noter('ailleurs ' + document.currentScript.id);"
+            )
+        ));
+        assert!(p.complete_fetch(
+            requests[0].id,
+            respond(
+                &requests[0],
+                200,
+                "noter('lot ' + document.currentScript.src);
+                 const suite = document.createElement('script');
+                 suite.textContent = \"noter('suite');\";
+                 document.body.appendChild(suite);"
+            )
+        ));
+        assert!(p.complete_fetch(requests[2].id, respond(&requests[2], 404, "introuvable")));
+        assert_eq!(
+            body_text(&p),
+            "courant premier;après insertion;en ligne enligne;\
+             ailleurs ailleurs;load ailleurs true;\
+             lot https://exemple.test/dossier/lot.js;load externe true;suite;\
+             error absent;"
+        );
+        assert!(p.take_fetches().is_empty());
+    }
+
+    #[test]
+    fn window_messages_crypto_and_observers() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<div id=haut style='height: 50px'></div>
+             <div id=bas style='margin-top: 5000px; height: 50px'></div>
+             <p id=p></p>
+             <script>
+               const sortie = document.getElementById('p');
+               const noter = texte => { sortie.textContent += texte + ';'; };
+               noter([frames === window, onload === null, typeof postMessage, name === '', isSecureContext].join(' '));
+               const octets = crypto.getRandomValues(new Uint8Array(32));
+               noter('aléa ' + (new Set(octets).size > 8) + ' ' + /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(crypto.randomUUID()));
+               try { crypto.getRandomValues(new Float32Array(1)); } catch (e) { noter(e.name); }
+               const canal = new MessageChannel();
+               canal.port1.onmessage = e => noter('port ' + e.data.n);
+               canal.port2.postMessage({ n: 1 });
+               addEventListener('message', e => noter('fenêtre ' + e.data + ' ' + (e.source === window)));
+               postMessage('bonjour', '*');
+               new IntersectionObserver(entries => {
+                 for (const e of entries) noter('vu ' + e.target.id + ' ' + e.isIntersecting + ' ' + e.intersectionRatio);
+               }).observe(document.getElementById('haut'));
+               new IntersectionObserver(entries => {
+                 for (const e of entries) noter('vu ' + e.target.id + ' ' + e.isIntersecting);
+               }).observe(document.getElementById('bas'));
+               const tailles = new ResizeObserver(entries => {
+                 for (const e of entries) noter('taille ' + e.contentRect.height + ' ' + e.borderBoxSize[0].blockSize);
+                 tailles.disconnect();
+               });
+               tailles.observe(document.getElementById('haut'));
+               noter('fin');
+             </script>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(
+            body_text(&p),
+            "true true function true true;aléa true true;TypeMismatchError;fin;"
+        );
+        // Les messages arrivent dans une tâche ultérieure, les observateurs
+        // à leur premier relevé.
+        let later = Instant::now() + std::time::Duration::from_secs(1);
+        assert!(p.tick(later));
+        p.update(&mut text, VIEWPORT);
+        let _ = p.tick(later + std::time::Duration::from_secs(1));
+        let seen = body_text(&p);
+        for expected in [
+            "port 1;",
+            "fenêtre bonjour true;",
+            "vu haut true 1;",
+            "vu bas false;",
+            "taille 50 50;",
+        ] {
+            assert!(seen.contains(expected), "{expected} absent de {seen}");
+        }
     }
 }

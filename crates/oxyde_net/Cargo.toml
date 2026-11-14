@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 bytes = "1"
+# Décompression des réponses ; moteur en Rust (miniz_oxide), sans zlib.
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 http-body-util = "0.1"
 hyper = { version = "1", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio"] }

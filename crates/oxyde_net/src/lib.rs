@@ -11,9 +11,9 @@
 //!
 //! LIMITES CONNUES : pas de HTTP/3, pas de cache, cookies en mémoire
 //! seulement (voir [`cookies`]), pas de
-//! réutilisation des connexions, pas de décompression (`Accept-Encoding:
-//! identity`), résolution DNS par le système, pas de proxy ; le corps d'une
-//! requête est envoyé d'un bloc.
+//! réutilisation des connexions, décompression `gzip` et `deflate` seulement
+//! (ni Brotli ni Zstandard, qui ne sont donc pas annoncés), résolution DNS
+//! par le système, pas de proxy ; le corps d'une requête est envoyé d'un bloc.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,6 +81,9 @@ pub enum NetError {
     /// Corps de réponse plus grand que la limite.
     #[error("réponse trop volumineuse (plus de {MAX_BODY_BYTES} octets)")]
     BodyTooLarge,
+    /// Corps compressé illisible, ou compressé d'une façon non prise en charge.
+    #[error("corps de réponse illisible (encodage « {0} »)")]
+    Encoding(String),
     /// Initialisation de la pile impossible.
     #[error("initialisation du réseau impossible : {0}")]
     Init(String),
@@ -135,6 +138,7 @@ impl NetError {
             Self::TooManyRedirects => "ERR_TOO_MANY_REDIRECTS",
             Self::Timeout => "ERR_TIMED_OUT",
             Self::BodyTooLarge => "ERR_RESPONSE_TOO_LARGE",
+            Self::Encoding(_) => "ERR_CONTENT_DECODING_FAILED",
             Self::Init(_) => "ERR_FAILED",
         }
     }
@@ -393,12 +397,17 @@ impl Client {
                 .ok()
                 .and_then(|mut jar| jar.header_for(url, Access::Http, cross_site))
         };
-        let build = |target: &str| {
+        // `host` : en HTTP/2 l'autorité voyage dans la cible (`:authority`) ;
+        // l'envoyer aussi en en-tête fait rejeter la requête par certains
+        // serveurs (PROTOCOL_ERROR chez Google).
+        let build = |target: &str, host_header: bool| {
             let mut builder = Request::builder()
                 .method(method.clone())
                 .uri(target)
-                .header(header::HOST, &authority)
-                .header(header::ACCEPT_ENCODING, "identity");
+                .header(header::ACCEPT_ENCODING, "gzip, deflate");
+            if host_header {
+                builder = builder.header(header::HOST, &authority);
+            }
             if !has("user-agent") {
                 builder = builder.header(header::USER_AGENT, USER_AGENT);
             }
@@ -407,6 +416,10 @@ impl Client {
                     header::ACCEPT,
                     "text/html,application/xhtml+xml,text/css,*/*;q=0.8",
                 );
+            }
+            // LIMITE : la langue annoncée est fixe ; elle suivra les paramètres.
+            if !has("accept-language") {
+                builder = builder.header(header::ACCEPT_LANGUAGE, "fr-FR,fr;q=0.9,en;q=0.8");
             }
             for (name, value) in &request.headers {
                 if !reserved(name) {
@@ -440,18 +453,18 @@ impl Client {
                 tokio::spawn(connection);
                 // HTTP/2 exige une cible absolue (schéma et autorité).
                 sender
-                    .send_request(build(&format!("https://{authority}{path}"))?)
+                    .send_request(build(&format!("https://{authority}{path}"), false)?)
                     .await?
             } else {
                 let (mut sender, connection) = hyper::client::conn::http1::handshake(io).await?;
                 tokio::spawn(connection);
-                sender.send_request(build(&path)?).await?
+                sender.send_request(build(&path, true)?).await?
             }
         } else {
             let (mut sender, connection) =
                 hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await?;
             tokio::spawn(connection);
-            sender.send_request(build(&path)?).await?
+            sender.send_request(build(&path, true)?).await?
         };
 
         let status = response.status();
@@ -489,11 +502,21 @@ impl Client {
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_owned);
+        let encoding = response
+            .headers()
+            .get(header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
         let headers = response
             .headers()
             .iter()
             // `Set-Cookie` s'arrête ici : il ne remonte ni aux pages ni aux scripts.
             .filter(|(name, _)| *name != header::SET_COOKIE)
+            // Le corps est rendu décompressé : ces en-têtes ne le décrivent plus.
+            .filter(|(name, _)| {
+                encoding.is_none()
+                    || (*name != header::CONTENT_ENCODING && *name != header::CONTENT_LENGTH)
+            })
             .filter_map(|(name, value)| {
                 Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
             })
@@ -508,6 +531,10 @@ impl Client {
                 body.extend_from_slice(chunk);
             }
         }
+        let body = match encoding {
+            Some(encoding) if !body.is_empty() => decode_body(body, &encoding)?,
+            _ => body,
+        };
         Ok(Step::Done(Response {
             url: url.clone(),
             status: status.as_u16(),
@@ -522,6 +549,41 @@ enum Step {
     Done(Response),
     /// Adresse suivante et code d'état de la redirection.
     Redirect(Url, StatusCode),
+}
+
+/// Décompresse `body` d'après l'en-tête `Content-Encoding` : une liste
+/// d'encodages appliqués dans l'ordre, donc défaits en sens inverse. Le
+/// résultat est borné à [`MAX_BODY_BYTES`] (une réponse minuscule peut se
+/// dilater sans limite).
+fn decode_body(mut body: Vec<u8>, encodings: &str) -> Result<Vec<u8>, NetError> {
+    use std::io::Read;
+    let unreadable = || NetError::Encoding(encodings.to_owned());
+    let limit = u64::try_from(MAX_BODY_BYTES).unwrap_or(u64::MAX);
+    let inflate = |reader: &mut dyn Read| -> Option<Vec<u8>> {
+        let mut out = Vec::new();
+        reader
+            .take(limit.saturating_add(1))
+            .read_to_end(&mut out)
+            .ok()?;
+        Some(out)
+    };
+    for encoding in encodings.rsplit(',') {
+        let decoded = match encoding.trim().to_ascii_lowercase().as_str() {
+            "" | "identity" => continue,
+            "gzip" | "x-gzip" => inflate(&mut flate2::read::MultiGzDecoder::new(body.as_slice())),
+            // `deflate` désigne le format zlib ; des serveurs envoient pourtant
+            // le flux brut, sans en-tête.
+            "deflate" => inflate(&mut flate2::read::ZlibDecoder::new(body.as_slice()))
+                .or_else(|| inflate(&mut flate2::read::DeflateDecoder::new(body.as_slice()))),
+            _ => None,
+        }
+        .ok_or_else(unreadable)?;
+        if decoded.len() > MAX_BODY_BYTES {
+            return Err(NetError::BodyTooLarge);
+        }
+        body = decoded;
+    }
+    Ok(body)
 }
 
 #[cfg(test)]
@@ -667,5 +729,47 @@ mod tests {
         // Port 1 sur la boucle locale : personne n'écoute.
         let closed = Url::parse("http://127.0.0.1:1/").expect("url");
         assert!(matches!(client.get(&closed), Err(NetError::Connect { .. })));
+    }
+
+    #[test]
+    fn compressed_bodies_are_decoded() {
+        use flate2::Compression;
+        use flate2::write::{DeflateEncoder, GzEncoder, ZlibEncoder};
+        let text = b"bonjour, bonjour, bonjour".to_vec();
+        let gzip = {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&text).expect("écriture");
+            encoder.finish().expect("fin")
+        };
+        let zlib = {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&text).expect("écriture");
+            encoder.finish().expect("fin")
+        };
+        let raw = {
+            let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&text).expect("écriture");
+            encoder.finish().expect("fin")
+        };
+        assert_eq!(decode_body(gzip.clone(), "gzip").expect("gzip"), text);
+        assert_eq!(
+            decode_body(gzip.clone(), " GZIP , identity").expect("liste"),
+            text
+        );
+        assert_eq!(decode_body(zlib, "deflate").expect("zlib"), text);
+        assert_eq!(decode_body(raw, "deflate").expect("flux brut"), text);
+        assert_eq!(
+            decode_body(text.clone(), "identity").expect("identité"),
+            text
+        );
+        // Un encodage inconnu ou un corps abîmé est une erreur, pas du texte.
+        assert!(matches!(
+            decode_body(gzip.clone(), "br"),
+            Err(NetError::Encoding(_))
+        ));
+        assert!(matches!(
+            decode_body(gzip[..gzip.len() / 2].to_vec(), "gzip"),
+            Err(NetError::Encoding(_))
+        ));
     }
 }

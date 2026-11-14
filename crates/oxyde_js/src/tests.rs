@@ -3277,3 +3277,27 @@ fn temporal_basics() {
         "false,0"
     );
 }
+
+#[test]
+fn nested_parentheses_parse_in_linear_time() {
+    // `e=(e=(e=(…` : chaque parenthèse est d'abord essayée comme paramètres
+    // d'une fonction fléchée ; sans mémoire des échecs, le temps double à
+    // chaque niveau et 40 niveaux ne finiraient jamais.
+    let depth = 40;
+    let mut source = String::from("var e = 'a'; e = ");
+    for _ in 0..depth {
+        source.push_str("(e = ");
+    }
+    source.push('e');
+    for _ in 0..depth {
+        source.push_str(".concat('b'))");
+    }
+    source.push_str("; e.length");
+    assert_eq!(eval(&source), "41");
+    // Les fonctions fléchées imbriquées dans des valeurs par défaut restent lues.
+    assert_eq!(
+        eval("var f = (a = (b = (c = 2) => c * 2) => b() + 1) => a() + 1; f()"),
+        "6"
+    );
+    assert_eq!(eval("var g = (a = (1 + 2)) => a; (g)() + (g(4))"), "7");
+}
