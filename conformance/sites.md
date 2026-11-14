@@ -36,11 +36,11 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | | Départ | 14 novembre 2026 |
 |---|---|---|
 | lisible | 14 | 18 |
-| partiel | 8 | 9 |
-| vide | 13 | 10 |
-| erreur | 3 | 1 |
+| partiel | 8 | 12 |
+| vide | 13 | 9 |
+| erreur | 3 | 0 |
 | mur | 7 | 8 |
-| délai | 5 | 4 |
+| délai | 5 | 3 |
 
 « Départ » : état avant tout travail sur l'étape H (branche principale au 14 novembre 2026).
 
@@ -48,16 +48,16 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 |---|---|---|---|---|---|
 | 1 | google.com | recherche | vide | **lisible** | HTTP/2 était refusé par les serveurs de Google |
 | 2 | bing.com | recherche | partiel | partiel | champ de recherche sans logo ni fond |
-| 3 | duckduckgo.com | recherche | vide | erreur | l'application signale une exception côté client |
-| 4 | qwant.com | recherche | erreur | délai | affichait « Maintenance » ; se charge en 50 s environ quand la machine est libre |
+| 3 | duckduckgo.com | recherche | vide | partiel | texte de la page d'accueil, sans le champ de recherche |
+| 4 | qwant.com | recherche | erreur | partiel | titre seul, en 12 s |
 | 5 | fr.wikipedia.org | encyclopédie | lisible | lisible | en-tête mal aligné |
 | 6 | en.wikipedia.org | encyclopédie | lisible | lisible | en-tête mal aligné |
 | 7 | fr.wiktionary.org | encyclopédie | lisible | lisible | |
 | 8 | lemonde.fr | presse | partiel | **lisible** | la fenêtre de consentement s'affiche |
-| 9 | lefigaro.fr | presse | délai | **lisible** | sous le voile de la fenêtre de consentement |
+| 9 | lefigaro.fr | presse | délai | **lisible** | sous le voile de la fenêtre de consentement ; le site dit ne pas reconnaître le navigateur |
 | 10 | francetvinfo.fr | presse | partiel | partiel | en-tête seul |
 | 11 | bbc.com | presse | partiel | partiel | menu seul |
-| 12 | theguardian.com | presse | délai | délai | |
+| 12 | theguardian.com | presse | délai | partiel | en-tête ; le contenu est masqué par un bloc noir |
 | 13 | nytimes.com | presse | mur | mur | 403 (DataDome) |
 | 14 | mail.google.com | messagerie | vide | vide | |
 | 15 | outlook.live.com | messagerie | erreur | vide | l'application ne démarre pas |
@@ -84,12 +84,12 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | 36 | stackoverflow.com | documentation | mur | mur | épreuve Cloudflare |
 | 37 | github.com | documentation | délai | **lisible** | en 20 s ; des conteneurs flex et grille imbriqués coûtaient un temps exponentiel ; mise en forme encore grossière |
 | 38 | crates.io | documentation | vide | vide | |
-| 39 | x.com | réseaux sociaux | lisible | lisible | page de connexion |
+| 39 | x.com | réseaux sociaux | lisible | délai | RÉGRESSION : l'application démarre désormais (elle butait avant sur une API absente) et ne se termine pas |
 | 40 | facebook.com | réseaux sociaux | vide | vide | |
-| 41 | instagram.com | réseaux sociaux | délai | délai | |
-| 42 | linkedin.com | réseaux sociaux | lisible | lisible | |
+| 41 | instagram.com | réseaux sociaux | délai | **lisible** | page de connexion, en 9 s |
+| 42 | linkedin.com | réseaux sociaux | lisible | lisible | avec son bandeau de cookies |
 | 43 | reddit.com | réseaux sociaux | vide | vide | |
-| 44 | mastodon.social | réseaux sociaux | vide | vide | |
+| 44 | mastodon.social | réseaux sociaux | vide | délai | l'application se charge (une centaine de modules) puis ne rend pas la main ; cause non élucidée |
 | 45 | openstreetmap.org | outils | délai | partiel | en-tête ; la carte reste vide |
 | 46 | deepl.com | outils | partiel | partiel | texte sans mise en forme |
 | 47 | sncf-connect.com | outils | vide | vide | |
@@ -102,13 +102,13 @@ ils sont comptés « mur » (Amazon, Cdiscount, Stack Overflow) ou « vide » (M
 
 ## Ce qui bloque, par ordre de fréquence
 
-1. **Applications qui ne démarrent pas** (Gmail, Outlook, Twitch, Dailymotion, Doctolib,
-   crates.io, Facebook, Reddit, Mastodon, SNCF Connect) : il manque `Intl`, `customElements`
-   et le Shadow DOM, les cartes d'import, les modules insérés par script, `DOMParser`, les
-   workers.
+1. **Applications qui ne démarrent pas ou ne s'affichent pas** (Gmail, Outlook, Twitch,
+   Dailymotion, Doctolib, crates.io, Facebook, Reddit, SNCF Connect, YouTube) : leurs scripts
+   ne signalent plus d'erreur pour la plupart, mais il manque le Shadow DOM, le canevas, les
+   workers, `crypto.subtle`.
 2. **Murs anti-robot** (NYTimes, Leboncoin, Fnac, eBay, PayPal : réponse 403 ; Amazon,
    Cdiscount, Stack Overflow, Vimeo : épreuve en JavaScript). Oxyde s'annonce sous son nom et
    ne cherche pas à se faire passer pour un autre navigateur ; ces sites s'ouvriront quand
    leurs épreuves s'exécuteront correctement.
-3. **Lenteur** : The Guardian, Instagram, Qwant.
+3. **Scripts qui ne rendent pas la main** : X, Mastodon, Vimeo.
 4. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants.

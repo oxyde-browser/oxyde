@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9971 / 28878 (34,5 %)** — fichiers entièrement réussis : 547 / 2267 (24,1 %).
+**Sous-tests réussis : 10059 / 28942 (34,8 %)** — fichiers entièrement réussis : 569 / 2267 (25,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,8 +13,8 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `css/CSS2/floats` | 11 / 19 | 44 / 52 (84,6 %) |
-| `css/CSS2/normal-flow` | 19 / 31 | 103 / 130 (79,2 %) |
+| `css/CSS2/floats` | 14 / 19 | 47 / 52 (90,4 %) |
+| `css/CSS2/normal-flow` | 26 / 31 | 117 / 137 (85,4 %) |
 | `css/CSS2/positioning` | 6 / 9 | 9 / 18 (50,0 %) |
 | `css/css-align` | 0 / 3 | 4 / 27 (14,8 %) |
 | `css/css-align/abspos` | 0 / 69 | 132 / 1142 (11,6 %) |
@@ -39,7 +39,7 @@ est le plus honnête des deux.
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 70 / 185 | 991 / 1804 (54,9 %) |
+| `css/css-flexbox` | 72 / 185 | 993 / 1804 (55,0 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
@@ -68,14 +68,14 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/track-sizing` | 0 / 1 | 0 / 1 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat` | 0 / 18 | 0 / 57 (0,0 %) |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/intrinsic-auto-repeat` | 0 / 13 | 0 / 33 (0,0 %) |
-| `css/css-grid/grid-model` | 10 / 22 | 143 / 188 (76,1 %) |
+| `css/css-grid/grid-model` | 11 / 22 | 144 / 188 (76,6 %) |
 | `css/css-grid/implicit-grids` | 2 / 6 | 42 / 56 (75,0 %) |
 | `css/css-grid/layout-algorithm` | 13 / 60 | 365 / 895 (40,8 %) |
 | `css/css-grid/parsing` | 4 / 60 | 506 / 1600 (31,6 %) |
 | `css/css-grid/placement` | 10 / 24 | 234 / 316 (74,1 %) |
 | `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 26 / 47 | 148 / 256 (57,8 %) |
+| `css/css-position` | 26 / 47 | 148 / 301 (49,2 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 9 / 28 (32,1 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
@@ -92,13 +92,13 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
-| `css/css-tables` | 31 / 82 | 247 / 375 (65,9 %) |
+| `css/css-tables` | 31 / 82 | 247 / 382 (64,7 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 2 / 5 | 12 / 20 (60,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 55 / 233 | 811 / 1825 (44,4 %) |
+| `css/cssom-view` | 64 / 233 | 879 / 1830 (48,0 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -108,23 +108,13 @@ est le plus honnête des deux.
 | `css/CSS2/floats/computed-float-position-absolute.html` | 0 / 1 |  |
 | `css/CSS2/floats/float-no-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/CSS2/floats/floats-in-inline-content-intrinsic-size-001.html` | 14 / 16 |  |
-| `css/CSS2/floats/hit-test-floats-001.html` | 0 / 1 |  |
-| `css/CSS2/floats/hit-test-floats-002.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-003.html` | 0 / 1 |  |
-| `css/CSS2/floats/hit-test-floats-004.html` | 0 / 1 |  |
 | `css/CSS2/floats/hit-test-floats-005.html` | 0 / 1 |  |
 | `css/CSS2/normal-flow/auto-margins-used-values-with-floats.tentative.html` | 0 / 6 |  |
 | `css/CSS2/normal-flow/auto-margins-used-values.html` | 0 / 6 |  |
 | `css/CSS2/normal-flow/block-in-inline-client-rects-001.html` | 2 / 3 |  |
-| `css/CSS2/normal-flow/block-in-inline-hittest-001.html` | 0 / 1 |  |
-| `css/CSS2/normal-flow/block-in-inline-hittest-002.html` | 0 / 2 |  |
-| `css/CSS2/normal-flow/block-in-inline-hittest-float-001.html` | 0 / 1 |  |
 | `css/CSS2/normal-flow/block-in-inline-hittest-float-002.html` | 0 / 5 |  |
-| `css/CSS2/normal-flow/block-in-inline-hittest-margin.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/CSS2/normal-flow/block-in-inline-hittest-relpos-zindex.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/CSS2/normal-flow/block-in-inline-self-collapsing-margin-001.html` | 4 / 6 |  |
-| `css/CSS2/normal-flow/hit-test-anonymous-block.html` | 0 / 1 |  |
-| `css/CSS2/normal-flow/video-controls-hit-test-order.html` | 0 / 2 |  |
 | `css/CSS2/positioning/inline-static-position-001.html` | 2 / 6 |  |
 | `css/CSS2/positioning/line-break-after-leading-float.html` | 0 / 1 |  |
 | `css/CSS2/positioning/relpos-percentage-offset-anonymous-block.html` | 1 / 5 |  |
@@ -403,7 +393,7 @@ est le plus honnête des deux.
 | `css/css-display/display-contents-blockify-dynamic.html` | 0 / 3 |  |
 | `css/css-display/display-contents-computed-style.html` | 3 / 5 |  |
 | `css/css-display/display-contents-focusable-001.html` | 0 / 1 |  |
-| `css/css-display/display-contents-pseudo-click-target.html` | 0 / 1 |  |
+| `css/css-display/display-contents-pseudo-click-target.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-display/display-contents-svg-tspan-child-character-positions.html` | 0 / 1 |  |
 | `css/css-display/display-contents-svg-tspan-child-display-changed.html` | 0 / 1 |  |
 | `css/css-display/display-contents-svg-tspan-child-removed.html` | 0 / 1 |  |
@@ -600,9 +590,7 @@ est le plus honnête des deux.
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-space-around.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_justify-content-space-between.html` | 0 / 1 |  |
 | `css/css-flexbox/getcomputedstyle/flexbox_computedstyle_min-auto-size.html` | 2 / 4 |  |
-| `css/css-flexbox/hittest-anonymous-box.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-before-pseudo.html` | 0 / 1 |  |
-| `css/css-flexbox/hittest-overlapping-margin.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-overlapping-order.html` | 0 / 1 |  |
 | `css/css-flexbox/hittest-overlapping-relative.html` | 0 / 1 |  |
 | `css/css-flexbox/image-as-flexitem-size-001.html` | 14 / 18 |  |
@@ -1149,7 +1137,6 @@ est le plus honnête des deux.
 | `css/css-grid/grid-model/grid-gutters-as-percentage-001.html` | 6 / 16 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-letter-001.html` | 0 / 2 |  |
 | `css/css-grid/grid-model/grid-item-accepts-first-line-001.html` | 0 / 2 |  |
-| `css/css-grid/grid-model/grid-item-hit-test.html` | 0 / 1 |  |
 | `css/css-grid/grid-model/grid-min-max-width-001.html` | 11 / 20 |  |
 | `css/css-grid/grid-model/grid-support-display-001.html` | 3 / 6 |  |
 | `css/css-grid/grid-template-columns-mixed-calc.html` | 9 / 11 |  |
@@ -1306,7 +1293,7 @@ est le plus honnête des deux.
 | `css/css-position/animations/right-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/top-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/top-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-position/backdrop-inherit-computed.html` | 0 / 0 | harnais : TypeError: undefined n'est pas une fonction |
+| `css/css-position/backdrop-inherit-computed.html` | 0 / 0 | harnais : TypeError: .showModal n'est pas une fonction (c'est undefined) |
 | `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/backdrop-ua-style.html` | 0 / 1 |  |
 | `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 10 / 17 |  |
@@ -1331,7 +1318,7 @@ est le plus honnête des deux.
 | `css/css-position/parsing/z-index-invalid.html` | 0 / 4 |  |
 | `css/css-position/position-absolute-crash-chrome-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-position/position-absolute-dynamic-containing-block.html` | 4 / 8 |  |
-| `css/css-position/position-absolute-fit-content-auto-margin.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-position/position-absolute-fit-content-auto-margin.html` | 0 / 45 |  |
 | `css/css-position/position-absolute-in-inline-002.html` | 0 / 1 |  |
 | `css/css-position/position-absolute-in-inline-dynamic.html` | 1 / 9 |  |
 | `css/css-position/position-absolute-in-inline-vertical-lr.html` | 1 / 16 |  |
@@ -1374,7 +1361,7 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-top.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms-translate.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms.html` | 0 / 3 |  |
-| `css/css-position/sticky/sticky-after-input.html` | 0 / 1 |  |
+| `css/css-position/sticky/sticky-after-input.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/abspos-intrinsic-height-inset-percentage-child.html` | 3 / 6 |  |
 | `css/css-sizing/animation/aspect-ratio-interpolation-degenerate.html` | 0 / 12 |  |
 | `css/css-sizing/animation/aspect-ratio-interpolation-sideways-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1565,7 +1552,7 @@ est le plus honnête des deux.
 | `css/css-tables/column-track-merging.html` | 7 / 13 |  |
 | `css/css-tables/dynamic-rowspan-change.html` | 1 / 2 |  |
 | `css/css-tables/fixed-layout-1.html` | 4 / 5 |  |
-| `css/css-tables/fixed-layout-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/fixed-layout-2.html` | 0 / 7 |  |
 | `css/css-tables/fixed-layout-excess-width-distribution-001.html` | 0 / 1 |  |
 | `css/css-tables/height-distribution/computing-row-measure-0.html` | 2 / 4 |  |
 | `css/css-tables/height-distribution/computing-row-measure-1.html` | 1 / 4 |  |
@@ -1645,7 +1632,6 @@ est le plus honnête des deux.
 | `css/css-tables/width-distribution/td-max-width-auto-layout.html` | 3 / 4 |  |
 | `css/css-tables/width-distribution/td-min-width-auto-layout.html` | 3 / 4 |  |
 | `css/css-tables/width-distribution/td-with-subpixel-padding-vertical-rl.html` | 0 / 1 |  |
-| `css/cssom-view/CaretPosition-001.html` | 0 / 2 |  |
 | `css/cssom-view/DOMRectList.html` | 0 / 2 |  |
 | `css/cssom-view/Element-currentCSSZoom.html` | 0 / 2 |  |
 | `css/cssom-view/HTMLBody-ScrollArea_quirksmode.html` | 3 / 10 |  |
@@ -1658,7 +1644,7 @@ est le plus honnête des deux.
 | `css/cssom-view/checkVisibility.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/client-props-input.html` | 0 / 1 |  |
 | `css/cssom-view/client-scroll-props-input.html` | 0 / 2 |  |
-| `css/cssom-view/cssom-geometryutils-connected-callback.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/cssom-geometryutils-connected-callback.html` | 0 / 2 |  |
 | `css/cssom-view/cssom-geometryutils-convertPointFromNode.html` | 0 / 20 |  |
 | `css/cssom-view/cssom-geometryutils-convertQuadFromNode.html` | 0 / 18 |  |
 | `css/cssom-view/cssom-geometryutils-convertRectFromNode.html` | 0 / 18 |  |
@@ -1668,47 +1654,39 @@ est le plus honnête des deux.
 | `css/cssom-view/cssom-geometryutils-getBoxQuads-options.html` | 0 / 17 |  |
 | `css/cssom-view/cssom-geometryutils-lifecycle.html` | 0 / 4 |  |
 | `css/cssom-view/cssom-geometryutils-same-origin-iframe.html` | 0 / 2 |  |
-| `css/cssom-view/cssom-geometryutils-shadow-dom.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/cssom-geometryutils-shadow-dom.html` | 0 / 2 |  |
 | `css/cssom-view/cssom-geometryutils-text.html` | 0 / 2 |  |
 | `css/cssom-view/cssom-geometryutils-transforms.html` | 0 / 10 |  |
 | `css/cssom-view/cssom-getBoundingClientRect-003.html` | 0 / 2 |  |
 | `css/cssom-view/cssom-getBoxQuads-001.html` | 0 / 6 |  |
 | `css/cssom-view/cssom-getBoxQuads-002.html` | 0 / 1 |  |
 | `css/cssom-view/cssom-view-img-attributes-001.html` | 0 / 4 |  |
-| `css/cssom-view/element-scroll-promise-after-removal.html` | 0 / 5 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/element-scroll-promise-interruption.html` | 0 / 14 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/element-scroll-promises.html` | 0 / 24 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/elementFromPoint-001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/element-scroll-promise-after-removal.html` | 0 / 5 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
+| `css/cssom-view/element-scroll-promise-interruption.html` | 0 / 14 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
+| `css/cssom-view/element-scroll-promises.html` | 0 / 24 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
 | `css/cssom-view/elementFromPoint-002.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-003.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-dynamic-anon-box.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint-ellipsis-in-inline-box.html` | 0 / 3 |  |
-| `css/cssom-view/elementFromPoint-float-in-relative.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint-float-in-table.html` | 0 / 2 |  |
 | `css/cssom-view/elementFromPoint-list-001.html` | 0 / 10 |  |
 | `css/cssom-view/elementFromPoint-mixed-font-sizes.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-negative-z-index-inline-overflow-clip.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint-negative-z-index-inline.html` | 0 / 8 |  |
-| `css/cssom-view/elementFromPoint-subpixel.html` | 0 / 4 |  |
+| `css/cssom-view/elementFromPoint-negative-z-index-inline.html` | 3 / 8 |  |
 | `css/cssom-view/elementFromPoint-visibility-hidden-resizer.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint.html` | 0 / 33 | harnais : 11 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the |
-| `css/cssom-view/elementFromPosition.html` | 0 / 16 |  |
-| `css/cssom-view/elementsFromPoint-iframes.html` | 0 / 2 |  |
-| `css/cssom-view/elementsFromPoint-inline-htb-ltr.html` | 0 / 1 |  |
+| `css/cssom-view/elementFromPoint.html` | 15 / 33 | harnais : 11 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the |
+| `css/cssom-view/elementFromPosition.html` | 11 / 16 |  |
+| `css/cssom-view/elementsFromPoint-iframes.html` | 1 / 2 |  |
 | `css/cssom-view/elementsFromPoint-inline-htb-rtl.html` | 0 / 1 |  |
-| `css/cssom-view/elementsFromPoint-inline-nested.html` | 0 / 1 |  |
-| `css/cssom-view/elementsFromPoint-inline-self-painting.html` | 0 / 4 |  |
-| `css/cssom-view/elementsFromPoint-inline-vlr-ltr.html` | 0 / 1 |  |
+| `css/cssom-view/elementsFromPoint-inline-self-painting.html` | 3 / 4 |  |
 | `css/cssom-view/elementsFromPoint-inline-vlr-rtl.html` | 0 / 1 |  |
 | `css/cssom-view/elementsFromPoint-inline-vrl-ltr.html` | 0 / 1 |  |
 | `css/cssom-view/elementsFromPoint-inline-vrl-rtl.html` | 0 / 1 |  |
-| `css/cssom-view/elementsFromPoint-invalid-cases.html` | 0 / 3 |  |
+| `css/cssom-view/elementsFromPoint-invalid-cases.html` | 2 / 3 |  |
 | `css/cssom-view/elementsFromPoint-shadowroot.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/cssom-view/elementsFromPoint-simple.html` | 0 / 6 |  |
+| `css/cssom-view/elementsFromPoint-simple.html` | 1 / 6 |  |
 | `css/cssom-view/elementsFromPoint-svg-text.html` | 0 / 4 |  |
 | `css/cssom-view/elementsFromPoint-svg.html` | 0 / 6 |  |
 | `css/cssom-view/elementsFromPoint-table.html` | 0 / 4 |  |
-| `css/cssom-view/elementsFromPoint.html` | 0 / 27 | harnais : 9 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the  |
+| `css/cssom-view/elementsFromPoint.html` | 15 / 27 | harnais : 9 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the  |
 | `css/cssom-view/getBoundingClientRect-content-visibility-hidden.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/getBoundingClientRect-empty-inline-002.html` | 2 / 4 |  |
 | `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 1 |  |
@@ -1734,7 +1712,7 @@ est le plus honnête des deux.
 | `css/cssom-view/matchMedia.html` | 6 / 10 |  |
 | `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/mouseEvent.html` | 2 / 3 |  |
-| `css/cssom-view/negativeMargins.html` | 0 / 2 |  |
+| `css/cssom-view/negativeMargins.html` | 1 / 2 |  |
 | `css/cssom-view/offsetParent-body-and-html.html` | 5 / 6 |  |
 | `css/cssom-view/offsetParent-fixed.html` | 0 / 2 |  |
 | `css/cssom-view/offsetParent_element_test.html` | 0 / 2 |  |
@@ -1763,7 +1741,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scroll-behavior-smooth-after-hiding-iframe.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-behavior-smooth-navigation.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scroll-behavior-smooth-positions.html` | 18 / 23 |  |
-| `css/cssom-view/scroll-behavior-smooth.html` | 0 / 3 | harnais : TypeError: undefined n'est pas une fonction |
+| `css/cssom-view/scroll-behavior-smooth.html` | 0 / 3 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
 | `css/cssom-view/scroll-behavior-subframe-root.html` | 2 / 40 |  |
 | `css/cssom-view/scroll-behavior-subframe-window.html` | 2 / 28 |  |
 | `css/cssom-view/scroll-clamp-after-transform-shrinks-overflow.html` | 0 / 1 |  |
@@ -1819,9 +1797,9 @@ est le plus honnête des deux.
 | `css/cssom-view/table-offset-props.html` | 12 / 13 |  |
 | `css/cssom-view/table-scroll-props.html` | 11 / 13 |  |
 | `css/cssom-view/table-with-border-client-width-height.html` | 0 / 1 |  |
-| `css/cssom-view/user-scroll-interrupts-smooth-scroll.html` | 1 / 3 |  |
+| `css/cssom-view/user-scroll-interrupts-smooth-scroll.html` | 1 / 3 | harnais : délai du harnais dépassé |
 | `css/cssom-view/visual-scrollIntoView-001.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-002.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-003.html` | 0 / 1 |  |
-| `css/cssom-view/window-scroll-promise-interruption.html` | 0 / 4 | harnais : TypeError: undefined n'est pas une fonction |
-| `css/cssom-view/window-scroll-promises.html` | 0 / 18 | harnais : TypeError: undefined n'est pas une fonction |
+| `css/cssom-view/window-scroll-promise-interruption.html` | 0 / 4 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
+| `css/cssom-view/window-scroll-promises.html` | 0 / 18 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
