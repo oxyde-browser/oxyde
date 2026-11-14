@@ -291,6 +291,68 @@ const SVG_TAG_CASE: &[(&str, &str)] = &[
     ("textpath", "textPath"),
 ];
 
+/// Attributs SVG dont l'analyseur rétablit la casse : (minuscules, nom).
+const SVG_ATTRIBUTES: &[(&str, &str)] = &[
+    ("attributename", "attributeName"),
+    ("attributetype", "attributeType"),
+    ("basefrequency", "baseFrequency"),
+    ("baseprofile", "baseProfile"),
+    ("calcmode", "calcMode"),
+    ("clippathunits", "clipPathUnits"),
+    ("diffuseconstant", "diffuseConstant"),
+    ("edgemode", "edgeMode"),
+    ("filterunits", "filterUnits"),
+    ("glyphref", "glyphRef"),
+    ("gradienttransform", "gradientTransform"),
+    ("gradientunits", "gradientUnits"),
+    ("kernelmatrix", "kernelMatrix"),
+    ("kernelunitlength", "kernelUnitLength"),
+    ("keypoints", "keyPoints"),
+    ("keysplines", "keySplines"),
+    ("keytimes", "keyTimes"),
+    ("lengthadjust", "lengthAdjust"),
+    ("limitingconeangle", "limitingConeAngle"),
+    ("markerheight", "markerHeight"),
+    ("markerunits", "markerUnits"),
+    ("markerwidth", "markerWidth"),
+    ("maskcontentunits", "maskContentUnits"),
+    ("maskunits", "maskUnits"),
+    ("numoctaves", "numOctaves"),
+    ("pathlength", "pathLength"),
+    ("patterncontentunits", "patternContentUnits"),
+    ("patterntransform", "patternTransform"),
+    ("patternunits", "patternUnits"),
+    ("pointsatx", "pointsAtX"),
+    ("pointsaty", "pointsAtY"),
+    ("pointsatz", "pointsAtZ"),
+    ("preservealpha", "preserveAlpha"),
+    ("preserveaspectratio", "preserveAspectRatio"),
+    ("primitiveunits", "primitiveUnits"),
+    ("refx", "refX"),
+    ("refy", "refY"),
+    ("repeatcount", "repeatCount"),
+    ("repeatdur", "repeatDur"),
+    ("requiredextensions", "requiredExtensions"),
+    ("requiredfeatures", "requiredFeatures"),
+    ("specularconstant", "specularConstant"),
+    ("specularexponent", "specularExponent"),
+    ("spreadmethod", "spreadMethod"),
+    ("startoffset", "startOffset"),
+    ("stddeviation", "stdDeviation"),
+    ("stitchtiles", "stitchTiles"),
+    ("surfacescale", "surfaceScale"),
+    ("systemlanguage", "systemLanguage"),
+    ("tablevalues", "tableValues"),
+    ("targetx", "targetX"),
+    ("targety", "targetY"),
+    ("textlength", "textLength"),
+    ("viewbox", "viewBox"),
+    ("viewtarget", "viewTarget"),
+    ("xchannelselector", "xChannelSelector"),
+    ("ychannelselector", "yChannelSelector"),
+    ("zoomandpan", "zoomAndPan"),
+];
+
 /// Analyse un document HTML complet.
 #[must_use]
 pub fn parse_document(source: &str) -> Document {
@@ -497,7 +559,44 @@ impl TreeBuilder {
     }
 
     fn create_element(&mut self, tag: &Tag, ns: Namespace) -> NodeId {
-        self.doc.create_element(&tag.name, ns, tag.attrs.clone())
+        let mut attrs = tag.attrs.clone();
+        if ns != Namespace::Html {
+            for attr in &mut attrs {
+                self.adjust_foreign_attribute(attr, ns);
+            }
+        }
+        self.doc.create_element(&tag.name, ns, attrs)
+    }
+
+    /// Attribut d'un élément SVG ou MathML (HTML Standard §13.2.6.1) : la
+    /// casse des noms SVG est rétablie (`viewBox`), et les attributs
+    /// `xlink:…`, `xml:…` et `xmlns…` reçoivent leur espace de noms.
+    fn adjust_foreign_attribute(&mut self, attr: &mut Attribute, ns: Namespace) {
+        if ns == Namespace::Svg
+            && let Some((_, fixed)) = SVG_ATTRIBUTES.iter().find(|(lower, _)| *lower == attr.name)
+        {
+            attr.name = (*fixed).to_owned();
+        }
+        if ns == Namespace::MathMl && attr.name == "definitionurl" {
+            "definitionURL".clone_into(&mut attr.name);
+        }
+        match attr.name.as_str() {
+            "xlink:actuate" | "xlink:arcrole" | "xlink:href" | "xlink:role" | "xlink:show"
+            | "xlink:title" | "xlink:type" => {
+                attr.ns = self.doc.namespace("http://www.w3.org/1999/xlink");
+                attr.prefix = Some("xlink".to_owned());
+            }
+            "xml:lang" | "xml:space" => {
+                attr.ns = Namespace::Xml;
+                attr.prefix = Some("xml".to_owned());
+            }
+            "xmlns" => attr.ns = Namespace::Xmlns,
+            "xmlns:xlink" => {
+                attr.ns = Namespace::Xmlns;
+                attr.prefix = Some("xmlns".to_owned());
+            }
+            _ => {}
+        }
     }
 
     fn insert_element(&mut self, tag: &Tag) -> NodeId {

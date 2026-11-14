@@ -700,7 +700,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `slotchange` part aussi quand le contenu de repli d'un emplacement change.
       Limites : pas dans les cadres ni par `setHTMLUnsafe` ; les options
       (`shadowrootdelegatesfocus`, `shadowrootclonable`…) sont ignorées.
-- [ ] Web Platform Tests `dom/` : de 66,7 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] Analyseur HTML : les attributs des éléments SVG et MathML retrouvent leur casse
+      (`viewBox`, `preserveAspectRatio`…) et leur espace de noms (`xlink:href`,
+      `xml:lang`, `xmlns`). Sélecteurs : `*|nom`, `[*|attribut]` ; hors du HTML, un nom
+      d'attribut se compare tel qu'il est écrit. `String(classList)` rend l'attribut
+      tel quel ; `item(rang)` ne rend jamais un élément nommé ; `namedItem` ne lit
+      `name` que sur un élément HTML ; `document.location` vaut `null` pour un
+      document sans fenêtre ; `createEvent` connaît les interfaces de la norme ;
+      `offsetX` et `offsetY` sont relatifs à la cible pendant la distribution.
+      Limite : `[viewbox]` ne trouve plus un `<svg viewBox>` (comme dans les
+      navigateurs) ; pas de préfixe d'espace de noms déclaré (`ns|nom`).
+- [ ] Web Platform Tests `dom/` : de 68,7 % à 70 % des fichiers ; `html/` branché et mesuré.
       Les plus gros lots restants : `moveBefore` (33), `events/scrolling` (25 :
       défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),

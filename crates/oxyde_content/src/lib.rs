@@ -5725,4 +5725,62 @@ mod tests {
             Some("false true true false true")
         );
     }
+
+    #[test]
+    fn foreign_attributes_token_lists_and_documents_without_window() {
+        let mut p = page(
+            "<body class='  a  a b '><svg id=s viewbox='0 0 1 1' xmlns:xlink='http://www.w3.org/1999/xlink'>
+               <use id=u xlink:href='#x'></use></svg><p id=p></p>
+             <script>
+               const out = [];
+               const s = document.getElementById('s');
+               const u = document.getElementById('u');
+               out.push(s.attributes.getNamedItem('viewBox') !== null, s.hasAttribute('viewbox'));
+               const href = u.getAttributeNodeNS('http://www.w3.org/1999/xlink', 'href');
+               out.push(href.prefix, href.localName, href.value, u.getAttribute('xlink:href'));
+               out.push(JSON.stringify(String(document.body.classList)));
+               const all = document.getElementsByTagName('p');
+               out.push(all.item(4294967296) === all[0], all.item(4294967295));
+               out.push(document.implementation.createHTMLDocument('x').location, document.location === location);
+               out.push(document.createEvent('TextEvent') instanceof TextEvent);
+               try { document.createEvent('DeviceMotionEvent'); } catch (e) { out.push(e.name); }
+               out.push(document.getElementById('p').matches('*|p'), document.querySelectorAll('*|*').length > 3);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "true false xlink href #x #x \"  a  a b \" true   true true \
+                 NotSupportedError true true"
+            )
+        );
+    }
+
+    #[test]
+    fn attribute_selectors_respect_case_and_namespaces() {
+        let mut p = page(
+            "<body><div id=d viewBox=1></div><svg id=s viewBox='0 0 1 1' xlink:href='#a'></svg>
+             <script>
+               const out = [];
+               const ids = (selector) => Array.from(document.querySelectorAll(selector), (e) => e.id).join('+');
+               out.push(ids('[viewBox]'), ids('[viewbox]'), ids('[*|href]'), ids('[|viewBox]'));
+               const loose = document.createElementNS('', 'img');
+               loose.setAttribute('name', 'sans');
+               document.body.appendChild(loose);
+               out.push(document.body.children.namedItem('sans'), document.body.children.namedItem('d').id);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("d+s d s d+s  d")
+        );
+    }
 }

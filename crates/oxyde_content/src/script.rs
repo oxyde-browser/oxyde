@@ -2105,6 +2105,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     if let Some(array_proto) = vm.get(&array, "prototype")?.as_object() {
         if let Some(proto) = proto_of("DOMTokenList") {
             vm.set_prototype(proto, Some(array_proto))?;
+            // `String(liste)` rend l'attribut tel quel, pas ses jetons joints.
+            vm.define_method(proto, "toString", 0, tokens::to_string);
         }
         let source = Value::Object(array_proto);
         let iterator = vm.get(&source, "values")?;

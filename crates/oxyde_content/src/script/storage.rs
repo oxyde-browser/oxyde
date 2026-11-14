@@ -178,11 +178,12 @@ pub(super) fn dataset_owner(vm: &mut Vm, data: u64) -> Option<NodeId> {
 
 /// `item(index)` de `NodeList` et `HTMLCollection` : le receveur est un tableau.
 pub(super) fn list_item(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
-    let index = vm.to_number(&arg(args, 0))?;
-    if !index.is_finite() || index < 0.0 {
+    // `unsigned long` de Web IDL : modulo 2^32 ; le dernier n'est pas un rang.
+    let index = super::dom_ops::offset_arg(vm, &arg(args, 0))?;
+    if u32::try_from(index).is_ok_and(|rank| rank == u32::MAX) {
         return Ok(Value::Null);
     }
-    let value = vm.get(this, &index.trunc().to_string())?;
+    let value = vm.get(this, &index.to_string())?;
     Ok(match value {
         Value::Undefined => Value::Null,
         other => other,
@@ -202,9 +203,10 @@ pub(super) fn list_named_item(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRe
         let item = vm.get(this, &index.to_string())?;
         if let Some(node) = node_of(vm, &item) {
             let matches = host(vm).is_some_and(|h| {
-                h.doc
-                    .element(node)
-                    .is_some_and(|e| e.attr("id") == Some(&*name) || e.attr("name") == Some(&*name))
+                h.doc.element(node).is_some_and(|e| {
+                    e.attr("id") == Some(&*name)
+                        || (e.ns == oxyde_dom::Namespace::Html && e.attr("name") == Some(&*name))
+                })
             });
             if matches {
                 return Ok(item);
