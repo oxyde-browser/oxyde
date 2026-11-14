@@ -249,7 +249,7 @@
   });
   // `<body>` : ces gestionnaires sont ceux de la fenêtre (`body.onload = …`).
   const windowHandlers = {};
-  for (const kind of ["blur", "error", "focus", "load", "resize", "scroll", "afterprint",
+  for (const kind of ["blur", "error", "focus", "load", "resize", "scroll", "scrollend", "afterprint",
     "beforeprint", "beforeunload", "hashchange", "languagechange", "message", "messageerror",
     "offline", "online", "pagehide", "pageshow", "popstate", "rejectionhandled", "storage",
     "unhandledrejection", "unload"]) {

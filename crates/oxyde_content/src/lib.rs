@@ -722,6 +722,9 @@ pub struct Page {
     copied: Option<String>,
     /// Élément sous le pointeur au dernier déplacement connu.
     hovered: Option<NodeId>,
+    /// Zones qui ont défilé à l'image précédente : celles qui ne bougent
+    /// plus à l'image suivante reçoivent `scrollend`.
+    scroll_ending: Vec<u32>,
     /// Boutons de la souris enfoncés (voir [`MouseInput::buttons`]).
     buttons: u8,
     /// Pointeur au dernier bouton relâché : le clic qui suit en reprend
@@ -1171,6 +1174,7 @@ impl Page {
             selection: None,
             copied: None,
             hovered: None,
+            scroll_ending: Vec::new(),
             buttons: 0,
             released: MouseInput::default(),
             touches: HashMap::new(),
@@ -1889,7 +1893,9 @@ impl Page {
     /// doit être redessinée.
     pub fn tick(&mut self, now: Instant) -> bool {
         self.animations.advance(now);
-        let mut redraw = false;
+        // Les événements de défilement précèdent les minuteurs et les
+        // rappels d'animation de la même image.
+        let mut redraw = self.pump_scroll();
         if let Some(engine) = self.engine.as_mut() {
             engine.run_timers(&mut self.doc, now);
             if engine.take_dirty() {
@@ -1897,18 +1903,24 @@ impl Page {
                 redraw = true;
             }
         }
-        redraw | self.pump_animations() | self.pump_scroll()
+        redraw | self.pump_animations()
     }
 
-    /// Distribue les événements `scroll` des zones qui ont défilé. Renvoie
-    /// `true` si la page doit être redessinée.
+    /// Distribue les événements `scroll` des zones qui ont défilé, et
+    /// `scrollend` à celles qui avaient défilé à l'image précédente et ne
+    /// bougent plus. Renvoie `true` si la page doit être redessinée.
     fn pump_scroll(&mut self) -> bool {
         let changed = self.scrolling.lock().take_changed();
-        if changed.is_empty() {
+        let ended: Vec<u32> = std::mem::take(&mut self.scroll_ending)
+            .into_iter()
+            .filter(|id| !changed.contains(id))
+            .collect();
+        self.scroll_ending.clone_from(&changed);
+        if changed.is_empty() && ended.is_empty() {
             return false;
         }
         if let Some(engine) = self.engine.as_mut() {
-            engine.scroll_events(&mut self.doc, &changed);
+            engine.scroll_events(&mut self.doc, &changed, &ended);
             if engine.take_dirty() {
                 self.dom_changed();
             }
@@ -1982,8 +1994,10 @@ impl Page {
     pub fn next_wake(&mut self) -> Option<Instant> {
         let timer = self.engine.as_mut().and_then(|engine| engine.next_due());
         // Une animation en cours, ou un événement `scroll` à distribuer.
-        let frame = (self.animations.needs_frames() || self.scrolling.lock().has_changed())
-            .then(|| self.animations.instant_at(self.animations.now()) + FRAME);
+        let frame = (self.animations.needs_frames()
+            || self.scrolling.lock().has_changed()
+            || !self.scroll_ending.is_empty())
+        .then(|| self.animations.instant_at(self.animations.now()) + FRAME);
         match (timer, frame) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
@@ -5522,6 +5536,41 @@ mod tests {
                  3 true true false false function 3 function false function \
                  0,1,2,3,id,name,data-user-id,data-a userId,a true false posé "
             )
+        );
+    }
+
+    #[test]
+    fn scrolling_ends_with_scrollend_and_style_strings_apply() {
+        let mut p = page(
+            "<body><div id=c></div><script>
+               const out = [];
+               const t = document.createElement('div');
+               t.style = 'overflow: scroll; height: 100px; width: 100px';
+               const child = document.createElement('div');
+               child.style = 'height: 300px; width: 50px';
+               t.appendChild(child);
+               document.getElementById('c').appendChild(t);
+               const note = (text) => {
+                 out.push(text);
+                 document.body.setAttribute('data-out', out.join(' '));
+               };
+               t.addEventListener('scroll', () => note('scroll' + t.scrollTop));
+               t.onscrollend = () => note('fin' + t.scrollTop);
+               note(t.getAttribute('style').length > 0, 'onscrollend' in window, t.clientHeight);
+               t.scrollTop = 40;
+               requestAnimationFrame(() => note('image'));
+             </script>",
+        );
+        p.run_scripts();
+        for _ in 0..4 {
+            let Some(due) = p.next_wake() else { break };
+            p.tick(due);
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("true scroll40 image fin40")
         );
     }
 }

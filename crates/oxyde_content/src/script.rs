@@ -1051,6 +1051,7 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             | "innerText"
             | "innerHTML"
             | "outerHTML"
+            | "style"
             | "nodeValue"
             | "data"
             | "className"
@@ -1110,6 +1111,8 @@ fn set_node_property(vm: &mut Vm, data: u64, key: &str, value: &Value) -> Option
             }
         }
         "className" => doc.set_attr(node, "class", &text),
+        // `element.style = "…"` écrit l'attribut `style` (PutForwards=cssText).
+        "style" if doc.element(node).is_some() => doc.set_attr(node, "style", &text),
         "title" if is_document => {
             if let Some(title) = doc.find_html_element(node, "title") {
                 doc.remove_children(title);
@@ -2805,19 +2808,25 @@ impl ScriptEngine {
         self.run(doc, |vm| settle_fetch(vm, id, result));
     }
 
-    /// Distribue l'événement `scroll` aux zones `ids` qui ont défilé : sur
+    /// Distribue l'événement `scroll` aux zones `ids` qui ont défilé, puis
+    /// `scrollend` aux zones `ended` dont le défilement s'est arrêté : sur
     /// le document pour la fenêtre, sur l'élément sinon.
-    pub(crate) fn scroll_events(&mut self, doc: &mut Document, ids: &[u32]) {
+    pub(crate) fn scroll_events(&mut self, doc: &mut Document, ids: &[u32], ended: &[u32]) {
         self.run(doc, |vm| {
-            for id in ids {
-                let Some(h) = host(vm) else { return };
-                if *id == oxyde_compositor::ROOT_SCROLLER {
-                    let document = h.doc.root();
-                    events::dispatch_simple(vm, document, "scroll", true);
-                } else if let Some(node) = h.doc.id_from_index(*id as usize) {
-                    events::dispatch_simple(vm, node, "scroll", false);
+            for (kind, list) in [("scroll", ids), ("scrollend", ended)] {
+                for id in list {
+                    let Some(h) = host(vm) else { return };
+                    if *id == oxyde_compositor::ROOT_SCROLLER {
+                        let document = h.doc.root();
+                        events::dispatch_simple(vm, document, kind, true);
+                    } else if let Some(node) = h.doc.id_from_index(*id as usize)
+                        // Une zone retirée du document entre-temps ne reçoit rien.
+                        && h.doc.is_connected(node)
+                    {
+                        events::dispatch_simple(vm, node, kind, false);
+                    }
+                    vm.run_microtasks();
                 }
-                vm.run_microtasks();
             }
         });
     }

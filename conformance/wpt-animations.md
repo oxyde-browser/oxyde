@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 601 / 6349 (9,5 %)** — fichiers entièrement réussis : 60 / 363 (16,5 %).
+**Sous-tests réussis : 602 / 6349 (9,5 %)** — fichiers entièrement réussis : 60 / 363 (16,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -17,7 +17,7 @@ est le plus honnête des deux.
 | `css/css-animations/parsing` | 10 / 41 | 150 / 574 (26,1 %) |
 | `css/css-animations/responsive` | 1 / 4 | 1 / 7 (14,3 %) |
 | `css/css-animations/stability` | 0 / 1 | 0 / 1 (0,0 %) |
-| `css/css-transforms` | 17 / 43 | 67 / 199 (33,7 %) |
+| `css/css-transforms` | 17 / 43 | 68 / 199 (34,2 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
 | `css/css-transitions` | 18 / 98 | 127 / 4390 (2,9 %) |
@@ -222,7 +222,7 @@ est le plus honnête des deux.
 | `css/css-transforms/transform-percent-009.html` | 0 / 4 |  |
 | `css/css-transforms/transform-with-sign-function.html` | 0 / 11 |  |
 | `css/css-transforms/transformed-table-section-containing-block.html` | 0 / 2 |  |
-| `css/css-transforms/transforms-support-calc.html` | 0 / 7 |  |
+| `css/css-transforms/transforms-support-calc.html` | 1 / 7 |  |
 | `css/css-transforms/translate-getComputedStyle.html` | 0 / 1 |  |
 | `css/css-transitions/AnimationEffect-getComputedTiming.tentative.html` | 0 / 22 |  |
 | `css/css-transitions/CSSTransition-canceling.tentative.html` | 0 / 11 |  |
