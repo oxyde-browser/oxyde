@@ -13,6 +13,13 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use indexmap::IndexMap;
 
+/// Table des propriétés d'un objet, dans l'ordre de leur création.
+///
+/// Le hachage est celui de `foldhash` : bien plus rapide que SipHash sur les
+/// noms courts, et graine tirée au hasard à chaque exécution, ce qui garde
+/// la table hors de portée d'une attaque par collisions.
+pub(crate) type PropertyMap<K> = IndexMap<K, Property, foldhash::fast::RandomState>;
+
 use crate::bytecode::{FunctionProto, Reg};
 use crate::value::{JsStr, ObjId, PropertyKey, Symbol, Value};
 use crate::vm::{NativeDataFn, NativeFn, Resume};
@@ -858,9 +865,9 @@ pub(crate) struct ProxyData {
 #[derive(Clone, Debug)]
 pub(crate) struct Object {
     pub(crate) proto: Option<ObjId>,
-    pub(crate) props: IndexMap<JsStr, Property>,
+    pub(crate) props: PropertyMap<JsStr>,
     /// Propriétés dont la clé est un symbole (vide pour la plupart des objets).
-    pub(crate) symbols: IndexMap<Symbol, Property>,
+    pub(crate) symbols: PropertyMap<Symbol>,
     pub(crate) kind: Kind,
     pub(crate) extensible: bool,
     /// Propriétés virtuelles d'une fonction (`name`, `length`) supprimées ;
@@ -875,8 +882,8 @@ impl Object {
     pub(crate) fn new(proto: Option<ObjId>, kind: Kind) -> Self {
         Self {
             proto,
-            props: IndexMap::new(),
-            symbols: IndexMap::new(),
+            props: PropertyMap::default(),
+            symbols: PropertyMap::default(),
             kind,
             extensible: true,
             deleted_virtual: 0,

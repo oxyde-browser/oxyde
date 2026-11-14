@@ -3301,3 +3301,85 @@ fn nested_parentheses_parse_in_linear_time() {
     );
     assert_eq!(eval("var g = (a = (1 + 2)) => a; (g)() + (g(4))"), "7");
 }
+
+#[test]
+fn long_strings_are_indexed_in_linear_time() {
+    // `length`, `charCodeAt` et `s[i]` sur une longue chaîne non ASCII : un
+    // repère garde la position atteinte, sans quoi la boucle coûterait le
+    // carré de la longueur (200 000 caractères ne finiraient pas).
+    assert_eq!(
+        eval(
+            "var s = 'é😀a'.repeat(70000); var n = 0;
+             for (var i = 0; i < s.length; i++) n += s.charCodeAt(i) === 97 ? 1 : 0;
+             [s.length, n, s.charCodeAt(0), s.charCodeAt(1), s.charCodeAt(2), s.charCodeAt(3),
+              s[3], s.charAt(279999), s[280000], s.charCodeAt(280000),
+              // Retour en arrière, puis saut en avant.
+              s.charCodeAt(139999), s.charCodeAt(4), s.charCodeAt(279996)].join()"
+        ),
+        "280000,70000,233,55357,56832,97,a,a,,NaN,97,233,233"
+    );
+    // Deux chaînes lues en alternance, et une chaîne courte.
+    assert_eq!(
+        eval(
+            "var a = 'x'.repeat(50) + 'é', b = 'y'.repeat(60) + 'ü', out = [];
+             for (var i = 48; i < 52; i++) out.push(a.charCodeAt(i), b.charCodeAt(i + 9));
+             out.join() + '|' + 'aé'.charCodeAt(1) + '|' + 'aé'.length"
+        ),
+        "120,121,120,121,233,121,NaN,252|233|2"
+    );
+}
+
+#[test]
+fn captured_variables_survive_calls_and_generators() {
+    // Les cellules ouvertes sont rangées par registre : les retours de
+    // fonctions n'en ferment que la fin, les générateurs en rouvrent au milieu.
+    assert_eq!(
+        eval(
+            "function f() {
+               var a = 1, b = 2, c = 3;
+               var lire = () => [a, b, c].join('');
+               function* g() { var x = 10; var h = () => x + a; yield h(); a = 5; x = 20; yield h(); }
+               var it = g(); var premier = it.next().value;
+               var interne = (function () { var d = 4; return () => d + c; })();
+               b = 7;
+               return [premier, it.next().value, interne(), lire()].join();
+             }
+             f()"
+        ),
+        "11,25,7,573"
+    );
+}
+
+#[test]
+fn simple_instructions_keep_their_semantics() {
+    // Le chemin rapide de l'interpréteur ne couvre que les cas sans effet de
+    // bord ; les autres retombent sur le chemin général.
+    assert_eq!(
+        eval(
+            "var o = { a: 1, get b() { return 2; } }, p = Object.create(o), t = [1, , 3];
+             var r = [p.a, p.b, p.absent, t[0], t[1], t[2], t[5], 7 & 3, -1 >>> 28, 1 << 33, 5 % 3,
+                      '2' * 3, 1 / 0, NaN === NaN, null === null, 'a' === 'a', 0 === -0];
+             var n = 0; for (var i = 0; i < 1000; i++) { if (i % 3 === 0) continue; n += i; }
+             r.join() + '|' + n"
+        ),
+        "1,2,,1,,3,,3,15,2,2,6,Infinity,false,true,true,true|332667"
+    );
+    assert!(eval("let x = 1; { x; let y = y + 1; }").contains("ReferenceError"));
+}
+
+#[test]
+fn string_slices_and_searches_use_utf16_positions() {
+    assert_eq!(
+        eval(
+            "var s = 'aé😀b'.repeat(20000), out = [];
+             // Tranches successives, comme le fait un analyseur de texte.
+             var n = 0; for (var i = 0; i < s.length; i += 5) n += s.slice(i, i + 5).length;
+             out.push(n, s.slice(0, 5), s.substring(5, 7), s.substr(99995, 5), s.slice(-1), s.slice(3, 4).length,
+                      s.indexOf('b'), s.indexOf('b', 5), s.indexOf('😀', 99990), s.lastIndexOf('a'),
+                      s.includes('éa'), s.startsWith('😀b', 2), s.endsWith('b'), s.at(-2).length,
+                      s.codePointAt(2), s.codePointAt(3));
+             out.join()"
+        ),
+        "100000,aé😀b,aé,aé😀b,b,1,4,9,99992,99995,false,true,true,1,128512,56832"
+    );
+}
