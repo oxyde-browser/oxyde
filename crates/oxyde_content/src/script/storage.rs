@@ -129,6 +129,41 @@ pub(super) fn data_attribute(key: &str) -> String {
     name
 }
 
+/// Clés propres d'un `dataset` : le nom de chaque attribut `data-*` sans
+/// majuscule, chaque « -x » devenant « X ».
+pub(super) fn dataset_keys(vm: &mut Vm, data: u64) -> Vec<String> {
+    let Some(node) = dataset_owner(vm, data) else {
+        return Vec::new();
+    };
+    let Some(element) = host(vm).and_then(|h| h.doc.element(node)) else {
+        return Vec::new();
+    };
+    let mut keys = Vec::new();
+    for attr in &element.attrs {
+        let Some(rest) = attr.name.strip_prefix("data-") else {
+            continue;
+        };
+        if rest.chars().any(|c| c.is_ascii_uppercase()) {
+            continue;
+        }
+        let mut key = String::new();
+        let mut chars = rest.chars().peekable();
+        while let Some(c) = chars.next() {
+            match chars.peek() {
+                Some(next) if c == '-' && next.is_ascii_lowercase() => {
+                    key.push(next.to_ascii_uppercase());
+                    chars.next();
+                }
+                _ => key.push(c),
+            }
+        }
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys
+}
+
 /// Valeur de la propriété `key` du `dataset` de `node`.
 pub(super) fn dataset_get(vm: &mut Vm, node: NodeId, key: &str) -> Option<String> {
     let name = data_attribute(key);

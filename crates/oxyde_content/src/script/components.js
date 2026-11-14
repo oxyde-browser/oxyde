@@ -663,9 +663,12 @@
       byConstructor.set(constructor, definition);
       watch();
       // Les éléments déjà dans le document sont mis à niveau, dans l'ordre.
-      for (const element of document.querySelectorAll(text)) upgrade(element, definition);
+      // Par nom d'élément, pas par sélecteur : un nom peut porter un point.
+      for (const element of Array.from(document.getElementsByTagName(text))) upgrade(element, definition);
       for (const root of shadowRoots) {
-        for (const element of root.querySelectorAll(text)) upgrade(element, definition);
+        for (const element of root.querySelectorAll("*")) {
+          if (element.localName === text) upgrade(element, definition);
+        }
       }
       const pending = waiting.get(text);
       if (pending !== undefined) {

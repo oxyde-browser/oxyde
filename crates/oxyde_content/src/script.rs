@@ -22,7 +22,7 @@ use oxyde_bindings::InterfaceDescriptor;
 use oxyde_css::selector::{Selector, parse_selector_list};
 use oxyde_css::syntax::tokenize;
 use oxyde_dom::{Document, Namespace, NodeData, NodeId};
-use oxyde_js::{ConsoleMessage, HostHooks, JsResult, NativeFn, ObjId, Value, Vm};
+use oxyde_js::{ConsoleMessage, HostHooks, HostKey, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
 mod attrs;
@@ -1269,8 +1269,47 @@ fn host_keys(vm: &mut Vm, class: u32, data: u64) -> Vec<String> {
     match class {
         CLASS_LIVE => lists::keys(vm, data),
         CLASS_LIST => tokens::keys(vm, data),
+        CLASS_ATTRS => attrs::map_keys(vm, data),
+        CLASS_DATASET => storage::dataset_keys(vm, data),
         _ => Vec::new(),
     }
+}
+
+/// Statut de la clé `key` : les rangs et les noms d'une collection sont
+/// tenus par l'hôte.
+fn host_policy(vm: &mut Vm, class: u32, data: u64, key: &str) -> HostKey {
+    match class {
+        CLASS_LIVE => lists::policy(vm, data, key),
+        CLASS_ATTRS => attrs::map_policy(vm, data, key),
+        _ => HostKey::Ordinary,
+    }
+}
+
+/// `delete objet[key]` : refusé pour ce qu'une collection tient ; retire
+/// l'attribut `data-*` pour un `dataset`.
+fn host_delete(vm: &mut Vm, class: u32, data: u64, key: &str) -> Option<bool> {
+    match class {
+        CLASS_LIVE | CLASS_ATTRS => match host_policy(vm, class, data, key) {
+            HostKey::Ordinary => None,
+            HostKey::Fixed { .. } => Some(false),
+            HostKey::Reserved => Some(true),
+        },
+        CLASS_DATASET => {
+            let node = storage::dataset_owner(vm, data)?;
+            storage::dataset_get(vm, node, key)?;
+            let h = host(vm)?;
+            h.doc.remove_attr(node, &storage::data_attribute(key));
+            h.dirty = true;
+            Some(true)
+        }
+        _ => None,
+    }
+}
+
+/// Classes dont une propriété posée par un script masque le nom que la
+/// collection servirait.
+fn host_own_first(class: u32) -> bool {
+    matches!(class, CLASS_LIVE | CLASS_ATTRS)
 }
 
 fn host_set(vm: &mut Vm, class: u32, data: u64, key: &str, value: &Value) -> Option<JsResult<()>> {
@@ -2025,13 +2064,31 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             "interfaces du DOM absentes de la table générée",
         ));
     };
-    // Les listes de nœuds sont des tableaux : leurs prototypes héritent de
-    // `Array.prototype`, ce qui leur garde `forEach`, `map`, l'itération…
+    // Une `DOMTokenList` hérite de `Array.prototype`. `NodeList` n'en reçoit
+    // que l'itération (`forEach`, `keys`, `values`, `entries`), et
+    // `HTMLCollection` le seul itérateur, comme le veut la norme.
     let array = vm.get(&Value::Object(vm.global()), "Array")?;
     if let Some(array_proto) = vm.get(&array, "prototype")?.as_object() {
-        for name in ["NodeList", "HTMLCollection", "DOMTokenList"] {
-            if let Some(proto) = proto_of(name) {
-                vm.set_prototype(proto, Some(array_proto))?;
+        if let Some(proto) = proto_of("DOMTokenList") {
+            vm.set_prototype(proto, Some(array_proto))?;
+        }
+        let source = Value::Object(array_proto);
+        let iterator = vm.get(&source, "values")?;
+        let symbol = vm.get(&Value::Object(vm.global()), "Symbol")?;
+        let key = vm.get(&symbol, "iterator")?;
+        for (name, methods) in [
+            ("NodeList", &["forEach", "keys", "values", "entries"][..]),
+            ("HTMLCollection", &[][..]),
+        ] {
+            let Some(proto) = proto_of(name) else {
+                continue;
+            };
+            for method in methods {
+                let function = vm.get(&source, method)?;
+                vm.define_hidden(proto, method, function);
+            }
+            if let Value::Symbol(symbol) = &key {
+                vm.define_hidden_symbol(proto, symbol, iterator.clone());
             }
         }
     }
@@ -2116,6 +2173,9 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         get: host_get,
         set: host_set,
         keys: host_keys,
+        policy: host_policy,
+        delete: host_delete,
+        own_first: host_own_first,
         global: named_global,
     });
     events::install_attributes(vm)?;

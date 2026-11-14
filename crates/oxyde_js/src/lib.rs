@@ -38,7 +38,7 @@ pub use builtins::{ConsoleMessage, SharedStorage};
 pub use lexer::SyntaxError;
 pub use module::{ImportPreparer, ModuleLoader, module_requests};
 pub use value::{JsStr, ObjId, PropertyKey, Symbol, Value};
-pub use vm::{HostHooks, JsResult, NativeDataFn, NativeFn, Vm};
+pub use vm::{HostHooks, HostKey, JsResult, NativeDataFn, NativeFn, Vm};
 
 /// Échec de l'évaluation d'un script.
 #[derive(Clone, Debug, PartialEq)]

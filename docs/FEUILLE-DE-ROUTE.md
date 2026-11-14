@@ -652,10 +652,21 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `Event.timeStamp` ont une résolution de 0,1 ms.
       Limites : `outerHTML` analyse son texte comme le contenu d'un `<body>` ; un
       identifiant `#-123` est encore accepté dans un sélecteur.
-- [ ] Web Platform Tests `dom/` : de 62,5 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] Collections du DOM : les rangs et les noms d'une `HTMLCollection`, d'une
+      `NodeList` vivante et d'une `NamedNodeMap` ne s'écrivent pas, ne se redéfinissent
+      pas et ne se suppriment pas (erreur en mode strict) ; ils paraissent dans
+      `Object.keys` (les rangs) et `Object.getOwnPropertyNames` (rangs et noms) ; une
+      propriété posée par un script passe avant un nom apparu ensuite ; `dataset`
+      énumère ses clés et `delete` y retire l'attribut. `NodeList` et `HTMLCollection`
+      n'héritent plus de `Array.prototype` : `NodeList` garde `forEach`, `keys`,
+      `values`, `entries` et l'itération ; `HTMLCollection` l'itération seule.
+      Limites : une `NodeList` figée (`querySelectorAll`) reste un tableau
+      (`Array.isArray` vrai) ; `length` lu sur un objet qui hérite d'une collection ne
+      lève pas d'erreur.
+- [ ] Web Platform Tests `dom/` : de 63,5 % à 70 % des fichiers ; `html/` branché et mesuré.
       Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (35 :
       `scrollend`, défilement tactile), `ranges/tentative` (19),
-      collections exotiques (`HTMLCollection`, `NamedNodeMap`, `NodeList` : ~18),
+      `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,

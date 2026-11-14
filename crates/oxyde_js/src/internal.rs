@@ -18,6 +18,7 @@
 
 use std::sync::Arc;
 
+use crate::HostKey;
 use crate::builtins::is_callable;
 use crate::heap::{Kind, Property, Slot};
 use crate::object::{MAX_ARRAY_GAP, char_at};
@@ -328,16 +329,29 @@ impl Vm {
             && let Kind::Host { class, data } = &self.heap.get(id).kind
         {
             let (class, data) = (*class, *data);
-            if let Some(hooks) = self.host_hooks
+            if !self.host_shadowed(id, class, name)
+                && let Some(hooks) = self.host_hooks
                 && (hooks.keys)(self, class, data)
                     .iter()
                     .any(|own| **own == **name)
                 && let Some(value) = (hooks.get)(self, class, data, name)
             {
-                return Ok(Some(Descriptor::data(value?, false, true, true)));
+                let enumerable = !matches!(
+                    (hooks.policy)(self, class, data, name),
+                    HostKey::Fixed { enumerable: false }
+                );
+                return Ok(Some(Descriptor::data(value?, false, enumerable, true)));
             }
         }
         Ok(self.ordinary_get_own(id, key))
+    }
+
+    /// Vrai si l'objet hôte `id`, de classe `class`, porte une propriété
+    /// ordinaire `name` qui passe avant celle que l'hôte sert.
+    pub(crate) fn host_shadowed(&self, id: ObjId, class: u32, name: &str) -> bool {
+        self.host_hooks
+            .is_some_and(|hooks| (hooks.own_first)(class))
+            && self.heap.get(id).props.contains_key(name)
     }
 
     /// `[[GetOwnProperty]]` d'un objet qui n'est pas un `Proxy`.
@@ -436,6 +450,18 @@ impl Vm {
         }
         if let PropertyKey::String(name) = key {
             self.touch_deferred(id, Some(name))?;
+        }
+        // Objet hôte : une clé tenue ou réservée par l'hôte ne se définit pas.
+        if let PropertyKey::String(name) = key
+            && let Kind::Host { class, data } = &self.heap.get(id).kind
+        {
+            let (class, data) = (*class, *data);
+            if let Some(hooks) = self.host_hooks
+                && !self.host_shadowed(id, class, name)
+                && (hooks.policy)(self, class, data, name) != HostKey::Ordinary
+            {
+                return Ok(false);
+            }
         }
         if let PropertyKey::String(name) = key
             && let Some(cell) = self.mapped_argument(id, name)
@@ -777,9 +803,19 @@ impl Vm {
                     let (class, data) = (*class, *data);
                     if let PropertyKey::String(name) = key
                         && let Some(hooks) = self.host_hooks
-                        && let Some(result) = (hooks.set)(self, class, data, name, &value)
+                        && !self.host_shadowed(obj, class, name)
                     {
-                        return result.map(|()| true);
+                        // Propriété tenue par l'hôte : l'écriture est refusée.
+                        // Sur un objet qui hérite de l'objet hôte, seuls ses
+                        // rangs la refusent : un nom s'y pose normalement.
+                        let direct = receiver.as_object() == Some(obj)
+                            || canonical_numeric_index(name).is_some();
+                        if direct && (hooks.policy)(self, class, data, name) != HostKey::Ordinary {
+                            return Ok(false);
+                        }
+                        if let Some(result) = (hooks.set)(self, class, data, name, &value) {
+                            return result.map(|()| true);
+                        }
                     }
                 }
                 _ => {}
@@ -837,6 +873,16 @@ impl Vm {
                 });
             }
         };
+        // Objet hôte : l'hôte répond pour les propriétés qu'il tient.
+        if let Kind::Host { class, data } = &self.heap.get(id).kind {
+            let (class, data) = (*class, *data);
+            if let Some(hooks) = self.host_hooks
+                && !self.host_shadowed(id, class, name)
+                && let Some(done) = (hooks.delete)(self, class, data, name)
+            {
+                return Ok(done);
+            }
+        }
         // Supprimer un élément lié de `arguments` rompt le lien.
         if self.mapped_argument(id, name).is_some()
             && self
@@ -977,7 +1023,9 @@ impl Vm {
     /// Clés propres énumérables de `id` qui sont des chaînes (`Object.keys`,
     /// `for…in`), dans l'ordre de `[[OwnPropertyKeys]]`.
     pub(crate) fn enumerable_own_keys(&mut self, id: ObjId) -> JsResult<Vec<JsStr>> {
-        if !self.is_proxy(id) {
+        // Un objet hôte annonce lui-même ses clés et dit lesquelles
+        // s'énumèrent : il prend le chemin général.
+        if !self.is_proxy(id) && !matches!(self.heap.get(id).kind, Kind::Host { .. }) {
             self.touch_deferred(id, None)?;
             return Ok(self.own_keys(id, true));
         }

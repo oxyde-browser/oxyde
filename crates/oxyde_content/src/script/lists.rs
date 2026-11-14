@@ -10,7 +10,7 @@
 //! page ; les propriétés nommées d'une `HTMLCollection` ne s'énumèrent pas.
 
 use oxyde_dom::{Document, Namespace, NodeId, QuirksMode};
-use oxyde_js::{JsResult, Value, Vm};
+use oxyde_js::{HostKey, JsResult, Value, Vm};
 
 use super::documents::{document_of, is_html_document};
 use super::{CLASS_LIVE, arg, host, this_node, wrap};
@@ -171,7 +171,7 @@ pub(super) fn property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
     if key == "length" {
         return Some(Ok(super::number(found.len())));
     }
-    if let Ok(index) = key.parse::<usize>() {
+    if let Some(index) = array_index(key) {
         // Un rang hors de la collection n'est pas une propriété.
         return found.get(index).map(|node| Ok(wrap(vm, *node)));
     }
@@ -191,6 +191,36 @@ pub(super) fn property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         return None;
     }
     Some(Ok(wrap(vm, named)))
+}
+
+/// Rang de tableau que désigne `key` (« 0 », « 12 »), s'il en désigne un :
+/// « 01 », « -2 » ou « 4294967295 » sont des noms, pas des rangs.
+pub(super) fn array_index(key: &str) -> Option<usize> {
+    let index = key.parse::<u32>().ok()?;
+    (index != u32::MAX && index.to_string() == key)
+        .then(|| usize::try_from(index).ok())
+        .flatten()
+}
+
+/// Statut de la clé `key` de la collection `data` : ses rangs, sa longueur
+/// et ses noms sont tenus par l'hôte ; un rang au-delà de la fin lui est
+/// réservé.
+pub(super) fn policy(vm: &mut Vm, data: u64, key: &str) -> HostKey {
+    let Some(found) = nodes(vm, data) else {
+        return HostKey::Ordinary;
+    };
+    if let Some(index) = array_index(key) {
+        return if index < found.len() {
+            HostKey::Fixed { enumerable: true }
+        } else {
+            HostKey::Reserved
+        };
+    }
+    if key == "length" || property(vm, data, key).is_some() {
+        HostKey::Fixed { enumerable: false }
+    } else {
+        HostKey::Ordinary
+    }
 }
 
 /// Clés propres de la collection `data` : ses rangs, puis — pour une

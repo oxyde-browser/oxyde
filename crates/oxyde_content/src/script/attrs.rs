@@ -8,7 +8,7 @@
 //! d'un `NamedNodeMap` ne s'énumèrent pas.
 
 use oxyde_dom::{Attribute, Document, Namespace, NodeData, NodeId, XML_NS, XMLNS_NS};
-use oxyde_js::{JsResult, Value, Vm};
+use oxyde_js::{HostKey, JsResult, Value, Vm};
 
 use super::documents::{created_by, is_element_local_name, is_html_document};
 use super::dom_ops::offset_arg;
@@ -468,7 +468,7 @@ pub(super) fn map_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult
         let count = host(vm)?.doc.element(element)?.attrs.len();
         return Some(Ok(super::number(count)));
     }
-    if let Ok(index) = key.parse::<usize>() {
+    if let Some(index) = super::lists::array_index(key) {
         let present = host(vm)?.doc.element(element)?.attrs.len() > index;
         return present.then(|| Ok(wrap_attr(vm, element, Some(index))));
     }
@@ -491,6 +491,52 @@ pub(super) fn map_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult
     let name = adjusted(vm, element, key);
     let index = host(vm)?.doc.attr_index(element, &name)?;
     Some(Ok(wrap_attr(vm, element, Some(index))))
+}
+
+/// Clés propres d'une `NamedNodeMap` : les rangs de ses attributs, puis
+/// leurs noms qualifiés, sans doublon. Sur un élément HTML d'un document
+/// HTML, un nom qui porte une majuscule n'est pas servi.
+pub(super) fn map_keys(vm: &mut Vm, data: u64) -> Vec<String> {
+    let Some(element) = host(vm).and_then(|h| {
+        h.doc
+            .id_from_index(usize::try_from(data).unwrap_or(usize::MAX))
+    }) else {
+        return Vec::new();
+    };
+    let names: Vec<String> = host(vm)
+        .and_then(|h| h.doc.element(element))
+        .map(|e| e.attrs.iter().map(|attr| attr.name.clone()).collect())
+        .unwrap_or_default();
+    let mut keys: Vec<String> = (0..names.len()).map(|index| index.to_string()).collect();
+    for name in names {
+        if adjusted(vm, element, &name) == name && !keys.contains(&name) {
+            keys.push(name);
+        }
+    }
+    keys
+}
+
+/// Statut de la clé `key` d'une `NamedNodeMap` : rangs, longueur et noms
+/// d'attributs sont tenus par l'hôte.
+pub(super) fn map_policy(vm: &mut Vm, data: u64, key: &str) -> HostKey {
+    let count = host(vm)
+        .and_then(|h| {
+            let element = h.doc.id_from_index(usize::try_from(data).ok()?)?;
+            Some(h.doc.element(element)?.attrs.len())
+        })
+        .unwrap_or(0);
+    if let Some(index) = super::lists::array_index(key) {
+        return if index < count {
+            HostKey::Fixed { enumerable: true }
+        } else {
+            HostKey::Reserved
+        };
+    }
+    if key == "length" || map_keys(vm, data).iter().any(|own| own == key) {
+        HostKey::Fixed { enumerable: false }
+    } else {
+        HostKey::Ordinary
+    }
 }
 
 pub(super) fn map_item(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {

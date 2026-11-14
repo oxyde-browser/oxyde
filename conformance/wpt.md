@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44404 / 50203 (88,4 %)** — fichiers entièrement réussis : 433 / 693 (62,5 %).
+**Sous-tests réussis : 44440 / 50203 (88,5 %)** — fichiers entièrement réussis : 440 / 693 (63,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -15,12 +15,12 @@ est le plus honnête des deux.
 |---|---:|---:|
 | `dom` | 6 / 9 | 121 / 142 (85,2 %) |
 | `dom/abort` | 5 / 6 | 36 / 37 (97,3 %) |
-| `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
+| `dom/collections` | 10 / 12 | 58 / 60 (96,7 %) |
 | `dom/events` | 72 / 100 | 483 / 636 (75,9 %) |
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 4 / 39 | 15 / 94 (16,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 192 / 265 | 10840 / 13109 (82,7 %) |
+| `dom/nodes` | 193 / 265 | 10853 / 13109 (82,8 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
 | `dom/nodes/moveBefore` | 17 / 64 | 81 / 177 (45,8 %) |
@@ -35,13 +35,7 @@ est le plus honnête des deux.
 |---|---:|---|
 | `dom/abort/abort-signal-timeout.html` | 0 / 1 |  |
 | `dom/collections/HTMLCollection-as-prototype.html` | 1 / 2 |  |
-| `dom/collections/HTMLCollection-delete.html` | 2 / 4 |  |
-| `dom/collections/HTMLCollection-iterator.html` | 3 / 6 |  |
-| `dom/collections/HTMLCollection-own-props.html` | 4 / 8 |  |
-| `dom/collections/HTMLCollection-supported-property-indices.html` | 3 / 7 |  |
-| `dom/collections/HTMLCollection-supported-property-names.html` | 3 / 6 |  |
-| `dom/collections/domstringmap-supported-property-names.html` | 0 / 5 |  |
-| `dom/collections/namednodemap-supported-property-names.html` | 0 / 3 |  |
+| `dom/collections/HTMLCollection-supported-property-indices.html` | 6 / 7 |  |
 | `dom/events/Body-FrameSet-Event-Handlers.html` | 1 / 5 |  |
 | `dom/events/Event-dispatch-click.html` | 18 / 33 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-detached-input-and-change.html` | 8 / 12 |  |
@@ -140,12 +134,12 @@ est le plus honnête des deux.
 | `dom/nodes/Document-createElement.html` | 49 / 147 |  |
 | `dom/nodes/Document-createElementNS.html` | 205 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 213 / 279 |  |
-| `dom/nodes/Document-getElementsByTagName.html` | 15 / 18 |  |
+| `dom/nodes/Document-getElementsByTagName.html` | 17 / 18 |  |
 | `dom/nodes/Element-children.html` | 0 / 2 |  |
 | `dom/nodes/Element-classlist.html` | 1415 / 1420 |  |
 | `dom/nodes/Element-closest.html` | 28 / 29 |  |
 | `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 |  |
-| `dom/nodes/Element-getElementsByTagName.html` | 16 / 19 |  |
+| `dom/nodes/Element-getElementsByTagName.html` | 18 / 19 |  |
 | `dom/nodes/Element-matches-disabled-pseudo-class.html` | 3 / 11 |  |
 | `dom/nodes/Element-matches-namespaced-elements.html` | 4 / 6 |  |
 | `dom/nodes/Element-matches.html` | 584 / 669 |  |
@@ -179,7 +173,7 @@ est le plus honnête des deux.
 | `dom/nodes/ParentNode-replaceChildren.html` | 50 / 62 | harnais : Uncaught { message: 'assert_equals: mutations.length expected 3 but got 5', stack: 'Error' } |
 | `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 2 / 5 |  |
-| `dom/nodes/attributes.html` | 59 / 67 |  |
+| `dom/nodes/attributes.html` | 66 / 67 |  |
 | `dom/nodes/create-element-realm-after-adoption.html` | 2 / 5 |  |
 | `dom/nodes/getElementById-namespaced-id.html` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/Node-append-form-and-script-from-fragment.html` | 0 / 1 |  |
@@ -191,7 +185,6 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/Node-appendChild-text-and-script-in-style.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/frame-post-connection-steps.html` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 3 / 4 |  |
-| `dom/nodes/live-collections-batched-mutations.window.js` | 0 / 2 |  |
 | `dom/nodes/moveBefore/continue-css-animation-left.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-animation-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-transition-left-pseudo.html` | 0 / 1 | harnais : délai du harnais dépassé |
