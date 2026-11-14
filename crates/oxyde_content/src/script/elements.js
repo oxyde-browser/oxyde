@@ -255,8 +255,12 @@
     "unhandledrejection", "unload"]) {
     const name = "on" + kind;
     windowHandlers[name] = accessor(
-      function () { return (this.ownerDocument?.defaultView ?? global)[name] ?? null; },
-      function (value) { (this.ownerDocument?.defaultView ?? global)[name] = value; },
+      // Sans fenêtre (document créé par un script), rien à lire ni à poser.
+      function () { return this.ownerDocument?.defaultView?.[name] ?? null; },
+      function (value) {
+        const view = this.ownerDocument?.defaultView;
+        if (view) view[name] = value;
+      },
     );
   }
   elementInterface("HTMLBodyElement", ["body"], windowHandlers);

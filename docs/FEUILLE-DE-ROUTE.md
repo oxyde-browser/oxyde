@@ -710,11 +710,18 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `offsetX` et `offsetY` sont relatifs à la cible pendant la distribution.
       Limite : `[viewbox]` ne trouve plus un `<svg viewBox>` (comme dans les
       navigateurs) ; pas de préfixe d'espace de noms déclaré (`ns|nom`).
-- [ ] Web Platform Tests `dom/` : de 68,7 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] `createElement` dans un document XML crée un élément sans espace de noms
+      (un `Element`, pas un `HTMLElement`) ; `attributeNamespace` des enregistrements
+      de mutation ; `normalize()` selon la norme, plages vivantes comprises ; un nœud
+      retiré d'un sous-arbre observé reste suivi jusqu'à la remise suivante ;
+      `observe()` et `disconnect()` ne reçoivent plus les modifications antérieures ;
+      `defaultView` vaut `null` pour un document créé par un script.
+- [x] Web Platform Tests `dom/` : 70 % des fichiers atteints (486 / 693, 70,1 %).
       Les plus gros lots restants : `moveBefore` (33), `events/scrolling` (25 :
       défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
+- [ ] Web Platform Tests `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

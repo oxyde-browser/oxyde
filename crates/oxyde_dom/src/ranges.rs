@@ -189,6 +189,73 @@ impl Document {
         Some(String::from_utf16_lossy(units.get(start..end)?))
     }
 
+    /// « Normalize » (DOM Standard §4.4) : sous `node`, chaque nœud texte
+    /// vide disparaît et chaque suite de nœuds texte voisins se fond dans le
+    /// premier. Les plages vivantes suivent le texte dans le nœud qui le
+    /// reçoit.
+    pub fn normalize(&mut self, node: NodeId) {
+        let texts: Vec<NodeId> = self
+            .descendants(node)
+            .filter(|n| matches!(self.node(*n).data, NodeData::Text(_)))
+            .collect();
+        let units = |doc: &Self, n: NodeId| -> u32 {
+            to_u32(
+                doc.character_data(n)
+                    .map_or(0, |text| text.encode_utf16().count()),
+            )
+        };
+        for text in texts {
+            // Déjà absorbé par un voisin précédent.
+            let Some(parent) = self.node(text).parent else {
+                continue;
+            };
+            let mut length = units(self, text);
+            if length == 0 {
+                self.detach(text);
+                continue;
+            }
+            let mut siblings = Vec::new();
+            let mut next = self.node(text).next_sibling;
+            while let Some(sibling) = next {
+                if !matches!(self.node(sibling).data, NodeData::Text(_)) {
+                    break;
+                }
+                siblings.push(sibling);
+                next = self.node(sibling).next_sibling;
+            }
+            if siblings.is_empty() {
+                continue;
+            }
+            let data: String = siblings
+                .iter()
+                .filter_map(|sibling| self.character_data(*sibling))
+                .collect();
+            self.replace_data(text, length, 0, &data);
+            for sibling in &siblings {
+                let index = to_u32(
+                    self.children(parent)
+                        .position(|child| child == *sibling)
+                        .unwrap_or(usize::MAX),
+                );
+                for range in &mut self.ranges {
+                    for boundary in [&mut range.start, &mut range.end] {
+                        if boundary.0 == *sibling {
+                            // Dans le voisin absorbé : même texte, plus loin.
+                            *boundary = (text, boundary.1.saturating_add(length));
+                        } else if boundary.0 == parent && boundary.1 == index {
+                            // Juste devant lui, dans le parent.
+                            *boundary = (text, length);
+                        }
+                    }
+                }
+                length = length.saturating_add(units(self, *sibling));
+            }
+            for sibling in siblings {
+                self.detach(sibling);
+            }
+        }
+    }
+
     /// « Replace data » : remplace `count` unités à partir de `offset` par
     /// `data`, puis ajuste les plages vivantes. Renvoie `false`, sans rien
     /// changer, si `offset` dépasse la longueur ou si le nœud ne porte pas

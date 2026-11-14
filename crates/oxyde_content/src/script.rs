@@ -108,6 +108,8 @@ struct DomHost {
     /// mettre en file, et si elle y est déjà.
     observers_notify: Option<Value>,
     observers_queued: bool,
+    /// Une modification a touché un nœud observé depuis la dernière remise.
+    observers_touched: bool,
     /// Navigations demandées par les scripts, pas encore prises en charge
     /// par l'embarqueur.
     navigations: Vec<crate::Navigation>,
@@ -928,7 +930,16 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
                 None => Value::Null,
             }));
         }
-        "defaultView" if is_document => return Some(Ok(Value::Object(vm.global()))),
+        "defaultView" if is_document => {
+            // Un document créé par un script (`createHTMLDocument`,
+            // `new Document()`, `DOMParser`) n'a pas de fenêtre.
+            let scripted = u32::try_from(data).is_ok_and(|index| h.kinds.contains_key(&index));
+            return Some(Ok(if scripted {
+                Value::Null
+            } else {
+                Value::Object(vm.global())
+            }));
+        }
         "doctype" if is_document => {
             let found = doc
                 .children(node)
@@ -1472,7 +1483,8 @@ fn create_element(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
             "nom d'élément invalide",
         ));
     }
-    let node = host(vm).map(|h| h.doc.create_element(&name, Namespace::Html, Vec::new()));
+    let ns = node_of(vm, this).map_or(Namespace::Html, |d| documents::element_namespace(vm, d));
+    let node = host(vm).map(|h| h.doc.create_element(&name, ns, Vec::new()));
     Ok(documents::created_by(vm, this, node))
 }
 
@@ -2167,6 +2179,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             observers: Vec::new(),
             observers_notify: None,
             observers_queued: false,
+            observers_touched: false,
             navigations: Vec::new(),
             hooks: None,
             activation: None,
