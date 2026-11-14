@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 601 / 4342 (13,8 %)** — fichiers entièrement réussis : 60 / 363 (16,5 %).
+**Sous-tests réussis : 601 / 6349 (9,5 %)** — fichiers entièrement réussis : 60 / 363 (16,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,14 +13,14 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `css/css-animations` | 10 / 82 | 70 / 398 (17,6 %) |
+| `css/css-animations` | 10 / 82 | 70 / 400 (17,5 %) |
 | `css/css-animations/parsing` | 10 / 41 | 150 / 574 (26,1 %) |
 | `css/css-animations/responsive` | 1 / 4 | 1 / 7 (14,3 %) |
 | `css/css-animations/stability` | 0 / 1 | 0 / 1 (0,0 %) |
-| `css/css-transforms` | 17 / 43 | 67 / 198 (33,8 %) |
+| `css/css-transforms` | 17 / 43 | 67 / 199 (33,7 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
-| `css/css-transitions` | 18 / 98 | 127 / 2386 (5,3 %) |
+| `css/css-transitions` | 18 / 98 | 127 / 4390 (2,9 %) |
 | `css/css-transitions/animations` | 0 / 11 | 0 / 11 (0,0 %) |
 | `css/css-transitions/parsing` | 2 / 18 | 73 / 252 (29,0 %) |
 
@@ -55,7 +55,7 @@ est le plus honnête des deux.
 | `css/css-animations/animation-base-response-002.html` | 0 / 1 |  |
 | `css/css-animations/animation-base-response-003.html` | 0 / 1 |  |
 | `css/css-animations/animation-base-response-004.html` | 0 / 1 |  |
-| `css/css-animations/animation-before-initial-box-construction-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-animations/animation-before-initial-box-construction-001.html` | 0 / 2 | harnais : Uncaught TypeError: undefined n'est pas une fonction |
 | `css/css-animations/animation-change-underlying-value-changed-in-flight.html` | 0 / 2 |  |
 | `css/css-animations/animation-composition-keyframes.html` | 0 / 6 |  |
 | `css/css-animations/animation-composition.html` | 0 / 6 |  |
@@ -63,7 +63,7 @@ est le plus honnête des deux.
 | `css/css-animations/animation-css-variable-in-keyframe-adjusted.html` | 0 / 2 |  |
 | `css/css-animations/animation-important-001.html` | 1 / 7 |  |
 | `css/css-animations/animation-important-with-transition.html` | 1 / 5 |  |
-| `css/css-animations/animation-in-offscreen-iframe.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-animations/animation-in-offscreen-iframe.html` | 0 / 2 | harnais : Uncaught TypeError: .getAnimations n'est pas une fonction (c'est undefined) |
 | `css/css-animations/animation-iteration-event-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animation-iteration-event-002.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-animations/animation-play-state-005.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -183,7 +183,7 @@ est le plus honnête des deux.
 | `css/css-transforms/animation/translate-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-transforms/css-transform-style-evaluation-validation.html` | 11 / 13 |  |
 | `css/css-transforms/hittest-preserve-3d-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-transforms/hittest-preserve-3d.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-transforms/hittest-preserve-3d.html` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: Click should be on parent expected "parent" but got "child1"', stack: 'Error' } |
 | `css/css-transforms/inheritance.html` | 4 / 20 |  |
 | `css/css-transforms/parsing/backface-visibility-computed.html` | 0 / 2 |  |
 | `css/css-transforms/parsing/backface-visibility-invalid.html` | 0 / 2 |  |
@@ -292,14 +292,14 @@ est le plus honnête des deux.
 | `css/css-transitions/parsing/transition-timing-function-invalid.html` | 0 / 25 |  |
 | `css/css-transitions/parsing/transition-timing-function-valid.html` | 18 / 22 |  |
 | `css/css-transitions/parsing/transition-valid.html` | 7 / 10 |  |
-| `css/css-transitions/properties-value-001.html` | 0 / 580 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-002.html` | 0 / 18 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-003.html` | 0 / 122 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-implicit-001.html` | 0 / 62 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-inherit-001.html` | 0 / 580 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-inherit-002.html` | 0 / 580 | harnais : délai du harnais dépassé |
-| `css/css-transitions/properties-value-inherit-003.html` | 0 / 62 | harnais : délai du harnais dépassé |
-| `css/css-transitions/pseudo-elements-001.html` | 0 / 4 |  |
+| `css/css-transitions/properties-value-001.html` | 0 / 1160 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-002.html` | 0 / 36 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-003.html` | 0 / 244 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-implicit-001.html` | 0 / 124 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-inherit-001.html` | 0 / 1160 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-inherit-002.html` | 0 / 1160 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/properties-value-inherit-003.html` | 0 / 124 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
+| `css/css-transitions/pseudo-elements-001.html` | 0 / 4 | harnais : Unhandled rejection: .getAnimations n'est pas une fonction (c'est undefined) |
 | `css/css-transitions/pseudo-elements-002.html` | 0 / 1 |  |
 | `css/css-transitions/retargetted-transition-with-box-sizing.html` | 0 / 1 |  |
 | `css/css-transitions/starting-style-adjustment.html` | 0 / 1 |  |

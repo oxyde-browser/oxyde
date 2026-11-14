@@ -281,45 +281,74 @@ impl Vm {
         if !self.at_top_level() {
             return;
         }
-        self.settle_async_waits();
-        while let Some(job) = self.jobs.pop_front() {
-            if self.is_interrupted() {
-                // Budget épuisé : plus rien ne peut s'exécuter.
-                self.jobs.clear();
-                break;
-            }
-            // Pendant une tâche, du code Rust garde des identifiants d'objets :
-            // le ramasse-miettes ne passe qu'entre deux tâches, quand tout ce
-            // qui vit est atteignable depuis la file ou les racines.
-            self.without_gc(|vm| vm.run_job(job));
-            if self.heap.should_collect() {
-                self.collect_garbage();
-            }
-        }
-        let pending = std::mem::take(&mut self.rejections);
-        self.without_gc(|vm| {
-            for promise in pending {
-                let reason = match &vm.heap.get(promise).kind {
-                    Kind::Promise(data) if !data.handled => match &data.state {
-                        PromiseState::Rejected(reason) => Some(reason.clone()),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                if let Some(reason) = reason {
-                    let mut shown = vm.display(&reason);
-                    if let Some(site) = vm.throw_site(&reason) {
-                        shown.push_str("\n    dans ");
-                        shown.push_str(&site);
-                    }
-                    super::console_message(
-                        vm,
-                        "error",
-                        format!("Promesse rejetée sans gestionnaire : {shown}"),
-                    );
+        // Signaler un rejet peut exécuter du code de la page (événement
+        // `unhandledrejection`) et donc relancer des microtâches.
+        loop {
+            self.settle_async_waits();
+            while let Some(job) = self.jobs.pop_front() {
+                if self.is_interrupted() {
+                    // Budget épuisé : plus rien ne peut s'exécuter.
+                    self.jobs.clear();
+                    break;
+                }
+                // Pendant une tâche, du code Rust garde des identifiants d'objets :
+                // le ramasse-miettes ne passe qu'entre deux tâches, quand tout ce
+                // qui vit est atteignable depuis la file ou les racines.
+                self.without_gc(|vm| vm.run_job(job));
+                if self.heap.should_collect() {
+                    self.collect_garbage();
                 }
             }
-        });
+            let pending = std::mem::take(&mut self.rejections);
+            if pending.is_empty() {
+                break;
+            }
+            self.without_gc(|vm| {
+                for promise in pending {
+                    vm.report_rejection(promise);
+                }
+            });
+            if self.jobs.is_empty() {
+                break;
+            }
+        }
+    }
+
+    /// Signale la promesse `promise` si elle est rejetée sans gestionnaire :
+    /// à l'hôte d'abord, sinon dans la console.
+    fn report_rejection(&mut self, promise: ObjId) {
+        let reason = match &self.heap.get(promise).kind {
+            Kind::Promise(data) if !data.handled => match &data.state {
+                PromiseState::Rejected(reason) => Some(reason.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(reason) = reason else {
+            return;
+        };
+        if let Some(handler) = self.rejection_handler.clone()
+            && !self.is_interrupted()
+        {
+            let taken = self.call(
+                &handler,
+                &Value::Undefined,
+                &[Value::Object(promise), reason.clone()],
+            );
+            if matches!(taken, Ok(Value::Bool(true))) {
+                return;
+            }
+        }
+        let mut shown = self.display(&reason);
+        if let Some(site) = self.throw_site(&reason) {
+            shown.push_str("\n    dans ");
+            shown.push_str(&site);
+        }
+        super::console_message(
+            self,
+            "error",
+            format!("Promesse rejetée sans gestionnaire : {shown}"),
+        );
     }
 
     pub(crate) fn run_job(&mut self, job: Job) {

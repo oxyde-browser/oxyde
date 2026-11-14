@@ -651,14 +651,33 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
                 h.window_event = Some(event);
             }
         }
+        // `window.onerror` reçoit (message, fichier, ligne, colonne, erreur)
+        // et annule l'événement en rendant `true`.
+        let window_error = id.is_none()
+            && kind == "error"
+            && item == Target::Window
+            && matches!(vm.get(&event_value, "colno"), Ok(Value::Number(_)));
         // Une fonction, ou un objet muni d'une méthode `handleEvent`.
-        let outcome = match vm.get(&callback, "handleEvent") {
-            Ok(method) if vm.type_of(&callback) != "function" => {
-                vm.call(&method, &callback, std::slice::from_ref(&event_value))
+        let outcome = if window_error {
+            let details: Vec<Value> = ["message", "filename", "lineno", "colno", "error"]
+                .iter()
+                .map(|name| vm.get(&event_value, name).unwrap_or(Value::Undefined))
+                .collect();
+            vm.call(&callback, &current, &details)
+        } else {
+            match vm.get(&callback, "handleEvent") {
+                Ok(method) if vm.type_of(&callback) != "function" => {
+                    vm.call(&method, &callback, std::slice::from_ref(&event_value))
+                }
+                Ok(_) => vm.call(&callback, &current, std::slice::from_ref(&event_value)),
+                Err(thrown) => Err(thrown),
             }
-            Ok(_) => vm.call(&callback, &current, std::slice::from_ref(&event_value)),
-            Err(thrown) => Err(thrown),
         };
+        // Un gestionnaire en attribut annule l'événement en rendant `false`
+        // (`true` pour `window.onerror`).
+        if id.is_none() && matches!(outcome, Ok(Value::Bool(answer)) if answer == window_error) {
+            cancel(vm, event);
+        }
         set_flag(vm, event, IN_PASSIVE, false);
         // L'écouteur a pu remplacer `window.event` : sa valeur reste.
         let untouched = matches!(
@@ -807,6 +826,16 @@ pub(super) fn dispatch_event(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRes
     }
     set_flag(vm, event, TRUSTED, false);
     let target = target_of(vm, this);
+    let canceled = fire(vm, target, event);
+    Ok(Value::Bool(!canceled))
+}
+
+/// `fireTrusted(cible, événement)` du prélude : distribue `événement` sur
+/// `cible` comme un événement du navigateur (`isTrusted`).
+pub(super) fn dispatch_trusted(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let event = event_of(vm, &arg(args, 1))?;
+    set_flag(vm, event, TRUSTED, true);
+    let target = target_of(vm, &arg(args, 0));
     let canceled = fire(vm, target, event);
     Ok(Value::Bool(!canceled))
 }

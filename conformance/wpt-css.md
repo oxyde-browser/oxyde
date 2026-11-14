@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 10072 / 28978 (34,8 %)** — fichiers entièrement réussis : 572 / 2267 (25,2 %).
+**Sous-tests réussis : 9002 / 27885 (32,3 %)** — fichiers entièrement réussis : 573 / 2267 (25,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -85,7 +85,7 @@ est le plus honnête des deux.
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 11 / 38 (28,9 %) |
-| `css/css-sizing/contain-intrinsic-size` | 4 / 27 | 1144 / 1339 (85,4 %) |
+| `css/css-sizing/contain-intrinsic-size` | 5 / 27 | 94 / 288 (32,6 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 66 / 233 | 884 / 1858 (47,6 %) |
+| `css/cssom-view` | 66 / 233 | 864 / 1816 (47,6 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1409,7 +1409,6 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/auto-003.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-006.html` | 1 / 19 |  |
-| `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 3 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-009.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-010.html` | 0 / 2 |  |
@@ -1428,7 +1427,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-031.html` | 0 / 12 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-032.html` | 1 / 9 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-logical-003.html` | 4 / 48 |  |
-| `css/css-sizing/contain-intrinsic-size/forget-on-disconnect-in-iframe.html` | 0 / 2 | harnais : 1 duplicate test name: "Forget remembered size inside iframe" |
+| `css/css-sizing/contain-intrinsic-size/forget-on-disconnect-in-iframe.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-computed.html` | 0 / 21 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-invalid.html` | 0 / 40 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-valid.html` | 24 / 27 |  |
@@ -1671,7 +1670,7 @@ est le plus honnête des deux.
 | `css/cssom-view/elementFromPoint-negative-z-index-inline-overflow-clip.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-negative-z-index-inline.html` | 3 / 8 |  |
 | `css/cssom-view/elementFromPoint-visibility-hidden-resizer.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint.html` | 15 / 33 | harnais : 11 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the |
+| `css/cssom-view/elementFromPoint.html` | 5 / 11 |  |
 | `css/cssom-view/elementFromPosition.html` | 11 / 16 |  |
 | `css/cssom-view/elementsFromPoint-iframes.html` | 1 / 2 |  |
 | `css/cssom-view/elementsFromPoint-inline-htb-rtl.html` | 0 / 1 |  |
@@ -1685,7 +1684,7 @@ est le plus honnête des deux.
 | `css/cssom-view/elementsFromPoint-svg-text.html` | 0 / 4 |  |
 | `css/cssom-view/elementsFromPoint-svg.html` | 0 / 6 |  |
 | `css/cssom-view/elementsFromPoint-table.html` | 0 / 4 |  |
-| `css/cssom-view/elementsFromPoint.html` | 15 / 27 | harnais : 9 duplicate test names: "Negative co-ordinates", "co-ordinates larger than the viewport", "co-ordinates larger than the  |
+| `css/cssom-view/elementsFromPoint.html` | 5 / 9 |  |
 | `css/cssom-view/getBoundingClientRect-content-visibility-hidden.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/getBoundingClientRect-empty-inline-002.html` | 2 / 4 |  |
 | `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 1 |  |
@@ -1707,9 +1706,9 @@ est le plus honnête des deux.
 | `css/cssom-view/image-x-y-zoom.html` | 0 / 2 |  |
 | `css/cssom-view/inheritance.html` | 0 / 2 |  |
 | `css/cssom-view/interrupt-hidden-smooth-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `css/cssom-view/matchMedia-display-none-iframe.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/cssom-view/matchMedia-display-none-iframe.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/cssom-view/matchMedia.html` | 6 / 10 |  |
-| `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 4 | harnais : Unhandled rejection: element click intercepted error |
 | `css/cssom-view/negativeMargins.html` | 1 / 2 |  |
 | `css/cssom-view/offsetParent-body-and-html.html` | 5 / 6 |  |
 | `css/cssom-view/offsetParent-fixed.html` | 0 / 2 |  |
@@ -1750,8 +1749,8 @@ est le plus honnête des deux.
 | `css/cssom-view/scroll-zoom.html` | 2 / 3 |  |
 | `css/cssom-view/scrollIntoView-align-scrollport-covering-child.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-container.html` | 3 / 5 |  |
-| `css/cssom-view/scrollIntoView-fixed-outside-of-viewport.html` | 0 / 1 |  |
-| `css/cssom-view/scrollIntoView-fixed.html` | 0 / 8 | harnais : 4 duplicate test names: "[Box A] scrollIntoView from unscrollable position:fixed", "[Box B] scrollIntoView from unscroll |
+| `css/cssom-view/scrollIntoView-fixed-outside-of-viewport.html` | 0 / 1 | harnais : Uncaught { message: 'assert_unreached: Any scroll event should not be observed Reached unreachable code', stack: 'Error' |
+| `css/cssom-view/scrollIntoView-fixed.html` | 0 / 4 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 3 / 9 |  |
 | `css/cssom-view/scrollIntoView-iframes.html` | 0 / 4 | harnais : délai du harnais dépassé |

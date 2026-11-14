@@ -1361,12 +1361,32 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 // ---- Événements ----------------------------------------------------------------------
 
-/// Signale une exception non rattrapée dans la console de la page.
+/// Nombre de relevés de cadres enchaînés à la fin d'une tâche : le
+/// chargement d'un cadre peut en insérer un autre.
+const MAX_FRAME_ROUNDS: usize = 16;
+
+/// Signale une exception non rattrapée : événement `error` sur la fenêtre
+/// (`window.onerror`), puis console de la page si rien ne l'a annulé.
 fn report(vm: &mut Vm, thrown: &Value) {
     let mut message = vm.display(thrown);
     if let Some(site) = vm.throw_site(thrown) {
         message.push_str("\n    dans ");
         message.push_str(&site);
+    }
+    // Une interruption (script trop long) n'est pas une exception de la page.
+    let hooks = if vm.was_interrupted() {
+        None
+    } else {
+        host(vm).and_then(|h| h.hooks.clone())
+    };
+    if let Some(hooks) = hooks
+        && let Ok(report) = vm.get(&hooks, "report")
+        && report.as_object().is_some()
+        && vm
+            .call(&report, &hooks, &[thrown.clone(), Value::string(&message)])
+            .is_ok()
+    {
+        return;
     }
     let console = Value::Object(vm.global());
     if let Ok(console) = vm.get(&console, "console")
@@ -2124,16 +2144,24 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("navigate", 2, navigate)),
         Value::Object(vm.new_function("focusedElement", 0, focus::focused_element)),
         Value::Object(vm.new_function("randomBytes", 1, random_bytes)),
+        Value::Object(vm.new_function("fireTrusted", 2, events::dispatch_trusted)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());
     if let Some(h) = host(vm) {
-        h.hooks = Some(hooks);
+        h.hooks = Some(hooks.clone());
     }
+    // Promesses rejetées sans gestionnaire : événement `unhandledrejection`.
+    let rejection = vm.get(&hooks, "rejection")?;
+    vm.set_rejection_handler(rejection);
     // `Intl` : mise en forme des nombres et des dates selon la langue.
     vm.eval_script(include_str!("script/intl.js"))?;
     // Flux : `ReadableStream`, `WritableStream`, `TransformStream`.
     vm.eval_script(include_str!("script/streams.js"))?;
+    // Observables : `Observable`, `Subscriber`, `EventTarget.when()`.
+    let observable = vm.eval_script(include_str!("script/observable.js"))?;
+    let abort = vm.get(&hooks, "abort")?;
+    vm.call(&observable, &Value::Undefined, &[abort])?;
     // Interfaces des éléments HTML et formulaires.
     let elements = vm.eval_script(include_str!("script/elements.js"))?;
     let helpers = [
@@ -2320,8 +2348,12 @@ impl ScriptEngine {
             // s'exécutent, puis les observateurs de mutation sont prévenus.
             vm.run_microtasks();
             mutation::deliver(vm);
-            // Les cadres apparus pendant la tâche prennent leur contenu.
-            if frames::scan(vm) {
+            // Les cadres apparus pendant la tâche prennent leur contenu ;
+            // leur chargement peut en faire apparaître d'autres (borné).
+            for _ in 0..MAX_FRAME_ROUNDS {
+                if !frames::scan(vm) {
+                    break;
+                }
                 vm.run_microtasks();
                 mutation::deliver(vm);
             }

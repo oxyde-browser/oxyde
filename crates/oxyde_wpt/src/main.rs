@@ -420,13 +420,16 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         if finished || started.elapsed() > CHILD_BUDGET {
             break;
         }
+        // Un cadre vient d'être chargé, ou des cadres et des scripts sont
+        // demandés : ils sont servis avant que le temps n'avance.
+        if loaded || !page.pending_frames().is_empty() || !page.pending_scripts().is_empty() {
+            continue;
+        }
         // Temps virtuel : on saute directement à l'échéance suivante.
         match page.next_wake() {
             Some(due) => {
                 page.tick(due);
             }
-            // Un cadre vient d'être chargé : ses scripts ont pu en demander d'autres.
-            None if loaded => {}
             None => break,
         }
     }

@@ -7,7 +7,8 @@
 //   locationHref()               -> adresse courante du document ;
 //   navigate(nature, valeur)     -> demande de navigation à l'embarqueur ;
 //   focusedElement()             -> élément qui a le focus, ou null ;
-//   randomBytes(n)               -> tableau de n octets aléatoires (source du système).
+//   randomBytes(n)               -> tableau de n octets aléatoires (source du système) ;
+//   fireTrusted(cible, événement) -> distribue un événement du navigateur (`isTrusted`).
 // Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
@@ -15,7 +16,8 @@
 // LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
-(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes) {
+(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes,
+  fireTrusted) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -342,8 +344,40 @@
   const resolved = Promise.resolve();
   const then = Promise.prototype.then;
   const consoleError = console.error.bind(console);
+  // « Signaler l'exception » (HTML Standard §8.1.4.6) : un `ErrorEvent`
+  // annulable sur la fenêtre, puis la console si personne ne l'annule.
+  // `text` : description déjà mise en forme par le moteur.
+  let reporting = false;
+  function reportException(error, text) {
+    let message = text;
+    if (message === undefined) {
+      try {
+        message = String(error);
+      } catch (failure) {
+        message = "exception sans description";
+      }
+    }
+    let handled = false;
+    // Une exception levée pendant le signalement ne relance pas d'événement.
+    if (!reporting) {
+      reporting = true;
+      try {
+        const event = new global.ErrorEvent("error", {
+          message: "Uncaught " + message.split("\n")[0], filename: locationHref(),
+          lineno: 0, colno: 0, error, cancelable: true,
+        });
+        handled = !fireTrusted(global, event);
+      } catch (failure) {
+        handled = false;
+      } finally {
+        reporting = false;
+      }
+    }
+    if (!handled) consoleError("Exception non rattrapée : " + message);
+  }
   function reportError(error) {
-    consoleError("Exception non rattrapée : " + String(error));
+    if (arguments.length === 0) throw new TypeError("reportError : un argument est attendu");
+    reportException(error);
   }
   expose("reportError", reportError);
   expose("queueMicrotask", function queueMicrotask(callback) {
@@ -531,23 +565,38 @@
   // ---- AbortController et AbortSignal (DOM Standard §3) -----------------------------------------------------------
   const EventTargetBase = EventTarget;
   const EventCtor = Event;
+  // État d'un signal : `algorithms` s'exécutent à l'abandon, avant
+  // l'événement ; un signal `dependent` (rendu par `any()`) suit ses
+  // `sources`, qui le tiennent dans leurs `dependents`.
+  // LIMITE : ces liens sont forts ; un signal dépendant n'est lâché par ses
+  // sources qu'à son abandon.
   const signals = new WeakMap();
   const signalKey = {};
+  const signalState = (signal) => {
+    const state = signals.get(signal);
+    if (state === undefined) throw new TypeError("un AbortSignal est attendu");
+    return state;
+  };
   class AbortSignal extends EventTargetBase {
     constructor(key) {
       if (key !== signalKey) throw new TypeError("AbortSignal : constructeur illégal");
       super();
-      signals.set(this, { aborted: false, reason: undefined });
+      signals.set(this, {
+        aborted: false, reason: undefined, algorithms: new Set(),
+        dependent: false, sources: new Set(), dependents: new Set(),
+      });
     }
-    get aborted() { return signals.get(this).aborted; }
-    get reason() { return signals.get(this).reason; }
+    get aborted() { return signalState(this).aborted; }
+    get reason() { return signalState(this).reason; }
     throwIfAborted() {
-      const state = signals.get(this);
+      const state = signalState(this);
       if (state.aborted) throw state.reason;
     }
     static abort(reason) {
       const signal = new AbortSignal(signalKey);
-      abortSignal(signal, reason);
+      const state = signals.get(signal);
+      state.aborted = true;
+      state.reason = abortReason(reason);
       return signal;
     }
     static timeout(milliseconds) {
@@ -558,25 +607,95 @@
       return signal;
     }
     static any(list) {
+      const sources = Array.from(list);
+      for (const source of sources) signalState(source);
       const signal = new AbortSignal(signalKey);
-      for (const source of list) {
+      const state = signals.get(signal);
+      state.dependent = true;
+      for (const source of sources) {
         if (source.aborted) {
-          abortSignal(signal, source.reason);
-          break;
+          state.aborted = true;
+          state.reason = source.reason;
+          return signal;
         }
-        source.addEventListener("abort", () => abortSignal(signal, source.reason), { once: true });
+      }
+      const follow = (source) => {
+        state.sources.add(source);
+        signals.get(source).dependents.add(signal);
+      };
+      for (const source of sources) {
+        const other = signals.get(source);
+        // Un signal dépendant est suivi par ses propres sources.
+        if (other.dependent) other.sources.forEach(follow);
+        else follow(source);
       }
       return signal;
     }
+  }
+  const abortReason = (reason) => (reason === undefined
+    ? new DOMException("l'opération a été abandonnée", "AbortError")
+    : reason);
+  // Algorithmes d'abandon, puis événement `abort`.
+  function runAbortSteps(signal) {
+    const state = signals.get(signal);
+    const algorithms = [...state.algorithms];
+    state.algorithms.clear();
+    for (const algorithm of algorithms) algorithm();
+    for (const source of state.sources) signals.get(source).dependents.delete(signal);
+    state.sources.clear();
+    fireTrusted(signal, new EventCtor("abort"));
   }
   function abortSignal(signal, reason) {
     const state = signals.get(signal);
     if (state.aborted) return;
     state.aborted = true;
-    state.reason = reason === undefined
-      ? new DOMException("l'opération a été abandonnée", "AbortError")
-      : reason;
-    signal.dispatchEvent(new EventCtor("abort"));
+    state.reason = abortReason(reason);
+    // Les signaux dépendants sont marqués avant tout écouteur, puis
+    // préviennent dans l'ordre, après leur source.
+    const followers = [];
+    for (const dependent of state.dependents) {
+      const other = signals.get(dependent);
+      if (other.aborted) continue;
+      other.aborted = true;
+      other.reason = state.reason;
+      followers.push(dependent);
+    }
+    state.dependents.clear();
+    runAbortSteps(signal);
+    for (const dependent of followers) runAbortSteps(dependent);
+  }
+  const addAbortAlgorithm = (signal, algorithm) => {
+    const state = signalState(signal);
+    if (!state.aborted) state.algorithms.add(algorithm);
+  };
+  const removeAbortAlgorithm = (signal, algorithm) => {
+    signalState(signal).algorithms.delete(algorithm);
+  };
+  // Option `signal` de `addEventListener` : l'écouteur est retiré à
+  // l'abandon du signal ; un signal déjà abandonné n'en pose aucun.
+  {
+    const proto = EventTargetBase.prototype;
+    const nativeAdd = proto.addEventListener;
+    const nativeRemove = proto.removeEventListener;
+    define(proto, "addEventListener", {
+      value: function addEventListener(type, callback, options) {
+        if (arguments.length < 2 || options === null || typeof options !== "object") {
+          return nativeAdd.apply(this, arguments);
+        }
+        const init = { capture: Boolean(options.capture), once: Boolean(options.once) };
+        const passive = options.passive;
+        if (passive !== undefined) init.passive = Boolean(passive);
+        const signal = options.signal;
+        if (signal === undefined) return nativeAdd.call(this, type, callback, init);
+        if (signalState(signal).aborted) return undefined;
+        nativeAdd.call(this, type, callback, init);
+        if (callback !== null && callback !== undefined) {
+          addAbortAlgorithm(signal, () => nativeRemove.call(this, type, callback, init.capture));
+        }
+        return undefined;
+      },
+      writable: true, enumerable: true, configurable: true,
+    });
   }
   class AbortController {
     #signal = new AbortSignal(signalKey);
@@ -734,6 +853,7 @@
     message: "", filename: "", lineno: 0, colno: 0, error: undefined,
   });
   eventInterface("PopStateEvent", EventCtor, { state: null });
+  eventInterface("PromiseRejectionEvent", EventCtor, { promise: undefined, reason: undefined });
   eventInterface("SubmitEvent", EventCtor, { submitter: null });
   eventInterface("HashChangeEvent", EventCtor, { oldURL: "", newURL: "" });
   eventInterface("CompositionEvent", UIEvent, { data: "" });
@@ -1504,6 +1624,18 @@
         },
       );
     },
+    // Promesse rejetée sans gestionnaire : `unhandledrejection` sur la
+    // fenêtre ; rend `true` si un écouteur a annulé l'événement.
+    rejection(promise, reason) {
+      const event = new global.PromiseRejectionEvent("unhandledrejection", {
+        promise, reason, cancelable: true,
+      });
+      return !fireTrusted(global, event);
+    },
+    // Exception non rattrapée, signalée par le moteur.
+    report: reportException,
+    // Algorithmes d'abandon d'un signal, pour les autres scripts du socle.
+    abort: { add: addAbortAlgorithm, remove: removeAbortAlgorithm },
     // Fabrique des exceptions du DOM levées par le moteur.
     domException(name, message) {
       return new DOMException(message, name);

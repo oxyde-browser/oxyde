@@ -237,7 +237,7 @@ pub(super) fn scan(vm: &mut Vm) -> bool {
             }
             // Cadre vide : son document `about:blank` est prêt aussitôt.
             None if first && ensure(vm, element).is_some() => {
-                events::dispatch(vm, Some(element), "load");
+                events::dispatch_simple(vm, element, "load", false);
                 ran = true;
             }
             None => {}
@@ -289,5 +289,5 @@ pub(super) fn load(vm: &mut Vm, element: NodeId, url: &Url, source: &Document, s
     events::dispatch(vm, Some(context.document), "DOMContentLoaded");
     events::dispatch(vm, None, "load");
     vm.set_realm(previous);
-    events::dispatch(vm, Some(element), "load");
+    events::dispatch_simple(vm, element, "load", false);
 }
