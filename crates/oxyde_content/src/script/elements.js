@@ -297,7 +297,21 @@
       "application/x-www-form-urlencoded"),
     method: keyword("method", ["get", "post", "dialog"], "get"),
     noValidate: flag("novalidate"),
-    elements: accessor(function () { return controlsOf(this); }),
+    // LIMITE : un tableau figé au moment de la lecture, pas une collection
+    // vivante ; ses contrôles se lisent aussi par nom ou identifiant.
+    elements: accessor(function () {
+      const controls = controlsOf(this);
+      const named = (name) => controls.find((control) => control.id === name
+        || control.getAttribute("name") === name) ?? null;
+      for (const control of controls) {
+        for (const key of [control.id, control.getAttribute("name")]) {
+          if (key && !(key in controls)) controls[key] = control;
+        }
+      }
+      define(controls, "namedItem", { value: (name) => named(String(name)), enumerable: false });
+      define(controls, "item", { value: (index) => controls[index] ?? null, enumerable: false });
+      return controls;
+    }),
     length: accessor(function () { return controlsOf(this).length; }),
     submit: method(function submit() { submitForm(this, null); }),
     requestSubmit: method(function requestSubmit(submitter = null) {

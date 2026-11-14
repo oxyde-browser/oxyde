@@ -3684,4 +3684,123 @@ mod tests {
             assert!(seen.contains(expected), "{expected} absent de {seen}");
         }
     }
+
+    #[test]
+    fn custom_elements_dom_parser_and_template_content() {
+        let mut p = page(
+            "<p id=p></p>
+             <mon-compteur id=present depart=3></mon-compteur>
+             <template id=gabarit><li class=item>un</li><li class=item>deux</li></template>
+             <script>
+               const sortie = document.getElementById('p');
+               const noter = texte => { sortie.textContent += texte + ';'; };
+               class Compteur extends HTMLElement {
+                 static observedAttributes = ['depart'];
+                 constructor() { super(); this.valeur = 0; noter('construit ' + (this.id || 'neuf')); }
+                 connectedCallback() { noter('branché ' + (this.id || 'neuf')); }
+                 disconnectedCallback() { noter('débranché ' + this.id); }
+                 attributeChangedCallback(nom, avant, après) { noter(nom + ' ' + avant + '>' + après); }
+                 plus() { return ++this.valeur; }
+               }
+               customElements.define('mon-compteur', Compteur);
+               const présent = document.getElementById('present');
+               noter([présent instanceof Compteur, présent instanceof HTMLElement, présent.plus(),
+                      customElements.get('mon-compteur') === Compteur, customElements.getName(Compteur)].join(' '));
+               const créé = document.createElement('mon-compteur');
+               noter('créé ' + (créé instanceof Compteur) + ' ' + créé.plus());
+               const direct = new Compteur();
+               noter('direct ' + direct.localName);
+               try { customElements.define('sans tiret', class extends HTMLElement {}); } catch (e) { noter(e.name); }
+               try { new HTMLElement(); } catch (e) { noter(e.name); }
+               customElements.whenDefined('mon-compteur').then(c => noter('défini ' + (c === Compteur)));
+               créé.id = 'cree';
+               document.body.appendChild(créé);
+               présent.setAttribute('depart', '4');
+               présent.remove();
+
+               const gabarit = document.getElementById('gabarit');
+               noter('gabarit ' + gabarit.content.childNodes.length + ' ' + gabarit.childNodes.length + ' '
+                     + document.querySelectorAll('.item').length + ' ' + gabarit.content.querySelectorAll('.item').length);
+               const copie = gabarit.content.cloneNode(true);
+               noter('copie ' + copie.firstChild.textContent);
+
+               const html = new DOMParser().parseFromString(
+                 '<!doctype html><title>Titre</title><body class=c><p id=a>salut</p>', 'text/html');
+               noter('html ' + [html.title, html.body.className, html.getElementById('a').textContent,
+                                html.head.childNodes.length, html === document].join(' '));
+               const xml = new DOMParser().parseFromString(
+                 '<?xml version=\"1.0\"?><!-- c --><r xmlns:x=\"urn:x\" a=\"1 &amp; 2\"><x:e>t&#233;</x:e><![CDATA[<b>]]><vide/></r>',
+                 'application/xml');
+               const racine = xml.documentElement;
+               noter('xml ' + [racine.localName, racine.getAttribute('a'), racine.firstChild.namespaceURI,
+                               racine.firstChild.textContent, racine.childNodes[1].data, racine.lastChild.localName,
+                               xml.firstChild.nodeType].join(' '));
+               const cassé = new DOMParser().parseFromString('<a><b></a>', 'text/xml');
+               noter('cassé ' + cassé.documentElement.localName);
+               const svg = new DOMParser().parseFromString(
+                 '<svg xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M0 0\"/></svg>', 'image/svg+xml');
+               noter('svg ' + svg.documentElement.firstChild.namespaceURI);
+             </script>",
+        );
+        p.run_scripts();
+        let console: Vec<String> = p.take_console().into_iter().map(|m| m.text).collect();
+        assert_eq!(
+            body_text(&p),
+            "construit present;depart null>3;branché present;true true 1 true mon-compteur;\
+             construit neuf;créé true 1;construit neuf;direct mon-compteur;SyntaxError;TypeError;\
+             gabarit 2 0 0 2;copie un;html Titre c salut 1 false;\
+             xml r 1 & 2 urn:x té <b> vide 8;cassé parsererror;svg http://www.w3.org/2000/svg;\
+             défini true;branché cree;depart 3>4;débranché present;",
+            "{console:?}"
+        );
+    }
+
+    #[test]
+    fn streams_and_element_from_point() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<style>body { margin: 0 } #boite { width: 100px; height: 50px } #dedans { width: 40px; height: 20px }</style>
+             <div id=boite><div id=dedans></div></div><p id=p></p>
+             <script>
+               const sortie = document.getElementById('p');
+               const noter = texte => { sortie.textContent += texte + ';'; };
+               (async () => {
+                 const flux = new ReadableStream({
+                   start(c) { c.enqueue('a'); c.enqueue('b'); },
+                   pull(c) { c.enqueue('c'); c.close(); },
+                 });
+                 const lus = [];
+                 for await (const morceau of flux) lus.push(morceau);
+                 noter('lus ' + lus.join(''));
+                 const majuscules = new TransformStream({ transform(m, c) { c.enqueue(m.toUpperCase()); } });
+                 const lecteur = new ReadableStream({ start(c) { c.enqueue('x'); c.enqueue('y'); c.close(); } })
+                   .pipeThrough(majuscules).getReader();
+                 noter('transformés ' + (await lecteur.read()).value + (await lecteur.read()).value + ' ' + (await lecteur.read()).done);
+                 const écrits = [];
+                 const puits = new WritableStream({ write(m) { écrits.push(m); } });
+                 await new ReadableStream({ start(c) { c.enqueue(1); c.enqueue(2); c.close(); } }).pipeTo(puits);
+                 noter('écrits ' + écrits.join('+'));
+                 const [un, deux] = new ReadableStream({ start(c) { c.enqueue('t'); c.close(); } }).tee();
+                 noter('tee ' + (await un.getReader().read()).value + (await deux.getReader().read()).value);
+                 const octets = new ReadableStream({ start(c) { c.enqueue('é'); c.close(); } }).pipeThrough(new TextEncoderStream());
+                 noter('encodés ' + (await octets.getReader().read()).value.length);
+                 const cassé = new ReadableStream({ start(c) { c.error(new Error('panne')); } });
+                 await cassé.getReader().read().catch(e => noter('erreur ' + e.message));
+                 setTimeout(() => noter('point ' + document.elementFromPoint(10, 10).id + ' ' + document.elementFromPoint(60, 30).id
+                       + ' ' + document.elementsFromPoint(10, 10).map(e => e.id || e.localName).join('>')
+                       + ' ' + document.elementFromPoint(-5, 0)), 10);
+               })();
+             </script>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let _ = p.tick(Instant::now() + std::time::Duration::from_secs(1));
+        let console: Vec<String> = p.take_console().into_iter().map(|m| m.text).collect();
+        assert_eq!(
+            body_text(&p),
+            "lus abc;transformés XY true;écrits 1+2;tee tt;encodés 2;erreur panne;\
+             point dedans boite dedans>boite>body>html null;",
+            "{console:?}"
+        );
+    }
 }

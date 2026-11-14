@@ -2051,6 +2051,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     }
     // `Intl` : mise en forme des nombres et des dates selon la langue.
     vm.eval_script(include_str!("script/intl.js"))?;
+    // Flux : `ReadableStream`, `WritableStream`, `TransformStream`.
+    vm.eval_script(include_str!("script/streams.js"))?;
     // Interfaces des éléments HTML et formulaires.
     let elements = vm.eval_script(include_str!("script/elements.js"))?;
     let helpers = [
@@ -2073,6 +2075,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         css_supports,
     ))];
     vm.call(&cssom, &Value::Undefined, &helpers)?;
+    // Éléments personnalisés, `DOMParser`, contenu des gabarits.
+    let components = vm.eval_script(include_str!("script/components.js"))?;
+    let helpers = [Value::Object(vm.new_function(
+        "parseHtmlDocument",
+        1,
+        documents::parse_html_document,
+    ))];
+    vm.call(&components, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
     let traversal = vm.eval_script(include_str!("script/traversal.js"))?;
     let helpers = [

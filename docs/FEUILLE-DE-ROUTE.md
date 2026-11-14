@@ -219,7 +219,7 @@ Fait :
 
 Reste :
 
-- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 296 fichiers de test entièrement réussis sur 693 (42,7 %).
+- **Web Platform Tests** : le lanceur (`oxyde_wpt`) mesure `dom/` — 309 fichiers de test entièrement réussis sur 693 (44,6 %).
   La mesure a guidé les algorithmes de mutation du standard, les vraies `DOMException`, les
   documents multiples (`document.implementation`), `Range`, `NodeIterator`, `TreeWalker`,
   `Selection`, les espaces de noms et les nœuds `Attr`, les collections vivantes, `classList`,
@@ -333,7 +333,7 @@ Fait :
 - **Mesure** : le lanceur WPT exécute les 2 267 tests `testharness.js` de `css-flexbox`,
   `css-grid`, `css-position`, `css-sizing`, `css-tables`, `css-box`, `css-display`,
   `css-align`, `CSS2` et `cssom-view`. Point de départ : 213 fichiers entièrement réussis
-  (9,4 %), aujourd'hui 547 (24,1 %); une lecture force la
+  (9,4 %), aujourd'hui 569 (25,1 %); une lecture force la
   mise en page si le document a changé.
 - **Positionnement** : `position: relative`, `absolute`, `fixed`, décalages `inset`, blocs
   conteneurs, hauteurs en pourcentage, `calc()`, police de test Ahem (`@font-face`).
@@ -373,7 +373,7 @@ Fait :
   horloge ; les événements `animationstart`/`iteration`/`end`/`cancel` et
   `transitionrun`/`start`/`end`/`cancel` sont distribués, et une animation en cours demande
   une image toutes les 16 ms. Les minuteurs suivent désormais l'horloge de la page, ce qui
-  donne aux tests un temps virtuel cohérent. Mesure : 51 fichiers sur 363 (14,0 %). Restent :
+  donne aux tests un temps virtuel cohérent. Mesure : 57 fichiers sur 363 (15,7 %). Restent :
   l'API Web Animations, dont dépendent la plupart des tests, et l'interpolation des
   transformations par décomposition de matrice.
 
@@ -535,7 +535,8 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Sélection de texte à la souris et copie ; menu contextuel de la page (jalon 7).
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
-- [ ] `customElements` et Shadow DOM : une grande part des sites récents en dépend.
+- [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;
+      `customElements` est fait.
 - [x] `IntersectionObserver`, `ResizeObserver`, `requestIdleCallback` : faits, par relevé de
       la géométrie toutes les 100 ms (pas à chaque image) ; l'intersection ne tient pas compte
       du rognage des ancêtres défilants.
@@ -546,8 +547,13 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] `Intl` réduit (français et anglais : nombres, dates, pluriels, listes, durées relatives,
       comparaison, découpage), `String.prototype.normalize`, modules chargés à la demande
       (`import()`, module inséré par script), cartes d'import (table `imports`).
-- [ ] Vus à la mesure des sites et encore absents : `DOMParser`, `Path2D` et le canevas,
-      `document.write`,
+- [x] `DOMParser` (HTML ; XML par un analyseur réduit), `template.content`, éléments
+      personnalisés (`customElements`, classes qui étendent `HTMLElement` ; rappels à la fin de
+      la tâche), flux (`ReadableStream`, `WritableStream`, `TransformStream`),
+      `document.elementFromPoint`, interfaces `Window`, `Navigator`, `SVGElement`… ; les
+      messages d'erreur nomment la méthode ou la valeur fautive.
+- [ ] Vus à la mesure des sites et encore absents : Shadow DOM, canevas (`Path2D` existe sans
+      rien dessiner), `document.write`,
       `postMessage` entre fenêtres (la source n'est pas connue), `crypto.subtle`, Brotli
       (demande un crate à télécharger), chargement des ressources en parallèle.
 - [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.

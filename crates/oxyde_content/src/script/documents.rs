@@ -442,6 +442,32 @@ pub(super) fn create_html_document(vm: &mut Vm, this: &Value, args: &[Value]) ->
     Ok(wrap(vm, document))
 }
 
+/// `parseHtmlDocument(texte)` : un nouveau document HTML, analysé depuis
+/// `texte` comme le serait une page (pour `DOMParser`). Ses scripts ne
+/// s'exécutent pas.
+pub(super) fn parse_html_document(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let text = vm.to_string(&arg(args, 0))?;
+    let parsed = oxyde_html::parse_document(&text);
+    let Some(document) = new_document(
+        vm,
+        DocumentKind {
+            content_type: "text/html",
+            html: true,
+            xml_interface: false,
+        },
+    ) else {
+        return Ok(Value::Null);
+    };
+    if let Some(h) = host(vm) {
+        let children: Vec<NodeId> = parsed.children(parsed.root()).collect();
+        for child in children {
+            let copy = h.doc.import(&parsed, child);
+            h.doc.append_child(document, copy);
+        }
+    }
+    Ok(wrap(vm, document))
+}
+
 /// `hasFeature()` : toujours vrai, par compatibilité.
 pub(super) fn has_feature(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
     Ok(Value::Bool(true))

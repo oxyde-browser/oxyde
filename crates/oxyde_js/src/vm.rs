@@ -2329,6 +2329,16 @@ impl Vm {
             }
             Op::GetProp { dst, obj, name } => {
                 let (target, name) = (self.reg(obj), self.name(name));
+                // Lecture sur `null` ou `undefined` : le message dit d'où
+                // vient cette valeur (« … de undefined, valeur de .x »).
+                if target.is_nullish()
+                    && let Some(origin) = self.origin_of(obj)
+                {
+                    let shown = self.display(&target);
+                    return Err(self.type_error(&format!(
+                        "impossible de lire la propriété « {name} » de {shown} (valeur de {origin})"
+                    )));
+                }
                 let value = self.get(&target, &name)?;
                 self.set_reg(dst, value);
             }
@@ -2778,9 +2788,10 @@ impl Vm {
                 first,
                 argc,
             } => {
+                let callee_reg = callee;
                 let (callee, this) = (self.reg(callee), self.reg(this));
                 let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
-                self.check_callable(&callee)?;
+                self.check_called(callee_reg, &callee)?;
                 self.call_from_loop(dst, &callee, this, args)?;
             }
             Op::TailCall {
@@ -2790,9 +2801,10 @@ impl Vm {
                 first,
                 argc,
             } => {
+                let callee_reg = callee;
                 let (callee, this) = (self.reg(callee), self.reg(this));
                 let args: Vec<Value> = (0..argc).map(|i| self.reg(first + i)).collect();
-                self.check_callable(&callee)?;
+                self.check_called(callee_reg, &callee)?;
                 // Fonction ordinaire appelée depuis un cadre ordinaire, sans
                 // gestionnaire d'exception actif : le cadre est remplacé.
                 let target = callee.as_object().filter(|id| {
@@ -3071,6 +3083,49 @@ impl Vm {
         if let Some(frame) = self.frames.last_mut() {
             frame.pc = target as usize;
         }
+    }
+
+    /// D'où vient la valeur du registre `reg` : la propriété (`.nom`) ou la
+    /// variable globale lue par une des instructions qui précèdent. Sert à
+    /// nommer la valeur fautive dans un message d'erreur.
+    fn origin_of(&self, reg: Reg) -> Option<String> {
+        /// Nombre d'instructions remontées pour retrouver l'origine.
+        const LOOK_BACK: usize = 16;
+        let frame = self.frames.last()?;
+        // L'instruction en cours est la dernière de l'intervalle : on part
+        // de celle qui la précède.
+        let end = frame.pc.min(frame.proto.code.len()).checked_sub(1)?;
+        let code = frame.proto.code.get(..end)?;
+        let constant = |index: u32| match frame.proto.constants.get(index as usize) {
+            Some(Value::String(text)) => Some(text.to_string()),
+            _ => None,
+        };
+        code.iter().rev().take(LOOK_BACK).find_map(|op| match op {
+            Op::GetProp { dst, name, .. } if *dst == reg => {
+                constant(*name).map(|n| format!(".{n}"))
+            }
+            Op::GetGlobal { dst, name } if *dst == reg => constant(*name),
+            _ => None,
+        })
+    }
+
+    /// Comme [`Vm::check_callable`], pour la valeur du registre `reg` : en
+    /// cas d'échec, le message nomme la propriété ou la variable d'où elle
+    /// vient (« x.f n'est pas une fonction »), retrouvée dans les
+    /// instructions qui précèdent l'appel.
+    fn check_called(&mut self, reg: Reg, callee: &Value) -> JsResult<()> {
+        if callee
+            .as_object()
+            .is_some_and(|id| self.heap.get(id).is_callable())
+        {
+            return Ok(());
+        }
+        let origin = self.origin_of(reg);
+        let shown = self.display(callee);
+        Err(self.type_error(&match origin {
+            Some(origin) => format!("{origin} n'est pas une fonction (c'est {shown})"),
+            None => format!("{shown} n'est pas une fonction"),
+        }))
     }
 
     fn check_callable(&mut self, callee: &Value) -> JsResult<()> {

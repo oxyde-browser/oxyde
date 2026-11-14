@@ -711,6 +711,11 @@
   eventInterface("PopStateEvent", EventCtor, { state: null });
   eventInterface("SubmitEvent", EventCtor, { submitter: null });
   eventInterface("HashChangeEvent", EventCtor, { oldURL: "", newURL: "" });
+  eventInterface("CompositionEvent", UIEvent, { data: "" });
+  eventInterface("TextEvent", UIEvent, { data: "" });
+  eventInterface("BeforeUnloadEvent", EventCtor, { returnValue: "" });
+  eventInterface("DragEvent", MouseEvent, { dataTransfer: null });
+  eventInterface("TouchEvent", UIEvent, { touches: null, targetTouches: null, changedTouches: null, ...modifiers });
 
   // `document.createEvent(interface)` : un événement à initialiser ensuite.
   const legacyEvents = {
@@ -777,8 +782,15 @@
   expose("screen", screen);
   expose("devicePixelRatio", 1);
   Object.assign(navigator, {
-    onLine: true, platform: "Win32", vendor: "", cookieEnabled: false,
+    onLine: true, platform: "Win32", vendor: "", cookieEnabled: true,
     hardwareConcurrency: 1, maxTouchPoints: 0,
+    appCodeName: "Mozilla", appName: "Netscape", product: "Gecko", productSub: "20030107",
+    vendorSub: "", doNotTrack: null, pdfViewerEnabled: false, webdriver: false,
+    appVersion: navigator.userAgent.replace(/^Mozilla\//, ""),
+    // Ni modules d'extension ni Java.
+    plugins: Object.assign([], { item: () => null, namedItem: () => null, refresh() {} }),
+    mimeTypes: Object.assign([], { item: () => null, namedItem: () => null }),
+    javaEnabled() { return false; },
     sendBeacon(url, data) {
       try {
         fetch(url, data === undefined || data === null ? { method: "POST" } : { method: "POST", body: data });
@@ -853,7 +865,13 @@
   const timeOrigin = Date.now() - performance.now();
   Object.assign(performance, {
     timeOrigin,
-    timing: { navigationStart: Math.round(timeOrigin) },
+    // LIMITE : les étapes du chargement ne sont pas mesurées ; toutes valent
+    // l'instant de départ.
+    timing: Object.fromEntries(["navigationStart", "unloadEventStart", "unloadEventEnd", "redirectStart",
+      "redirectEnd", "fetchStart", "domainLookupStart", "domainLookupEnd", "connectStart", "connectEnd",
+      "secureConnectionStart", "requestStart", "responseStart", "responseEnd", "domLoading",
+      "domInteractive", "domContentLoadedEventStart", "domContentLoadedEventEnd", "domComplete",
+      "loadEventStart", "loadEventEnd"].map((name) => [name, Math.round(timeOrigin)])),
     mark(name) {
       const entry = { name: String(name), entryType: "mark", startTime: performance.now(), duration: 0 };
       entries.push(entry);
@@ -864,6 +882,8 @@
         if (mark === undefined) return fallback;
         const found = entries.findLast((e) => e.entryType === "mark" && e.name === String(mark));
         if (found === undefined) {
+          // Un instant de `performance.timing` vaut aussi : compté depuis l'origine.
+          if (String(mark) in performance.timing) return performance.timing[String(mark)] - Math.round(timeOrigin);
           throw new DOMException("marque inconnue : " + String(mark), "SyntaxError");
         }
         return found.startTime;
@@ -1005,6 +1025,14 @@
     if (key.length === 1) return key.toUpperCase().charCodeAt(0);
     const functionKey = /^F(\d{1,2})$/.exec(key);
     return functionKey ? 111 + Number(functionKey[1]) : 0;
+  }
+
+  // `performance` est une cible d'événements (`resourcetimingbufferfull`).
+  {
+    const target = new EventTargetBase();
+    for (const name of ["addEventListener", "removeEventListener", "dispatchEvent"]) {
+      if (typeof performance[name] !== "function") performance[name] = target[name].bind(target);
+    }
   }
 
   // ---- Fenêtre : ce que les pages lisent sans vérifier -----------------------------------------------------------
