@@ -45,6 +45,11 @@ pub enum AttrOp {
 pub struct AttrSelector {
     /// Nom de l'attribut (minuscules).
     pub name: String,
+    /// Nom tel qu'il est écrit : hors du HTML, la casse compte.
+    pub written: String,
+    /// `[*|nom]` : l'attribut de ce nom local, quel que soit son espace de
+    /// noms.
+    pub any_namespace: bool,
     /// Opérateur.
     pub op: AttrOp,
     /// Valeur comparée.
@@ -368,7 +373,19 @@ fn match_ancestors(
 }
 
 fn attr_matches(sel: &AttrSelector, el: &ElementData) -> bool {
-    let Some(actual) = el.attr(&sel.name) else {
+    // Sur un élément HTML, le nom se compare en minuscules ; ailleurs (SVG,
+    // MathML, XML), tel qu'il est écrit.
+    let html = el.ns == oxyde_dom::Namespace::Html;
+    let wanted = if html { &sel.name } else { &sel.written };
+    let found = if sel.any_namespace {
+        el.attrs
+            .iter()
+            .find(|attr| attr.local() == wanted.as_str())
+            .map(|attr| attr.value.as_str())
+    } else {
+        el.attr(wanted)
+    };
+    let Some(actual) = found else {
         return false;
     };
     if sel.op == AttrOp::Exists {
@@ -712,6 +729,12 @@ fn parse_selector(tokens: &[Token]) -> Option<Selector> {
 fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
     let mut c = Compound::default();
     let start = i;
+    // Préfixe d'espace de noms universel : `*|nom` vaut `nom`, `*|*` vaut `*`.
+    if let (Some(Token::Delim('*')), Some(Token::Delim('|'))) = (tokens.get(i), tokens.get(i + 1))
+        && matches!(tokens.get(i + 2), Some(Token::Ident(_) | Token::Delim('*')))
+    {
+        i += 2;
+    }
     match tokens.get(i) {
         Some(Token::Ident(name)) => {
             c.tag = Some(name.to_ascii_lowercase());
@@ -772,14 +795,23 @@ fn parse_compound(tokens: &[Token], mut i: usize) -> Option<(Compound, usize)> {
 }
 
 fn parse_attr(tokens: &[Token]) -> Option<AttrSelector> {
-    let Some(Token::Ident(name)) = tokens.first() else {
+    // Préfixe d'espace de noms : `*|nom` (tous), `|nom` (aucun).
+    let (any_namespace, tokens) = match tokens {
+        [Token::Delim('*'), Token::Delim('|'), rest @ ..] => (true, rest),
+        [Token::Delim('|'), rest @ ..] => (false, rest),
+        _ => (false, tokens),
+    };
+    let Some(Token::Ident(written)) = tokens.first() else {
         return None;
     };
-    let name = name.to_ascii_lowercase();
+    let written = written.clone();
+    let name = written.to_ascii_lowercase();
     let rest = trim(&tokens[1..]);
     if rest.is_empty() {
         return Some(AttrSelector {
             name,
+            written,
+            any_namespace,
             op: AttrOp::Exists,
             value: String::new(),
             case_insensitive: false,
@@ -813,6 +845,8 @@ fn parse_attr(tokens: &[Token]) -> Option<AttrSelector> {
     };
     Some(AttrSelector {
         name,
+        written,
+        any_namespace,
         op,
         value,
         case_insensitive,

@@ -901,8 +901,22 @@
       configurable: true,
     });
   }
-  for (const [alias, source] of [["x", "clientX"],
-    ["y", "clientY"], ["offsetX", "pageX"], ["offsetY", "pageY"]]) {
+  // `offsetX`, `offsetY` : position dans la boîte de marge intérieure de la
+  // cible pendant la distribution ; hors d'elle, celle de la page.
+  for (const [name, client, page, side, border] of [
+    ["offsetX", "clientX", "pageX", "left", "clientLeft"],
+    ["offsetY", "clientY", "pageY", "top", "clientTop"]]) {
+    define(MouseEvent.prototype, name, {
+      get() {
+        const target = this.target;
+        if (this.eventPhase === 0 || target === null || target.nodeType !== 1) return this[page];
+        return this[client] - target.getBoundingClientRect()[side] - (target[border] || 0);
+      },
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  for (const [alias, source] of [["x", "clientX"], ["y", "clientY"]]) {
     define(MouseEvent.prototype, alias, {
       get() { return this[source]; },
       enumerable: true,
@@ -1026,11 +1040,16 @@
     event: "Event", events: "Event", htmlevents: "Event", customevent: "CustomEvent",
     uievent: "UIEvent", uievents: "UIEvent", mouseevent: "MouseEvent",
     mouseevents: "MouseEvent", keyboardevent: "KeyboardEvent", focusevent: "FocusEvent",
+    beforeunloadevent: "BeforeUnloadEvent", compositionevent: "CompositionEvent",
+    dragevent: "DragEvent", hashchangeevent: "HashChangeEvent", messageevent: "MessageEvent",
+    storageevent: "StorageEvent", svgevents: "Event", textevent: "TextEvent",
+    devicemotionevent: "DeviceMotionEvent",
+    deviceorientationevent: "DeviceOrientationEvent",
   };
   define(Document.prototype, "createEvent", {
     value: function createEvent(kind) {
       const name = legacyEvents[String(kind).toLowerCase()];
-      if (name === undefined) {
+      if (name === undefined || typeof global[name] !== "function") {
         throw new DOMException("interface d'événement inconnue : " + String(kind), "NotSupportedError");
       }
       return new global[name]("");
@@ -1263,8 +1282,9 @@
   }
   expose("location", locationObject);
   define(Document.prototype, "location", {
-    get() { return locationObject; },
-    set(value) { navigate("assign", String(value)); },
+    // Un document sans fenêtre (`createHTMLDocument`, `new Document()`) n'a pas d'adresse.
+    get() { return this === global.document ? locationObject : null; },
+    set(value) { if (this === global.document) navigate("assign", String(value)); },
     enumerable: true,
     configurable: true,
   });
