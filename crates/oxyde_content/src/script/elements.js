@@ -72,7 +72,7 @@
 
   // ---- Éléments sans membre propre notable ---------------------------------------------------
   for (const [name, tags] of [
-    ["HTMLHtmlElement", ["html"]], ["HTMLHeadElement", ["head"]], ["HTMLBodyElement", ["body"]],
+    ["HTMLHtmlElement", ["html"]], ["HTMLHeadElement", ["head"]],
     ["HTMLTitleElement", ["title"]], ["HTMLDivElement", ["div"]], ["HTMLSpanElement", ["span"]],
     ["HTMLParagraphElement", ["p"]], ["HTMLPreElement", ["pre"]], ["HTMLBRElement", ["br"]],
     ["HTMLHRElement", ["hr"]], ["HTMLHeadingElement", ["h1", "h2", "h3", "h4", "h5", "h6"]],
@@ -108,6 +108,19 @@
     const parts = parseUrl(this.getAttribute("href") ?? "", this.baseURI);
     return parts === null ? "" : parts[10];
   });
+  // `<body>` : ces gestionnaires sont ceux de la fenêtre (`body.onload = …`).
+  const windowHandlers = {};
+  for (const kind of ["blur", "error", "focus", "load", "resize", "scroll", "afterprint",
+    "beforeprint", "beforeunload", "hashchange", "languagechange", "message", "messageerror",
+    "offline", "online", "pagehide", "pageshow", "popstate", "rejectionhandled", "storage",
+    "unhandledrejection", "unload"]) {
+    const name = "on" + kind;
+    windowHandlers[name] = accessor(
+      function () { return (this.ownerDocument?.defaultView ?? global)[name] ?? null; },
+      function (value) { (this.ownerDocument?.defaultView ?? global)[name] = value; },
+    );
+  }
+  elementInterface("HTMLBodyElement", ["body"], windowHandlers);
   const linkMembers = {
     ...anchorParts,
     download: text("download"),

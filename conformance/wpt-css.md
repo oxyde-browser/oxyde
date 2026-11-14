@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 10060 / 28942 (34,8 %)** — fichiers entièrement réussis : 570 / 2267 (25,1 %).
+**Sous-tests réussis : 10070 / 28950 (34,8 %)** — fichiers entièrement réussis : 572 / 2267 (25,2 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -80,7 +80,7 @@ est le plus honnête des deux.
 | `css/css-position/overlay` | 1 / 6 | 9 / 28 (32,1 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
-| `css/css-position/sticky` | 4 / 33 | 20 / 82 (24,4 %) |
+| `css/css-position/sticky` | 5 / 33 | 21 / 82 (25,6 %) |
 | `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
@@ -92,13 +92,13 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
-| `css/css-tables` | 31 / 82 | 247 / 382 (64,7 %) |
+| `css/css-tables` | 31 / 82 | 254 / 390 (65,1 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
 | `css/css-tables/height-distribution` | 2 / 5 | 12 / 20 (60,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 65 / 233 | 880 / 1830 (48,1 %) |
+| `css/cssom-view` | 66 / 233 | 882 / 1830 (48,2 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -393,7 +393,7 @@ est le plus honnête des deux.
 | `css/css-display/display-contents-blockify-dynamic.html` | 0 / 3 |  |
 | `css/css-display/display-contents-computed-style.html` | 3 / 5 |  |
 | `css/css-display/display-contents-focusable-001.html` | 0 / 1 |  |
-| `css/css-display/display-contents-pseudo-click-target.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-display/display-contents-pseudo-click-target.html` | 0 / 1 |  |
 | `css/css-display/display-contents-svg-tspan-child-character-positions.html` | 0 / 1 |  |
 | `css/css-display/display-contents-svg-tspan-child-display-changed.html` | 0 / 1 |  |
 | `css/css-display/display-contents-svg-tspan-child-removed.html` | 0 / 1 |  |
@@ -1361,7 +1361,6 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-top.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms-translate.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms.html` | 0 / 3 |  |
-| `css/css-position/sticky/sticky-after-input.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/abspos-intrinsic-height-inset-percentage-child.html` | 3 / 6 |  |
 | `css/css-sizing/animation/aspect-ratio-interpolation-degenerate.html` | 0 / 12 |  |
 | `css/css-sizing/animation/aspect-ratio-interpolation-sideways-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1561,7 +1560,7 @@ est le plus honnête des deux.
 | `css/css-tables/html-to-css-mapping-2.html` | 16 / 25 |  |
 | `css/css-tables/html5-table-formatting-1.html` | 2 / 6 |  |
 | `css/css-tables/html5-table-formatting-2.html` | 6 / 12 |  |
-| `css/css-tables/html5-table-formatting-3.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/html5-table-formatting-3.html` | 7 / 8 |  |
 | `css/css-tables/inheritance.html` | 0 / 10 |  |
 | `css/css-tables/parsing/border-collapse-computed.html` | 0 / 2 |  |
 | `css/css-tables/parsing/border-collapse-invalid.html` | 0 / 2 |  |
@@ -1790,13 +1789,12 @@ est le plus honnête des deux.
 | `css/cssom-view/smooth-scroll-in-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scroll-nonstop.html` | 1 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scrollIntoView-with-smooth-fragment-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `css/cssom-view/smooth-scrollIntoView-with-unrelated-gesture-scroll.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/subpixel-sizes-and-offsets.tentative.html` | 12 / 15 |  |
 | `css/cssom-view/table-client-props.html` | 11 / 15 |  |
 | `css/cssom-view/table-offset-props.html` | 12 / 13 |  |
 | `css/cssom-view/table-scroll-props.html` | 11 / 13 |  |
 | `css/cssom-view/table-with-border-client-width-height.html` | 0 / 1 |  |
-| `css/cssom-view/user-scroll-interrupts-smooth-scroll.html` | 1 / 3 | harnais : délai du harnais dépassé |
+| `css/cssom-view/user-scroll-interrupts-smooth-scroll.html` | 2 / 3 |  |
 | `css/cssom-view/visual-scrollIntoView-001.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-002.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-003.html` | 0 / 1 |  |

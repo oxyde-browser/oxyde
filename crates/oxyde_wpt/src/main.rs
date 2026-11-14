@@ -21,12 +21,21 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-use oxyde_content::{FetchResponse, Page, Url, Viewport, decode_image};
+use oxyde_content::{FetchResponse, KeyInput, MouseInput, Page, Url, Viewport, decode_image};
+use oxyde_text::TextContext;
 
 /// Origine fictive sous laquelle les tests sont servis.
 const ORIGIN: &str = "https://web-platform.test";
 /// Rapporteur substitué à `/resources/testharnessreport.js`.
 const REPORT_JS: &str = include_str!("report.js");
+/// Substitué à `/resources/testdriver-vendor.js` : remet au lanceur les
+/// gestes que les tests demandent par `testdriver.js`.
+const VENDOR_JS: &str = include_str!("vendor.js");
+/// Fenêtre dans laquelle les tests s'exécutent.
+const VIEWPORT: Viewport = Viewport {
+    width: 800.0,
+    height: 600.0,
+};
 /// Temps réel accordé à un fichier dans le processus fils.
 const CHILD_BUDGET: Duration = Duration::from_secs(10);
 /// Temps au bout duquel le processus père tue un fils muet.
@@ -193,6 +202,141 @@ fn metas<'a>(source: &'a str, key: &'a str) -> impl Iterator<Item = &'a str> {
 // Processus fils : un fichier
 // ---------------------------------------------------------------------------
 
+/// Joue sur la page les gestes que `vendor.js` remet par la console, comme
+/// le ferait la fenêtre du navigateur : c'est le rôle que WebDriver tient
+/// pour les autres navigateurs.
+#[derive(Default)]
+struct Driver {
+    /// Mise en forme du texte, pour la mise en page que les gestes visent.
+    text: Option<TextContext>,
+    /// Position du pointeur, dans le repère de la fenêtre.
+    pointer: (f32, f32),
+    /// Touches de modification tenues.
+    ctrl: bool,
+    shift: bool,
+    alt: bool,
+    meta: bool,
+}
+
+impl Driver {
+    /// Pointeur courant, dans le repère de la page.
+    fn input(&self, page: &Page, button: u8, detail: u8) -> MouseInput {
+        let (scroll_x, scroll_y) = page.scroll_offset();
+        MouseInput {
+            x: self.pointer.0 + scroll_x,
+            y: self.pointer.1 + scroll_y,
+            button,
+            buttons: 0,
+            detail,
+            ctrl: self.ctrl,
+            shift: self.shift,
+            alt: self.alt,
+            meta: self.meta,
+        }
+    }
+
+    /// Joue le geste `line` (champs séparés par des tabulations) ; un geste
+    /// mal formé est ignoré.
+    fn play(&mut self, page: &mut Page, line: &str) {
+        let mut fields = line.split('\t');
+        let kind = fields.next().unwrap_or("");
+        let rest: Vec<&str> = fields.collect();
+        let number = |index: usize| -> Option<f32> {
+            rest.get(index)
+                .and_then(|text| text.parse::<f32>().ok())
+                .filter(|value| value.is_finite())
+        };
+        let button = || -> Option<u8> { rest.first().and_then(|text| text.parse::<u8>().ok()) };
+        // Les gestes visent la page telle qu'elle est mise en page maintenant.
+        page.update(self.text.get_or_insert_with(TextContext::new), VIEWPORT);
+        match kind {
+            "move" => {
+                let (Some(x), Some(y)) = (number(0), number(1)) else {
+                    return;
+                };
+                self.pointer = (x, y);
+                page.mouse_move(&self.input(page, 0, 0));
+            }
+            "down" => {
+                let Some(button) = button() else { return };
+                page.mouse_button(true, &self.input(page, button, 1));
+            }
+            "up" => {
+                let Some(button) = button() else { return };
+                let input = self.input(page, button, 1);
+                page.mouse_button(false, &input);
+                match button {
+                    0 => {
+                        page.click(input.x, input.y);
+                    }
+                    2 => {
+                        page.context_menu_event(input.x, input.y);
+                    }
+                    _ => {}
+                }
+            }
+            "wheel" => {
+                let (Some(x), Some(y), Some(dx), Some(dy)) =
+                    (number(0), number(1), number(2), number(3))
+                else {
+                    return;
+                };
+                self.pointer = (x, y);
+                let input = MouseInput {
+                    x,
+                    y,
+                    ..self.input(page, 0, 0)
+                };
+                // La page défile si aucun script n'a annulé la molette.
+                if !page.wheel_event(&input, dx, dy) {
+                    page.wheel(x, y, dx, dy);
+                }
+            }
+            "key" => {
+                let (Some(state), Some(key)) = (rest.first(), rest.get(1)) else {
+                    return;
+                };
+                let down = *state == "down";
+                match *key {
+                    "Control" => self.ctrl = down,
+                    "Shift" => self.shift = down,
+                    "Alt" => self.alt = down,
+                    "Meta" => self.meta = down,
+                    _ => {}
+                }
+                page.key_event(
+                    down,
+                    &KeyInput {
+                        key,
+                        code: "",
+                        ctrl: self.ctrl,
+                        shift: self.shift,
+                        alt: self.alt,
+                        meta: self.meta,
+                        repeat: false,
+                    },
+                );
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Lit la console de la page : joue les gestes demandés (`WPT-A`) et recopie
+/// les lignes de résultat. Renvoie `true` si le harnais a terminé.
+fn drain_console(page: &mut Page, driver: &mut Driver) -> bool {
+    let mut finished = false;
+    for message in page.take_console() {
+        if let Some(gesture) = message.text.strip_prefix("WPT-A\t") {
+            driver.play(page, gesture);
+        } else if message.text.starts_with("WPT-") {
+            println!("{}", message.text);
+            finished |= message.text.starts_with("WPT-H");
+        }
+    }
+    finished
+}
+
 /// Exécute le test `rel` et écrit ses lignes de résultat sur la sortie.
 fn run_child(suite: &Path, rel: &str) -> ExitCode {
     let Some((url, html)) = load_test(suite, rel) else {
@@ -201,10 +345,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
     };
     let mut page = Page::from_html(url, &html);
     page.set_task_budget(TASK_BUDGET);
-    page.set_viewport(Viewport {
-        width: 800.0,
-        height: 600.0,
-    });
+    page.set_viewport(VIEWPORT);
     for url in page.pending_stylesheets() {
         let css = read_url(suite, &url).unwrap_or_default();
         page.set_stylesheet(&url, &css);
@@ -240,7 +381,11 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
 
     let started = Instant::now();
     let mut finished = false;
+    let mut driver = Driver::default();
     for _ in 0..MAX_TICKS {
+        // Les gestes demandés d'abord : les scripts servis ensuite peuvent
+        // en annoncer la fin.
+        finished |= drain_console(&mut page, &mut driver);
         for request in page.take_fetches() {
             let result = match read_url_bytes(suite, &request.url) {
                 Some(body) => Ok(FetchResponse {
@@ -271,12 +416,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
             page.set_script(&url, source);
         }
         let loaded = page.load_ready_frames();
-        for message in page.take_console() {
-            if message.text.starts_with("WPT-") {
-                println!("{}", message.text);
-                finished |= message.text.starts_with("WPT-H");
-            }
-        }
+        finished |= drain_console(&mut page, &mut driver);
         if finished || started.elapsed() > CHILD_BUDGET {
             break;
         }
@@ -349,6 +489,18 @@ fn read_url_bytes(suite: &Path, url: &Url) -> Option<Vec<u8>> {
     let path = url.path();
     if path == "/resources/testharnessreport.js" {
         return Some(REPORT_JS.as_bytes().to_vec());
+    }
+    if path == "/resources/testdriver-vendor.js" {
+        return Some(VENDOR_JS.as_bytes().to_vec());
+    }
+    // Fin d'une suite de gestes (voir `vendor.js`) : servi après qu'ils ont
+    // été joués, ce script résout la promesse rendue au test.
+    if let Some(rank) = path
+        .strip_prefix("/resources/wpt-played/")
+        .and_then(|name| name.strip_suffix(".js"))
+        .and_then(|rank| rank.parse::<u32>().ok())
+    {
+        return Some(format!("window.__wptPlayed({rank});").into_bytes());
     }
     let rel = path.trim_start_matches('/');
     if rel
