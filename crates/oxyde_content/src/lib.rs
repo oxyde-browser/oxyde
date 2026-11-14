@@ -4010,10 +4010,11 @@ mod tests {
              <script nomodule>noter('repli statique');</script>",
         );
         p.run_scripts();
-        // Le script en ligne s'exécute à la fin de la tâche qui l'a inséré.
+        // Le script en ligne s'exécute dès son insertion, avant la suite du
+        // script qui l'a inséré.
         assert_eq!(
             body_text(&p),
-            "courant premier;après insertion;en ligne enligne;"
+            "courant premier;en ligne enligne;après insertion;"
         );
         let requests = p.take_fetches();
         let urls: Vec<&str> = requests.iter().map(|r| r.url.as_str()).collect();
@@ -4056,9 +4057,9 @@ mod tests {
         assert!(p.complete_fetch(requests[2].id, respond(&requests[2], 404, "introuvable")));
         assert_eq!(
             body_text(&p),
-            "courant premier;après insertion;en ligne enligne;\
+            "courant premier;en ligne enligne;après insertion;\
              ailleurs ailleurs;load ailleurs true;\
-             lot https://exemple.test/dossier/lot.js;load externe true;suite;\
+             lot https://exemple.test/dossier/lot.js;suite;load externe true;\
              error absent;"
         );
         assert!(p.take_fetches().is_empty());
@@ -5055,5 +5056,49 @@ mod tests {
             Some("a")
         );
         assert_eq!(attr(&p, "data-actif"), "hote champ");
+    }
+
+    #[test]
+    fn tables_are_scripted_by_rows_and_cells() {
+        let mut p = page(
+            "<table id=t><caption>titre</caption><thead><tr><th>a</th></tr></thead>
+               <tbody><tr><td>1</td><td>2</td></tr><tr><td>3</td></tr></tbody>
+               <tfoot><tr><td>pied</td></tr></tfoot></table>
+             <script>
+               const t = document.getElementById('t');
+               const out = [];
+               out.push(t.rows.length, t.tBodies.length, t.tBodies[0].rows[0].cells.length);
+               out.push(t.rows instanceof HTMLCollection, t.caption.textContent, t.tHead.rows[0].cells[0].textContent);
+               out.push(t.tFoot.rows[0].rowIndex, t.tBodies[0].rows[1].sectionRowIndex);
+               out.push(t.rows[1].cells[1].cellIndex, t.rows[1].cells[1].colSpan);
+               // Une ligne insérée va dans la section de la ligne voisine.
+               const row = t.insertRow(1);
+               row.insertCell().textContent = 'neuf';
+               row.insertCell(0).textContent = 'avant';
+               out.push(row.parentNode.localName, row.rowIndex, row.textContent);
+               t.deleteRow(-1);
+               out.push(t.tFoot.rows.length, t.rows.length);
+               t.tBodies[0].deleteRow(0);
+               out.push(t.tBodies[0].rows.length);
+               try { t.deleteRow(99); } catch (e) { out.push(e.name); }
+               // Sections créées à leur place, une seule fois.
+               t.deleteTHead();
+               const head = t.createTHead();
+               out.push(head === t.createTHead(), head.previousElementSibling.localName);
+               const empty = document.createElement('table');
+               out.push(empty.insertRow().parentNode.localName, empty.createTBody().localName);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "4 1 2 true titre a 3 1 1 1 tbody 1 avantneuf 0 4 2 IndexSizeError \
+                 true caption tbody tbody"
+            )
+        );
     }
 }

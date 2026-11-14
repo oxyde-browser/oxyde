@@ -157,15 +157,21 @@ pub(super) fn pre_insert(
     child: Option<NodeId>,
 ) -> JsResult<()> {
     ensure(vm, |doc| validity(doc, node, parent, child, false))?;
+    let mut scripts = Vec::new();
     if let Some(h) = host(vm) {
         let reference = if child == Some(node) {
             h.doc.node(node).next_sibling
         } else {
             child
         };
+        // Les scripts que l'insertion relie au document : relevés avant,
+        // car un fragment se vide en s'insérant.
+        scripts = super::scripts::within(&h.doc, node, parent);
         insert(&mut h.doc, node, parent, reference);
         h.dirty = true;
     }
+    // L'insertion est faite : ils s'exécutent, dans l'ordre de l'arbre.
+    super::scripts::run_inserted(vm, &scripts);
     Ok(())
 }
 
@@ -174,6 +180,7 @@ fn replace(vm: &mut Vm, child: NodeId, node: NodeId, parent: NodeId) -> JsResult
     ensure(vm, |doc| validity(doc, node, parent, Some(child), true))?;
     let Some(h) = host(vm) else { return Ok(()) };
     let doc = &mut h.doc;
+    let scripts = super::scripts::within(doc, node, parent);
     let mut reference = doc.node(child).next_sibling;
     if reference == Some(node) {
         reference = doc.node(node).next_sibling;
@@ -191,6 +198,7 @@ fn replace(vm: &mut Vm, child: NodeId, node: NodeId, parent: NodeId) -> JsResult
         doc.end_group();
     }
     h.dirty = true;
+    super::scripts::run_inserted(vm, &scripts);
     Ok(())
 }
 
@@ -386,10 +394,13 @@ pub(super) fn replace_children(vm: &mut Vm, this: &Value, args: &[Value]) -> JsR
     let parent = this_node(vm, this)?;
     let node = convert(vm, parent, args)?;
     ensure(vm, |doc| validity(doc, node, parent, None, false))?;
+    let mut scripts = Vec::new();
     if let Some(h) = host(vm) {
+        scripts = super::scripts::within(&h.doc, node, parent);
         replace_all(&mut h.doc, Some(node), parent);
         h.dirty = true;
     }
+    super::scripts::run_inserted(vm, &scripts);
     Ok(Value::Undefined)
 }
 

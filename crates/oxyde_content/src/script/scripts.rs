@@ -1,10 +1,12 @@
 //! Scripts insérés par les scripts (`document.createElement("script")`).
 //!
 //! Les scripts du HTML reçu sont exécutés par la page, dans l'ordre du
-//! document. Ceux qu'un script insère ensuite sont pris en charge ici, à la
-//! fin de la tâche qui les a insérés : un script en ligne s'exécute aussitôt ;
-//! un script externe est demandé par le circuit de `fetch`, s'exécute à
-//! l'arrivée de sa réponse, puis reçoit `load` (ou `error`).
+//! document. Ceux qu'un script insère ensuite sont pris en charge ici, dès
+//! l'insertion (`appendChild`, `append`, `textContent`…) : un script en
+//! ligne s'exécute sur le champ, au milieu du script qui l'a inséré ; un
+//! script externe est demandé par le circuit de `fetch`, s'exécute à
+//! l'arrivée de sa réponse, puis reçoit `load` (ou `error`). Un relevé en
+//! fin de tâche rattrape les autres voies d'insertion (`innerHTML`).
 //!
 //! LIMITES CONNUES : un module en ligne inséré n'est pas exécuté (un module
 //! inséré avec `src` est importé, voir `modules`) ;
@@ -30,6 +32,12 @@ fn script_elements(doc: &Document) -> impl Iterator<Item = NodeId> + '_ {
         .filter(|node| doc.element(*node).is_some_and(|e| e.is_html("script")))
 }
 
+/// Texte d'un script : celui de ses enfants directs, sans celui des
+/// éléments qu'il contiendrait.
+fn child_text(doc: &Document, node: NodeId) -> String {
+    doc.children(node).filter_map(|n| doc.text(n)).collect()
+}
+
 /// Relève, à la première tâche, les scripts du HTML reçu : la page les
 /// exécute elle-même.
 pub(super) fn note_existing(vm: &mut Vm) {
@@ -37,7 +45,15 @@ pub(super) fn note_existing(vm: &mut Vm) {
         return;
     };
     if h.scripts_started.is_none() {
-        let existing: HashSet<usize> = script_elements(&h.doc).map(|n| n.index()).collect();
+        // Un script vide et sans adresse n'a pas commencé : il s'exécutera
+        // quand un script lui donnera son texte.
+        let existing: HashSet<usize> = script_elements(&h.doc)
+            .filter(|n| {
+                h.doc.element(*n).is_some_and(|e| e.has_attr("src"))
+                    || !child_text(&h.doc, *n).trim().is_empty()
+            })
+            .map(|n| n.index())
+            .collect();
         h.scripts_started = Some(existing);
         h.scripts_scanned = h.doc.version();
     }
@@ -106,76 +122,124 @@ pub(super) fn scan(vm: &mut Vm) {
             return;
         }
         for node in fresh {
-            let Some(h) = host(vm) else {
-                return;
-            };
-            let Some(element) = h.doc.element(node) else {
-                continue;
-            };
-            // Un module inséré avec `src` est importé.
-            if crate::is_module_script(element.attr("type")) {
-                let target = element
-                    .attr("src")
-                    .map(str::trim)
-                    .filter(|src| !src.is_empty())
-                    .and_then(|src| h.url.join(src).ok());
-                if let Some(url) = target {
-                    super::modules::import_for_element(vm, node, &url);
+            start(vm, node, true);
+        }
+    }
+}
+
+/// Scripts qu'une insertion de `node` dans `parent` peut mettre en route :
+/// `node` et ses descendants, et `parent` lui-même quand c'est un script qui
+/// reçoit son texte. À relever avant l'insertion (un fragment se vide).
+pub(super) fn within(doc: &Document, node: NodeId, parent: NodeId) -> Vec<NodeId> {
+    let is_script = |n: &NodeId| doc.element(*n).is_some_and(|e| e.is_html("script"));
+    std::iter::once(parent)
+        .chain(std::iter::once(node))
+        .chain(doc.descendants(node))
+        .filter(is_script)
+        .collect()
+}
+
+/// Met en route, dans l'ordre, ceux des scripts `nodes` qu'une insertion
+/// vient de relier au document : un script en ligne s'exécute sur le champ,
+/// au milieu du script qui l'a inséré, comme le veut la norme.
+pub(super) fn run_inserted(vm: &mut Vm, nodes: &[NodeId]) {
+    for node in nodes {
+        let Some(h) = host(vm) else {
+            return;
+        };
+        // Hors d'une tâche de script, ou hors du document : rien à faire.
+        let Some(started) = h.scripts_started.as_mut() else {
+            return;
+        };
+        if h.doc.tree_root(*node) != h.doc.root() || !started.insert(node.index()) {
+            continue;
+        }
+        // Pas de point de contrôle des micro-tâches : un script est en cours.
+        start(vm, *node, false);
+    }
+}
+
+/// Prend en charge le script `node`, déjà noté comme mis en route.
+/// `checkpoint` : les micro-tâches s'exécutent après lui (fin de tâche).
+fn start(vm: &mut Vm, node: NodeId, checkpoint: bool) {
+    let Some(h) = host(vm) else {
+        return;
+    };
+    let Some(element) = h.doc.element(node) else {
+        return;
+    };
+    // Un module inséré avec `src` est importé.
+    if crate::is_module_script(element.attr("type")) {
+        let target = element
+            .attr("src")
+            .map(str::trim)
+            .filter(|src| !src.is_empty())
+            .and_then(|src| h.url.join(src).ok());
+        if let Some(url) = target {
+            super::modules::import_for_element(vm, node, &url);
+            if checkpoint {
+                vm.run_microtasks();
+            }
+        }
+        return;
+    }
+    // Sinon, seuls les scripts classiques ; `nomodule` est un repli
+    // pour les navigateurs sans modules.
+    if !crate::is_classic_script(element.attr("type")) || element.has_attr("nomodule") {
+        return;
+    }
+    let action = match element.attr("src").map(str::trim) {
+        Some(src) if !src.is_empty() => match h.url.join(src) {
+            Ok(url) if matches!(url.scheme(), "http" | "https") => Action::Fetch(url),
+            _ => Action::Fail,
+        },
+        Some(_) => Action::Fail,
+        None => Action::Run(child_text(&h.doc, node)),
+    };
+    match action {
+        Action::Run(source) => {
+            if source.trim().is_empty() {
+                // Un script vide n'a pas commencé : il s'exécutera quand il
+                // recevra son texte.
+                if let Some(started) = h.scripts_started.as_mut() {
+                    started.remove(&node.index());
+                }
+            } else {
+                run_classic(vm, Some(node), &source);
+                if checkpoint {
                     vm.run_microtasks();
                 }
-                continue;
             }
-            // Sinon, seuls les scripts classiques ; `nomodule` est un repli
-            // pour les navigateurs sans modules.
-            if !crate::is_classic_script(element.attr("type")) || element.has_attr("nomodule") {
-                continue;
+        }
+        Action::Fetch(url) => {
+            if h.fetches.len() >= MAX_PENDING_FETCHES {
+                dispatch_simple(vm, node, "error", false);
+                return;
             }
-            let action = match element.attr("src").map(str::trim) {
-                Some(src) if !src.is_empty() => match h.url.join(src) {
-                    Ok(url) if matches!(url.scheme(), "http" | "https") => Action::Fetch(url),
-                    _ => Action::Fail,
+            let id = NEXT_FETCH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            h.fetch_queue.push(crate::FetchRequest {
+                id,
+                initiator: h.url.clone(),
+                url: url.clone(),
+                method: "GET".to_owned(),
+                headers: Vec::new(),
+                body: Vec::new(),
+                origin: None,
+                needs_preflight: false,
+            });
+            h.fetches.insert(
+                id,
+                PendingFetch {
+                    url,
+                    resolve: Value::Undefined,
+                    reject: Value::Undefined,
+                    script: Some(node),
+                    module: None,
                 },
-                Some(_) => Action::Fail,
-                None => Action::Run(h.doc.text_content(node)),
-            };
-            match action {
-                Action::Run(source) => {
-                    if !source.trim().is_empty() {
-                        run_classic(vm, Some(node), &source);
-                        vm.run_microtasks();
-                    }
-                }
-                Action::Fetch(url) => {
-                    if h.fetches.len() >= MAX_PENDING_FETCHES {
-                        dispatch_simple(vm, node, "error", false);
-                        continue;
-                    }
-                    let id = NEXT_FETCH_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                    h.fetch_queue.push(crate::FetchRequest {
-                        id,
-                        initiator: h.url.clone(),
-                        url: url.clone(),
-                        method: "GET".to_owned(),
-                        headers: Vec::new(),
-                        body: Vec::new(),
-                        origin: None,
-                        needs_preflight: false,
-                    });
-                    h.fetches.insert(
-                        id,
-                        PendingFetch {
-                            url,
-                            resolve: Value::Undefined,
-                            reject: Value::Undefined,
-                            script: Some(node),
-                            module: None,
-                        },
-                    );
-                }
-                Action::Fail => {
-                    dispatch_simple(vm, node, "error", false);
-                }
-            }
+            );
+        }
+        Action::Fail => {
+            dispatch_simple(vm, node, "error", false);
         }
     }
 }

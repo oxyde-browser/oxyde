@@ -659,6 +659,11 @@
           for (const key of keys) {
             const given = init === null || init === undefined ? undefined : init[key];
             const fallback = defaults[key];
+            // `view` : une fenêtre, ou rien.
+            if (key === "view" && given !== undefined && given !== null
+              && (typeof given !== "object" || given.window !== given)) {
+              throw new TypeError(name + " : « view » doit être une fenêtre");
+            }
             if (given === undefined) values[key] = fallback;
             else if (typeof fallback === "boolean") values[key] = Boolean(given);
             else if (typeof fallback === "number") values[key] = Number(given);
