@@ -132,11 +132,18 @@ pub(super) fn scan(vm: &mut Vm) {
 /// reçoit son texte. À relever avant l'insertion (un fragment se vide).
 pub(super) fn within(doc: &Document, node: NodeId, parent: NodeId) -> Vec<NodeId> {
     let is_script = |n: &NodeId| doc.element(*n).is_some_and(|e| e.is_html("script"));
-    std::iter::once(parent)
-        .chain(std::iter::once(node))
-        .chain(doc.descendants(node))
-        .filter(is_script)
-        .collect()
+    // Les arbres fantômes des nœuds insérés rejoignent le document avec eux.
+    let mut found = vec![parent];
+    let mut pending = vec![node];
+    while let Some(top) = pending.pop() {
+        for inner in std::iter::once(top).chain(doc.descendants(top)) {
+            found.push(inner);
+            if let Some(shadow) = doc.shadow_root(inner) {
+                pending.push(shadow);
+            }
+        }
+    }
+    found.into_iter().filter(is_script).collect()
 }
 
 /// Met en route, dans l'ordre, ceux des scripts `nodes` qu'une insertion
@@ -151,7 +158,7 @@ pub(super) fn run_inserted(vm: &mut Vm, nodes: &[NodeId]) {
         let Some(started) = h.scripts_started.as_mut() else {
             return;
         };
-        if h.doc.tree_root(*node) != h.doc.root() || !started.insert(node.index()) {
+        if h.doc.composed_root(*node) != h.doc.root() || !started.insert(node.index()) {
             continue;
         }
         // Pas de point de contrôle des micro-tâches : un script est en cours.

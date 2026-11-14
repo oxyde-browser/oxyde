@@ -638,7 +638,21 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       éléments personnalisés, qui en dépendent, partent donc plus tôt.
       `moveBefore()` franchit la frontière d'un arbre fantôme du même document et
       déplace un commentaire dans un document.
-- [ ] Web Platform Tests `dom/` : de 60,3 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] `outerHTML` en écriture (il manquait : l'affectation était sans effet) ;
+      `innerHTML` et `outerHTML` donnent un seul enregistrement de mutation ; un
+      sélecteur invalide lève une `DOMException` « SyntaxError » ; arguments
+      obligatoires de `appendData`, `substringData`… ; `textContent = undefined` vide le
+      nœud ; `initUIEvent`, `initMouseEvent`, `initKeyboardEvent`,
+      `initCompositionEvent` ; `StaticRange` ; `Symbol.unscopables` pour les méthodes
+      de `ChildNode` et `ParentNode` ; `isEqualNode` compare préfixes, espaces de noms
+      des attributs et instructions de traitement ; `window.event` est une propriété
+      propre, intacte pour un écouteur d'arbre fantôme ; anciens noms
+      `webkitAnimationEnd`, `webkitTransitionEnd`… ; un script d'un arbre fantôme
+      s'exécute quand son hôte rejoint le document ; `performance.now()` et
+      `Event.timeStamp` ont une résolution de 0,1 ms.
+      Limites : `outerHTML` analyse son texte comme le contenu d'un `<body>` ; un
+      identifiant `#-123` est encore accepté dans un sélecteur.
+- [ ] Web Platform Tests `dom/` : de 62,5 % à 70 % des fichiers ; `html/` branché et mesuré.
       Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (35 :
       `scrollend`, défilement tactile), `ranges/tentative` (19),
       collections exotiques (`HTMLCollection`, `NamedNodeMap`, `NodeList` : ~18),
