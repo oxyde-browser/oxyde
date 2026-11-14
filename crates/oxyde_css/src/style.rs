@@ -7,6 +7,7 @@
 //! LIMITES CONNUES : pas d'index de règles (chaque élément teste toutes les
 //! règles), pas de `var()`, pas de `calc()`.
 
+use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 
 use oxyde_dom::{Document, ElementData, NodeId};
@@ -1523,16 +1524,83 @@ type Matched<'a> = (u8, u32, u32, &'a Declaration);
 
 /// Ajoute à `out` les déclarations des règles actives de `rules` qui
 /// s'appliquent à `node`.
+/// Index des règles actives d'une feuille, par exigence du sujet de leurs
+/// sélecteurs : un élément n'essaie que les règles rangées sous son
+/// identifiant, ses classes et son nom, et celles sans exigence simple.
+///
+/// Sans index, chaque élément essaie chaque règle : des milliers de règles
+/// par des milliers d'éléments, à chaque calcul des styles.
+#[derive(Default)]
+struct RuleIndex<'a> {
+    ids: HashMap<&'a str, Vec<usize>>,
+    classes: HashMap<&'a str, Vec<usize>>,
+    tags: HashMap<&'a str, Vec<usize>>,
+    any: Vec<usize>,
+}
+
+impl<'a> RuleIndex<'a> {
+    /// Range les règles `active` de `rules`.
+    fn new(rules: &'a [crate::stylesheet::Rule], active: &[usize]) -> Self {
+        use crate::selector::SubjectKey;
+        let mut index = Self::default();
+        for &at in active {
+            let Some(rule) = rules.get(at) else {
+                continue;
+            };
+            for selector in &rule.selectors {
+                let bucket = match selector.subject_key() {
+                    SubjectKey::Id(id) => index.ids.entry(id).or_default(),
+                    SubjectKey::Class(class) => index.classes.entry(class).or_default(),
+                    SubjectKey::Tag(tag) => index.tags.entry(tag).or_default(),
+                    SubjectKey::Any => &mut index.any,
+                };
+                // Une règle à plusieurs sélecteurs de même exigence n'entre
+                // qu'une fois (les règles arrivent dans l'ordre).
+                if bucket.last() != Some(&at) {
+                    bucket.push(at);
+                }
+            }
+        }
+        index
+    }
+
+    /// Rangs des règles qui peuvent correspondre à `element`, dans l'ordre
+    /// de la feuille.
+    fn candidates(&self, element: &oxyde_dom::ElementData, out: &mut Vec<usize>) {
+        out.clear();
+        out.extend_from_slice(&self.any);
+        if let Some(rules) = element.id().and_then(|id| self.ids.get(id)) {
+            out.extend_from_slice(rules);
+        }
+        for class in element.classes() {
+            if let Some(rules) = self.classes.get(class) {
+                out.extend_from_slice(rules);
+            }
+        }
+        // Les noms des sélecteurs sont en minuscules.
+        let rules = if element.name.bytes().any(|b| b.is_ascii_uppercase()) {
+            self.tags.get(element.name.to_ascii_lowercase().as_str())
+        } else {
+            self.tags.get(element.name.as_str())
+        };
+        if let Some(rules) = rules {
+            out.extend_from_slice(rules);
+        }
+        out.sort_unstable();
+        out.dedup();
+    }
+}
+
 fn collect_matching<'a>(
     doc: &Document,
     node: NodeId,
     rules: &'a [crate::stylesheet::Rule],
-    active: &[usize],
+    candidates: &[usize],
     author: bool,
     order: &mut u32,
     out: &mut Vec<Matched<'a>>,
 ) {
-    for rule in active.iter().filter_map(|i| rules.get(*i)) {
+    for rule in candidates.iter().filter_map(|i| rules.get(*i)) {
         let Some(spec) = rule
             .selectors
             .iter()
@@ -1629,8 +1697,12 @@ fn cascade(
             .map(|(i, _)| i)
             .collect()
     };
-    let ua_active = active(&UA_SHEET);
-    let author_active: Vec<Vec<usize>> = author_sheets.iter().map(active).collect();
+    let ua_index = RuleIndex::new(&UA_SHEET.rules, &active(&UA_SHEET));
+    let author_indexes: Vec<RuleIndex<'_>> = author_sheets
+        .iter()
+        .map(|sheet| RuleIndex::new(&sheet.rules, &active(sheet)))
+        .collect();
+    let mut candidates = Vec::new();
 
     for node in doc.descendants(doc.root()) {
         let Some(el) = doc.element(node) else {
@@ -1643,11 +1715,12 @@ fn cascade(
         // (rang, spécificité, ordre, déclaration)
         let mut matched: Vec<(u8, u32, u32, &Declaration)> = Vec::new();
         let mut order = 0u32;
+        ua_index.candidates(el, &mut candidates);
         collect_matching(
             doc,
             node,
             &UA_SHEET.rules,
-            &ua_active,
+            &candidates,
             false,
             &mut order,
             &mut matched,
@@ -1663,12 +1736,13 @@ fn cascade(
             .flatten();
         let hints = presentational_hints(el, table);
         let hint_base = order;
-        for (sheet, rules) in author_sheets.iter().zip(&author_active) {
+        for (sheet, index) in author_sheets.iter().zip(&author_indexes) {
+            index.candidates(el, &mut candidates);
             collect_matching(
                 doc,
                 node,
                 &sheet.rules,
-                rules,
+                &candidates,
                 true,
                 &mut order,
                 &mut matched,

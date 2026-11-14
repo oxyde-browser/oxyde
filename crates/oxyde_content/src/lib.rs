@@ -386,6 +386,23 @@ fn usable_sheets(slots: &[SheetSlot]) -> Vec<Stylesheet> {
 
 /// Calcule le style puis la mise en page de `doc` dans son état du moment,
 /// pour une fenêtre de taille `viewport`.
+/// Styles calculés du document `doc`, sans mise en page : ce que demande
+/// une lecture de style qui ne dépend d'aucune boîte (`display`,
+/// `visibility`, une couleur…). Rend aussi l'instant du calcul s'il en
+/// dépend (animation ou transition en cours).
+pub(crate) fn style_snapshot(
+    doc: &Document,
+    env: &LayoutEnv,
+    viewport: (f32, f32),
+) -> (StyleMap, Option<f64>) {
+    let slots = collect_sheets(doc, &env.base, env.sheets.clone());
+    let viewport = Viewport {
+        width: viewport.0,
+        height: viewport.1,
+    };
+    env.animations.styles(doc, &usable_sheets(&slots), viewport)
+}
+
 pub(crate) fn layout_snapshot(
     doc: &Document,
     env: &LayoutEnv,

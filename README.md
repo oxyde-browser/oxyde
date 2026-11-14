@@ -27,6 +27,9 @@ Arbre DOM au format des tests html5lib :
 
 ```bash
 cargo run -p oxyde -- --dump-dom tests/pages/demo.html
+
+# Où passe le temps d'une page lente : journal des étapes et des scripts longs
+OXYDE_JOURNAL=1 cargo run --release -p oxyde -- --dump-dom https://exemple.test/
 ```
 
 ### Raccourcis

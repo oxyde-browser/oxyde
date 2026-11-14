@@ -102,6 +102,9 @@ struct DomHost {
     hooks: Option<Value>,
     /// Fonctions d'activation au clic (`before`, `after`).
     activation: Option<Value>,
+    /// Styles calculés sans mise en page, pour les lectures de style qui
+    /// n'en dépendent pas.
+    styles_only: Option<geometry::StylesOnly>,
     /// Script en cours d'exécution : `document.currentScript`.
     current_script: Option<NodeId>,
     /// Éléments `<script>` déjà pris en charge (index de nœud) ; `None`
@@ -1944,6 +1947,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             dirty: false,
             focus_value: None,
             current_script: None,
+            styles_only: None,
             scripts_started: None,
             scripts_scanned: 0,
             viewport: (0.0, 0.0),

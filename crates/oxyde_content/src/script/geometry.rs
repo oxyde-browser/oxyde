@@ -1016,8 +1016,80 @@ pub(super) fn get_computed_style(vm: &mut Vm, _this: &Value, args: &[Value]) -> 
 }
 
 /// Valeur de la propriété `name` (avec des tirets) pour le nœud `data`.
+/// Propriétés dont la valeur calculée ne dépend d'aucune boîte : les lire
+/// ne demande que le calcul des styles, pas la mise en page.
+const STYLE_ONLY: &[&str] = &[
+    "display",
+    "visibility",
+    "position",
+    "float",
+    "opacity",
+    "color",
+    "background-color",
+    "z-index",
+    "pointer-events",
+    "white-space",
+    "text-align",
+    "box-sizing",
+    "overflow",
+    "overflow-x",
+    "overflow-y",
+    "font-size",
+    "font-weight",
+    "font-style",
+    "font-family",
+];
+
+/// Style calculé de `node`, sans mise en page : celui de la géométrie si
+/// elle est à jour, sinon un calcul des styles seuls, gardé jusqu'au
+/// prochain changement du document.
+///
+/// Un script qui lit `getComputedStyle(e).display` entre deux écritures
+/// (test de visibilité dans une boucle) ne paie ainsi que les styles.
+fn style_only(vm: &mut Vm, node: NodeId) -> Option<Arc<ComputedStyle>> {
+    let h = host(vm)?;
+    let version = h.doc.version();
+    let viewport = h.viewport;
+    let now = h.layout_env.as_ref().map(|env| env.animations.now());
+    if let Some(geometry) = h.geometry.as_ref()
+        && geometry.version == version
+        && geometry.viewport == viewport
+        && (geometry.time.is_none() || geometry.time == now)
+    {
+        return geometry.styles.get(node).cloned();
+    }
+    let fresh = h.styles_only.as_ref().is_some_and(|cached| {
+        cached.version == version
+            && cached.viewport == viewport
+            && (cached.time.is_none() || cached.time == now)
+    });
+    if !fresh {
+        let env = h.layout_env.as_ref()?;
+        let (styles, time) = crate::style_snapshot(&h.doc, env, viewport);
+        h.styles_only = Some(StylesOnly {
+            version,
+            viewport,
+            time,
+            styles,
+        });
+    }
+    h.styles_only.as_ref()?.styles.get(node).cloned()
+}
+
+/// Styles calculés sans mise en page (voir [`style_only`]).
+pub(super) struct StylesOnly {
+    version: u64,
+    viewport: (f32, f32),
+    time: Option<f64>,
+    styles: StyleMap,
+}
+
 fn computed_value(vm: &mut Vm, data: u64, name: &str) -> Option<String> {
     let node = host(vm)?.doc.id_from_index(usize::try_from(data).ok()?)?;
+    if STYLE_ONLY.contains(&name) {
+        let style = style_only(vm, node)?;
+        return resolved(&style, None, 0.0, name);
+    }
     let rect = border_box(vm, node);
     let style = style_of(vm, node)?;
     // Largeur du bloc conteneur : celle du contenu du parent, à défaut la fenêtre.

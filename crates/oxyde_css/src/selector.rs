@@ -144,11 +144,40 @@ pub struct Selector {
     specificity: u32,
 }
 
+/// Exigence du sujet d'un sélecteur (voir [`Selector::subject_key`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SubjectKey<'a> {
+    /// L'élément porte cet identifiant.
+    Id(&'a str),
+    /// L'élément porte cette classe.
+    Class(&'a str),
+    /// L'élément porte ce nom (en minuscules).
+    Tag(&'a str),
+    /// Aucune exigence simple : tout élément est candidat.
+    Any,
+}
+
 impl Selector {
     /// Spécificité encodée `(a << 20) | (b << 10) | c`.
     #[must_use]
     pub fn specificity(&self) -> u32 {
         self.specificity
+    }
+
+    /// Ce que le sujet du sélecteur exige de l'élément, du plus sélectif au
+    /// moins sélectif : sert à ne présenter une règle qu'aux éléments qui
+    /// peuvent lui correspondre.
+    #[must_use]
+    pub fn subject_key(&self) -> SubjectKey<'_> {
+        if let Some(id) = &self.subject.id {
+            SubjectKey::Id(id)
+        } else if let Some(class) = self.subject.classes.first() {
+            SubjectKey::Class(class)
+        } else if let Some(tag) = &self.subject.tag {
+            SubjectKey::Tag(tag)
+        } else {
+            SubjectKey::Any
+        }
     }
 
     /// Vrai si l'élément `node` de `doc` correspond.
