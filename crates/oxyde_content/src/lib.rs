@@ -1572,6 +1572,10 @@ impl Page {
         let (prevented, mut redraw) = match self.engine.as_mut() {
             Some(engine) => {
                 let prevented = engine.key_event(&mut self.doc, down, input);
+                // Texte copié ou coupé dans un champ de saisie.
+                if let Some(text) = engine.take_copied() {
+                    self.copied = Some(text);
+                }
                 let redraw = engine.take_dirty();
                 if redraw {
                     self.dom_changed();
@@ -1591,8 +1595,7 @@ impl Page {
     /// texte sélectionné à l'embarqueur (voir [`Page::take_copied`]).
     /// Renvoie `true` si l'affichage a changé.
     ///
-    /// LIMITE : dans un champ de saisie ces touches sont laissées au champ,
-    /// qui ne sait pas encore sélectionner ni copier son texte.
+    /// Dans un champ de saisie, ces touches sont celles du champ.
     fn selection_shortcut(&mut self, input: &KeyInput<'_>) -> bool {
         if !input.ctrl || input.alt || input.meta || input.shift {
             return false;
@@ -1614,6 +1617,25 @@ impl Page {
             self.copied = Some(self.selected_text().to_owned());
         }
         false
+    }
+
+    /// Colle `text` (Ctrl V) dans le champ de saisie qui a le focus, à la
+    /// place de sa sélection. Renvoie `true` si la page doit être
+    /// redessinée ; sans champ qui ait le focus, rien ne se passe.
+    pub fn paste(&mut self, text: &str) -> bool {
+        if self.doc.focus().is_none() {
+            return false;
+        }
+        self.ensure_engine();
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        engine.paste(&mut self.doc, text);
+        let redraw = engine.take_dirty();
+        if redraw {
+            self.dom_changed();
+        }
+        redraw
     }
 
     /// Texte que l'utilisateur a copié (Ctrl C) depuis le dernier appel :
@@ -1792,7 +1814,47 @@ impl Page {
     /// n'a pas été annulée.
     pub fn click(&mut self, x: f32, y: f32) -> Option<Url> {
         let node = self.node_at(x, y)?;
-        self.click_node(node)
+        let link = self.click_node(node);
+        self.place_caret(node, x);
+        link
+    }
+
+    /// Après un clic sur le champ de texte `node`, qui vient de prendre le
+    /// focus : le curseur va au caractère le plus proche de l'abscisse `x`.
+    fn place_caret(&mut self, node: NodeId, x: f32) {
+        if self.doc.focus() != Some(node) || !script::is_text_input(&self.doc, node) {
+            return;
+        }
+        let (Some(tree), Some(element)) = (&self.tree, self.doc.element(node)) else {
+            return;
+        };
+        let value = element.attr("value").unwrap_or("");
+        // Un champ vide montre son texte indicatif : le curseur reste au début.
+        let (Some(shown), false) = (
+            oxyde_layout::field_caret_at(tree, node, x),
+            value.is_empty(),
+        ) else {
+            return;
+        };
+        let secret = element
+            .attr("type")
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("password"));
+        let mut caret = if secret {
+            // Un point affiché par caractère de la valeur.
+            value
+                .char_indices()
+                .nth(shown / oxyde_layout::PASSWORD_MASK.len_utf8())
+                .map_or(value.len(), |(at, _)| at)
+        } else {
+            shown.min(value.len())
+        };
+        while !value.is_char_boundary(caret) {
+            caret -= 1;
+        }
+        if caret != self.doc.caret() || caret != self.doc.selection_anchor() {
+            self.doc.set_focus(Some(node), caret);
+            self.dom_changed();
+        }
     }
 
     /// Clic sur le nœud `node`, comme [`Page::click`] quand ce nœud est sous
@@ -4086,5 +4148,154 @@ mod tests {
         p.click_node(field);
         p.key_event(true, &key("a", true));
         assert_eq!(p.selected_text(), "");
+    }
+
+    #[test]
+    fn a_field_selects_copies_cuts_and_pastes() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'>
+               <input id=champ value='bonjour le monde' style='width:300px;font-size:16px'>
+               <input id=secret type=password value='motdepasse'>
+               <textarea id=zone>un</textarea>
+               <script>
+                 var saisies = 0;
+                 addEventListener('input', () => {
+                   document.documentElement.setAttribute('data-saisies', ++saisies);
+                 });
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let by_id = |p: &Page, id: &str| {
+            p.document()
+                .descendants(p.document().root())
+                .find(|n| {
+                    p.document()
+                        .element(*n)
+                        .is_some_and(|e| e.attr("id") == Some(id))
+                })
+                .expect("élément")
+        };
+        let value = |p: &Page, id: &str| {
+            p.document()
+                .element(by_id(p, id))
+                .and_then(|e| e.attr("value"))
+                .unwrap_or("")
+                .to_owned()
+        };
+        let key = |key: &'static str, ctrl: bool, shift: bool| KeyInput {
+            key,
+            code: "",
+            ctrl,
+            shift,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        let field = by_id(&p, "champ");
+        p.click_node(field);
+        // Le focus place le curseur en fin de valeur ; Maj Début sélectionne
+        // tout, comme Ctrl A.
+        p.key_event(true, &key("Home", false, true));
+        assert_eq!(
+            (p.document().selection_anchor(), p.document().caret()),
+            (16, 0)
+        );
+        p.key_event(true, &key("a", true, false));
+        assert_eq!(
+            (p.document().selection_anchor(), p.document().caret()),
+            (0, 16)
+        );
+        // Ctrl A dans un champ ne sélectionne pas le texte de la page.
+        assert_eq!(p.selected_text(), "");
+        p.key_event(true, &key("c", true, false));
+        assert_eq!(p.take_copied().as_deref(), Some("bonjour le monde"));
+        assert_eq!(value(&p, "champ"), "bonjour le monde");
+        // Une flèche referme la sélection sur son bord ; Maj flèche l'étend
+        // d'un caractère ; la frappe la remplace.
+        p.key_event(true, &key("ArrowLeft", false, false));
+        assert_eq!(
+            (p.document().selection_anchor(), p.document().caret()),
+            (0, 0)
+        );
+        for _ in 0..7 {
+            p.key_event(true, &key("ArrowRight", false, true));
+        }
+        p.key_event(true, &key("S", false, true));
+        assert_eq!(value(&p, "champ"), "S le monde");
+        assert_eq!(p.document().caret(), 1);
+        // Ctrl X coupe ; Retour arrière efface la sélection entière.
+        p.key_event(true, &key("End", false, true));
+        p.key_event(true, &key("x", true, false));
+        assert_eq!(p.take_copied().as_deref(), Some(" le monde"));
+        assert_eq!(value(&p, "champ"), "S");
+        // Coller remplace la sélection ; les sauts de ligne n'entrent pas.
+        p.key_event(true, &key("a", true, false));
+        assert!(p.paste("deux\r\nlignes"));
+        assert_eq!(value(&p, "champ"), "deuxlignes");
+        assert_eq!(p.document().caret(), "deuxlignes".len());
+        p.key_event(true, &key("ArrowLeft", false, true));
+        p.key_event(true, &key("Backspace", false, false));
+        assert_eq!(value(&p, "champ"), "deuxligne");
+        // Un mot de passe ne se copie ni ne se coupe.
+        p.click_node(by_id(&p, "secret"));
+        p.key_event(true, &key("a", true, false));
+        p.key_event(true, &key("c", true, false));
+        p.key_event(true, &key("x", true, false));
+        assert_eq!(p.take_copied(), None);
+        assert_eq!(value(&p, "secret"), "motdepasse");
+        // Une zone de texte reçoit le texte collé à sa fin.
+        let area = by_id(&p, "zone");
+        p.click_node(area);
+        assert!(p.paste(" deux\r\ntrois"));
+        assert_eq!(p.document().text_content(area), "un deux\ntrois");
+        // Chaque changement de valeur a prévenu les scripts.
+        let html = p
+            .document()
+            .find_html_element(p.document().root(), "html")
+            .expect("html");
+        assert_eq!(
+            p.document()
+                .element(html)
+                .and_then(|e| e.attr("data-saisies")),
+            Some("5")
+        );
+    }
+
+    #[test]
+    fn a_click_places_the_caret_and_the_selection_is_drawn() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'>
+               <input value='abcdefghij' style='width:300px;font-size:16px;margin:0'>
+             </body>",
+        );
+        p.update(&mut text, VIEWPORT);
+        let rects = |p: &Page| p.display_list().items.len();
+        // Un clic tout à gauche du champ : curseur au début ; tout à droite
+        // du texte : à la fin.
+        p.click(4.0, 10.0);
+        assert_eq!(p.document().caret(), 0);
+        p.click(290.0, 10.0);
+        assert_eq!(p.document().caret(), 10);
+        p.update(&mut text, VIEWPORT);
+        let plain = rects(&p);
+        // La sélection ajoute son surlignage à l'affichage.
+        p.key_event(
+            true,
+            &KeyInput {
+                key: "a",
+                code: "",
+                ctrl: true,
+                shift: false,
+                alt: false,
+                meta: false,
+                repeat: false,
+            },
+        );
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(rects(&p), plain + 1);
     }
 }

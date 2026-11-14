@@ -548,11 +548,18 @@ impl App {
             Key::Named(NamedKey::Delete) => Some(KeyPress::Delete),
             Key::Character(c) if ctrl && !alt => {
                 match c.chars().next().map(|ch| ch.to_ascii_lowercase()) {
-                    // Le presse-papiers n'est lu que pendant une saisie d'adresse.
+                    // Le presse-papiers n'est lu que sur ce geste : pour la
+                    // saisie d'une adresse, sinon pour le champ de la page
+                    // qui a le focus.
                     Some('v') if !shift => {
                         if self.browser.is_editing() {
                             clipboard_text().map(KeyPress::Paste)
                         } else {
+                            if let Some(text) = clipboard_text()
+                                && self.browser.page_paste(&text)
+                            {
+                                self.request_redraw();
+                            }
                             None
                         }
                     }

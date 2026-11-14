@@ -699,7 +699,10 @@ impl PageHost {
                 outcome
             }
             Self::Remote(page) => {
-                if down && input.ctrl && input.key.eq_ignore_ascii_case("c") {
+                if down
+                    && input.ctrl
+                    && (input.key.eq_ignore_ascii_case("c") || input.key.eq_ignore_ascii_case("x"))
+                {
                     page.copy_expected = true;
                 }
                 page.send(&ToRenderer::Key(KeyMessage {
@@ -728,6 +731,25 @@ impl PageHost {
                     gesture: gesture.code(),
                     x,
                     y,
+                });
+                false
+            }
+        }
+    }
+
+    /// Colle `text` (Ctrl V) dans le champ de la page qui a le focus.
+    /// Renvoie `true` si la page doit être redessinée ; pour un processus
+    /// de rendu, la nouvelle image arrive plus tard.
+    pub(crate) fn paste(&mut self, text: &str) -> bool {
+        match self {
+            Self::Local(page) => {
+                let redraw = page.paste(text);
+                loader::report_console(page);
+                redraw
+            }
+            Self::Remote(page) => {
+                page.send(&ToRenderer::Paste {
+                    text: text.to_owned(),
                 });
                 false
             }

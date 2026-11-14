@@ -172,75 +172,227 @@ fn is_shortcut(input: &crate::KeyInput<'_>) -> bool {
     input.meta || (input.ctrl != input.alt)
 }
 
+/// Champ de texte d'une ligne en cours d'édition : sa valeur, le curseur et
+/// l'autre bout de la sélection, sur des frontières de caractères.
+struct Field {
+    value: String,
+    caret: usize,
+    anchor: usize,
+    /// `readonly` ou `disabled` : la valeur ne se modifie pas.
+    locked: bool,
+    /// Mot de passe : la valeur ne se copie pas.
+    secret: bool,
+    /// `maxlength`, en caractères.
+    limit: Option<usize>,
+}
+
+impl Field {
+    fn read(doc: &Document, node: NodeId) -> Option<Self> {
+        let element = doc.element(node)?;
+        let value = element.attr("value").unwrap_or("").to_owned();
+        let clamp = |at: usize| {
+            let mut at = at.min(value.len());
+            while !value.is_char_boundary(at) {
+                at -= 1;
+            }
+            at
+        };
+        let (caret, anchor) = (clamp(doc.caret()), clamp(doc.selection_anchor()));
+        Some(Self {
+            caret,
+            anchor,
+            locked: element.has_attr("readonly") || element.has_attr("disabled"),
+            secret: element
+                .attr("type")
+                .is_some_and(|kind| kind.eq_ignore_ascii_case("password")),
+            limit: element
+                .attr("maxlength")
+                .and_then(|text| text.trim().parse::<usize>().ok()),
+            value,
+        })
+    }
+
+    /// Début et fin de la sélection.
+    fn range(&self) -> (usize, usize) {
+        (self.caret.min(self.anchor), self.caret.max(self.anchor))
+    }
+
+    /// Texte sélectionné ; `None` s'il n'y en a pas ou s'il est secret.
+    fn selected(&self) -> Option<String> {
+        let (start, end) = self.range();
+        if start == end || self.secret {
+            return None;
+        }
+        self.value.get(start..end).map(str::to_owned)
+    }
+
+    /// Remplace la sélection par `text`, coupé à ce que `maxlength` laisse
+    /// entrer ; le curseur se place après. Renvoie `true` si la valeur a
+    /// changé.
+    fn replace_selection(&mut self, text: &str) -> bool {
+        if self.locked {
+            return false;
+        }
+        let (start, end) = self.range();
+        let kept = self.value.chars().count()
+            - self
+                .value
+                .get(start..end)
+                .map_or(0, |cut| cut.chars().count());
+        let room = self
+            .limit
+            .map_or(usize::MAX, |max| max.saturating_sub(kept));
+        let inserted: String = text.chars().take(room).collect();
+        if start == end && inserted.is_empty() {
+            return false;
+        }
+        self.value.replace_range(start..end, &inserted);
+        self.caret = start + inserted.len();
+        self.anchor = self.caret;
+        true
+    }
+
+    /// Écrit la valeur (si `changed`), le curseur et la sélection dans le
+    /// document, et prévient les scripts d'une valeur changée.
+    fn commit(self, vm: &mut Vm, node: NodeId, changed: bool) {
+        let Some(h) = host(vm) else {
+            return;
+        };
+        if changed {
+            h.doc.set_attr(node, "value", &self.value);
+        }
+        h.doc
+            .set_field_selection(Some(node), self.anchor, self.caret);
+        h.dirty = true;
+        if changed {
+            dispatch_simple(vm, node, "input", true);
+        }
+    }
+}
+
 /// Frappe dans le champ de texte `node`. Renvoie `true` si la touche a été
 /// prise en charge.
+///
+/// Maj avec une touche de déplacement étend la sélection ; Ctrl A
+/// sélectionne tout, Ctrl C copie, Ctrl X coupe (voir `Host::copied`).
 fn edit_input(vm: &mut Vm, node: NodeId, input: &crate::KeyInput<'_>) -> bool {
     let Some(h) = host(vm) else {
         return false;
     };
-    let Some(element) = h.doc.element(node) else {
+    let Some(mut field) = Field::read(&h.doc, node) else {
         return false;
     };
-    let locked = element.has_attr("readonly") || element.has_attr("disabled");
-    let limit = element
-        .attr("maxlength")
-        .and_then(|text| text.trim().parse::<usize>().ok());
-    let mut value = element.attr("value").unwrap_or("").to_owned();
-    let mut caret = h.doc.caret().min(value.len());
-    while !value.is_char_boundary(caret) {
-        caret -= 1;
-    }
+    let (start, end) = field.range();
+    let selected = start != end;
+    let caret = field.caret;
     // Frontières des caractères voisins du curseur.
-    let previous = value
+    let previous = field
+        .value
         .get(..caret)
         .and_then(|head| head.char_indices().next_back())
-        .map(|(index, _)| index);
-    let next = value
+        .map_or(0, |(index, _)| index);
+    let next = field
+        .value
         .get(caret..)
         .and_then(|tail| tail.chars().next())
-        .map(|c| caret + c.len_utf8());
+        .map_or(field.value.len(), |c| caret + c.len_utf8());
     let shortcut = is_shortcut(input);
     let mut changed = false;
+    // Vrai si la touche déplace le curseur en gardant l'autre bout.
+    let mut extends = false;
     match input.key {
-        "ArrowLeft" => caret = previous.unwrap_or(0),
-        "ArrowRight" => caret = next.unwrap_or(value.len()),
-        "Home" => caret = 0,
-        "End" => caret = value.len(),
-        "Backspace" if !locked => {
-            if let Some(start) = previous {
-                value.replace_range(start..caret, "");
-                caret = start;
-                changed = true;
+        "ArrowLeft" | "ArrowRight" | "Home" | "End" => {
+            let left = input.key == "ArrowLeft";
+            field.caret = match input.key {
+                "Home" => 0,
+                "End" => field.value.len(),
+                // Sans Maj, une flèche referme la sélection sur son bord.
+                _ if selected && !input.shift => {
+                    if left {
+                        start
+                    } else {
+                        end
+                    }
+                }
+                _ if left => previous,
+                _ => next,
+            };
+            extends = input.shift;
+        }
+        "Backspace" | "Delete" if !field.locked => {
+            if !selected {
+                field.anchor = if input.key == "Backspace" {
+                    previous
+                } else {
+                    next
+                };
+            }
+            changed = field.replace_selection("");
+        }
+        key if shortcut => {
+            if !input.ctrl || input.alt || input.meta {
+                return false;
+            }
+            match key.to_ascii_lowercase().as_str() {
+                "a" => {
+                    field.anchor = 0;
+                    field.caret = field.value.len();
+                    extends = true;
+                }
+                "c" => {
+                    if let Some(text) = field.selected() {
+                        h.copied = Some(text);
+                    }
+                    extends = true;
+                }
+                "x" => {
+                    if let Some(text) = field.selected().filter(|_| !field.locked) {
+                        h.copied = Some(text);
+                        changed = field.replace_selection("");
+                    } else {
+                        extends = true;
+                    }
+                }
+                _ => return false,
             }
         }
-        "Delete" if !locked => {
-            if let Some(end) = next {
-                value.replace_range(caret..end, "");
-                changed = true;
-            }
-        }
-        key if !shortcut
-            && !locked
-            && key.chars().count() == 1
-            && !key.contains(char::is_control) =>
-        {
-            if limit.is_none_or(|max| value.chars().count() < max) {
-                value.insert_str(caret, key);
-                caret += key.len();
-                changed = true;
-            }
+        key if !field.locked && key.chars().count() == 1 && !key.contains(char::is_control) => {
+            changed = field.replace_selection(key);
         }
         _ => return false,
     }
-    if changed {
-        h.doc.set_attr(node, "value", &value);
+    if !extends {
+        field.anchor = field.caret;
     }
-    h.doc.set_focus(Some(node), caret);
-    h.dirty = true;
-    if changed {
-        dispatch_simple(vm, node, "input", true);
-    }
+    field.commit(vm, node, changed);
     true
+}
+
+/// Colle `text` dans le champ qui a le focus, à la place de la sélection.
+/// Dans un champ d'une ligne, les sauts de ligne et les caractères de
+/// commande n'entrent pas.
+///
+/// LIMITE : l'événement `paste` n'est pas distribué.
+pub(super) fn paste(vm: &mut Vm, text: &str) {
+    let Some(h) = host(vm) else {
+        return;
+    };
+    let Some(node) = h.doc.focus() else {
+        return;
+    };
+    if is_text_input(&h.doc, node) {
+        let Some(mut field) = Field::read(&h.doc, node) else {
+            return;
+        };
+        let line: String = text.chars().filter(|c| !c.is_control()).collect();
+        let changed = field.replace_selection(&line);
+        field.commit(vm, node, changed);
+    } else if h.doc.element(node).is_some_and(|e| e.is_html("textarea")) {
+        element_hook(vm, "pasted", node, &[Value::string(text)]);
+        if let Some(h) = host(vm) {
+            h.dirty = true;
+        }
+    }
 }
 
 /// Élément focalisable suivant (ou précédent) dans l'ordre du document, en

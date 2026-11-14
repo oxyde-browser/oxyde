@@ -545,9 +545,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `blur`. Page d'essai : `tests/pages/formulaires.html`.
       Vérifié par tests et par captures ; pas encore essayé au clavier dans la fenêtre sur des
       sites réels (ce sera fait avec la liste des 50 sites).
-- [ ] Saisie, ce qui reste : sélection dans un champ et presse-papiers (Ctrl C, X, V), clic qui
-      place le curseur, curseur et édition au milieu d'un `<textarea>`, liste déroulante qui
-      se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
+- [x] Champs d'une ligne : sélection au clavier (Maj avec les flèches, Début, Fin ; Ctrl A),
+      surlignée ; Ctrl C copie, Ctrl X coupe, Ctrl V colle à la place de la sélection (sans
+      sauts de ligne, dans la limite de `maxlength`) ; un mot de passe ne se copie pas ; un
+      clic place le curseur au caractère le plus proche. Le presse-papiers n'est lu que sur
+      Ctrl V. Une zone de texte reçoit le texte collé à sa fin.
+      Limites : pas de sélection à la souris dans un champ, pas de déplacement par mot
+      (Ctrl flèche), pas d'événements `copy`, `cut`, `paste`, `select` ni de
+      `selectionStart` / `setSelectionRange` reliés à cette sélection.
+      Vérifié par tests ; pas encore essayé au clavier dans la fenêtre.
+- [ ] Saisie, ce qui reste : curseur et édition au milieu d'un `<textarea>`, liste déroulante
+      qui se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
 - [x] Sélection de texte à la souris et copie : glisser sélectionne, un double clic prend
       le mot, Ctrl A toute la page, Ctrl C copie dans le presse-papiers (un processus de
       rendu n'y écrit que si l'utilisateur vient de copier). Le texte copié est celui

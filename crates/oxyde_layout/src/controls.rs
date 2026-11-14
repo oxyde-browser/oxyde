@@ -58,6 +58,42 @@ pub(super) fn option_text(doc: &oxyde_dom::Document, option: NodeId) -> String {
         .join(" ")
 }
 
+/// Caractère affiché à la place de chaque caractère d'un mot de passe.
+pub const PASSWORD_MASK: char = '•';
+
+/// Surlignage du texte sélectionné dans un champ.
+const FIELD_SELECTION: oxyde_css::Color = oxyde_css::Color {
+    r: 0x33,
+    g: 0x90,
+    b: 0xFF,
+    a: 0x59,
+};
+
+/// Position, en octets dans le texte affiché par le champ de texte `node`
+/// (sa valeur, ou un [`PASSWORD_MASK`] par caractère), du caractère le plus
+/// proche de l'abscisse `x` de la page. `None` si le champ n'est pas mis en
+/// page.
+#[must_use]
+pub fn field_caret_at(tree: &crate::LayoutTree, node: NodeId, x: f32) -> Option<usize> {
+    // Parcours itératif : la profondeur d'un document n'est pas bornée.
+    let mut stack: Vec<&Fragment> = tree.root.iter().collect();
+    while let Some(fragment) = stack.pop() {
+        match fragment {
+            Fragment::Box(b) if b.node == Some(node) => {
+                let line = b.children.iter().find_map(|child| match child {
+                    Fragment::Text(text) => Some(text),
+                    Fragment::Box(_) => None,
+                })?;
+                let middle = line.layout.height() / 2.0;
+                return Some(Cursor::from_point(&line.layout, x - line.x, middle).index());
+            }
+            Fragment::Box(b) => stack.extend(b.children.iter()),
+            Fragment::Text(text) => stack.extend(text.boxes.iter()),
+        }
+    }
+    None
+}
+
 impl Engine<'_> {
     /// Met en forme `text` sur une ligne, dans le style `style`.
     fn control_line(&mut self, text: &str, style: &ComputedStyle, node: NodeId) -> TextLayout {
@@ -155,16 +191,22 @@ impl Engine<'_> {
         while !value.is_char_boundary(caret) {
             caret -= 1;
         }
-        let (text, caret, muted) = if value.is_empty() {
+        let mut anchor = self.doc.selection_anchor().min(value.len());
+        while !value.is_char_boundary(anchor) {
+            anchor -= 1;
+        }
+        let (text, caret, anchor, muted) = if value.is_empty() {
             let placeholder = element.attr("placeholder").unwrap_or("").to_owned();
-            (placeholder, 0, true)
+            (placeholder, 0, 0, true)
         } else if password {
             // Un point par caractère : le curseur se compte en points.
-            let before = value.get(..caret).map_or(0, |head| head.chars().count());
-            let mask = "•".repeat(value.chars().count());
-            (mask, before * '•'.len_utf8(), false)
+            let points = |at: usize| {
+                value.get(..at).map_or(0, |head| head.chars().count()) * PASSWORD_MASK.len_utf8()
+            };
+            let mask = String::from(PASSWORD_MASK).repeat(value.chars().count());
+            (mask, points(caret), points(anchor), false)
         } else {
-            (value.to_owned(), caret, false)
+            (value.to_owned(), caret, anchor, false)
         };
         let mut shown = style.clone();
         if muted {
@@ -176,26 +218,43 @@ impl Engine<'_> {
             clippy::cast_possible_truncation,
             reason = "abscisse dans une ligne de texte, loin des bornes de f32"
         )]
-        let caret_x = if text.is_empty() {
-            0.0
-        } else {
-            Cursor::from_byte_index(&layout, caret, Affinity::Downstream)
-                .geometry(&layout, 1.0)
-                .x0 as f32
+        let x_of = |index: usize| {
+            if text.is_empty() {
+                0.0
+            } else {
+                Cursor::from_byte_index(&layout, index, Affinity::Downstream)
+                    .geometry(&layout, 1.0)
+                    .x0 as f32
+            }
         };
+        let (caret_x, anchor_x) = (x_of(caret), x_of(anchor));
         // Un texte plus long que le champ défile pour garder le curseur visible.
         let scroll = if focused {
             (caret_x - (content.w - 2.0)).max(0.0)
         } else {
             0.0
         };
-        let mut fragments = vec![Self::control_text(layout, content.x - scroll, content)];
+        let line = if height > 0.0 {
+            height
+        } else {
+            style.line_height_px()
+        };
+        let mut fragments = Vec::new();
+        if focused && (anchor_x - caret_x).abs() > f32::EPSILON {
+            // Le texte sélectionné, surligné sous les lettres.
+            fragments.push(Self::control_mark(
+                Rect {
+                    x: content.x + anchor_x.min(caret_x) - scroll,
+                    y: content.y + (content.h - line) / 2.0,
+                    w: (anchor_x - caret_x).abs(),
+                    h: line,
+                },
+                FIELD_SELECTION,
+                0.0,
+            ));
+        }
+        fragments.push(Self::control_text(layout, content.x - scroll, content));
         if focused {
-            let line = if height > 0.0 {
-                height
-            } else {
-                style.line_height_px()
-            };
             fragments.push(Self::control_mark(
                 Rect {
                     x: content.x + caret_x - scroll,
