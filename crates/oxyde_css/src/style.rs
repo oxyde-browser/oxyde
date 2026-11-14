@@ -1536,13 +1536,19 @@ struct RuleIndex<'a> {
     classes: HashMap<&'a str, Vec<usize>>,
     tags: HashMap<&'a str, Vec<usize>>,
     any: Vec<usize>,
+    /// Toutes les règles actives, pour les contextes (`:host`,
+    /// `::slotted()`) où le sujet ne dit rien de l'élément visé.
+    all: Vec<usize>,
 }
 
 impl<'a> RuleIndex<'a> {
     /// Range les règles `active` de `rules`.
     fn new(rules: &'a [crate::stylesheet::Rule], active: &[usize]) -> Self {
         use crate::selector::SubjectKey;
-        let mut index = Self::default();
+        let mut index = Self {
+            all: active.to_vec(),
+            ..Self::default()
+        };
         for &at in active {
             let Some(rule) = rules.get(at) else {
                 continue;
@@ -1591,12 +1597,35 @@ impl<'a> RuleIndex<'a> {
     }
 }
 
+/// Ce qu'un élément est pour la feuille dont on essaie les règles.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Role {
+    /// Feuille du navigateur.
+    Agent,
+    /// Élément de l'arbre de la feuille.
+    Member,
+    /// Hôte de l'arbre fantôme de la feuille : seul `:host` le désigne.
+    Host,
+    /// Nœud distribué dans cet emplacement de l'arbre fantôme de la
+    /// feuille : seul `::slotted()` le désigne.
+    Slotted(NodeId),
+}
+
+/// Rang d'une déclaration dans la cascade, du plus faible au plus fort :
+/// navigateur, arbre fantôme vu de l'extérieur (`:host`, `::slotted()`),
+/// auteur, puis les mêmes en `!important` dans l'ordre inverse.
+const RANK_INNER: u8 = 1;
+const RANK_AUTHOR: u8 = 2;
+const RANK_AUTHOR_IMPORTANT: u8 = 3;
+const RANK_INNER_IMPORTANT: u8 = 4;
+const RANK_AGENT_IMPORTANT: u8 = 5;
+
 fn collect_matching<'a>(
     doc: &Document,
     node: NodeId,
     rules: &'a [crate::stylesheet::Rule],
     candidates: &[usize],
-    author: bool,
+    role: Role,
     order: &mut u32,
     out: &mut Vec<Matched<'a>>,
 ) {
@@ -1604,7 +1633,11 @@ fn collect_matching<'a>(
         let Some(spec) = rule
             .selectors
             .iter()
-            .filter(|s| s.matches(doc, node))
+            .filter(|s| match role {
+                Role::Agent | Role::Member => s.matches(doc, node),
+                Role::Host => s.matches_host(doc, node),
+                Role::Slotted(slot) => s.matches_slotted(doc, node, slot),
+            })
             .map(crate::selector::Selector::specificity)
             .max()
         else {
@@ -1612,11 +1645,13 @@ fn collect_matching<'a>(
         };
         for d in &rule.declarations {
             *order = order.saturating_add(1);
-            let rank = match (author, d.important) {
-                (false, false) => 0,
-                (true, false) => 1,
-                (true, true) => 2,
-                (false, true) => 3,
+            let rank = match (role, d.important) {
+                (Role::Agent, false) => 0,
+                (Role::Host | Role::Slotted(_), false) => RANK_INNER,
+                (Role::Member, false) => RANK_AUTHOR,
+                (Role::Member, true) => RANK_AUTHOR_IMPORTANT,
+                (Role::Host | Role::Slotted(_), true) => RANK_INNER_IMPORTANT,
+                (Role::Agent, true) => RANK_AGENT_IMPORTANT,
             };
             out.push((rank, spec, *order, d));
         }
@@ -1640,10 +1675,20 @@ impl StyleMap {
 /// Feuilles d'auteur contenues dans les éléments `<style>` du document.
 #[must_use]
 pub fn collect_style_elements(doc: &Document) -> Vec<Stylesheet> {
-    doc.descendants(doc.root())
-        .filter(|n| doc.element(*n).is_some_and(|e| e.is_html("style")))
-        .map(|n| parse_stylesheet(&doc.text_content(n)))
-        .collect()
+    let styles_in = |root: NodeId, scope: Option<NodeId>| {
+        doc.descendants(root)
+            .filter(|n| doc.element(*n).is_some_and(|e| e.is_html("style")))
+            .map(move |n| Stylesheet {
+                scope,
+                ..parse_stylesheet(&doc.text_content(n))
+            })
+    };
+    let mut sheets: Vec<Stylesheet> = styles_in(doc.root(), None).collect();
+    // Les feuilles d'un arbre fantôme ne valent que pour lui.
+    for root in doc.shadow_root_list() {
+        sheets.extend(styles_in(root, Some(root)));
+    }
+    sheets
 }
 
 /// Calcule le style de chaque élément de `doc`.
@@ -1704,11 +1749,36 @@ fn cascade(
         .collect();
     let mut candidates = Vec::new();
 
-    for node in doc.descendants(doc.root()) {
+    // Avec des arbres fantômes, c'est l'arbre aplati qui hérite et qui
+    // s'affiche ; sans eux, c'est l'arbre du document.
+    let flat = doc.has_shadow_roots();
+    let nodes: Vec<NodeId> = if flat {
+        doc.flat_descendants(doc.root())
+    } else {
+        doc.descendants(doc.root()).collect()
+    };
+    for node in nodes {
         let Some(el) = doc.element(node) else {
             continue;
         };
-        let parent_style = doc.node(node).parent.and_then(|p| map.get(p)).cloned();
+        let parent_node = if flat {
+            doc.flat_parent(node)
+        } else {
+            doc.node(node).parent
+        };
+        let parent_style = parent_node.and_then(|p| map.get(p)).cloned();
+        // Arbre de l'élément, arbre fantôme qu'il porte, emplacement où il
+        // est distribué : chacun dit quelles feuilles le concernent.
+        let (tree, own_shadow, slot) = if flat {
+            (
+                doc.containing_shadow_root(node),
+                doc.shadow_root(node),
+                doc.assigned_slot(node),
+            )
+        } else {
+            (None, None, None)
+        };
+        let slot_tree = slot.and_then(|slot| doc.containing_shadow_root(slot));
         let is_root = parent_style.is_none();
         let parent = parent_style.as_deref().unwrap_or(&initial);
 
@@ -1721,7 +1791,7 @@ fn cascade(
             node,
             &UA_SHEET.rules,
             &candidates,
-            false,
+            Role::Agent,
             &mut order,
             &mut matched,
         );
@@ -1737,20 +1807,37 @@ fn cascade(
         let hints = presentational_hints(el, table);
         let hint_base = order;
         for (sheet, index) in author_sheets.iter().zip(&author_indexes) {
-            index.candidates(el, &mut candidates);
+            // Une feuille ne vaut que dans son arbre ; celle d'un arbre
+            // fantôme atteint aussi son hôte et ce qu'il y distribue.
+            let role = if sheet.scope == tree {
+                Role::Member
+            } else if sheet.scope.is_some() && sheet.scope == own_shadow {
+                Role::Host
+            } else if let (true, Some(slot)) =
+                (sheet.scope.is_some() && sheet.scope == slot_tree, slot)
+            {
+                Role::Slotted(slot)
+            } else {
+                continue;
+            };
+            if role == Role::Member {
+                index.candidates(el, &mut candidates);
+            } else {
+                candidates.clone_from(&index.all);
+            }
             collect_matching(
                 doc,
                 node,
                 &sheet.rules,
                 &candidates,
-                true,
+                role,
                 &mut order,
                 &mut matched,
             );
         }
         // Indications de présentation : origine auteur, spécificité nulle, avant toute règle.
         for d in &hints {
-            matched.push((1, 0, hint_base, d));
+            matched.push((RANK_AUTHOR, 0, hint_base, d));
         }
         let inline = el
             .attr("style")
@@ -1758,7 +1845,12 @@ fn cascade(
             .unwrap_or_default();
         for d in &inline {
             order = order.saturating_add(1);
-            matched.push((if d.important { 2 } else { 1 }, u32::MAX, order, d));
+            let rank = if d.important {
+                RANK_AUTHOR_IMPORTANT
+            } else {
+                RANK_AUTHOR
+            };
+            matched.push((rank, u32::MAX, order, d));
         }
         matched.sort_by_key(|(rank, spec, ord, _)| (*rank, *spec, *ord));
 
@@ -1799,7 +1891,7 @@ fn cascade(
             Some((animator, now)) => {
                 let important: Vec<Longhand> = matched
                     .iter()
-                    .filter(|(rank, ..)| *rank >= 2)
+                    .filter(|(rank, ..)| *rank >= RANK_AUTHOR_IMPORTANT)
                     .map(|(.., declaration)| declaration.property)
                     .collect();
                 animator.animate(node, style, author_sheets, &cx, &important, *now)
@@ -1958,5 +2050,98 @@ mod tests {
         let table = style_of(&doc, &map, "table");
         assert_eq!(table.background_color, Color::rgb(255, 0, 0));
         assert_eq!(table.width, Size::Percent(50.0));
+    }
+
+    #[test]
+    fn shadow_trees_scope_their_styles() {
+        use oxyde_dom::Namespace;
+        let mut doc = oxyde_html::parse_document(
+            "<style>p { color: rgb(5, 5, 5) } span { color: rgb(7, 7, 7) }
+                    #hote { font-size: 20px }</style>
+             <p id=dehors>dehors</p>\
+             <div id=hote class=on><span slot=a id=distribue>A</span><i id=oublie slot=nulle>x</i>texte</div>",
+        );
+        let by_id = |doc: &Document, id: &str| {
+            doc.descendants(doc.root())
+                .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some(id)))
+                .expect("élément")
+        };
+        let host = by_id(&doc, "hote");
+        let root = doc.attach_shadow(host, true).expect("racine fantôme");
+        assert_eq!(
+            doc.attach_shadow(host, true),
+            None,
+            "un seul arbre par hôte"
+        );
+        let add = |doc: &mut Document, parent: NodeId, name: &str, text: &str| {
+            let element = doc.create_element(name, Namespace::Html, Vec::new());
+            if !text.is_empty() {
+                let content = doc.create_text(text);
+                doc.append_child(element, content);
+            }
+            doc.append_child(parent, element);
+            element
+        };
+        add(
+            &mut doc,
+            root,
+            "style",
+            ":host { color: rgb(1, 2, 3); font-size: 30px }
+             :host(.on) p { font-weight: 700 }
+             :host(.off) p { opacity: 0.5 }
+             p { color: rgb(9, 9, 9) }
+             ::slotted(span) { text-decoration: underline; color: rgb(4, 4, 4) }
+             div ::slotted(span) { opacity: 0.5 }",
+        );
+        let inner = add(&mut doc, root, "p", "dedans");
+        let named = add(&mut doc, root, "slot", "");
+        doc.set_attr(named, "name", "a");
+        let default = add(&mut doc, root, "slot", "repli");
+        let (outside, slotted, forgotten) = (
+            by_id(&doc, "dehors"),
+            by_id(&doc, "distribue"),
+            by_id(&doc, "oublie"),
+        );
+
+        // L'arbre aplati : l'hôte montre son arbre fantôme, les emplacements
+        // ce qui y est distribué.
+        assert_eq!(doc.flat_children(host).len(), 4);
+        assert_eq!(doc.flat_children(named), [slotted]);
+        assert_eq!(doc.assigned_slot(slotted), Some(named));
+        assert_eq!(doc.flat_parent(slotted), Some(named));
+        assert_eq!(doc.flat_parent(inner), Some(host));
+        // Le texte de l'hôte va dans l'emplacement sans nom, à la place du repli.
+        let text = doc.flat_children(default);
+        assert_eq!(text.len(), 1);
+        assert_eq!(doc.text(text[0]), Some("texte"));
+        // Un enfant qui demande un emplacement absent n'est pas affiché.
+        assert_eq!(doc.flat_parent(forgotten), None);
+        assert!(doc.is_connected(inner) && doc.containing_shadow_root(inner) == Some(root));
+
+        let sheets = collect_style_elements(&doc);
+        assert_eq!(sheets.len(), 2);
+        let map = compute_styles(&doc, &sheets, VIEWPORT);
+        let style = |node: NodeId| Arc::clone(map.get(node).expect("style calculé"));
+        // Les règles du document n'entrent pas dans l'arbre fantôme, et les
+        // siennes n'en sortent pas.
+        assert_eq!(style(inner).color, Color::rgb(9, 9, 9));
+        assert_eq!(style(outside).color, Color::rgb(5, 5, 5));
+        // `:host` désigne l'hôte, mais le document l'emporte sur lui.
+        assert_eq!(style(host).color, Color::rgb(1, 2, 3));
+        assert_eq!(style(host).font_size, 20.0);
+        // `:host(.on) p` : depuis l'arbre fantôme, à travers sa racine.
+        assert_eq!(style(inner).font_weight, 700.0);
+        assert_eq!(style(inner).opacity, 1.0);
+        // Le paragraphe hérite de l'hôte, son parent dans l'arbre aplati.
+        assert_eq!(style(inner).font_size, 20.0);
+        // `::slotted(span)` atteint le nœud distribué ; la règle du document
+        // l'emporte ; `div ::slotted()` ne correspond à rien.
+        assert!(style(slotted).underline);
+        assert_eq!(style(slotted).color, Color::rgb(7, 7, 7));
+        assert_eq!(style(slotted).opacity, 1.0);
+        // Un emplacement ne crée pas de boîte ; un enfant non distribué n'a
+        // pas de style.
+        assert_eq!(style(named).display, Display::Contents);
+        assert!(map.get(forgotten).is_none());
     }
 }

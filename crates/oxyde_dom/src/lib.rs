@@ -250,6 +250,11 @@ pub struct Document {
     /// Autre bout de la sélection dans cette valeur, en octets ; égal à
     /// `caret` quand rien n'est sélectionné.
     anchor: usize,
+    /// Racine de l'arbre fantôme de chaque élément hôte.
+    shadow_roots: std::collections::HashMap<NodeId, NodeId>,
+    /// Hôte de chaque racine fantôme, et si elle est ouverte (`mode: "open"`).
+    /// INVARIANT : l'inverse exact de `shadow_roots`.
+    shadow_hosts: std::collections::HashMap<NodeId, (NodeId, bool)>,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -323,6 +328,8 @@ impl Document {
             focus: None,
             caret: 0,
             anchor: 0,
+            shadow_roots: std::collections::HashMap::new(),
+            shadow_hosts: std::collections::HashMap::new(),
         }
     }
 
@@ -564,6 +571,182 @@ impl Document {
     #[must_use]
     pub fn caret(&self) -> usize {
         self.caret
+    }
+
+    // ---- Arbres fantômes (Shadow DOM) ------------------------------------------------------
+
+    /// Attache un arbre fantôme à l'élément `host` et renvoie sa racine, un
+    /// fragment qui n'est l'enfant de personne : `ancestors` et `descendants`
+    /// ne passent pas d'un arbre à l'autre. `None` si `host` n'est pas un
+    /// élément ou porte déjà un arbre fantôme.
+    pub fn attach_shadow(&mut self, host: NodeId, open: bool) -> Option<NodeId> {
+        if self.element(host).is_none() || self.shadow_roots.contains_key(&host) {
+            return None;
+        }
+        let root = self.create_fragment();
+        self.shadow_roots.insert(host, root);
+        self.shadow_hosts.insert(root, (host, open));
+        self.version = self.version.wrapping_add(1);
+        Some(root)
+    }
+
+    /// Racine de l'arbre fantôme de l'élément `host`, s'il en porte un.
+    #[must_use]
+    pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
+        self.shadow_roots.get(&host).copied()
+    }
+
+    /// Hôte de la racine fantôme `root` ; `None` si `root` n'en est pas une.
+    #[must_use]
+    pub fn shadow_host(&self, root: NodeId) -> Option<NodeId> {
+        self.shadow_hosts.get(&root).map(|(host, _)| *host)
+    }
+
+    /// Vrai si la racine fantôme `root` est ouverte aux scripts.
+    #[must_use]
+    pub fn shadow_is_open(&self, root: NodeId) -> bool {
+        self.shadow_hosts.get(&root).is_some_and(|(_, open)| *open)
+    }
+
+    /// Vrai si le document porte au moins un arbre fantôme.
+    #[must_use]
+    pub fn has_shadow_roots(&self) -> bool {
+        !self.shadow_roots.is_empty()
+    }
+
+    /// Racines fantômes du document, dans l'ordre de leur création.
+    #[must_use]
+    pub fn shadow_root_list(&self) -> Vec<NodeId> {
+        let mut roots: Vec<NodeId> = self.shadow_hosts.keys().copied().collect();
+        roots.sort_by_key(|root| root.index());
+        roots
+    }
+
+    /// Racine de l'arbre qui contient `node` : son plus lointain ancêtre
+    /// (le document, une racine fantôme, ou le sommet d'un arbre détaché).
+    #[must_use]
+    pub fn tree_root(&self, node: NodeId) -> NodeId {
+        self.ancestors(node).last().unwrap_or(node)
+    }
+
+    /// Racine fantôme de l'arbre qui contient `node`, s'il est dans un
+    /// arbre fantôme.
+    #[must_use]
+    pub fn containing_shadow_root(&self, node: NodeId) -> Option<NodeId> {
+        let root = self.tree_root(node);
+        self.shadow_hosts.contains_key(&root).then_some(root)
+    }
+
+    /// Vrai si `node` est relié au document, à travers les arbres fantômes.
+    #[must_use]
+    pub fn is_connected(&self, node: NodeId) -> bool {
+        let mut current = node;
+        // Borne : un arbre fantôme par élément, donc pas plus de sauts que de nœuds.
+        for _ in 0..=self.len() {
+            let root = self.tree_root(current);
+            if root == self.root() {
+                return true;
+            }
+            match self.shadow_host(root) {
+                Some(host) => current = host,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// Emplacement (`<slot>`) de l'arbre fantôme de son parent où `node`
+    /// est distribué : le premier, dans l'ordre de l'arbre, dont le nom est
+    /// celui que demande `node` (attribut `slot` ; vide pour un texte).
+    ///
+    /// LIMITE : la recherche parcourt l'arbre fantôme à chaque appel.
+    #[must_use]
+    pub fn assigned_slot(&self, node: NodeId) -> Option<NodeId> {
+        let host = self.node(node).parent?;
+        let root = self.shadow_root(host)?;
+        if self.element(node).is_none() && self.text(node).is_none() {
+            return None;
+        }
+        let wanted = self
+            .element(node)
+            .and_then(|e| e.attr("slot"))
+            .unwrap_or("");
+        self.descendants(root).find(|n| {
+            self.element(*n)
+                .is_some_and(|e| e.is_html("slot") && e.attr("name").unwrap_or("") == wanted)
+        })
+    }
+
+    /// Nœuds distribués dans l'emplacement `slot`, dans l'ordre des enfants
+    /// de l'hôte ; vide si `slot` n'est pas un `<slot>` d'un arbre fantôme.
+    #[must_use]
+    pub fn assigned_nodes(&self, slot: NodeId) -> Vec<NodeId> {
+        let is_slot = self.element(slot).is_some_and(|e| e.is_html("slot"));
+        let Some(host) = self
+            .containing_shadow_root(slot)
+            .filter(|_| is_slot)
+            .and_then(|root| self.shadow_host(root))
+        else {
+            return Vec::new();
+        };
+        self.children(host)
+            .filter(|n| self.assigned_slot(*n) == Some(slot))
+            .collect()
+    }
+
+    /// Enfants de `node` dans l'arbre aplati, celui que l'on affiche : ceux
+    /// de sa racine fantôme pour un hôte, les nœuds distribués pour un
+    /// emplacement qui en reçoit (sinon son contenu de repli), ses enfants
+    /// sinon.
+    #[must_use]
+    pub fn flat_children(&self, node: NodeId) -> Vec<NodeId> {
+        if let Some(root) = self.shadow_root(node) {
+            return self.children(root).collect();
+        }
+        if !self.shadow_roots.is_empty() {
+            let assigned = self.assigned_nodes(node);
+            if !assigned.is_empty() {
+                return assigned;
+            }
+        }
+        self.children(node).collect()
+    }
+
+    /// Parent de `node` dans l'arbre aplati : l'hôte pour un enfant de
+    /// racine fantôme, l'emplacement pour un enfant d'hôte qui y est
+    /// distribué (`None` s'il ne l'est nulle part : il n'est pas affiché),
+    /// son parent sinon.
+    #[must_use]
+    pub fn flat_parent(&self, node: NodeId) -> Option<NodeId> {
+        let parent = self.node(node).parent?;
+        if let Some(host) = self.shadow_host(parent) {
+            return Some(host);
+        }
+        if self.shadow_roots.contains_key(&parent) {
+            return self.assigned_slot(node);
+        }
+        Some(parent)
+    }
+
+    /// Descendants de `root` dans l'arbre aplati, en ordre préfixe, `root`
+    /// exclu.
+    #[must_use]
+    pub fn flat_descendants(&self, root: NodeId) -> Vec<NodeId> {
+        let mut found = Vec::new();
+        // Parcours itératif : la profondeur d'un document n'est pas bornée.
+        let mut stack: Vec<NodeId> = self.flat_children(root);
+        stack.reverse();
+        while let Some(node) = stack.pop() {
+            found.push(node);
+            // Borne : un arbre mal formé ne fait pas tourner sans fin.
+            if found.len() > self.len() {
+                break;
+            }
+            let mut children = self.flat_children(node);
+            children.reverse();
+            stack.extend(children);
+        }
+        found
     }
 
     /// Compteur qui avance à chaque modification de l'arbre, d'un attribut
