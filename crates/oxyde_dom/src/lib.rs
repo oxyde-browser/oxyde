@@ -637,22 +637,26 @@ impl Document {
         self.shadow_hosts.contains_key(&root).then_some(root)
     }
 
+    /// Racine de `node` à travers les arbres fantômes : celle de l'arbre
+    /// de l'hôte, tant que l'arbre courant est un arbre fantôme.
+    #[must_use]
+    pub fn composed_root(&self, node: NodeId) -> NodeId {
+        let mut root = self.tree_root(node);
+        // Borne : un hôte glissé dans son propre arbre fantôme ne fait pas
+        // tourner sans fin.
+        for _ in 0..=self.shadow_hosts.len() {
+            match self.shadow_host(root) {
+                Some(host) => root = self.tree_root(host),
+                None => break,
+            }
+        }
+        root
+    }
+
     /// Vrai si `node` est relié au document, à travers les arbres fantômes.
     #[must_use]
     pub fn is_connected(&self, node: NodeId) -> bool {
-        let mut current = node;
-        // Borne : un arbre fantôme par élément, donc pas plus de sauts que de nœuds.
-        for _ in 0..=self.len() {
-            let root = self.tree_root(current);
-            if root == self.root() {
-                return true;
-            }
-            match self.shadow_host(root) {
-                Some(host) => current = host,
-                None => return false,
-            }
-        }
-        false
+        self.composed_root(node) == self.root()
     }
 
     /// Emplacement (`<slot>`) de l'arbre fantôme de son parent où `node`
