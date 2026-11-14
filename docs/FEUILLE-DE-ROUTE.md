@@ -586,11 +586,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `offsetY` valent `pageX` / `pageY` au lieu d'être relatifs à la cible ; pas de capture du pointeur, pas de
       glisser-déposer, pas d'événements tactiles ; un écouteur de molette retiré reste
       compté. Vérifié par tests ; pas encore essayé à la souris dans la fenêtre.
-- [ ] Web Platform Tests `dom/` : de 44,6 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : tests pilotés par `testdriver.js` (molette, tactile,
-      défilement : environ 80 fichiers — le lanceur ne sait pas encore injecter ces
-      gestes), `moveBefore` (49), `Observable` (27), `ranges/tentative` (19),
-      `insertion-removing-steps` (19).
+- [x] Gestes de `testdriver.js` dans le lanceur Web Platform Tests : souris, molette et
+      clavier sont joués sur la page comme le ferait la fenêtre (le rôle de WebDriver
+      ailleurs) ; un geste tactile ou au stylet fait échouer la demande au lieu de
+      l'attendre. Au passage : `body.onload = …` (et les autres gestionnaires de la
+      fenêtre posés sur `<body>`) ; une boîte `position: fixed` reste cliquable hors
+      d'un ancêtre qui découpe (`body { overflow: hidden }` sans hauteur : voiles et
+      fenêtres modales). `dom/` : 309 → 339 fichiers (44,6 → 48,9 %).
+- [ ] Web Platform Tests `dom/` : de 48,9 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (39 :
+      `scrollend`, défilement tactile), gestes tactiles (20), `Observable` (27),
+      `ranges/tentative` (19), `insertion-removing-steps` (19).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;
       `customElements` est fait.

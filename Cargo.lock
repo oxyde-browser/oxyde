@@ -2730,6 +2730,7 @@ name = "oxyde_wpt"
 version = "0.1.0"
 dependencies = [
  "oxyde_content",
+ "oxyde_text",
 ]
 
 [[package]]

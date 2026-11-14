@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 43399 / 50053 (86,7 %)** — fichiers entièrement réussis : 309 / 693 (44,6 %).
+**Sous-tests réussis : 43435 / 50093 (86,7 %)** — fichiers entièrement réussis : 339 / 693 (48,9 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -16,13 +16,13 @@ est le plus honnête des deux.
 | `dom` | 5 / 9 | 120 / 142 (84,5 %) |
 | `dom/abort` | 3 / 6 | 34 / 37 (91,9 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
-| `dom/events` | 55 / 100 | 438 / 629 (69,6 %) |
-| `dom/events/non-cancelable-when-passive` | 2 / 42 | 13 / 13 (100,0 %) |
-| `dom/events/scrolling` | 0 / 39 | 14 / 108 (13,0 %) |
+| `dom/events` | 60 / 100 | 447 / 629 (71,1 %) |
+| `dom/events/non-cancelable-when-passive` | 22 / 42 | 33 / 53 (62,3 %) |
+| `dom/events/scrolling` | 4 / 39 | 19 / 108 (17,6 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
 | `dom/nodes` | 172 / 265 | 10678 / 13078 (81,6 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
-| `dom/nodes/insertion-removing-steps` | 3 / 22 | 6 / 38 (15,8 %) |
+| `dom/nodes/insertion-removing-steps` | 4 / 22 | 8 / 38 (21,1 %) |
 | `dom/nodes/moveBefore` | 15 / 64 | 67 / 176 (38,1 %) |
 | `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
 | `dom/ranges` | 29 / 49 | 30212 / 33528 (90,1 %) |
@@ -45,12 +45,11 @@ est le plus honnête des deux.
 | `dom/collections/domstringmap-supported-property-names.html` | 0 / 5 |  |
 | `dom/collections/namednodemap-supported-property-names.html` | 0 / 3 |  |
 | `dom/events/AddEventListenerOptions-signal.any.js` | 4 / 11 |  |
-| `dom/events/Body-FrameSet-Event-Handlers.html` | 0 / 5 |  |
+| `dom/events/Body-FrameSet-Event-Handlers.html` | 1 / 5 |  |
 | `dom/events/Event-dispatch-click.html` | 18 / 33 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-detached-input-and-change.html` | 6 / 12 |  |
 | `dom/events/Event-dispatch-listener-order.window.js` | 0 / 1 |  |
 | `dom/events/Event-dispatch-on-disabled-elements.html` | 4 / 9 | harnais : délai du harnais dépassé |
-| `dom/events/Event-dispatch-redispatch.html` | 2 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-single-activation-behavior.html` | 80 / 132 |  |
 | `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-throwing.html` | 0 / 2 |  |
@@ -77,53 +76,28 @@ est le plus honnête des deux.
 | `dom/events/event-listener-not-fully-active-callback.html` | 1 / 4 |  |
 | `dom/events/event-listener-not-fully-active-navigated.html` | 0 / 3 |  |
 | `dom/events/event-listener-not-fully-active-target.html` | 3 / 16 |  |
-| `dom/events/focus-event-document-move.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/events/handler-count.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/mouse-event-retarget.html` | 0 / 1 |  |
-| `dom/events/no-focus-events-at-clicking-editable-content-in-link.html` | 0 / 2 |  |
-| `dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-mousewheel-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/non-passive-wheel-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-mousewheel-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-body.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-div.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-document.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-root.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/non-cancelable-when-passive/passive-wheel-event-listener-on-window.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/pointer-event-document-move.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-body.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-div.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-document.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-root.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchmove-event-listener-on-window.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-body.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-div.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-document.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-root.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/non-passive-touchstart-event-listener-on-window.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-body.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-div.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-document.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-root.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchmove-event-listener-on-window.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-body.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-div.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-document.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-root.html` | 0 / 1 |  |
+| `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-window.html` | 0 / 1 |  |
 | `dom/events/relatedTarget.window.js` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/iframe-chains.html` | 0 / 1 |  |
 | `dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-cross-origin-iframes.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -131,7 +105,6 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scroll-event-fired-to-iframe.html` | 2 / 4 |  |
 | `dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html` | 0 / 2 |  |
-| `dom/events/scrolling/scrollIntoView-in-onscroll-to-sticky.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-instant-scroll-in-microtask.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 2 |  |
@@ -149,12 +122,10 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
 | `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 2 / 3 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
-| `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 |  |
-| `dom/events/scrolling/wheel-event-composed.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/wheel-event-no-scroll-after-prevent-default.html` | 0 / 1 |  |
+| `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/wheel-event-transactions-basic.html` | 0 / 3 |  |
 | `dom/events/scrolling/wheel-event-transactions-multiple-action-chains.html` | 0 / 1 |  |
 | `dom/events/scrolling/wheel-event-transactions-target-display-change.html` | 0 / 2 |  |
@@ -277,7 +248,6 @@ est le plus honnête des deux.
 | `dom/nodes/insertion-removing-steps/Node-appendChild-text-in-script.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/Node-appendChild-three-scripts-from-fragment.html` | 0 / 1 |  |
 | `dom/nodes/insertion-removing-steps/Node-appendChild-three-scripts.html` | 0 / 1 |  |
-| `dom/nodes/insertion-removing-steps/change-event.window.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/nodes/insertion-removing-steps/frame-post-connection-steps.html` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-iframe.window.js` | 1 / 4 |  |
 | `dom/nodes/insertion-removing-steps/insertion-removing-steps-script.window.js` | 0 / 1 |  |
@@ -327,7 +297,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/relevant-mutations.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/role-updates-after-move.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/select-option-optgroup.html` | 1 / 2 |  |
-| `dom/nodes/moveBefore/selection-preserve.html` | 0 / 6 |  |
+| `dom/nodes/moveBefore/selection-preserve.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/slotchange-events.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/stylesheet-cascade-order.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/stylesheet-no-refetch.html` | 0 / 1 | harnais : délai du harnais dépassé |

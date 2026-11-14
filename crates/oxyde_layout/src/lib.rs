@@ -368,6 +368,34 @@ pub fn hit_test(doc: &Document, fragment: &Fragment, x: f32, y: f32) -> Option<N
     hit_test_scrolled(doc, fragment, x, y, &|_| (0.0, 0.0))
 }
 
+/// Nœud atteint au point (`x`, `y`) dans les boîtes fixes de `fragment` et de
+/// sa descendance : elles échappent au découpage de leurs ancêtres, leur
+/// bloc conteneur étant la fenêtre.
+///
+/// LIMITE : un ancêtre transformé, qui devrait les contenir, est ignoré.
+fn hit_fixed(
+    doc: &Document,
+    fragment: &Fragment,
+    x: f32,
+    y: f32,
+    scroll: ScrollOffsets<'_>,
+) -> Option<NodeId> {
+    match fragment {
+        Fragment::Box(b) if b.style.position == Position::Fixed => {
+            hit_test_scrolled(doc, fragment, x, y, scroll)
+        }
+        Fragment::Box(b) => paint_order(&b.children)
+            .into_iter()
+            .rev()
+            .find_map(|c| hit_fixed(doc, c, x, y, scroll)),
+        Fragment::Text(t) => t
+            .boxes
+            .iter()
+            .rev()
+            .find_map(|c| hit_fixed(doc, c, x, y, scroll)),
+    }
+}
+
 /// Comme [`hit_test`], le contenu des boîtes défilantes étant décalé de
 /// `scroll` ; (`x`, `y`) est un point de la page, défilement de la fenêtre
 /// compris.
@@ -398,7 +426,13 @@ pub fn hit_test_scrolled(
             // décalé de son défilement.
             let (cx, cy) = if clips_content(&b.style) {
                 if !padding_box(b).contains(x, y) {
-                    return own();
+                    // Hors de la boîte, seules ses descendantes fixes restent
+                    // atteignables : c'est la fenêtre qui les contient.
+                    return paint_order(&b.children)
+                        .into_iter()
+                        .rev()
+                        .find_map(|c| hit_fixed(doc, c, x, y, scroll))
+                        .or_else(own);
                 }
                 let (sx, sy) = b.node.map_or((0.0, 0.0), |node| scroll(Some(node)));
                 (x + sx, y + sy)
@@ -2520,6 +2554,26 @@ mod tests {
             .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("lien")));
         assert!(link.is_some(), "le clic doit tomber dans le lien");
         assert!(hit_test(&doc, root, 10.0, 500.0).is_none());
+    }
+
+    #[test]
+    fn a_fixed_box_is_hit_outside_its_clipping_ancestors() {
+        // Le corps, sans hauteur, découpe son contenu : la boîte fixe qui
+        // couvre la fenêtre reste atteignable (une fenêtre modale, par exemple).
+        let (doc, tree) = layout(
+            "<style>html, body { overflow: hidden; margin: 0 }
+               #voile { position: fixed; top: 0; right: 0; bottom: 0; left: 0; overflow: scroll }
+             </style>
+             <div id=voile><div id=dedans style='height: 2000px'></div></div>",
+            500.0,
+        );
+        let root = tree.root.as_ref().expect("racine");
+        let hit = hit_test(&doc, root, 250.0, 300.0).expect("boîte fixe touchée");
+        assert_eq!(
+            doc.element(hit).and_then(|e| e.id()),
+            Some("dedans"),
+            "le point tombe dans le contenu de la boîte fixe"
+        );
     }
 
     #[test]

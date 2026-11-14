@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 598 / 4341 (13,8 %)** — fichiers entièrement réussis : 57 / 363 (15,7 %).
+**Sous-tests réussis : 599 / 4341 (13,8 %)** — fichiers entièrement réussis : 58 / 363 (16,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -17,7 +17,7 @@ est le plus honnête des deux.
 | `css/css-animations/parsing` | 10 / 41 | 150 / 574 (26,1 %) |
 | `css/css-animations/responsive` | 1 / 4 | 1 / 7 (14,3 %) |
 | `css/css-animations/stability` | 0 / 1 | 0 / 1 (0,0 %) |
-| `css/css-transforms` | 15 / 43 | 65 / 197 (33,0 %) |
+| `css/css-transforms` | 16 / 43 | 66 / 197 (33,5 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
 | `css/css-transitions` | 17 / 98 | 126 / 2386 (5,3 %) |
@@ -182,8 +182,8 @@ est le plus honnête des deux.
 | `css/css-transforms/animation/translate-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-transforms/animation/translate-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-transforms/css-transform-style-evaluation-validation.html` | 11 / 13 |  |
-| `css/css-transforms/hittest-preserve-3d-2.html` | 0 / 1 |  |
-| `css/css-transforms/hittest-preserve-3d.html` | 0 / 1 |  |
+| `css/css-transforms/hittest-preserve-3d-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-transforms/hittest-preserve-3d.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-transforms/inheritance.html` | 4 / 20 |  |
 | `css/css-transforms/parsing/backface-visibility-computed.html` | 0 / 2 |  |
 | `css/css-transforms/parsing/backface-visibility-invalid.html` | 0 / 2 |  |
@@ -214,7 +214,6 @@ est le plus honnête des deux.
 | `css/css-transforms/preserve-3d-flat-grouping-properties-containing-block.html` | 0 / 2 |  |
 | `css/css-transforms/preserve-3d-flat-grouping-properties.html` | 2 / 10 |  |
 | `css/css-transforms/preserve3d-backface-hit-test-1.html` | 0 / 1 |  |
-| `css/css-transforms/scroll-preserve-3d.html` | 0 / 1 |  |
 | `css/css-transforms/transform-2d-getComputedStyle-001.html` | 0 / 5 |  |
 | `css/css-transforms/transform-and-individual-transform-properties-computed-style.html` | 0 / 1 |  |
 | `css/css-transforms/transform-hit-testing.html` | 0 / 5 |  |
@@ -330,7 +329,7 @@ est le plus honnête des deux.
 | `css/css-transitions/transitionevent-interface.html` | 33 / 42 |  |
 | `css/css-transitions/transitions-retarget.html` | 0 / 1 |  |
 | `css/css-transitions/ua-important-001.tentative.html` | 0 / 1 |  |
-| `css/css-transitions/ua-important-002.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-transitions/ua-important-002.tentative.html` | 0 / 1 |  |
 | `css/css-transitions/ua-important-003.tentative.html` | 0 / 1 |  |
 | `css/css-transitions/unregistered-custom-property-transition.html` | 0 / 3 |  |
 | `css/css-transitions/zero-duration-multiple-transition.html` | 0 / 1 |  |

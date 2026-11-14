@@ -553,6 +553,32 @@ fn attribute_handler(vm: &mut Vm, item: Target, kind: &str) -> Option<Value> {
 
 // ---- Distribution ------------------------------------------------------------------------------
 
+/// Événements dont le gestionnaire `on…` de `<body>` est celui de la fenêtre.
+const WINDOW_HANDLERS: [&str; 22] = [
+    "blur",
+    "error",
+    "focus",
+    "load",
+    "resize",
+    "scroll",
+    "afterprint",
+    "beforeprint",
+    "beforeunload",
+    "hashchange",
+    "languagechange",
+    "message",
+    "messageerror",
+    "offline",
+    "online",
+    "pagehide",
+    "pageshow",
+    "popstate",
+    "rejectionhandled",
+    "storage",
+    "unhandledrejection",
+    "unload",
+];
+
 /// Appelle les écouteurs de `item` pour la phase en cours. Renvoie `false`
 /// si la propagation doit s'arrêter là.
 fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, capture: bool) -> bool {
@@ -572,8 +598,18 @@ fn invoke(vm: &mut Vm, event: ObjId, item: Target, kind: &str, phase: f64, captu
                 .collect()
         })
         .unwrap_or_default();
+    // Sur `<body>`, `onload` et ses pareils sont les gestionnaires de la
+    // fenêtre : ils ne répondent pas aux événements qui visent le corps.
+    let reflected = WINDOW_HANDLERS.contains(&kind)
+        && matches!(item, Target::Node(index) if host(vm).is_some_and(|h| {
+            h.doc
+                .id_from_index(index as usize)
+                .and_then(|node| h.doc.element(node))
+                .is_some_and(|e| e.is_html("body"))
+        }));
     // Gestionnaire posé par affectation : `element.onclick = …`.
     if !capture
+        && !reflected
         && let Ok(handler) = vm.get(&current, &format!("on{kind}"))
         && handler.as_object().is_some()
     {
