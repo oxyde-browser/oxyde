@@ -72,6 +72,20 @@ pub enum Pseudo {
     NthLastChild(i32, i32),
     /// `:link` / `:any-link`
     Link,
+    /// `:focus` / `:focus-visible` : l'élément qui a le focus.
+    Focus,
+    /// `:focus-within` : l'élément qui a le focus, ou un de ses ancêtres.
+    FocusWithin,
+    /// `:checked` : case ou bouton radio coché, option choisie.
+    Checked,
+    /// `:disabled`
+    Disabled,
+    /// `:enabled`
+    Enabled,
+    /// `:required`
+    Required,
+    /// `:placeholder-shown` : champ vide qui montre son texte indicatif.
+    PlaceholderShown,
     /// `:not(...)`
     Not(Vec<Selector>),
     /// `:is(...)`
@@ -267,10 +281,38 @@ fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData
             nth_matches(*a, *b, i32::try_from(index).unwrap_or(i32::MAX - 1) + 1)
         }
         Pseudo::Link => matches!(el.name.as_str(), "a" | "area") && el.has_attr("href"),
+        Pseudo::Focus => doc.focus() == Some(node),
+        Pseudo::FocusWithin => doc
+            .focus()
+            .is_some_and(|focus| focus == node || doc.ancestors(focus).any(|a| a == node)),
+        Pseudo::Checked => match el.name.as_str() {
+            "input" => el.has_attr("checked"),
+            "option" => el.has_attr("selected"),
+            _ => false,
+        },
+        Pseudo::Disabled => is_control(el) && el.has_attr("disabled"),
+        Pseudo::Enabled => is_control(el) && !el.has_attr("disabled"),
+        Pseudo::Required => is_control(el) && el.has_attr("required"),
+        Pseudo::PlaceholderShown => {
+            matches!(el.name.as_str(), "input" | "textarea")
+                && el.has_attr("placeholder")
+                && el.attr("value").is_none_or(str::is_empty)
+                && !doc
+                    .children(node)
+                    .any(|n| doc.text(n).is_some_and(|t| !t.is_empty()))
+        }
         Pseudo::Not(list) => !list.iter().any(|s| s.matches(doc, node)),
         Pseudo::Is(list) | Pseudo::Where(list) => list.iter().any(|s| s.matches(doc, node)),
         Pseudo::Never => false,
     })
+}
+
+/// Vrai pour un contrôle de formulaire, qui peut être désactivé ou requis.
+fn is_control(el: &oxyde_dom::ElementData) -> bool {
+    matches!(
+        el.name.as_str(),
+        "input" | "button" | "select" | "textarea" | "fieldset" | "option" | "optgroup"
+    )
 }
 
 fn compound_specificity(c: &Compound) -> u32 {
@@ -474,9 +516,16 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
         "last-child" => Pseudo::LastChild,
         "only-child" => Pseudo::OnlyChild,
         "link" | "any-link" => Pseudo::Link,
-        "hover" | "active" | "focus" | "focus-visible" | "focus-within" | "visited" | "target"
-        | "checked" | "disabled" | "indeterminate" | "placeholder-shown" | "invalid"
-        | "required" | "fullscreen" => Pseudo::Never,
+        "focus" | "focus-visible" => Pseudo::Focus,
+        "focus-within" => Pseudo::FocusWithin,
+        "checked" => Pseudo::Checked,
+        "disabled" => Pseudo::Disabled,
+        "enabled" => Pseudo::Enabled,
+        "required" => Pseudo::Required,
+        "placeholder-shown" => Pseudo::PlaceholderShown,
+        "hover" | "active" | "visited" | "target" | "indeterminate" | "invalid" | "fullscreen" => {
+            Pseudo::Never
+        }
         _ => return None,
     })
 }

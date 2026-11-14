@@ -1155,6 +1155,15 @@ impl Page {
         self.dom_changed();
     }
 
+    /// Crée le moteur de script s'il n'existe pas : les contrôles de
+    /// formulaire (focus, saisie, cases, envoi) en dépendent, même dans une
+    /// page qui n'a aucun script.
+    fn ensure_engine(&mut self) {
+        if self.engine.is_none() {
+            self.engine = Some(Box::new(ScriptEngine::new(&self.url)));
+        }
+    }
+
     /// À appeler quand un script a pu modifier le DOM : les feuilles de style
     /// en ligne sont relues et la mise en page invalidée.
     fn dom_changed(&mut self) {
@@ -1247,6 +1256,10 @@ impl Page {
     /// `keydown` (puis `keypress` pour un caractère) ou `keyup`. Renvoie
     /// (action par défaut annulée, page à redessiner).
     pub fn key_event(&mut self, down: bool, input: &KeyInput<'_>) -> (bool, bool) {
+        // Sans script, une touche ne compte que pour le focus et la saisie.
+        if self.doc.focus().is_some() || input.key == "Tab" {
+            self.ensure_engine();
+        }
         let Some(engine) = self.engine.as_mut() else {
             return (false, false);
         };
@@ -1435,6 +1448,9 @@ impl Page {
     /// le pointeur.
     pub fn click_node(&mut self, node: NodeId) -> Option<Url> {
         let link = self.link_from(node);
+        // Une page sans script a aussi des formulaires : le moteur naît au
+        // premier geste qui en a besoin.
+        self.ensure_engine();
         let Some(engine) = self.engine.as_mut() else {
             return link;
         };
@@ -2949,5 +2965,180 @@ mod tests {
         page.find("");
         assert_eq!(page.find_status(), FindStatus::default());
         assert_eq!(page.display_list().items.len(), painted - 3);
+    }
+
+    fn node_by_id(p: &Page, id: &str) -> NodeId {
+        let doc = p.document();
+        doc.descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.attr("id") == Some(id)))
+            .expect("élément")
+    }
+
+    fn press(p: &mut Page, key: &'static str) {
+        let input = KeyInput {
+            key,
+            code: "",
+            ctrl: false,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        p.key_event(true, &input);
+        p.key_event(false, &input);
+    }
+
+    fn attribute(p: &Page, id: &str, name: &str) -> Option<String> {
+        let node = node_by_id(p, id);
+        p.document()
+            .element(node)
+            .and_then(|e| e.attr(name).map(str::to_owned))
+    }
+
+    #[test]
+    fn typing_in_a_focused_field() {
+        let mut p = page(
+            "<form id=f action='/ok'>
+               <input id=nom value='Ada'>
+               <input id=court maxlength=2>
+               <input id=fige value='x' readonly>
+               <input id=case type=checkbox>
+               <textarea id=zone>a</textarea>
+               <select id=liste><option>un<option>deux<option>trois</select>
+               <input id=envoi type=submit>
+             </form>
+             <p id=journal></p>
+             <script>
+               const log = [];
+               for (const type of ['focus', 'blur', 'input', 'change', 'submit', 'focusin']) {
+                 document.addEventListener(type, e => {
+                   log.push(type + ':' + e.target.id);
+                   if (type === 'submit') e.preventDefault();
+                   document.getElementById('journal').textContent =
+                     log.join(' ') + ' @' + document.activeElement.id;
+                 }, true);
+               }
+             </script>",
+        );
+        p.run_scripts();
+        let journal = |p: &Page| {
+            let node = node_by_id(p, "journal");
+            p.document().text_content(node)
+        };
+
+        // Le clic donne le focus ; le curseur est en fin de valeur.
+        let nom = node_by_id(&p, "nom");
+        p.click_node(nom);
+        assert_eq!(p.document().focus(), Some(nom));
+        assert_eq!(journal(&p), "focus:nom focusin:nom @nom");
+        press(&mut p, "!");
+        press(&mut p, "ArrowLeft");
+        press(&mut p, "Backspace");
+        press(&mut p, "é");
+        press(&mut p, "Home");
+        press(&mut p, "Delete");
+        press(&mut p, "End");
+        press(&mut p, "?");
+        assert_eq!(attribute(&p, "nom", "value").as_deref(), Some("dé!?"));
+        assert_eq!(p.document().caret(), "dé!?".len());
+
+        // Tab passe au champ suivant : `change` puis `blur` sur l'ancien.
+        press(&mut p, "Tab");
+        assert_eq!(p.document().focus(), Some(node_by_id(&p, "court")));
+        assert!(
+            journal(&p).ends_with("change:nom blur:nom focus:court focusin:court @court"),
+            "{}",
+            journal(&p)
+        );
+        // `maxlength` borne la frappe ; un champ en lecture seule l'ignore.
+        for key in ["a", "b", "c"] {
+            press(&mut p, key);
+        }
+        assert_eq!(attribute(&p, "court", "value").as_deref(), Some("ab"));
+        press(&mut p, "Tab");
+        press(&mut p, "z");
+        assert_eq!(attribute(&p, "fige", "value").as_deref(), Some("x"));
+
+        // Espace coche la case ; la zone de texte reçoit la frappe en fin.
+        press(&mut p, "Tab");
+        press(&mut p, " ");
+        assert_eq!(attribute(&p, "case", "checked").as_deref(), Some(""));
+        press(&mut p, "Tab");
+        press(&mut p, "b");
+        press(&mut p, "Enter");
+        let zone = node_by_id(&p, "zone");
+        assert_eq!(p.document().text_content(zone), "ab\n");
+
+        // Les flèches changent l'option d'une liste déroulante, sans en sortir.
+        press(&mut p, "Tab");
+        press(&mut p, "ArrowDown");
+        press(&mut p, "ArrowDown");
+        press(&mut p, "ArrowDown");
+        press(&mut p, "ArrowUp");
+        let chosen: Vec<String> = {
+            let doc = p.document();
+            doc.descendants(node_by_id(&p, "liste"))
+                .filter(|n| doc.element(*n).is_some_and(|e| e.has_attr("selected")))
+                .map(|n| doc.text_content(n))
+                .collect()
+        };
+        assert_eq!(chosen, ["deux"]);
+        assert!(journal(&p).contains("change:liste"), "{}", journal(&p));
+
+        // Entrée dans un champ de texte envoie le formulaire.
+        p.click_node(nom);
+        press(&mut p, "Enter");
+        assert!(journal(&p).contains("submit:f"), "{}", journal(&p));
+
+        // `focus()` et `blur()` depuis un script ; cliquer ailleurs retire le focus.
+        let journal_node = node_by_id(&p, "journal");
+        p.click_node(journal_node);
+        assert_eq!(p.document().focus(), None);
+        assert!(journal(&p).ends_with("@"), "{}", journal(&p));
+    }
+
+    #[test]
+    fn focus_changes_the_style_and_draws_a_caret() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<style>input { border: 1px solid rgb(1, 2, 3) } input:focus { border-color: rgb(9, 8, 7) }
+                    label { color: rgb(0, 0, 0) } :checked + label { color: rgb(200, 0, 0) }</style>
+             <input id=a value='abc'><input id=c type=checkbox><label id=l for=c>case</label>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let border = |p: &Page, wanted: Color| {
+            p.display_list().items.iter().any(|item| match item {
+                DisplayItem::Rect { color, .. } | DisplayItem::StrokeRect { color, .. } => {
+                    *color == wanted
+                }
+                _ => false,
+            })
+        };
+        let rects = |p: &Page| {
+            p.display_list()
+                .items
+                .iter()
+                .filter(|item| matches!(item, DisplayItem::Rect { .. }))
+                .count()
+        };
+        let focused = Color::rgb(9, 8, 7);
+        assert!(!border(&p, focused));
+        let before = rects(&p);
+
+        let field = node_by_id(&p, "a");
+        p.click_node(field);
+        assert!(
+            p.update(&mut text, VIEWPORT),
+            "le focus redemande une mise en page"
+        );
+        assert!(border(&p, focused), "`:focus` s'applique");
+        assert_eq!(rects(&p), before + 1, "le curseur est un rectangle de plus");
+
+        // Cliquer sur l'étiquette coche sa case, et `:checked` suit.
+        let label = node_by_id(&p, "l");
+        p.click_node(label);
+        assert_eq!(attribute(&p, "c", "checked").as_deref(), Some(""));
+        assert_eq!(p.document().focus(), Some(node_by_id(&p, "c")));
     }
 }

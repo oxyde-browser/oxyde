@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Formulaires</title>
+<style>
+  body { font-family: Inter, "Segoe UI", sans-serif; margin: 32px; color: #1b1f24; background: #f5f6f8; }
+  h1 { font-size: 24px; }
+  form { display: grid; gap: 14px; max-width: 520px; padding: 20px; background: white; border: 1px solid #d9dde3; border-radius: 10px; }
+  label { display: grid; gap: 4px; font-size: 14px; }
+  .ligne { display: flex; align-items: center; gap: 8px; }
+  input[type=text], input[type=email], input[type=password], input[type=search], select, textarea {
+    font-size: 15px; padding: 8px 10px; border-radius: 8px;
+  }
+  input[type=submit], button { font-size: 15px; padding: 8px 16px; border-radius: 8px; }
+  #etat { margin-top: 16px; font-family: Consolas, monospace; font-size: 13px; white-space: pre; }
+</style>
+</head>
+<body>
+<h1>Formulaires</h1>
+<form id="f" action="#envoye" method="get">
+  <label>Nom <input id="nom" type="text" name="nom" value="Ada Lovelace"></label>
+  <label>Courriel <input id="courriel" type="email" name="courriel" placeholder="vous@exemple.fr"></label>
+  <label>Mot de passe <input id="passe" type="password" name="passe" value="secret42"></label>
+  <label>Pays
+    <select id="pays" name="pays">
+      <option value="fr">France</option>
+      <option value="be" selected>Belgique</option>
+      <option value="ch">Suisse</option>
+    </select>
+  </label>
+  <div class="ligne"><input id="lettre" type="checkbox" name="lettre" checked> <label for="lettre">Recevoir la lettre d'information</label></div>
+  <div class="ligne"><input id="conditions" type="checkbox" name="conditions"> <label for="conditions">J'accepte les conditions</label></div>
+  <div class="ligne">
+    <input id="mensuel" type="radio" name="rythme" value="mensuel" checked> <label for="mensuel">Mensuel</label>
+    <input id="annuel" type="radio" name="rythme" value="annuel"> <label for="annuel">Annuel</label>
+  </div>
+  <label>Message <textarea id="message" name="message" rows="3">Bonjour,
+deux lignes.</textarea></label>
+  <div class="ligne">
+    <input type="submit" value="Envoyer la demande">
+    <input type="reset">
+    <button type="button" id="bouton">Bouton</button>
+    <input type="text" disabled value="désactivé" style="width: 90px">
+  </div>
+</form>
+<div id="etat"></div>
+<script>
+  const etat = document.getElementById("etat");
+  const journal = [];
+  function note(texte) {
+    journal.push(texte);
+    etat.textContent = journal.slice(-6).join("\n");
+  }
+  for (const type of ["focus", "blur", "input", "change", "submit"]) {
+    document.addEventListener(type, (e) => {
+      const cible = e.target.id || e.target.localName;
+      note(type + " " + cible + (e.target.value !== undefined ? " = " + e.target.value : ""));
+      if (type === "submit") e.preventDefault();
+    }, true);
+  }
+  // Pour les captures : `#focus=identifiant` donne le focus à un champ.
+  const voulu = /^#focus=(.+)$/.exec(location.hash);
+  if (voulu) document.getElementById(voulu[1])?.focus();
+</script>
+</body>
+</html>

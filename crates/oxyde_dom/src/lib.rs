@@ -242,6 +242,11 @@ pub struct Document {
     namespaces: Vec<String>,
     /// Compteur de modifications (voir [`Document::version`]).
     version: u64,
+    /// Élément qui a le focus, s'il y en a un.
+    focus: Option<NodeId>,
+    /// Position du curseur dans la valeur du champ de texte qui a le focus,
+    /// en octets.
+    caret: usize,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -312,6 +317,8 @@ impl Document {
             iterators: Vec::new(),
             namespaces: Vec::new(),
             version: 0,
+            focus: None,
+            caret: 0,
         }
     }
 
@@ -515,6 +522,30 @@ impl Document {
     /// Ferme le groupe ouvert par [`Document::begin_group`].
     pub fn end_group(&mut self) {
         self.group = 0;
+    }
+
+    /// Élément qui a le focus (`document.activeElement`, quand ce n'est pas
+    /// `<body>`).
+    #[must_use]
+    pub fn focus(&self) -> Option<NodeId> {
+        self.focus
+    }
+
+    /// Donne le focus à `node`, ou le retire ; le curseur va à `caret`. Le
+    /// style dépend du focus (`:focus`) : la version du document avance.
+    pub fn set_focus(&mut self, node: Option<NodeId>, caret: usize) {
+        if self.focus != node || self.caret != caret {
+            self.focus = node;
+            self.caret = caret;
+            self.version = self.version.wrapping_add(1);
+        }
+    }
+
+    /// Position du curseur dans la valeur du champ qui a le focus, en
+    /// octets ; à ramener sur une frontière de caractère avant usage.
+    #[must_use]
+    pub fn caret(&self) -> usize {
+        self.caret
     }
 
     /// Compteur qui avance à chaque modification de l'arbre, d'un attribut

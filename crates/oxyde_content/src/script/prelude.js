@@ -5,7 +5,8 @@
 //   changeUrl(href, rang, valeur) -> composants après modification, ou null ;
 //   observe, disconnect, takeRecords -> observateurs de mutation ;
 //   locationHref()               -> adresse courante du document ;
-//   navigate(nature, valeur)     -> demande de navigation à l'embarqueur.
+//   navigate(nature, valeur)     -> demande de navigation à l'embarqueur ;
+//   focusedElement()             -> élément qui a le focus, ou null.
 // Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
@@ -13,7 +14,7 @@
 // LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
-(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate) {
+(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -986,9 +987,9 @@
   };
   expose("history", historyObject);
 
-  // LIMITE : pas encore de gestion du focus ; l'élément actif est `<body>`.
+  // L'élément qui a le focus ; à défaut, `<body>`.
   define(Document.prototype, "activeElement", {
-    get() { return this.body ?? this.documentElement; },
+    get() { return focusedElement() ?? this.body ?? this.documentElement; },
     enumerable: true,
     configurable: true,
   });

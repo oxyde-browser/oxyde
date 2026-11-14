@@ -17,6 +17,7 @@
 //! - une hauteur en pourcentage n'est résolue que si la hauteur du bloc
 //!   conteneur est imposée (sinon elle vaut `auto`).
 
+mod controls;
 mod find;
 mod flex;
 mod floats;
@@ -198,7 +199,9 @@ pub fn layout_document(
         tables: std::collections::HashMap::new(),
         table_sizes: std::collections::HashMap::new(),
         cell_sizes: std::collections::HashMap::new(),
+        control_widths: std::collections::HashMap::new(),
     };
+    engine.measure_controls();
     let root = doc
         .children(doc.root())
         .find(|n| doc.element(*n).is_some())
@@ -518,6 +521,9 @@ struct Engine<'a> {
     tables: std::collections::HashMap<NodeId, table::TablePlan>,
     /// Largeurs de contenu minimale et maximale des tableaux planifiés.
     table_sizes: std::collections::HashMap<NodeId, (f32, f32)>,
+    /// Largeur du libellé des boutons `<input>` et de la plus longue option
+    /// des listes déroulantes, mesurée avant la mise en page.
+    control_widths: std::collections::HashMap<NodeId, f32>,
     /// Largeurs de contenu minimale et maximale des cellules déjà mesurées.
     cell_sizes: std::collections::HashMap<NodeId, (f32, f32)>,
 }
@@ -976,6 +982,22 @@ impl Engine<'_> {
             self.out_of_flow.extend(fixed);
         }
 
+        // Un contrôle de formulaire affiche sa valeur, son libellé ou sa
+        // marque dans sa boîte de contenu.
+        if self
+            .doc
+            .element(node)
+            .is_some_and(|e| e.is_html("input") || e.is_html("select"))
+        {
+            let content = Rect {
+                x: border_box.x + bw.left + pad.left,
+                y: border_box.y + bw.top + pad.top,
+                w: (border_box.w - bw.left - bw.right - pad.left - pad.right).max(0.0),
+                h: (border_box.h - bw.top - bw.bottom - pad.top - pad.bottom).max(0.0),
+            };
+            children.extend(self.control_content(node, style, content));
+        }
+
         BoxFragment {
             node: Some(node),
             style: Arc::clone(style),
@@ -1181,13 +1203,14 @@ impl Engine<'_> {
         if !element.is_html("input") && !element.is_html("select") && !element.is_html("textarea") {
             return None;
         }
-        self.control_size(element, style)
+        self.control_size(node, element, style)
             .map(|(w, h)| (w, h, false))
     }
 
     /// Taille par défaut d'un champ de formulaire.
     fn control_size(
         &self,
+        node: NodeId,
         element: &oxyde_dom::ElementData,
         style: &ComputedStyle,
     ) -> Option<(f32, f32)> {
@@ -1196,9 +1219,19 @@ impl Engine<'_> {
             "input" => match element.attr("type").map(str::to_ascii_lowercase).as_deref() {
                 Some("checkbox" | "radio") => (13.0, 13.0),
                 Some("hidden") => (0.0, 0.0),
+                // Un bouton prend la largeur de son libellé, estimée d'après
+                // le corps du texte.
+                Some("submit" | "reset" | "button") => {
+                    (self.control_widths.get(&node).copied().unwrap_or(0.0), line)
+                }
                 _ => (150.0, line),
             },
-            "select" => (80.0, line),
+            // Une liste déroulante prend la largeur de sa plus longue option,
+            // et la place de sa flèche.
+            "select" => {
+                let widest = self.control_widths.get(&node).copied().unwrap_or(24.0);
+                (widest + style.font_size * 1.2, line)
+            }
             _ => (150.0, line * 2.0),
         })
     }

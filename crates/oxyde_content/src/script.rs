@@ -29,6 +29,7 @@ mod attrs;
 mod documents;
 mod dom_ops;
 mod events;
+mod focus;
 mod frames;
 mod geometry;
 mod lists;
@@ -99,6 +100,9 @@ struct DomHost {
     hooks: Option<Value>,
     /// Fonctions d'activation au clic (`before`, `after`).
     activation: Option<Value>,
+    /// Valeur du champ de texte qui a le focus, telle qu'elle était quand il
+    /// l'a reçu : pour l'événement `change` à la perte du focus.
+    focus_value: Option<String>,
     /// Prototype des éléments HTML de chaque balise.
     tag_protos: HashMap<String, ObjId>,
     /// Document de la fenêtre du royaume courant (`window.document`).
@@ -1316,10 +1320,6 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     })))
 }
 
-fn no_op(_vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
-    Ok(Value::Undefined)
-}
-
 // ---- Événements ----------------------------------------------------------------------
 
 /// Signale une exception non rattrapée dans la console de la page.
@@ -1339,9 +1339,32 @@ fn report(vm: &mut Vm, thrown: &Value) {
     }
 }
 
+/// Distribue `click` sur `node`, entouré des fonctions d'activation (case
+/// cochée, bouton radio, envoi de formulaire). Renvoie `true` si un script
+/// a annulé l'action par défaut.
+fn activate(vm: &mut Vm, node: NodeId) -> bool {
+    let activation = host(vm).and_then(|h| h.activation.clone());
+    let target = wrap(vm, node);
+    let hook = |vm: &mut Vm, name: &str, args: &[Value]| {
+        let hooks = activation.clone()?;
+        match vm.get(&hooks, name).and_then(|f| vm.call(&f, &hooks, args)) {
+            Ok(value) => Some(value),
+            Err(thrown) => {
+                report(vm, &thrown);
+                None
+            }
+        }
+    };
+    let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
+    let prevented = dispatch(vm, Some(node), "click");
+    hook(vm, "after", &[state, Value::Bool(prevented)]);
+    prevented
+}
+
 fn element_click(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
-    dispatch(vm, Some(node), "click");
+    // Comme un clic de l'utilisateur : la case se coche, le bouton envoie.
+    activate(vm, node);
     Ok(Value::Undefined)
 }
 
@@ -1504,8 +1527,8 @@ const OPERATIONS: &[(&str, &str, NativeFn)] = &[
     ("", "addEventListener", add_event_listener),
     ("", "removeEventListener", remove_event_listener),
     ("", "click", element_click),
-    ("", "focus", no_op),
-    ("", "blur", no_op),
+    ("", "focus", focus::element_focus),
+    ("", "blur", focus::element_blur),
     ("", "scrollIntoView", geometry::scroll_into_view),
     ("", "scrollTo", geometry::element_scroll_to),
     ("", "scroll", geometry::element_scroll_to),
@@ -1867,6 +1890,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             modules: HashMap::new(),
             next_timer: 0,
             dirty: false,
+            focus_value: None,
             viewport: (0.0, 0.0),
             started: Instant::now(),
             clock: Instant::now(),
@@ -1962,6 +1986,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("takeRecords", 1, mutation::take_records)),
         Value::Object(vm.new_function("locationHref", 0, location_href)),
         Value::Object(vm.new_function("navigate", 2, navigate)),
+        Value::Object(vm.new_function("focusedElement", 0, focus::focused_element)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());
@@ -2269,22 +2294,10 @@ impl ScriptEngine {
     /// a annulé l'action par défaut.
     pub(crate) fn click(&mut self, doc: &mut Document, node: NodeId) -> bool {
         self.run(doc, |vm| {
-            let activation = host(vm).and_then(|h| h.activation.clone());
-            let target = wrap(vm, node);
-            let hook = |vm: &mut Vm, name: &str, args: &[Value]| {
-                let hooks = activation.clone()?;
-                match vm.get(&hooks, name).and_then(|f| vm.call(&f, &hooks, args)) {
-                    Ok(value) => Some(value),
-                    Err(thrown) => {
-                        report(vm, &thrown);
-                        None
-                    }
-                }
-            };
-            let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
-            let prevented = dispatch(vm, Some(node), "click");
-            hook(vm, "after", &[state, Value::Bool(prevented)]);
-            prevented
+            // Le focus va à l'élément cliqué, ou quitte celui qui l'avait.
+            let target = host(vm).and_then(|h| focus::focus_target(&h.doc, node));
+            focus::move_focus(vm, target);
+            activate(vm, node)
         })
     }
 
@@ -2315,7 +2328,13 @@ impl ScriptEngine {
                 .get(&hooks, "key")
                 .and_then(|f| vm.call(&f, &hooks, &args))
             {
-                Ok(proceed) => !proceed.truthy(),
+                Ok(proceed) => {
+                    // Aucun script ne s'y oppose : la touche fait son office.
+                    if down && proceed.truthy() {
+                        focus::default_key(vm, input);
+                    }
+                    !proceed.truthy()
+                }
                 Err(thrown) => {
                     report(vm, &thrown);
                     false

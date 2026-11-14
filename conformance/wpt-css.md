@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9890 / 28777 (34,4 %)** — fichiers entièrement réussis : 538 / 2267 (23,7 %).
+**Sous-tests réussis : 9901 / 28777 (34,4 %)** — fichiers entièrement réussis : 541 / 2267 (23,9 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -35,11 +35,11 @@ est le plus honnête des deux.
 | `css/css-display` | 10 / 24 | 28 / 55 (50,9 %) |
 | `css/css-display/accessibility` | 0 / 1 | 0 / 0 (—) |
 | `css/css-display/animations` | 0 / 2 | 0 / 0 (—) |
-| `css/css-display/focus` | 0 / 1 | 0 / 5 (0,0 %) |
+| `css/css-display/focus` | 1 / 1 | 5 / 5 (100,0 %) |
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 69 / 185 | 989 / 1804 (54,8 %) |
+| `css/css-flexbox` | 70 / 185 | 991 / 1804 (54,9 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
@@ -54,7 +54,7 @@ est le plus honnête des deux.
 | `css/css-grid/animation` | 0 / 13 | 0 / 8 (0,0 %) |
 | `css/css-grid/grid-definition` | 14 / 51 | 744 / 1318 (56,4 %) |
 | `css/css-grid/grid-items` | 15 / 50 | 478 / 984 (48,6 %) |
-| `css/css-grid/grid-lanes` | 0 / 2 | 2 / 35 (5,7 %) |
+| `css/css-grid/grid-lanes` | 1 / 2 | 6 / 35 (17,1 %) |
 | `css/css-grid/grid-lanes/animation` | 0 / 3 | 0 / 0 (—) |
 | `css/css-grid/grid-lanes/intrinsic-sizing` | 0 / 1 | 0 / 7 (0,0 %) |
 | `css/css-grid/grid-lanes/invalidation` | 0 / 9 | 2 / 43 (4,7 %) |
@@ -414,7 +414,6 @@ est le plus honnête des deux.
 | `css/css-display/display-initial.html` | 4 / 6 |  |
 | `css/css-display/display-math-on-non-mathml-elements.html` | 2 / 10 |  |
 | `css/css-display/display-math-on-pseudo-elements-001.html` | 3 / 6 |  |
-| `css/css-display/focus/display-contents-focus.html` | 0 / 5 |  |
 | `css/css-display/parsing/display-computed.html` | 13 / 112 |  |
 | `css/css-display/parsing/display-invalid.html` | 0 / 55 |  |
 | `css/css-display/parsing/display-valid.html` | 36 / 108 |  |
@@ -564,7 +563,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/flex-minimum-height-flex-items-025.html` | 0 / 4 |  |
 | `css/css-flexbox/flex-minimum-size-002.html` | 0 / 1 |  |
 | `css/css-flexbox/flex-minimum-size-003.html` | 0 / 2 |  |
-| `css/css-flexbox/flex-minimum-size-single-axis-scroll-container.html` | 2 / 4 |  |
 | `css/css-flexbox/flex-minimum-width-flex-items-014.html` | 1 / 6 |  |
 | `css/css-flexbox/flex-one-sets-flex-basis-to-zero-px.html` | 9 / 18 |  |
 | `css/css-flexbox/flex-shorthand-calc.html` | 0 / 4 |  |
@@ -1046,7 +1044,6 @@ est le plus honnête des deux.
 | `css/css-grid/grid-lanes/animation/fit-tolerance-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-columns-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-grid/grid-lanes/animation/grid-template-rows-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-grid/grid-lanes/grid-lanes-container-minimum-size-single-axis-scroll-container.html` | 2 / 6 |  |
 | `css/css-grid/grid-lanes/grid-lanes-grid-template-columns-computed-withcontent.html` | 0 / 29 |  |
 | `css/css-grid/grid-lanes/intrinsic-sizing/grid-lanes-contain-intrinsic-size-009.html` | 0 / 7 |  |
 | `css/css-grid/grid-lanes/invalidation/grid-lanes-add-child-dynamic-change.html` | 0 / 2 |  |
@@ -1429,7 +1426,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-006.html` | 1 / 19 |  |
-| `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/css-sizing/contain-intrinsic-size/auto-009.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-010.html` | 0 / 2 |  |
