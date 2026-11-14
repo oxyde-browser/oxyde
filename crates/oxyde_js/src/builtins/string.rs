@@ -245,19 +245,26 @@ fn unit_index(vm: &mut Vm, value: &Value, len: usize) -> JsResult<Option<usize>>
 
 fn char_at_method(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+    let length = vm.string_units(&s);
+    let Some(index) = unit_index(vm, &arg(args, 0), length)? else {
         return string("");
     };
-    string(&char_at(&s, index).unwrap_or_default())
+    // LIMITE : un demi-substitut isolé devient U+FFFD.
+    string(
+        &vm.string_unit_at(&s, index)
+            .map(|unit| String::from_utf16_lossy(&[unit]))
+            .unwrap_or_default(),
+    )
 }
 
 fn char_code_at(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
-    let Some(index) = unit_index(vm, &arg(args, 0), utf16_len(&s))? else {
+    let length = vm.string_units(&s);
+    let Some(index) = unit_index(vm, &arg(args, 0), length)? else {
         return Ok(Value::Number(f64::NAN));
     };
-    Ok(s.encode_utf16()
-        .nth(index)
+    Ok(vm
+        .string_unit_at(&s, index)
         .map_or(Value::Number(f64::NAN), |u| Value::Number(f64::from(u))))
 }
 

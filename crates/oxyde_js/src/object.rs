@@ -39,10 +39,15 @@ impl Vm {
                         clippy::cast_precision_loss,
                         reason = "longueur de chaîne petite devant 2^53"
                     )]
-                    return Ok(Value::Number(utf16_len(s) as f64));
+                    return Ok(Value::Number(self.string_units(s) as f64));
                 }
                 if let Some(index) = array_index(key) {
-                    return Ok(char_at(s, index).map_or(Value::Undefined, |c| Value::string(&c)));
+                    // LIMITE : un demi-substitut isolé devient U+FFFD.
+                    return Ok(self
+                        .string_unit_at(s, index)
+                        .map_or(Value::Undefined, |unit| {
+                            Value::string(&String::from_utf16_lossy(&[unit]))
+                        }));
                 }
                 self.get_with_receiver(self.intrinsics.string_proto, key, target)
             }
