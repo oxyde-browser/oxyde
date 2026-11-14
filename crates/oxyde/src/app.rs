@@ -19,6 +19,7 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use crate::browser::{Browser, Command, KeyPress};
 use crate::loader::{self, Loaded};
+use crate::renderer::protocol::SelectGesture;
 use crate::{a11y, frame};
 
 /// Pixels CSS défilés par cran de molette.
@@ -78,6 +79,14 @@ struct App {
     /// Élément sur lequel le bouton gauche a été enfoncé.
     pressed: Option<Hit>,
     last_title_click: Option<Instant>,
+    /// Sélection de texte en cours à la souris : onglet, et point de la
+    /// fenêtre où le bouton a été enfoncé.
+    selecting: Option<(usize, (f32, f32))>,
+    /// Vrai si le pointeur s'est éloigné de ce point : c'est un glissement,
+    /// pas un clic.
+    dragged: bool,
+    /// Dernier clic dans une page : instant et point de la fenêtre.
+    last_pane_click: Option<(Instant, (f32, f32))>,
     /// Première erreur fatale rencontrée dans la boucle d'événements.
     error: Option<anyhow::Error>,
     /// Profil où le navigateur range sa session, son historique et ses
@@ -91,6 +100,22 @@ struct App {
 
 /// Intervalle minimal entre deux écritures du profil.
 const PERSIST_INTERVAL: Duration = Duration::from_secs(1);
+
+/// Écart, en pixels, à partir duquel un bouton enfoncé puis déplacé est un
+/// glissement et non un clic.
+const DRAG_SLOP: f32 = 3.0;
+
+/// Vrai si `a` et `b` sont à moins de [`DRAG_SLOP`] l'un de l'autre.
+fn near(a: (f32, f32), b: (f32, f32)) -> bool {
+    (a.0 - b.0).abs() <= DRAG_SLOP && (a.1 - b.1).abs() <= DRAG_SLOP
+}
+
+/// Place `text` dans le presse-papiers ; un refus du système est signalé.
+fn set_clipboard(text: String) {
+    if let Err(error) = arboard::Clipboard::new().and_then(|mut c| c.set_text(text)) {
+        eprintln!("presse-papiers non écrit : {error}");
+    }
+}
 
 /// Texte du presse-papiers, borné ; `None` s'il est vide ou inaccessible.
 fn clipboard_text() -> Option<String> {
@@ -426,6 +451,28 @@ impl App {
             .cursor_logical()
             .and_then(|(x, y)| self.chrome.hit(x, y));
         self.pressed = hit;
+        self.selecting = None;
+        self.dragged = false;
+        if let Some(Hit::Pane(tab)) = hit
+            && let (Some(at), Some((x, y))) = (self.cursor_logical(), self.page_point(tab))
+        {
+            // Bouton enfoncé dans une page : une sélection commence ; au
+            // second clic d'un double clic, c'est le mot qui est pris.
+            let now = Instant::now();
+            let double = self
+                .last_pane_click
+                .is_some_and(|(t, p)| now.duration_since(t) < DOUBLE_CLICK && near(p, at));
+            self.last_pane_click = if double { None } else { Some((now, at)) };
+            let gesture = if double {
+                SelectGesture::Word
+            } else {
+                self.selecting = Some((tab, at));
+                SelectGesture::Start
+            };
+            if self.browser.page_select(tab, gesture, x, y) {
+                self.request_redraw();
+            }
+        }
         if hit == Some(Hit::TitleBar) {
             let now = Instant::now();
             let double = self
@@ -440,14 +487,36 @@ impl App {
         }
     }
 
+    /// Pointeur déplacé, bouton enfoncé dans une page : la sélection de
+    /// texte suit le pointeur, même sorti du volet.
+    fn drag_selection(&mut self) {
+        let (Some((tab, from)), Some(at)) = (self.selecting, self.cursor_logical()) else {
+            return;
+        };
+        if !self.dragged && near(from, at) {
+            return;
+        }
+        self.dragged = true;
+        if let Some((x, y)) = self.page_point(tab)
+            && self.browser.page_select(tab, SelectGesture::Extend, x, y)
+        {
+            self.request_redraw();
+        }
+    }
+
     fn mouse_released(&mut self, event_loop: &ActiveEventLoop) {
         let hit = self
             .cursor_logical()
             .and_then(|(x, y)| self.chrome.hit(x, y));
         // Un clic compte si le bouton est relâché sur l'élément où il a été enfoncé.
+        // Un glissement a sélectionné du texte : ce n'est pas un clic.
+        let dragged = self.selecting.take().is_some() && std::mem::take(&mut self.dragged);
         let (Some(hit), true) = (hit, hit == self.pressed.take()) else {
             return;
         };
+        if dragged {
+            return;
+        }
         let page_point = match hit {
             Hit::Pane(tab) => self.page_point(tab),
             _ => None,
@@ -559,6 +628,10 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
+        // Texte copié dans une page (Ctrl C).
+        if let Some(text) = self.browser.take_copied() {
+            set_clipboard(text);
+        }
         // Navigations demandées par les scripts depuis le dernier passage, et
         // onglets d'une session reprise qui viennent d'apparaître.
         let mut navigations = self.browser.drain_navigations();
@@ -716,6 +789,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = position;
                 self.update_hover();
+                self.drag_selection();
             }
             WindowEvent::CursorLeft { .. } => {
                 if self.browser.hover.take().is_some() {
@@ -755,6 +829,9 @@ pub(crate) fn run(browser: Browser, multi_process: bool, profile: Option<Profile
         modifiers: ModifiersState::empty(),
         pressed: None,
         last_title_click: None,
+        selecting: None,
+        dragged: false,
+        last_pane_click: None,
         error: None,
         multi_process,
         // La session du disque est celle dont le navigateur vient de renaître,

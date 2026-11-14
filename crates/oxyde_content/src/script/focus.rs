@@ -37,7 +37,7 @@ fn is_text_type(kind: Option<&str>) -> bool {
 }
 
 /// Vrai si `node` est un champ de texte d'une ligne.
-pub(super) fn is_text_input(doc: &Document, node: NodeId) -> bool {
+pub(crate) fn is_text_input(doc: &Document, node: NodeId) -> bool {
     doc.element(node)
         .is_some_and(|e| e.is_html("input") && is_text_type(e.attr("type")))
 }

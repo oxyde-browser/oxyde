@@ -548,7 +548,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Saisie, ce qui reste : sélection dans un champ et presse-papiers (Ctrl C, X, V), clic qui
       place le curseur, curseur et édition au milieu d'un `<textarea>`, liste déroulante qui
       se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
-- [ ] Sélection de texte à la souris et copie ; menu contextuel de la page (jalon 7).
+- [x] Sélection de texte à la souris et copie : glisser sélectionne, un double clic prend
+      le mot, Ctrl A toute la page, Ctrl C copie dans le presse-papiers (un processus de
+      rendu n'y écrit que si l'utilisateur vient de copier). Le texte copié est celui
+      qu'on lit : blancs fusionnés hors `white-space: pre`, une ligne par bloc.
+      Limites : la sélection suit l'ordre du document, ignore `user-select`, les
+      transformations et le défilement des zones internes ; elle n'est pas visible des
+      scripts (`getSelection()` reste vide, pas de `selectionchange`) ; pas de triple
+      clic, de Maj clic ni de défilement automatique en glissant hors du volet.
+      Vérifié par tests ; pas encore essayé à la souris dans la fenêtre.
+- [ ] Menu contextuel de la page (jalon 7).
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;

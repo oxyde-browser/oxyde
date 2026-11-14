@@ -74,6 +74,47 @@ ipc_struct!(KeyMessage {
     repeat
 });
 
+/// Geste de sélection de texte à la souris.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectGesture {
+    /// Bouton enfoncé : la sélection commence ici, l'ancienne s'efface.
+    Start,
+    /// Pointeur déplacé, bouton enfoncé : la sélection va jusqu'ici.
+    Extend,
+    /// Double clic : le mot sous le pointeur.
+    Word,
+}
+
+impl SelectGesture {
+    /// Code du geste dans un message.
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::Start => 0,
+            Self::Extend => 1,
+            Self::Word => 2,
+        }
+    }
+
+    /// Geste de code `code` ; `None` pour un code inconnu.
+    pub(crate) fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Start),
+            1 => Some(Self::Extend),
+            2 => Some(Self::Word),
+            _ => None,
+        }
+    }
+
+    /// Applique le geste à `page` ; renvoie `true` si l'affichage a changé.
+    pub(crate) fn apply(self, page: &mut oxyde_content::Page, x: f32, y: f32) -> bool {
+        match self {
+            Self::Start => page.select_start(x, y),
+            Self::Extend => page.select_to(x, y),
+            Self::Word => page.select_word(x, y),
+        }
+    }
+}
+
 /// Du navigateur vers le processus de rendu.
 #[derive(Debug)]
 pub(crate) enum ToRenderer {
@@ -102,6 +143,9 @@ pub(crate) enum ToRenderer {
     Find { query: String },
     /// Passer à l'occurrence suivante ou précédente.
     FindStep { forward: bool },
+    /// Geste de sélection de texte au point (`x`, `y`) de la page :
+    /// `gesture` est un [`SelectGesture`] (0 commencer, 1 étendre, 2 mot).
+    Select { gesture: u8, x: f32, y: f32 },
 }
 ipc_enum!(ToRenderer {
     0 => Load { url, post, width, height },
@@ -114,6 +158,7 @@ ipc_enum!(ToRenderer {
     7 => Network { id, reply },
     8 => Find { query },
     9 => FindStep { forward },
+    10 => Select { gesture, x, y },
 });
 
 /// Image de la page, prête à composer.
@@ -159,6 +204,8 @@ pub(crate) enum FromRenderer {
     Hover { link: bool },
     /// Avancement de la recherche : nombre d'occurrences, rang de la courante.
     Found { count: u32, current: u32 },
+    /// Texte que l'utilisateur a copié dans la page (Ctrl C).
+    Copied { text: String },
 }
 ipc_enum!(FromRenderer {
     0 => Network { id, request },
@@ -168,4 +215,5 @@ ipc_enum!(FromRenderer {
     4 => Clicked { url },
     5 => Hover { link },
     6 => Found { count, current },
+    7 => Copied { text },
 });

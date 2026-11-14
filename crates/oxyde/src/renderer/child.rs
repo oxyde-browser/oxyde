@@ -15,7 +15,9 @@ use oxyde_paint::wire::ResourceSender;
 use oxyde_text::TextContext;
 use url::Url;
 
-use super::protocol::{Frame, FromRenderer, NetworkReply, NetworkRequest, ToRenderer};
+use super::protocol::{
+    Frame, FromRenderer, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+};
 use crate::loader::{self, LoadError};
 
 /// Lien du processus de rendu avec le navigateur.
@@ -297,7 +299,7 @@ impl Renderer {
             }
             ToRenderer::Key(key) => {
                 if let Some(page) = self.page.as_mut() {
-                    page.key_event(
+                    let (_prevented, redraw) = page.key_event(
                         key.down,
                         &KeyInput {
                             key: &key.key,
@@ -310,6 +312,19 @@ impl Renderer {
                         },
                     );
                     loader::report_console(page);
+                    // Ctrl A change le surlignage sans nouvelle mise en page.
+                    self.force_frame |= redraw;
+                    if let Some(text) = page.take_copied() {
+                        self.link.send(&FromRenderer::Copied { text })?;
+                    }
+                }
+            }
+            ToRenderer::Select { gesture, x, y } => {
+                if let (Some(page), Some(gesture)) =
+                    (self.page.as_mut(), SelectGesture::from_code(gesture))
+                    && gesture.apply(page, x, y)
+                {
+                    self.force_frame = true;
                 }
             }
             ToRenderer::Scroll { id, x, y } => {

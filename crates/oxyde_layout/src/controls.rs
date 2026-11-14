@@ -119,6 +119,7 @@ impl Engine<'_> {
             layout,
             // Le texte d'un contrôle n'appartient pas au texte de la page.
             text: String::new(),
+            preserves_space: false,
             boxes: Vec::new(),
         }))
     }

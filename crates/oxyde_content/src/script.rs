@@ -30,6 +30,7 @@ mod documents;
 mod dom_ops;
 mod events;
 mod focus;
+pub(crate) use focus::is_text_input;
 mod frames;
 mod geometry;
 mod lists;

@@ -60,43 +60,49 @@ fn occurrences(text: &str, needle: &str) -> Vec<(usize, usize)> {
     found
 }
 
+/// Rectangles, en coordonnées de page, du texte de `fragment` compris entre
+/// les octets `start` et `end` : un par ligne occupée.
+pub(crate) fn range_rects(fragment: &TextFragment, start: usize, end: usize) -> Vec<Rect> {
+    // Corps du texte au début de l'intervalle.
+    let size = Cluster::from_byte_index(&fragment.layout, start).map(|c| c.run().font_size());
+    let selection = Selection::new(
+        Cursor::from_byte_index(&fragment.layout, start, Affinity::Downstream),
+        Cursor::from_byte_index(&fragment.layout, end, Affinity::Upstream),
+    );
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "coordonnées de mise en page, loin des bornes de f32"
+    )]
+    selection
+        .geometry(&fragment.layout)
+        .into_iter()
+        .map(|(bounds, line)| {
+            // La sélection couvre toute la hauteur de la ligne, qu'une
+            // image peut rendre bien plus haute que le texte : le
+            // rectangle est ramené autour de la ligne de base.
+            let (mut top, mut bottom) = (bounds.y0 as f32, bounds.y1 as f32);
+            if let (Some(size), Some(line)) = (size, fragment.layout.get(line)) {
+                let baseline = line.metrics().baseline;
+                top = top.max(baseline - size);
+                bottom = bottom.min(baseline + size * 0.3);
+            }
+            Rect {
+                x: fragment.x + bounds.x0 as f32,
+                y: fragment.y + top,
+                w: (bounds.x1 - bounds.x0) as f32,
+                h: bottom - top,
+            }
+        })
+        .filter(|rect| rect.w > 0.0 && rect.h > 0.0)
+        .collect()
+}
+
 fn search_text(fragment: &TextFragment, needle: &str, out: &mut Vec<Vec<Rect>>) {
     for (start, end) in occurrences(&fragment.text, needle) {
         if out.len() >= MAX_MATCHES {
             return;
         }
-        // Corps du texte au début de l'occurrence.
-        let size = Cluster::from_byte_index(&fragment.layout, start).map(|c| c.run().font_size());
-        let selection = Selection::new(
-            Cursor::from_byte_index(&fragment.layout, start, Affinity::Downstream),
-            Cursor::from_byte_index(&fragment.layout, end, Affinity::Upstream),
-        );
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "coordonnées de mise en page, loin des bornes de f32"
-        )]
-        let rects: Vec<Rect> = selection
-            .geometry(&fragment.layout)
-            .into_iter()
-            .map(|(bounds, line)| {
-                // La sélection couvre toute la hauteur de la ligne, qu'une
-                // image peut rendre bien plus haute que le texte : le
-                // rectangle est ramené autour de la ligne de base.
-                let (mut top, mut bottom) = (bounds.y0 as f32, bounds.y1 as f32);
-                if let (Some(size), Some(line)) = (size, fragment.layout.get(line)) {
-                    let baseline = line.metrics().baseline;
-                    top = top.max(baseline - size);
-                    bottom = bottom.min(baseline + size * 0.3);
-                }
-                Rect {
-                    x: fragment.x + bounds.x0 as f32,
-                    y: fragment.y + top,
-                    w: (bounds.x1 - bounds.x0) as f32,
-                    h: bottom - top,
-                }
-            })
-            .filter(|rect| rect.w > 0.0 && rect.h > 0.0)
-            .collect();
+        let rects = range_rects(fragment, start, end);
         if !rects.is_empty() {
             out.push(rects);
         }

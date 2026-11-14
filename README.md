@@ -40,6 +40,7 @@ OXYDE_JOURNAL=1 cargo run --release -p oxyde -- --dump-dom https://exemple.test/
 | Ctrl K | palette de commandes : onglets, historique, favoris, commandes |
 | Ctrl F | chercher dans la page ; Entrée et Maj Entrée parcourent les occurrences |
 | Ctrl V, Ctrl A | coller, tout sélectionner (pendant la saisie) |
+| glisser, double clic, Ctrl A, Ctrl C | sélectionner du texte dans la page, un mot, tout ; copier |
 | Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
 | Ctrl Maj T | rouvrir le dernier onglet fermé |
 | Ctrl Maj P | épingler ou désépingler l'onglet |
@@ -103,7 +104,7 @@ octets ─ oxyde_net ─▶ oxyde_html ─▶ oxyde_dom ─▶ oxyde_css ─▶ 
   `click`, poser des minuteurs, appeler `fetch` et `XMLHttpRequest`, envoyer des formulaires
   (on peut taper dans leurs champs : focus, curseur, Tab, Entrée, cases, listes)
   et charger des modules (`<script type="module">`, `import`/`export`, `import()`, `await`
-  de premier niveau). Manquent encore la sélection de texte et le collage dans les pages, les workers, les
+  de premier niveau). Manquent encore la sélection et le collage dans les champs des pages, les workers, les
   éléments personnalisés et une part du DOM : beaucoup de sites réels ne fonctionnent donc
   pas encore. Ce qui sépare Oxyde d'un navigateur de tous les jours est listé dans
   [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md), partie 3. Conformité mesurée : 98,7 % de test262

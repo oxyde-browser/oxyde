@@ -21,7 +21,9 @@ use oxyde_paint::wire::ResourceStore;
 use oxyde_text::TextContext;
 use url::Url;
 
-use super::protocol::{FromRenderer, KeyMessage, NetworkReply, NetworkRequest, ToRenderer};
+use super::protocol::{
+    FromRenderer, KeyMessage, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+};
 use crate::loader::{self, LoadError};
 
 /// Fin d'un chargement mené par un processus de rendu.
@@ -55,6 +57,11 @@ pub(crate) struct RemotePage {
     /// Avancement de la recherche dans la page, tel que le processus de
     /// rendu l'a annoncé en dernier.
     found: FindStatus,
+    /// Vrai si une touche de copie vient de partir : seule une réponse
+    /// attendue touche au presse-papiers.
+    copy_expected: bool,
+    /// Texte copié dans la page, en attente du presse-papiers.
+    copied: Option<String>,
     crashed: bool,
     /// Site auquel ce processus est voué, tenu par le navigateur seul.
     lock: Arc<Mutex<SiteLock>>,
@@ -163,6 +170,8 @@ impl RemotePage {
             hover: Cell::new(None),
             over_link: false,
             found: FindStatus::default(),
+            copy_expected: false,
+            copied: None,
             crashed: false,
             lock: Arc::default(),
         };
@@ -349,6 +358,13 @@ impl RemotePage {
                         current: usize::try_from(current).unwrap_or(usize::MAX),
                     };
                     redraw = true;
+                }
+                FromRenderer::Copied { text } => {
+                    // Un processus de rendu n'écrit pas dans le presse-papiers
+                    // de lui-même : il faut que l'utilisateur vienne de copier.
+                    if std::mem::take(&mut self.copy_expected) {
+                        self.copied = Some(text);
+                    }
                 }
                 FromRenderer::Hover { link } => {
                     if link != self.over_link {
@@ -683,6 +699,9 @@ impl PageHost {
                 outcome
             }
             Self::Remote(page) => {
+                if down && input.ctrl && input.key.eq_ignore_ascii_case("c") {
+                    page.copy_expected = true;
+                }
                 page.send(&ToRenderer::Key(KeyMessage {
                     down,
                     key: input.key.to_owned(),
@@ -695,6 +714,32 @@ impl PageHost {
                 }));
                 (false, false)
             }
+        }
+    }
+
+    /// Geste de sélection de texte au point (`x`, `y`) de la page. Renvoie
+    /// `true` si l'affichage a changé ; pour un processus de rendu, la
+    /// nouvelle image arrive plus tard.
+    pub(crate) fn select(&mut self, gesture: SelectGesture, x: f32, y: f32) -> bool {
+        match self {
+            Self::Local(page) => gesture.apply(page, x, y),
+            Self::Remote(page) => {
+                page.send(&ToRenderer::Select {
+                    gesture: gesture.code(),
+                    x,
+                    y,
+                });
+                false
+            }
+        }
+    }
+
+    /// Texte que l'utilisateur a copié dans la page (Ctrl C) depuis le
+    /// dernier appel, à placer dans le presse-papiers.
+    pub(crate) fn take_copied(&mut self) -> Option<String> {
+        match self {
+            Self::Local(page) => page.take_copied(),
+            Self::Remote(page) => page.copied.take(),
         }
     }
 
