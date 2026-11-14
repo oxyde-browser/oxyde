@@ -221,7 +221,15 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         );
         page.background()
     } else if args.page_only {
-        let mut page = loader::load_input(args.target.as_deref().unwrap_or("about:newtab")).page;
+        let loaded = loader::load_input(args.target.as_deref().unwrap_or("about:newtab"));
+        // Sans l'interface, l'écran d'erreur n'est pas dessiné : l'échec est dit ici.
+        if let Some(error) = &loaded.error {
+            eprintln!(
+                "échec du chargement : {} — {} ({})",
+                error.title, error.detail, error.code
+            );
+        }
+        let mut page = loaded.page;
         loader::settle_fetches(&mut page);
         page.update(
             &mut text,

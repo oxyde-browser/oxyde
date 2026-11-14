@@ -35,6 +35,7 @@ mod geometry;
 mod lists;
 mod mutation;
 mod range;
+mod scripts;
 mod storage;
 mod tokens;
 mod traversal;
@@ -100,6 +101,13 @@ struct DomHost {
     hooks: Option<Value>,
     /// Fonctions d'activation au clic (`before`, `after`).
     activation: Option<Value>,
+    /// Script en cours d'exécution : `document.currentScript`.
+    current_script: Option<NodeId>,
+    /// Éléments `<script>` déjà pris en charge (index de nœud) ; `None`
+    /// tant que ceux du HTML reçu n'ont pas été relevés.
+    scripts_started: Option<std::collections::HashSet<usize>>,
+    /// Version du document au dernier relevé des scripts insérés.
+    scripts_scanned: u64,
     /// Valeur du champ de texte qui a le focus, telle qu'elle était quand il
     /// l'a reçu : pour l'événement `change` à la perte du focus.
     focus_value: Option<String>,
@@ -855,7 +863,13 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "visibilityState" if is_document => string("visible"),
         "hidden" if is_document => Ok(Value::Bool(false)),
         "domain" if is_document => string(h.url.host_str().unwrap_or("")),
-        "currentScript" if is_document => Ok(Value::Null),
+        "currentScript" if is_document => {
+            let current = h.current_script;
+            return Some(Ok(match current {
+                Some(script) => wrap(vm, script),
+                None => Value::Null,
+            }));
+        }
         "defaultView" if is_document => return Some(Ok(Value::Object(vm.global()))),
         "doctype" if is_document => {
             let found = doc
@@ -1239,7 +1253,9 @@ fn matching(vm: &mut Vm, scope: NodeId, list: &[Selector], first_only: bool) -> 
     let doc = &h.doc;
     let mut found = Vec::new();
     for node in doc.descendants(scope) {
-        if list.iter().any(|s| s.matches(doc, node)) {
+        // `:scope` désigne l'élément sur lequel la recherche est lancée.
+        let reference = doc.element(scope).map(|_| scope);
+        if list.iter().any(|s| s.matches_in(doc, node, reference)) {
             found.push(node);
             if first_only {
                 break;
@@ -1267,7 +1283,7 @@ fn element_matches(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
     let list = selectors(vm, &arg(args, 0))?;
     Ok(Value::Bool(host(vm).is_some_and(|h| {
-        list.iter().any(|s| s.matches(&h.doc, node))
+        list.iter().any(|s| s.matches_in(&h.doc, node, Some(node)))
     })))
 }
 
@@ -1278,7 +1294,7 @@ fn closest(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
         let doc = &h.doc;
         std::iter::once(node)
             .chain(doc.ancestors(node))
-            .find(|n| list.iter().any(|s| s.matches(doc, *n)))
+            .find(|n| list.iter().any(|s| s.matches_in(doc, *n, Some(node))))
     });
     Ok(wrap_opt(vm, found))
 }
@@ -1337,6 +1353,31 @@ fn report(vm: &mut Vm, thrown: &Value) {
             ))],
         );
     }
+}
+
+/// Octets aléatoires tirés de la source du système, pour `crypto` : un
+/// tableau de `n` nombres de 0 à 255 (`n` borné à 65 536).
+fn random_bytes(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let wanted = vm.to_number(&arg(args, 0))?;
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "valeur bornée juste avant"
+    )]
+    let count = if wanted.is_finite() {
+        wanted.clamp(0.0, 65_536.0) as usize
+    } else {
+        0
+    };
+    let mut bytes = vec![0u8; count];
+    if getrandom::fill(&mut bytes).is_err() {
+        return Err(vm.error("Error", "la source d'aléa du système est indisponible"));
+    }
+    let items = bytes
+        .into_iter()
+        .map(|byte| Value::Number(f64::from(byte)))
+        .collect();
+    Ok(vm.new_array(items))
 }
 
 /// Distribue `click` sur `node`, entouré des fonctions d'activation (case
@@ -1891,6 +1932,9 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             next_timer: 0,
             dirty: false,
             focus_value: None,
+            current_script: None,
+            scripts_started: None,
+            scripts_scanned: 0,
             viewport: (0.0, 0.0),
             started: Instant::now(),
             clock: Instant::now(),
@@ -1987,6 +2031,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("locationHref", 0, location_href)),
         Value::Object(vm.new_function("navigate", 2, navigate)),
         Value::Object(vm.new_function("focusedElement", 0, focus::focused_element)),
+        Value::Object(vm.new_function("randomBytes", 1, random_bytes)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());
@@ -2138,6 +2183,16 @@ impl ScriptEngine {
         if let Some(h) = host(vm) {
             std::mem::swap(&mut h.doc, doc);
         }
+        scripts::note_existing(vm);
+        // Le temps des animations n'avance pas pendant la tâche.
+        let clock = host(vm).and_then(|h| {
+            h.layout_env
+                .as_ref()
+                .map(|env| std::sync::Arc::clone(&env.animations))
+        });
+        if let Some(clock) = &clock {
+            clock.freeze(true);
+        }
         // `document` désigne la racine du document prêté.
         let document = host(vm).map(|h| h.doc.root());
         if let Some(root) = document {
@@ -2157,27 +2212,28 @@ impl ScriptEngine {
                 vm.run_microtasks();
                 mutation::deliver(vm);
             }
+            // Les scripts insérés pendant la tâche s'exécutent ou se chargent.
+            scripts::scan(vm);
             result
         });
+        if let Some(clock) = &clock {
+            clock.freeze(false);
+        }
         if let Some(h) = host(vm) {
             std::mem::swap(&mut h.doc, doc);
         }
         result
     }
 
-    /// Exécute un script classique ; une exception est signalée dans la console.
-    pub(crate) fn eval(&mut self, doc: &mut Document, source: &str) {
-        self.run(doc, |vm| {
-            if let Err(error) = vm.eval(source) {
-                let message = Value::string(&format!("Exception non rattrapée : {error}"));
-                let global = Value::Object(vm.global());
-                if let Ok(console) = vm.get(&global, "console")
-                    && let Ok(log) = vm.get(&console, "error")
-                {
-                    let _ = vm.call(&log, &console, &[message]);
-                }
-            }
-        });
+    /// Exécute le script classique de l'élément `element`, que désigne
+    /// `document.currentScript` pendant l'exécution.
+    pub(crate) fn eval_element(
+        &mut self,
+        doc: &mut Document,
+        element: Option<NodeId>,
+        source: &str,
+    ) {
+        self.run(doc, |vm| scripts::run_classic(vm, element, source));
     }
 
     /// Fournit le texte des modules que les scripts pourront importer.
@@ -2472,6 +2528,9 @@ struct PendingFetch {
     url: Url,
     resolve: Value,
     reject: Value,
+    /// Élément `<script>` dont la réponse est le source : elle n'est pas
+    /// remise à un script, donc pas soumise à la politique de même origine.
+    script: Option<NodeId>,
 }
 
 /// Rejette la promesse d'un `fetch` avec une `TypeError`.
@@ -2682,6 +2741,7 @@ fn fetch(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                     url,
                     resolve: resolve.clone(),
                     reject: reject.clone(),
+                    script: None,
                 },
             );
             None
@@ -2732,6 +2792,10 @@ fn settle_fetch(vm: &mut Vm, id: u64, result: Result<crate::FetchResponse, Strin
         // Requête inconnue : réponse destinée à une page déjà remplacée.
         return;
     };
+    if let Some(script) = pending.script {
+        scripts::loaded(vm, script, result);
+        return;
+    }
     let document = h.url.clone();
     vm.remove_root(&pending.resolve);
     vm.remove_root(&pending.reject);

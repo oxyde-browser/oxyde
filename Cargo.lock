@@ -2581,6 +2581,7 @@ dependencies = [
 name = "oxyde_content"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "image",
  "oxyde_bindings",
  "oxyde_compositor",
@@ -2653,6 +2654,7 @@ name = "oxyde_net"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "flate2",
  "http-body-util",
  "hyper",
  "hyper-util",

@@ -614,7 +614,7 @@ impl PageHost {
             Self::Local(page) => {
                 let redraw = page.tick(now);
                 loader::report_console(page);
-                redraw
+                loader::load_late_resources(page) || redraw
             }
             Self::Remote(page) => page.pump(),
         }

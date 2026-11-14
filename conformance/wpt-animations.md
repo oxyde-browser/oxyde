@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-transforms cs
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 566 / 4341 (13,0 %)** — fichiers entièrement réussis : 50 / 363 (13,8 %).
+**Sous-tests réussis : 567 / 4341 (13,1 %)** — fichiers entièrement réussis : 51 / 363 (14,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -20,7 +20,7 @@ est le plus honnête des deux.
 | `css/css-transforms` | 9 / 43 | 34 / 197 (17,3 %) |
 | `css/css-transforms/animation` | 0 / 37 | 0 / 126 (0,0 %) |
 | `css/css-transforms/parsing` | 2 / 28 | 113 / 389 (29,0 %) |
-| `css/css-transitions` | 16 / 98 | 125 / 2386 (5,2 %) |
+| `css/css-transitions` | 17 / 98 | 126 / 2386 (5,3 %) |
 | `css/css-transitions/animations` | 0 / 11 | 0 / 11 (0,0 %) |
 | `css/css-transitions/parsing` | 2 / 18 | 73 / 252 (29,0 %) |
 
@@ -320,7 +320,6 @@ est le plus honnête des deux.
 | `css/css-transitions/starting-style-rule-pseudo-elements.html` | 0 / 3 |  |
 | `css/css-transitions/starting-style-size-container.html` | 0 / 2 |  |
 | `css/css-transitions/transition-001.html` | 12 / 13 |  |
-| `css/css-transitions/transition-after-animation-001.html` | 0 / 1 |  |
 | `css/css-transitions/transition-base-response-001.html` | 0 / 3 |  |
 | `css/css-transitions/transition-base-response-002.html` | 0 / 1 |  |
 | `css/css-transitions/transition-base-response-003.html` | 0 / 1 |  |

@@ -12,6 +12,11 @@ track, noembed, noframes, rp, [hidden] {
   display: none;
 }
 
+/* Les scripts sont actifs : le repli pour les navigateurs sans script est masqué. */
+noscript {
+  display: none !important;
+}
+
 body { margin: 8px; }
 
 p, blockquote, figure, listing, plaintext, pre, xmp, dl, dir, menu, ol, ul {

@@ -70,6 +70,16 @@ pub enum Pseudo {
     NthChild(i32, i32),
     /// `:nth-last-child(an+b)`
     NthLastChild(i32, i32),
+    /// `:first-of-type`
+    FirstOfType,
+    /// `:last-of-type`
+    LastOfType,
+    /// `:only-of-type`
+    OnlyOfType,
+    /// `:nth-of-type(an+b)`
+    NthOfType(i32, i32),
+    /// `:nth-last-of-type(an+b)`
+    NthLastOfType(i32, i32),
     /// `:link` / `:any-link`
     Link,
     /// `:focus` / `:focus-visible` : l'élément qui a le focus.
@@ -86,6 +96,19 @@ pub enum Pseudo {
     Required,
     /// `:placeholder-shown` : champ vide qui montre son texte indicatif.
     PlaceholderShown,
+    /// `:optional` : contrôle qui n'est pas requis.
+    Optional,
+    /// `:read-write` : champ ou zone de texte modifiable.
+    ReadWrite,
+    /// `:read-only` : tout ce qui n'est pas `:read-write`.
+    ReadOnly,
+    /// `:scope` : l'élément de référence (celui de `querySelector`), à
+    /// défaut la racine.
+    Scope,
+    /// `:defined` : toujours vrai, faute d'éléments personnalisés.
+    Always,
+    /// `:has(...)` : sélecteurs relatifs, chacun avec son combinateur de tête.
+    Has(Vec<(Combinator, Selector)>),
     /// `:not(...)`
     Not(Vec<Selector>),
     /// `:is(...)`
@@ -131,11 +154,30 @@ impl Selector {
     /// Vrai si l'élément `node` de `doc` correspond.
     #[must_use]
     pub fn matches(&self, doc: &Document, node: NodeId) -> bool {
+        self.matches_in(doc, node, None)
+    }
+
+    /// Comme [`Selector::matches`], avec l'élément de référence que désigne
+    /// `:scope` (celui sur lequel `querySelector` est appelé).
+    #[must_use]
+    pub fn matches_in(&self, doc: &Document, node: NodeId, scope: Option<NodeId>) -> bool {
+        self.matches_from(doc, node, scope, None)
+    }
+
+    /// `anchor` : pour un sélecteur relatif de `:has()`, l'élément auquel
+    /// le composé le plus à gauche doit être relié par le combinateur donné.
+    fn matches_from(
+        &self,
+        doc: &Document,
+        node: NodeId,
+        scope: Option<NodeId>,
+        anchor: Option<(Combinator, NodeId)>,
+    ) -> bool {
         let Some(el) = doc.element(node) else {
             return false;
         };
-        compound_matches(&self.subject, doc, node, el)
-            && match_ancestors(&self.ancestors, doc, node)
+        compound_matches(&self.subject, doc, node, el, scope)
+            && match_ancestors(&self.ancestors, doc, node, scope, anchor)
     }
 }
 
@@ -165,14 +207,35 @@ fn parent_element(doc: &Document, node: NodeId) -> Option<NodeId> {
     doc.node(node).parent.filter(|p| doc.element(*p).is_some())
 }
 
-fn match_ancestors(rest: &[(Combinator, Compound)], doc: &Document, node: NodeId) -> bool {
+fn match_ancestors(
+    rest: &[(Combinator, Compound)],
+    doc: &Document,
+    node: NodeId,
+    scope: Option<NodeId>,
+    anchor: Option<(Combinator, NodeId)>,
+) -> bool {
     let Some(((combinator, compound), tail)) = rest.split_first() else {
-        return true;
+        // Tout le sélecteur est lu : reste, pour `:has()`, à rejoindre l'ancre.
+        let Some((combinator, anchor)) = anchor else {
+            return true;
+        };
+        return match combinator {
+            Combinator::Child => parent_element(doc, node) == Some(anchor),
+            Combinator::NextSibling => prev_element(doc, node) == Some(anchor),
+            Combinator::Descendant => {
+                std::iter::successors(parent_element(doc, node), |n| parent_element(doc, *n))
+                    .any(|n| n == anchor)
+            }
+            Combinator::SubsequentSibling => {
+                std::iter::successors(prev_element(doc, node), |n| prev_element(doc, *n))
+                    .any(|n| n == anchor)
+            }
+        };
     };
     let test = |candidate: NodeId| {
         doc.element(candidate)
-            .is_some_and(|el| compound_matches(compound, doc, candidate, el))
-            && match_ancestors(tail, doc, candidate)
+            .is_some_and(|el| compound_matches(compound, doc, candidate, el, scope))
+            && match_ancestors(tail, doc, candidate, scope, anchor)
     };
     match combinator {
         Combinator::Child => parent_element(doc, node).is_some_and(test),
@@ -241,7 +304,50 @@ fn nth_matches(a: i32, b: i32, index: i32) -> bool {
     }
 }
 
-fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData) -> bool {
+/// Rang de `node` parmi ses frères de même nom, compté depuis le début
+/// (`from_end` : depuis la fin), à partir de 1.
+fn type_index(doc: &Document, node: NodeId, el: &ElementData, from_end: bool) -> i32 {
+    let step = |n: &NodeId| {
+        if from_end {
+            next_element(doc, *n)
+        } else {
+            prev_element(doc, *n)
+        }
+    };
+    let same = std::iter::successors(step(&node), step)
+        .filter(|n| doc.element(*n).is_some_and(|other| other.name == el.name))
+        .count();
+    i32::try_from(same).unwrap_or(i32::MAX - 1) + 1
+}
+
+/// Vrai si un élément relié à `node` par `combinator` correspond à `selector`.
+fn has_matches(
+    combinator: Combinator,
+    selector: &Selector,
+    doc: &Document,
+    node: NodeId,
+    scope: Option<NodeId>,
+) -> bool {
+    let anchor = Some((combinator, node));
+    let test = |candidate: NodeId| selector.matches_from(doc, candidate, scope, anchor);
+    match combinator {
+        // Le sujet est dans le sous-arbre de l'élément.
+        Combinator::Child | Combinator::Descendant => doc.descendants(node).any(test),
+        // Le sujet est un frère suivant, ou dans le sous-arbre de l'un d'eux.
+        Combinator::NextSibling | Combinator::SubsequentSibling => {
+            std::iter::successors(next_element(doc, node), |n| next_element(doc, *n))
+                .any(|sibling| test(sibling) || doc.descendants(sibling).any(test))
+        }
+    }
+}
+
+fn compound_matches(
+    c: &Compound,
+    doc: &Document,
+    node: NodeId,
+    el: &ElementData,
+    scope: Option<NodeId>,
+) -> bool {
     if let Some(tag) = &c.tag
         && !el.name.eq_ignore_ascii_case(tag)
     {
@@ -280,6 +386,13 @@ fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData
                 std::iter::successors(next_element(doc, node), |n| next_element(doc, *n)).count();
             nth_matches(*a, *b, i32::try_from(index).unwrap_or(i32::MAX - 1) + 1)
         }
+        Pseudo::FirstOfType => type_index(doc, node, el, false) == 1,
+        Pseudo::LastOfType => type_index(doc, node, el, true) == 1,
+        Pseudo::OnlyOfType => {
+            type_index(doc, node, el, false) == 1 && type_index(doc, node, el, true) == 1
+        }
+        Pseudo::NthOfType(a, b) => nth_matches(*a, *b, type_index(doc, node, el, false)),
+        Pseudo::NthLastOfType(a, b) => nth_matches(*a, *b, type_index(doc, node, el, true)),
         Pseudo::Link => matches!(el.name.as_str(), "a" | "area") && el.has_attr("href"),
         Pseudo::Focus => doc.focus() == Some(node),
         Pseudo::FocusWithin => doc
@@ -301,10 +414,31 @@ fn compound_matches(c: &Compound, doc: &Document, node: NodeId, el: &ElementData
                     .children(node)
                     .any(|n| doc.text(n).is_some_and(|t| !t.is_empty()))
         }
-        Pseudo::Not(list) => !list.iter().any(|s| s.matches(doc, node)),
-        Pseudo::Is(list) | Pseudo::Where(list) => list.iter().any(|s| s.matches(doc, node)),
+        Pseudo::Optional => is_control(el) && !el.has_attr("required"),
+        Pseudo::ReadWrite => is_read_write(el),
+        Pseudo::ReadOnly => !is_read_write(el),
+        Pseudo::Scope => match scope {
+            Some(scope) => scope == node,
+            None => parent_element(doc, node).is_none(),
+        },
+        Pseudo::Always => true,
+        Pseudo::Has(list) => list
+            .iter()
+            .any(|(combinator, s)| has_matches(*combinator, s, doc, node, scope)),
+        Pseudo::Not(list) => !list.iter().any(|s| s.matches_in(doc, node, scope)),
+        Pseudo::Is(list) | Pseudo::Where(list) => {
+            list.iter().any(|s| s.matches_in(doc, node, scope))
+        }
         Pseudo::Never => false,
     })
+}
+
+/// Vrai pour un champ ou une zone de texte que l'utilisateur peut modifier.
+fn is_read_write(el: &oxyde_dom::ElementData) -> bool {
+    (matches!(el.name.as_str(), "input" | "textarea")
+        && !el.has_attr("readonly")
+        && !el.has_attr("disabled"))
+        || el.has_attr("contenteditable")
 }
 
 /// Vrai pour un contrôle de formulaire, qui peut être désactivé ou requis.
@@ -331,6 +465,7 @@ fn compound_specificity(c: &Compound) -> u32 {
             Pseudo::Not(list) | Pseudo::Is(list) => {
                 list.iter().map(Selector::specificity).max().unwrap_or(0)
             }
+            Pseudo::Has(list) => list.iter().map(|(_, s)| s.specificity()).max().unwrap_or(0),
             _ => 1 << 10,
         };
     }
@@ -515,6 +650,14 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
         "first-child" => Pseudo::FirstChild,
         "last-child" => Pseudo::LastChild,
         "only-child" => Pseudo::OnlyChild,
+        "first-of-type" => Pseudo::FirstOfType,
+        "last-of-type" => Pseudo::LastOfType,
+        "only-of-type" => Pseudo::OnlyOfType,
+        "optional" => Pseudo::Optional,
+        "read-write" => Pseudo::ReadWrite,
+        "read-only" => Pseudo::ReadOnly,
+        "scope" => Pseudo::Scope,
+        "defined" => Pseudo::Always,
         "link" | "any-link" => Pseudo::Link,
         "focus" | "focus-visible" => Pseudo::Focus,
         "focus-within" => Pseudo::FocusWithin,
@@ -543,8 +686,35 @@ fn functional_pseudo(name: &str, args: &[Token]) -> Option<Pseudo> {
             let (a, b) = parse_nth(args)?;
             Pseudo::NthLastChild(a, b)
         }
+        "nth-of-type" => {
+            let (a, b) = parse_nth(args)?;
+            Pseudo::NthOfType(a, b)
+        }
+        "nth-last-of-type" => {
+            let (a, b) = parse_nth(args)?;
+            Pseudo::NthLastOfType(a, b)
+        }
+        "has" => Pseudo::Has(parse_relative_list(args)?),
         _ => return None,
     })
+}
+
+/// Analyse les sélecteurs relatifs de `:has()` : chacun peut commencer par
+/// un combinateur (`> img`, `+ p`) ; à défaut, c'est un descendant.
+fn parse_relative_list(tokens: &[Token]) -> Option<Vec<(Combinator, Selector)>> {
+    let parts = split_top_level(tokens, &Token::Comma);
+    let mut out = Vec::with_capacity(parts.len());
+    for part in parts {
+        let part = trim(part);
+        let (combinator, rest) = match part.split_first() {
+            Some((Token::Delim('>'), rest)) => (Combinator::Child, rest),
+            Some((Token::Delim('+'), rest)) => (Combinator::NextSibling, rest),
+            Some((Token::Delim('~'), rest)) => (Combinator::SubsequentSibling, rest),
+            _ => (Combinator::Descendant, part),
+        };
+        out.push((combinator, parse_selector(trim(rest))?));
+    }
+    Some(out)
 }
 
 /// Analyse la micro-syntaxe `an+b`.
@@ -618,6 +788,37 @@ mod tests {
     }
 
     #[test]
+    fn type_and_relational_pseudo_classes() {
+        let html =
+            "<div id=d><p id=a></p><span id=s></span><p id=b><img id=i></p><p id=c></p></div>";
+        assert_eq!(first_match(html, "p:first-of-type"), ["p#a"]);
+        assert_eq!(first_match(html, "p:last-of-type"), ["p#c"]);
+        assert_eq!(first_match(html, "div > :only-of-type"), ["span#s"]);
+        assert_eq!(first_match(html, "p:nth-of-type(2)"), ["p#b"]);
+        assert_eq!(first_match(html, "p:nth-last-of-type(odd)"), ["p#a", "p#c"]);
+        assert_eq!(first_match(html, "p:has(img)"), ["p#b"]);
+        assert_eq!(first_match(html, ":has(> img)"), ["p#b"]);
+        assert_eq!(first_match(html, "p:has(+ span)"), ["p#a"]);
+        assert_eq!(first_match(html, "p:has(~ p img)"), ["p#a"]);
+        assert_eq!(first_match(html, "p:not(:has(img)):has(~ span)"), ["p#a"]);
+        assert_eq!(first_match(html, "div:has(> span, > b)"), ["div#d"]);
+        assert_eq!(first_match(html, ":scope > body > div"), ["div#d"]);
+        // Avec un élément de référence, `:scope` ne désigne que lui.
+        let doc = oxyde_html::parse_document(html);
+        let list = sel(":scope > p").expect("valide");
+        let div = doc
+            .descendants(doc.root())
+            .find(|n| doc.element(*n).is_some_and(|e| e.id() == Some("d")))
+            .expect("div");
+        let found = doc
+            .descendants(div)
+            .filter(|n| list.iter().any(|s| s.matches_in(&doc, *n, Some(div))))
+            .count();
+        assert_eq!(found, 3);
+        assert_eq!(first_match(html, ":scope > p"), Vec::<String>::new());
+    }
+
+    #[test]
     fn specificity() {
         let spec = |s: &str| sel(s).expect("valide")[0].specificity();
         assert_eq!(spec("*"), 0);
@@ -657,6 +858,10 @@ mod tests {
         assert_eq!(first_match(html, "p + p"), ["p#c"]);
         assert_eq!(first_match(html, "p ~ span, [lang|=fr]"), ["p#c", "span#d"]);
         assert_eq!(first_match(html, "div :nth-child(2n+1)"), ["p#b", "span#d"]);
+        assert_eq!(
+            first_match(html, "div > :nth-of-type(1)"),
+            first_match(html, "div > :first-of-type")
+        );
         assert_eq!(
             first_match(html, "div :nth-last-child(-n+2)"),
             ["p#c", "span#d"]

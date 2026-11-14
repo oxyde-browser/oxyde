@@ -105,6 +105,75 @@ impl Link {
         )
     }
 
+    /// Récupère plusieurs ressources à la fois par l'entremise du
+    /// navigateur ; les résultats sont rendus dans l'ordre de `urls`.
+    pub(crate) fn get_many(
+        &self,
+        urls: &[Url],
+        initiator: &Url,
+    ) -> Vec<Result<(Url, Vec<u8>), LoadError>> {
+        let broken = |url: &Url, detail: &dyn std::fmt::Display| {
+            LoadError::other(
+                "La page n'a pas pu être chargée",
+                format!("{url} — {detail}"),
+                "ERR_FAILED",
+            )
+        };
+        // Toutes les demandes partent, puis les réponses sont attendues.
+        let posted: Vec<Result<u64, ChannelError>> = urls
+            .iter()
+            .map(|url| {
+                self.post(NetworkRequest::Get {
+                    url: url.to_string(),
+                    initiator: Some(initiator.to_string()),
+                })
+            })
+            .collect();
+        let mut replies: std::collections::HashMap<u64, NetworkReply> =
+            std::collections::HashMap::new();
+        let mut waiting = posted.iter().filter(|id| id.is_ok()).count();
+        let mut failure = None;
+        {
+            let mut state = self.state();
+            while waiting > 0 {
+                match state.receiver.recv() {
+                    Ok(ToRenderer::Network { id, reply })
+                        if posted.iter().any(|sent| sent.as_ref().ok() == Some(&id)) =>
+                    {
+                        replies.insert(id, reply);
+                        waiting -= 1;
+                    }
+                    Ok(other) => state.backlog.push_back(other),
+                    Err(error) => {
+                        failure = Some(error.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+        urls.iter()
+            .zip(posted)
+            .map(|(url, sent)| {
+                let id = sent.map_err(|error| broken(url, &error))?;
+                match replies.remove(&id) {
+                    Some(NetworkReply::Resource(Ok((final_url, Bytes(bytes))))) => {
+                        let final_url = Url::parse(&final_url)
+                            .map_err(|e| broken(url, &format!("adresse finale invalide : {e}")))?;
+                        Ok((final_url, bytes))
+                    }
+                    Some(NetworkReply::Resource(Err(error))) => Err(error),
+                    Some(_) => Err(broken(url, &"réponse inattendue du navigateur")),
+                    None => Err(broken(
+                        url,
+                        &failure
+                            .as_deref()
+                            .unwrap_or("le navigateur n'a pas répondu"),
+                    )),
+                }
+            })
+            .collect()
+    }
+
     /// Demande une page par `POST` par l'entremise du navigateur.
     pub(crate) fn post_form(
         &self,
@@ -294,6 +363,8 @@ impl Renderer {
         };
         page.tick(Instant::now());
         loader::report_console(page);
+        // Feuilles de style et images que les scripts viennent d'ajouter.
+        loader::load_late_resources(page);
         for request in page.take_fetches() {
             let fetch = request.id;
             let id = self.link.post(NetworkRequest::Script(Box::new(request)))?;

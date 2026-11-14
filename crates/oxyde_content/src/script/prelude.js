@@ -6,7 +6,8 @@
 //   observe, disconnect, takeRecords -> observateurs de mutation ;
 //   locationHref()               -> adresse courante du document ;
 //   navigate(nature, valeur)     -> demande de navigation à l'embarqueur ;
-//   focusedElement()             -> élément qui a le focus, ou null.
+//   focusedElement()             -> élément qui a le focus, ou null ;
+//   randomBytes(n)               -> tableau de n octets aléatoires (source du système).
 // Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
@@ -14,7 +15,7 @@
 // LIMITES CONNUES : `TextDecoder` ne connaît que l'UTF-8 ; `structuredClone`
 // ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
-(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement) {
+(function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -1005,6 +1006,397 @@
     const functionKey = /^F(\d{1,2})$/.exec(key);
     return functionKey ? 111 + Number(functionKey[1]) : 0;
   }
+
+  // ---- Fenêtre : ce que les pages lisent sans vérifier -----------------------------------------------------------
+  // Gestionnaires d'événements de la fenêtre : `null` tant qu'aucun n'est posé.
+  for (const kind of ["load", "error", "beforeunload", "unload", "resize", "scroll", "message",
+    "popstate", "hashchange", "focus", "blur", "pageshow", "pagehide", "storage",
+    "unhandledrejection", "rejectionhandled", "online", "offline", "languagechange",
+    "click", "keydown", "keyup", "keypress", "mousedown", "mouseup", "mousemove",
+    "DOMContentLoaded", "visibilitychange", "abort", "orientationchange"]) {
+    const name = "on" + kind;
+    if (!(name in global)) {
+      define(global, name, { value: null, writable: true, enumerable: true, configurable: true });
+    }
+  }
+  const fenetre = (name, value) => {
+    if (!(name in global)) define(global, name, { value, writable: true, enumerable: true, configurable: true });
+  };
+  // `frames` est la fenêtre elle-même ; `length` compte ses cadres.
+  fenetre("frames", global);
+  if (!("length" in global)) {
+    lazy(global, "length", () => document.querySelectorAll("iframe, frame").length);
+  }
+  fenetre("name", "");
+  fenetre("status", "");
+  fenetre("opener", null);
+  fenetre("closed", false);
+  fenetre("crossOriginIsolated", false);
+  fenetre("clientInformation", global.navigator);
+  for (const name of ["screenX", "screenY", "screenLeft", "screenTop"]) fenetre(name, 0);
+  for (const name of ["locationbar", "menubar", "personalbar", "scrollbars", "statusbar", "toolbar"]) {
+    fenetre(name, { visible: true });
+  }
+  if (!("origin" in global)) lazy(global, "origin", () => global.location.origin);
+  if (!("isSecureContext" in global)) {
+    lazy(global, "isSecureContext", () => global.location.protocol === "https:");
+  }
+  if (!("outerWidth" in global)) lazy(global, "outerWidth", () => global.innerWidth);
+  if (!("outerHeight" in global)) lazy(global, "outerHeight", () => global.innerHeight);
+  // LIMITE : pas de fenêtre surgissante ni d'impression ; `open` rend `null`,
+  // comme un navigateur qui bloque la fenêtre.
+  fenetre("open", function open() { return null; });
+  for (const name of ["close", "print", "stop", "focus", "blur"]) {
+    fenetre(name, { [name]() {} }[name]);
+  }
+  if (!("visualViewport" in global)) {
+    const viewport = new EventTargetBase();
+    lazy(viewport, "width", () => global.innerWidth);
+    lazy(viewport, "height", () => global.innerHeight);
+    lazy(viewport, "pageLeft", () => global.scrollX ?? 0);
+    lazy(viewport, "pageTop", () => global.scrollY ?? 0);
+    Object.assign(viewport, { scale: 1, offsetLeft: 0, offsetTop: 0 });
+    fenetre("visualViewport", viewport);
+  }
+
+  // ---- Messages ------------------------------------------------------------------------------------------------------
+  eventInterface("MessageEvent", EventCtor, {
+    data: null, origin: "", lastEventId: "", source: null, ports: null,
+  });
+  eventInterface("PromiseRejectionEvent", EventCtor, { promise: null, reason: undefined });
+  eventInterface("StorageEvent", EventCtor, {
+    key: null, oldValue: null, newValue: null, url: "", storageArea: null,
+  });
+  eventInterface("ClipboardEvent", EventCtor, { clipboardData: null });
+  eventInterface("CloseEvent", EventCtor, { wasClean: false, code: 0, reason: "" });
+  eventInterface("PageTransitionEvent", EventCtor, { persisted: false });
+  const later = (task) => startTimer(task, 0);
+  // `postMessage` vers la fenêtre elle-même : le message arrive dans une
+  // tâche ultérieure. LIMITE : rien n'est transféré ; une origine cible autre
+  // que celle de la page ou `*` fait ignorer le message.
+  fenetre("postMessage", function postMessage(message, target = "*") {
+    const wanted = typeof target === "object" && target !== null ? target.targetOrigin ?? "*" : target;
+    const data = global.structuredClone(message);
+    const origin = global.location.origin;
+    if (wanted !== "*" && wanted !== "/" && wanted !== origin) return;
+    later(() => global.dispatchEvent(new global.MessageEvent("message", { data, origin, source: global })));
+  });
+  class MessagePort extends EventTargetBase {
+    #other = null;
+    #started = false;
+    #closed = false;
+    #queue = [];
+    #handler = null;
+    static pair(a, b) {
+      a.#other = b;
+      b.#other = a;
+    }
+    postMessage(message) {
+      const other = this.#other;
+      if (this.#closed || other === null || other.#closed) return;
+      other.#receive(global.structuredClone(message));
+    }
+    #receive(data) {
+      if (!this.#started) {
+        this.#queue.push(data);
+        return;
+      }
+      later(() => {
+        if (!this.#closed) this.dispatchEvent(new global.MessageEvent("message", { data }));
+      });
+    }
+    start() {
+      if (this.#started) return;
+      this.#started = true;
+      for (const data of this.#queue.splice(0)) this.#receive(data);
+    }
+    close() {
+      this.#closed = true;
+    }
+    // Poser `onmessage` ouvre le port, comme `start()`.
+    get onmessage() { return this.#handler; }
+    set onmessage(handler) {
+      this.#handler = typeof handler === "function" ? handler : null;
+      this.start();
+    }
+  }
+  tag(MessagePort, "MessagePort");
+  expose("MessagePort", MessagePort);
+  class MessageChannel {
+    constructor() {
+      this.port1 = new MessagePort();
+      this.port2 = new MessagePort();
+      MessagePort.pair(this.port1, this.port2);
+    }
+  }
+  tag(MessageChannel, "MessageChannel");
+  expose("MessageChannel", MessageChannel);
+  // LIMITE : un canal ne relie que les objets de cette page ; les autres
+  // onglets de la même origine ne le reçoivent pas.
+  const channels = new Map();
+  class BroadcastChannel extends EventTargetBase {
+    #name;
+    #closed = false;
+    constructor(name) {
+      super();
+      this.#name = String(name);
+      if (!channels.has(this.#name)) channels.set(this.#name, new Set());
+      channels.get(this.#name).add(this);
+      this.onmessage = null;
+    }
+    get name() { return this.#name; }
+    postMessage(message) {
+      if (this.#closed) throw new DOMException("le canal est fermé", "InvalidStateError");
+      const data = global.structuredClone(message);
+      for (const other of channels.get(this.#name) ?? []) {
+        if (other === this) continue;
+        later(() => {
+          if (!other.#closed) {
+            other.dispatchEvent(new global.MessageEvent("message", { data, origin: global.location.origin }));
+          }
+        });
+      }
+    }
+    close() {
+      this.#closed = true;
+      channels.get(this.#name)?.delete(this);
+    }
+  }
+  tag(BroadcastChannel, "BroadcastChannel");
+  expose("BroadcastChannel", BroadcastChannel);
+
+  // ---- crypto --------------------------------------------------------------------------------------------------------
+  // LIMITE : pas de `crypto.subtle`.
+  const integerArrays = [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
+    Int32Array, Uint32Array, BigInt64Array, BigUint64Array];
+  const crypto = {
+    getRandomValues(array) {
+      if (!integerArrays.some((type) => array instanceof type)) {
+        throw new DOMException("un tableau typé d'entiers est attendu", "TypeMismatchError");
+      }
+      if (array.byteLength > 65536) {
+        throw new DOMException("au plus 65536 octets par appel", "QuotaExceededError");
+      }
+      const bytes = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+      const random = randomBytes(bytes.length);
+      for (let i = 0; i < bytes.length; i++) bytes[i] = random[i];
+      return array;
+    },
+    randomUUID() {
+      const bytes = randomBytes(16);
+      bytes[6] = (bytes[6] & 0x0f) | 0x40;
+      bytes[8] = (bytes[8] & 0x3f) | 0x80;
+      const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+      return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join("-");
+    },
+  };
+  define(crypto, Symbol.toStringTag, { value: "Crypto", configurable: true });
+  expose("crypto", crypto);
+
+  // ---- Géométrie ------------------------------------------------------------------------------------------------------
+  class DOMRectReadOnly {
+    #x; #y; #width; #height;
+    constructor(x = 0, y = 0, width = 0, height = 0) {
+      this.#x = Number(x);
+      this.#y = Number(y);
+      this.#width = Number(width);
+      this.#height = Number(height);
+    }
+    static fromRect(rect = {}) {
+      return new this(rect.x, rect.y, rect.width, rect.height);
+    }
+    get x() { return this.#x; }
+    get y() { return this.#y; }
+    get width() { return this.#width; }
+    get height() { return this.#height; }
+    get left() { return Math.min(this.#x, this.#x + this.#width); }
+    get right() { return Math.max(this.#x, this.#x + this.#width); }
+    get top() { return Math.min(this.#y, this.#y + this.#height); }
+    get bottom() { return Math.max(this.#y, this.#y + this.#height); }
+    toJSON() {
+      const { x, y, width, height, top, right, bottom, left } = this;
+      return { x, y, width, height, top, right, bottom, left };
+    }
+  }
+  tag(DOMRectReadOnly, "DOMRectReadOnly");
+  expose("DOMRectReadOnly", DOMRectReadOnly);
+  class DOMRect extends DOMRectReadOnly {}
+  tag(DOMRect, "DOMRect");
+  expose("DOMRect", DOMRect);
+
+  // ---- Observateurs de géométrie ------------------------------------------------------------------------------------
+  // `IntersectionObserver` et `ResizeObserver` relisent la géométrie de leurs
+  // cibles à intervalle régulier tant qu'ils en observent.
+  //
+  // LIMITES CONNUES : la géométrie est relue toutes les 100 ms, pas à chaque
+  // image ; l'intersection est calculée avec la zone d'affichage ou avec la
+  // boîte de `root`, sans le rognage des ancêtres défilants ; `rootMargin`
+  // ne comprend que les pixels et les pourcentages.
+  const POLL = 100;
+  const watching = new Set();
+  let polling = false;
+  function poll() {
+    polling = false;
+    for (const observer of Array.from(watching)) {
+      try {
+        observer[CHECK]();
+      } catch (error) {
+        reportError(error);
+      }
+    }
+    schedule();
+  }
+  function schedule() {
+    if (!polling && watching.size > 0) {
+      polling = true;
+      startTimer(poll, POLL);
+    }
+  }
+  const CHECK = Symbol("relevé");
+  const rectOf = (x, y, width, height) => new DOMRectReadOnly(x, y, width, height);
+  function margins(text) {
+    const parts = String(text ?? "0px").trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) parts.push("0px");
+    if (parts.length > 4 || !parts.every((part) => /^-?\d*\.?\d+(px|%)$/.test(part))) {
+      throw new SyntaxError("rootMargin : des longueurs en px ou en % sont attendues");
+    }
+    const [top, right = top, bottom = top, left = right] = parts;
+    return [top, right, bottom, left];
+  }
+  class IntersectionObserver {
+    #callback;
+    #root;
+    #margins;
+    #thresholds;
+    #targets = new Map();
+    constructor(callback, options = {}) {
+      if (typeof callback !== "function") throw new TypeError("IntersectionObserver : une fonction est attendue");
+      this.#callback = callback;
+      this.#root = options?.root ?? null;
+      this.#margins = margins(options?.rootMargin);
+      const given = options?.threshold ?? 0;
+      this.#thresholds = (Array.isArray(given) ? given.map(Number) : [Number(given)]).sort((a, b) => a - b);
+      if (this.#thresholds.length === 0) this.#thresholds = [0];
+      if (this.#thresholds.some((value) => !(value >= 0 && value <= 1))) {
+        throw new RangeError("IntersectionObserver : un seuil est compris entre 0 et 1");
+      }
+    }
+    get root() { return this.#root; }
+    get rootMargin() { return this.#margins.join(" "); }
+    get thresholds() { return this.#thresholds.slice(); }
+    observe(target) {
+      if (!(target instanceof Element)) throw new TypeError("IntersectionObserver.observe : un élément est attendu");
+      if (!this.#targets.has(target)) this.#targets.set(target, undefined);
+      watching.add(this);
+      schedule();
+    }
+    unobserve(target) {
+      this.#targets.delete(target);
+      if (this.#targets.size === 0) watching.delete(this);
+    }
+    disconnect() {
+      this.#targets.clear();
+      watching.delete(this);
+    }
+    takeRecords() { return []; }
+    [CHECK]() {
+      const root = this.#root instanceof Element ? this.#root.getBoundingClientRect()
+        : { left: 0, top: 0, right: global.innerWidth, bottom: global.innerHeight };
+      const [width, height] = [root.right - root.left, root.bottom - root.top];
+      const grow = (text, size) => (text.endsWith("%") ? parseFloat(text) * size / 100 : parseFloat(text));
+      const [top, right, bottom, left] = this.#margins;
+      const bounds = {
+        left: root.left - grow(left, width), top: root.top - grow(top, height),
+        right: root.right + grow(right, width), bottom: root.bottom + grow(bottom, height),
+      };
+      const entries = [];
+      for (const [target, previous] of this.#targets) {
+        const box = target.getBoundingClientRect();
+        // Une boîte toute nulle : l'élément n'est pas dessiné.
+        const drawn = target.isConnected
+          && (box.width !== 0 || box.height !== 0 || box.left !== 0 || box.top !== 0);
+        const [x0, y0] = [Math.max(box.left, bounds.left), Math.max(box.top, bounds.top)];
+        const [x1, y1] = [Math.min(box.right, bounds.right), Math.min(box.bottom, bounds.bottom)];
+        const isIntersecting = drawn && x0 <= x1 && y0 <= y1;
+        const area = box.width * box.height;
+        const ratio = !isIntersecting ? 0 : area > 0 ? Math.min(((x1 - x0) * (y1 - y0)) / area, 1) : 1;
+        const rank = isIntersecting ? this.#thresholds.filter((value) => value <= ratio).length : -1;
+        if (rank === previous) continue;
+        this.#targets.set(target, rank);
+        entries.push({
+          time: performance.now(),
+          target,
+          rootBounds: rectOf(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top),
+          boundingClientRect: rectOf(box.left, box.top, box.width, box.height),
+          intersectionRect: isIntersecting ? rectOf(x0, y0, x1 - x0, y1 - y0) : rectOf(0, 0, 0, 0),
+          isIntersecting,
+          intersectionRatio: ratio,
+        });
+      }
+      if (entries.length > 0) this.#callback.call(this, entries, this);
+    }
+  }
+  tag(IntersectionObserver, "IntersectionObserver");
+  expose("IntersectionObserver", IntersectionObserver);
+  expose("IntersectionObserverEntry", class IntersectionObserverEntry {});
+
+  class ResizeObserver {
+    #callback;
+    #targets = new Map();
+    constructor(callback) {
+      if (typeof callback !== "function") throw new TypeError("ResizeObserver : une fonction est attendue");
+      this.#callback = callback;
+    }
+    observe(target) {
+      if (!(target instanceof Element)) throw new TypeError("ResizeObserver.observe : un élément est attendu");
+      if (!this.#targets.has(target)) this.#targets.set(target, "0x0");
+      watching.add(this);
+      schedule();
+    }
+    unobserve(target) {
+      this.#targets.delete(target);
+      if (this.#targets.size === 0) watching.delete(this);
+    }
+    disconnect() {
+      this.#targets.clear();
+      watching.delete(this);
+    }
+    [CHECK]() {
+      const entries = [];
+      for (const [target, previous] of this.#targets) {
+        const box = target.getBoundingClientRect();
+        const size = box.width + "x" + box.height;
+        if (size === previous) continue;
+        this.#targets.set(target, size);
+        // LIMITE : la boîte de contenu est prise égale à la boîte de bordure.
+        const sizes = [{ inlineSize: box.width, blockSize: box.height }];
+        entries.push({
+          target,
+          contentRect: rectOf(0, 0, box.width, box.height),
+          borderBoxSize: sizes,
+          contentBoxSize: sizes,
+          devicePixelContentBoxSize: sizes,
+        });
+      }
+      if (entries.length > 0) this.#callback.call(this, entries, this);
+    }
+  }
+  tag(ResizeObserver, "ResizeObserver");
+  expose("ResizeObserver", ResizeObserver);
+  expose("ResizeObserverEntry", class ResizeObserverEntry {});
+
+  // LIMITE : aucune mesure n'est publiée ; l'observateur ne reçoit rien.
+  class PerformanceObserver {
+    static supportedEntryTypes = Object.freeze([]);
+    constructor(callback) {
+      if (typeof callback !== "function") throw new TypeError("PerformanceObserver : une fonction est attendue");
+    }
+    observe() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  }
+  tag(PerformanceObserver, "PerformanceObserver");
+  expose("PerformanceObserver", PerformanceObserver);
 
   return {
     // Touche enfoncée (`down`) ou relâchée : `keydown` (puis `keypress` pour

@@ -163,6 +163,8 @@ struct Parser {
     /// Position du premier `{ a = 1 }` (ou `__proto__` en double) qui n'est
     /// valide que si l'objet se révèle être un motif d'affectation.
     cover_init: Option<usize>,
+    /// Positions des `(` dont la lecture en fonction fléchée a échoué.
+    arrow_misses: std::collections::HashSet<usize>,
 }
 
 /// Nom de la liaison locale qui porte la valeur de `export default <expression>`.
@@ -351,6 +353,7 @@ impl Parser {
             labels: Vec::new(),
             private_scopes: Vec::new(),
             cover_init: None,
+            arrow_misses: std::collections::HashSet::new(),
             prev_end: 0,
             rest_comma: None,
             fn_start: None,
@@ -2370,9 +2373,16 @@ impl Parser {
     }
 
     /// Tente de lire `(params) =>` ; restaure l'état et renvoie `None` si ce n'en est pas un.
+    ///
+    /// Une tentative ratée est retenue : la valeur par défaut d'un paramètre
+    /// peut contenir d'autres parenthèses, et chaque niveau serait sinon lu
+    /// deux fois (`e=(e=(e=(…` double le travail à chaque parenthèse).
     fn try_arrow(&mut self) -> PResult<Option<Expr>> {
-        let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
         let start = self.tok.start;
+        if self.arrow_misses.contains(&start) {
+            return Ok(None);
+        }
+        let saved = (self.lexer.clone(), self.tok.clone(), self.cover_init);
         // Un `eval(…)` lu dans les paramètres ou le corps est celui de la
         // fonction fléchée, pas de la fonction qui l'entoure.
         let outer_eval = std::mem::replace(&mut self.saw_eval, false);
@@ -2387,7 +2397,12 @@ impl Parser {
                 self.saw_eval = outer_eval;
                 arrow.map(Some)
             }
-            _ => {
+            other => {
+                // Des paramètres bien formés que `=>` ne suit pas : ce ne
+                // sera jamais une fonction fléchée, quel que soit le contexte.
+                if matches!(other, Ok(None)) {
+                    self.arrow_misses.insert(start);
+                }
                 (self.lexer, self.tok, self.cover_init) = saved;
                 self.saw_eval = outer_eval;
                 Ok(None)

@@ -339,22 +339,125 @@ pub(crate) fn fetch_for_script(
     send(&request.method, headers, request.body.clone())
 }
 
-/// Exécute, l'une après l'autre, les requêtes `fetch` en attente de `page`
-/// jusqu'à ce qu'elle n'en émette plus (rendu hors écran : pas de boucle
-/// d'événements pour les traiter en arrière-plan).
+/// Charge les feuilles de style et les images apparues dans `page` après
+/// son chargement (ajoutées par ses scripts). Renvoie `true` s'il y en avait.
+///
+/// LIMITE : la page attend pendant que ses ressources arrivent.
+pub(crate) fn load_late_resources(page: &mut Page) -> bool {
+    let document = page.url().clone();
+    let sheets = page.pending_stylesheets();
+    let images = page.pending_images();
+    if sheets.is_empty() && images.is_empty() {
+        return false;
+    }
+    for (sheet_url, fetched) in sheets.iter().zip(fetch_many(&sheets, &document)) {
+        let css = fetched.map(|(_, bytes)| decode(&bytes)).unwrap_or_default();
+        page.set_stylesheet(sheet_url, &css);
+    }
+    for (image_url, fetched) in images.iter().zip(fetch_many(&images, &document)) {
+        let image = fetched.ok().and_then(|(_, bytes)| decode_image(&bytes));
+        page.set_image(image_url, image);
+    }
+    true
+}
+
+/// Laisse `page` finir de se construire, pour un rendu hors écran (pas de
+/// boucle d'événements) : exécute, l'une après l'autre, ses requêtes
+/// (`fetch`, scripts insérés) et ses minuteurs, en avançant un temps virtuel
+/// de deux secondes au plus.
 pub(crate) fn settle_fetches(page: &mut Page) {
     /// Borne le nombre de vagues : une page qui relance sans fin est abandonnée.
-    const MAX_ROUNDS: usize = 16;
-    for _ in 0..MAX_ROUNDS {
+    const MAX_ROUNDS: u32 = 40;
+    /// Temps virtuel écoulé entre deux vagues.
+    const STEP: std::time::Duration = std::time::Duration::from_millis(50);
+    /// Durée réelle au-delà de laquelle la page est rendue telle quelle.
+    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(20);
+    /// Vagues sans activité après lesquelles la page est tenue pour stable.
+    const QUIET_ROUNDS: u32 = 4;
+    let start = std::time::Instant::now();
+    let mut quiet = 0;
+    for round in 1..=MAX_ROUNDS {
         let requests = page.take_fetches();
-        if requests.is_empty() {
-            break;
+        let mut active = !requests.is_empty();
+        // Les requêtes d'une vague partent ensemble ; les réponses sont
+        // remises dans l'ordre d'émission.
+        for batch in requests.chunks(PARALLEL_FETCHES) {
+            let answers: Vec<_> = std::thread::scope(|scope| {
+                let workers: Vec<_> = batch
+                    .iter()
+                    .map(|request| scope.spawn(move || fetch_for_script(request)))
+                    .collect();
+                workers
+                    .into_iter()
+                    .map(|worker| {
+                        worker
+                            .join()
+                            .unwrap_or_else(|_| Err("le chargement a été interrompu".to_owned()))
+                    })
+                    .collect()
+            });
+            for (request, answer) in batch.iter().zip(answers) {
+                page.complete_fetch(request.id, answer);
+            }
         }
-        for request in requests {
-            page.complete_fetch(request.id, fetch_for_script(&request));
+        active |= page.tick(start + STEP * round);
+        active |= load_late_resources(page);
+        quiet = if active { 0 } else { quiet + 1 };
+        if quiet >= QUIET_ROUNDS || start.elapsed() > DEADLINE {
+            break;
         }
     }
     report_console(page);
+}
+
+/// Nombre de ressources d'une page demandées en même temps.
+const PARALLEL_FETCHES: usize = 8;
+
+/// Récupère les ressources `urls` du document `initiator`, plusieurs à la
+/// fois ; les résultats sont rendus dans l'ordre de `urls`.
+pub(crate) fn fetch_many(urls: &[Url], initiator: &Url) -> Vec<Result<(Url, Vec<u8>), LoadError>> {
+    let mut results = Vec::with_capacity(urls.len());
+    for batch in urls.chunks(PARALLEL_FETCHES) {
+        // Un processus de rendu n'a qu'un fil : il émet ses demandes d'un
+        // coup, le navigateur les sert en parallèle.
+        // Les adresses `data:` et `about:` ne sortent pas du processus.
+        let remote = |url: &Url| !matches!(url.scheme(), "data" | "about");
+        if let Some(link) = crate::renderer::child::link() {
+            let asked: Vec<Url> = batch.iter().filter(|url| remote(url)).cloned().collect();
+            let mut answers = link.get_many(&asked, initiator).into_iter();
+            for url in batch {
+                results.push(if remote(url) {
+                    answers
+                        .next()
+                        .unwrap_or_else(|| fetch_from(url, Some(initiator)))
+                } else {
+                    fetch_from(url, Some(initiator))
+                });
+            }
+            continue;
+        }
+        let fetched: Vec<_> = std::thread::scope(|scope| {
+            let workers: Vec<_> = batch
+                .iter()
+                .map(|url| scope.spawn(move || fetch_from(url, Some(initiator))))
+                .collect();
+            workers
+                .into_iter()
+                .zip(batch)
+                .map(|(worker, url)| {
+                    worker.join().unwrap_or_else(|_| {
+                        Err(LoadError::other(
+                            "La page n'a pas pu être chargée",
+                            format!("{url} — le chargement a été interrompu."),
+                            "ERR_FAILED",
+                        ))
+                    })
+                })
+                .collect()
+        });
+        results.extend(fetched);
+    }
+    results
 }
 
 /// Récupère la ressource `url` ; renvoie son adresse finale (après
@@ -475,38 +578,37 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     };
     let mut page = Page::from_html(url, &html);
     let document = page.url().clone();
-    let fetch = |resource: &Url| fetch_from(resource, Some(&document));
     if let Some(cookies) = read_cookies(&document) {
         page.set_cookies(&cookies);
     }
-    for sheet_url in page.pending_stylesheets() {
-        // Une feuille indisponible est remplacée par une feuille vide : la page reste lisible.
-        let css = fetch(&sheet_url)
-            .map(|(_, bytes)| decode(&bytes))
-            .unwrap_or_default();
-        page.set_stylesheet(&sheet_url, &css);
+    let sheets = page.pending_stylesheets();
+    for (sheet_url, fetched) in sheets.iter().zip(fetch_many(&sheets, &document)) {
+        // Une feuille indisponible est ignorée : la page s'affiche sans elle.
+        let css = fetched.map(|(_, bytes)| decode(&bytes)).unwrap_or_default();
+        page.set_stylesheet(sheet_url, &css);
     }
-    for font_url in page.pending_fonts() {
+    let fonts = page.pending_fonts();
+    for (font_url, fetched) in fonts.iter().zip(fetch_many(&fonts, &document)) {
         // Une police indisponible laisse place aux polices du système.
-        let data = fetch(&font_url).ok().map(|(_, bytes)| bytes);
-        page.set_font(&font_url, data);
+        page.set_font(font_url, fetched.ok().map(|(_, bytes)| bytes));
     }
-    for image_url in page.pending_images() {
+    let images = page.pending_images();
+    for (image_url, fetched) in images.iter().zip(fetch_many(&images, &document)) {
         // Une image indisponible ou illisible laisse place à son texte alternatif.
-        let image = fetch(&image_url)
-            .ok()
-            .and_then(|(_, bytes)| decode_image(&bytes));
-        page.set_image(&image_url, image);
+        let image = fetched.ok().and_then(|(_, bytes)| decode_image(&bytes));
+        page.set_image(image_url, image);
     }
-    for frame_url in page.pending_frames() {
+    let frames = page.pending_frames();
+    for (frame_url, fetched) in frames.iter().zip(fetch_many(&frames, &document)) {
         // Un cadre indisponible reste vide.
-        let html = fetch(&frame_url).ok().map(|(_, bytes)| decode(&bytes));
-        page.set_frame(&frame_url, html.as_deref());
+        let html = fetched.ok().map(|(_, bytes)| decode(&bytes));
+        page.set_frame(frame_url, html.as_deref());
     }
-    for script_url in page.pending_scripts() {
+    let scripts = page.pending_scripts();
+    for (script_url, fetched) in scripts.iter().zip(fetch_many(&scripts, &document)) {
         // Un script indisponible est sauté ; les suivants s'exécutent quand même.
-        let source = fetch(&script_url).ok().map(|(_, bytes)| decode(&bytes));
-        page.set_script(&script_url, source);
+        let source = fetched.ok().map(|(_, bytes)| decode(&bytes));
+        page.set_script(script_url, source);
     }
     // Modules importés : un module reçu peut en importer d'autres.
     for _ in 0..MAX_MODULE_ROUNDS {
@@ -515,7 +617,9 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             break;
         }
         for module_url in pending {
-            let source = fetch(&module_url).ok().map(|(_, bytes)| decode(&bytes));
+            let source = fetch_from(&module_url, Some(&document))
+                .ok()
+                .map(|(_, bytes)| decode(&bytes));
             page.set_module(&module_url, source);
         }
     }

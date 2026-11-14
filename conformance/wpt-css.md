@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9901 / 28777 (34,4 %)** — fichiers entièrement réussis : 541 / 2267 (23,9 %).
+**Sous-tests réussis : 9971 / 28878 (34,5 %)** — fichiers entièrement réussis : 547 / 2267 (24,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -85,20 +85,20 @@ est le plus honnête des deux.
 | `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 11 / 38 (28,9 %) |
-| `css/css-sizing/contain-intrinsic-size` | 1 / 27 | 1141 / 1338 (85,3 %) |
+| `css/css-sizing/contain-intrinsic-size` | 4 / 27 | 1144 / 1339 (85,4 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
-| `css/css-tables` | 29 / 82 | 188 / 285 (66,0 %) |
+| `css/css-tables` | 31 / 82 | 247 / 375 (65,9 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
-| `css/css-tables/height-distribution` | 2 / 5 | 5 / 10 (50,0 %) |
+| `css/css-tables/height-distribution` | 2 / 5 | 12 / 20 (60,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 54 / 233 | 810 / 1825 (44,4 %) |
+| `css/cssom-view` | 55 / 233 | 811 / 1825 (44,4 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1420,14 +1420,11 @@ est le plus honnête des deux.
 | `css/css-sizing/available-height-for-replaced-content-001.html` | 0 / 1 |  |
 | `css/css-sizing/button-min-width.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/animation/contain-intrinsic-size-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-001.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-002.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-003.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/contain-intrinsic-size/auto-005.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-sizing/contain-intrinsic-size/auto-003.html` | 0 / 1 |  |
+| `css/css-sizing/contain-intrinsic-size/auto-004.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-006.html` | 1 / 19 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-007.html` | 0 / 0 | le harnais n'a pas terminé |
-| `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/css-sizing/contain-intrinsic-size/auto-008.html` | 0 / 3 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-009.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-010.html` | 0 / 2 |  |
 | `css/css-sizing/contain-intrinsic-size/auto-011.html` | 0 / 2 |  |
@@ -1500,8 +1497,8 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe/responsive-iframe-dom-content-loaded.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/css-sizing/responsive-iframe/responsive-iframe-icb.html` | 0 / 1 |  |
 | `css/css-sizing/responsive-iframe/responsive-iframe-navigation-unsized.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/css-sizing/responsive-iframe/responsive-iframe-navigation.html` | 0 / 1 |  |
-| `css/css-sizing/responsive-iframe/responsive-iframe-request-resize-error.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/css-sizing/responsive-iframe/responsive-iframe-navigation.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `css/css-sizing/responsive-iframe/responsive-iframe-request-resize-error.html` | 0 / 2 |  |
 | `css/css-sizing/responsive-iframe/responsive-iframe-value.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/size-shorthand-serialization.tentative.html` | 3 / 15 |  |
 | `css/css-sizing/stretch/aspect-ratio-1.html` | 3 / 4 |  |
@@ -1559,27 +1556,25 @@ est le plus honnête des deux.
 | `css/css-tables/absolute-tables-height-001.html` | 10 / 11 |  |
 | `css/css-tables/animations/border-spacing-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/border-writing-mode-dynamic-001.html` | 0 / 1 |  |
-| `css/css-tables/bounding-box-computation-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/bounding-box-computation-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/bounding-box-computation-3.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/bounding-box-computation-1.html` | 8 / 12 |  |
+| `css/css-tables/bounding-box-computation-2.html` | 8 / 12 |  |
+| `css/css-tables/bounding-box-computation-3.html` | 8 / 10 |  |
 | `css/css-tables/caption-orthogonal-margin-in-table-block-axis.html` | 0 / 2 |  |
-| `css/css-tables/caption-side-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/caption-writing-mode-001.html` | 0 / 2 |  |
 | `css/css-tables/col_removal.html` | 0 / 1 |  |
 | `css/css-tables/column-track-merging.html` | 7 / 13 |  |
 | `css/css-tables/dynamic-rowspan-change.html` | 1 / 2 |  |
-| `css/css-tables/fixed-layout-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/fixed-layout-1.html` | 4 / 5 |  |
 | `css/css-tables/fixed-layout-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/fixed-layout-excess-width-distribution-001.html` | 0 / 1 |  |
 | `css/css-tables/height-distribution/computing-row-measure-0.html` | 2 / 4 |  |
 | `css/css-tables/height-distribution/computing-row-measure-1.html` | 1 / 4 |  |
-| `css/css-tables/height-distribution/percentage-sizing-of-table-cell-children.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/html-to-css-mapping-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/html-to-css-mapping-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/html5-table-formatting-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/html5-table-formatting-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-tables/height-distribution/percentage-sizing-of-table-cell-children.html` | 7 / 10 | harnais : 1 duplicate test name: "Unresolvable percentage heights are resolved as 0px in first pass (scrollable overflow)" |
+| `css/css-tables/html-to-css-mapping-1.html` | 3 / 4 |  |
+| `css/css-tables/html-to-css-mapping-2.html` | 16 / 25 |  |
+| `css/css-tables/html5-table-formatting-1.html` | 2 / 6 |  |
+| `css/css-tables/html5-table-formatting-2.html` | 6 / 12 |  |
 | `css/css-tables/html5-table-formatting-3.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-tables/html5-table-formatting-fixed-layout-1.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-tables/inheritance.html` | 0 / 10 |  |
 | `css/css-tables/parsing/border-collapse-computed.html` | 0 / 2 |  |
 | `css/css-tables/parsing/border-collapse-invalid.html` | 0 / 2 |  |
@@ -1760,7 +1755,6 @@ est le plus honnête des deux.
 | `css/cssom-view/range-client-rects-surrogate-indexing.html` | 0 / 1 |  |
 | `css/cssom-view/resizeTo-negative.html` | 0 / 1 |  |
 | `css/cssom-view/screen-detached-frame.html` | 0 / 1 |  |
-| `css/cssom-view/screenLeftTop.html` | 0 / 2 |  |
 | `css/cssom-view/scroll-behavior-default-css.html` | 1 / 3 |  |
 | `css/cssom-view/scroll-behavior-element.html` | 16 / 39 |  |
 | `css/cssom-view/scroll-behavior-main-frame-root.html` | 2 / 40 |  |
@@ -1784,7 +1778,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-fixed.html` | 0 / 8 | harnais : 4 duplicate test names: "[Box A] scrollIntoView from unscrollable position:fixed", "[Box B] scrollIntoView from unscroll |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 3 / 9 |  |
-| `css/cssom-view/scrollIntoView-iframes.html` | 1 / 4 |  |
+| `css/cssom-view/scrollIntoView-iframes.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-multiple-nested.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-multiple.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-nearest-oversized-element.html` | 0 / 1 |  |
