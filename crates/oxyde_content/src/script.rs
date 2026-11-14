@@ -153,6 +153,9 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// Adresse de base du document de la page (`<base href>`), et la
+    /// version du document pour laquelle elle vaut.
+    base_cache: Option<(u64, String)>,
     /// De quoi mettre le document en page à la demande d'un script.
     layout_env: Option<crate::LayoutEnv>,
     /// Géométrie de la dernière mise en page demandée par un script.
@@ -710,6 +713,24 @@ fn document_title(doc: &Document, document: NodeId) -> String {
         .unwrap_or_default()
 }
 
+/// Adresse de base du document (HTML Standard §2.4.1) : le `href` du
+/// premier `<base>` qui en porte un, résolu contre l'adresse du document ;
+/// à défaut, ou si ce `href` ne se résout pas ou désigne une adresse
+/// `data:` ou `javascript:`, l'adresse du document.
+///
+/// LIMITE : seul le document de la page est consulté, pas ceux des cadres.
+fn document_base(doc: &Document, url: &Url) -> String {
+    doc.descendants(doc.root())
+        .find_map(|node| {
+            doc.element(node)
+                .filter(|e| e.is_html("base"))
+                .and_then(|e| e.attr("href"))
+        })
+        .and_then(|href| url.join(href).ok())
+        .filter(|base| !matches!(base.scheme(), "data" | "javascript"))
+        .map_or_else(|| url.as_str().to_owned(), |base| base.as_str().to_owned())
+}
+
 fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
     let h = host(vm)?;
     let node = h.doc.id_from_index(usize::try_from(data).ok()?)?;
@@ -792,12 +813,26 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "className" => string(&attr("class")),
         "href" | "src" if is_element(doc, node) => {
             let raw = attr(key);
-            // Comme dans un navigateur, la propriété donne l'adresse absolue.
-            string(&if raw.is_empty() {
-                raw
+            // Comme dans un navigateur, la propriété donne l'adresse absolue,
+            // résolue contre l'adresse de base du document (`<base href>`).
+            if raw.is_empty() {
+                string(&raw)
             } else {
-                h.url.join(&raw).map_or(raw, String::from)
-            })
+                let version = doc.version();
+                let base = match &h.base_cache {
+                    Some((known, base)) if *known == version => base.clone(),
+                    _ => {
+                        let base = document_base(doc, &h.url);
+                        h.base_cache = Some((version, base.clone()));
+                        base
+                    }
+                };
+                let resolved = Url::parse(&base)
+                    .ok()
+                    .and_then(|base| base.join(&raw).ok())
+                    .map_or(raw, String::from);
+                string(&resolved)
+            }
         }
         "hidden" if is_element(doc, node) => Ok(Value::Bool(
             doc.element(node).is_some_and(|e| e.has_attr("hidden")),
@@ -901,7 +936,20 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
             return Some(frames::property(vm, node, key));
         }
         "readyState" if is_document => string("complete"),
-        "baseURI" => string(h.url.as_str()),
+        "baseURI" => {
+            let version = h.doc.version();
+            let cached = h
+                .base_cache
+                .as_ref()
+                .filter(|(known, _)| *known == version)
+                .map(|(_, base)| base.clone());
+            let base = cached.unwrap_or_else(|| {
+                let base = document_base(&h.doc, &h.url);
+                h.base_cache = Some((version, base.clone()));
+                base
+            });
+            return Some(string(&base));
+        }
         "length" if doc.character_data(node).is_some() => Ok(number(
             doc.character_data(node)
                 .map_or(0, |t| t.encode_utf16().count()),
@@ -1726,6 +1774,39 @@ fn clear_timer(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Undefined)
 }
 
+/// `encodingName(étiquette)` : nom de l'encodage que désigne l'étiquette
+/// (`"latin1"` donne `"windows-1252"`), ou `null` s'il n'est pas pris en
+/// charge.
+fn encoding_name(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let label = vm.to_string(&arg(args, 0))?;
+    Ok(oxyde_html::encoding::Encoding::for_label(&label)
+        .map_or(Value::Null, |encoding| Value::string(encoding.name())))
+}
+
+/// `decodeBytes(nom, octets, strict)` : décode `octets` (une chaîne dont
+/// chaque caractère vaut un octet) dans l'encodage `nom`, sans traiter de
+/// marque d'ordre d'octets. Rend `null` si `strict` et que la suite est
+/// invalide.
+fn decode_bytes(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let name = vm.to_string(&arg(args, 0))?;
+    let data = vm.to_string(&arg(args, 1))?;
+    let strict = arg(args, 2).truthy();
+    let Some(encoding) = oxyde_html::encoding::Encoding::for_label(&name) else {
+        return Ok(Value::Null);
+    };
+    // Un caractère au-delà de U+00FF n'est pas un octet : il est ignoré.
+    let bytes: Vec<u8> = data
+        .chars()
+        .filter_map(|c| u8::try_from(u32::from(c)).ok())
+        .collect();
+    let (text, replaced) = encoding.decode_raw(&bytes);
+    Ok(if strict && replaced {
+        Value::Null
+    } else {
+        Value::string(&text)
+    })
+}
+
 /// Ramène un instant, en millisecondes, à une résolution de 0,1 ms : une
 /// horloge plus fine sert aux attaques par mesure du temps.
 fn coarsen(milliseconds: f64) -> f64 {
@@ -2192,6 +2273,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            base_cache: None,
             layout_env: None,
             geometry: None,
             text: None,
@@ -2317,6 +2399,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("focusedElement", 0, focus::focused_element)),
         Value::Object(vm.new_function("randomBytes", 1, random_bytes)),
         Value::Object(vm.new_function("fireTrusted", 2, events::dispatch_trusted)),
+        Value::Object(vm.new_function("encodingName", 1, encoding_name)),
+        Value::Object(vm.new_function("decodeBytes", 3, decode_bytes)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());

@@ -10,6 +10,8 @@
 //! assert_eq!(doc.text_content(body), "Bonjour Oxyde");
 //! ```
 
+pub mod encoding;
+mod encoding_tables;
 mod entities;
 pub mod tokenizer;
 mod tree_builder;

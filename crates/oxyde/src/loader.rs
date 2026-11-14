@@ -280,7 +280,14 @@ fn fetch_http(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec<u8>), Load
             "ERR_HTTP_RESPONSE_CODE_FAILURE",
         ));
     }
-    Ok((response.url, response.body))
+    // Les noms d'en-têtes sont en minuscules.
+    let content_type = response
+        .headers
+        .iter()
+        .find(|(name, _)| name == "content-type")
+        .map(|(_, value)| value.clone());
+    let body = text_body(content_type.as_deref(), response.body);
+    Ok((response.url, body))
 }
 
 /// Demande la page `url` par `POST`, avec le corps d'un formulaire.
@@ -300,7 +307,14 @@ pub(crate) fn post_http(
         initiator: None,
     })
     .map_err(|e| network_error(url, &e))?;
-    Ok((response.url, response.body))
+    // Les noms d'en-têtes sont en minuscules.
+    let content_type = response
+        .headers
+        .iter()
+        .find(|(name, _)| name == "content-type")
+        .map(|(_, value)| value.clone());
+    let body = text_body(content_type.as_deref(), response.body);
+    Ok((response.url, body))
 }
 
 /// Exécute une requête `fetch` émise par un script, précédée de sa
@@ -551,13 +565,44 @@ pub(crate) fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec
     }
 }
 
-/// Décode les octets d'une ressource texte.
-///
-/// LIMITE : l'encodage est supposé UTF-8 (pas encore de détection par
-/// `<meta charset>` ni par l'en-tête HTTP) ; la marque d'ordre d'octets est retirée.
+/// Décode les octets d'une ressource texte (feuille de style, script) :
+/// d'après sa marque d'ordre d'octets, sinon en UTF-8 si elle en est, sinon
+/// en `windows-1252`. Un encodage annoncé par l'en-tête HTTP a déjà été
+/// appliqué (voir [`text_body`]).
 pub(crate) fn decode(bytes: &[u8]) -> String {
-    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
-    String::from_utf8_lossy(bytes).into_owned()
+    oxyde_content::encoding::decode_text(bytes)
+}
+
+/// Décode les octets d'un document HTML : comme [`decode`], en tenant compte
+/// de son `<meta charset>`.
+pub(crate) fn decode_document(bytes: &[u8]) -> String {
+    oxyde_content::encoding::decode_document(bytes)
+}
+
+/// Corps d'une réponse, pour ceux qui le liront comme du texte : si
+/// l'en-tête `Content-Type` annonce un encodage autre qu'UTF-8 pour une
+/// ressource textuelle, le corps est transcodé en UTF-8 et marqué comme tel
+/// (marque d'ordre d'octets), l'en-tête l'emportant sur ce que le document
+/// déclare lui-même. Les autres corps sont rendus tels quels.
+fn text_body(content_type: Option<&str>, body: Vec<u8>) -> Vec<u8> {
+    use oxyde_content::encoding;
+    let Some(content_type) = content_type else {
+        return body;
+    };
+    let lower = content_type.to_ascii_lowercase();
+    let textual = lower.starts_with("text/")
+        || ["html", "xml", "javascript", "ecmascript", "json"]
+            .iter()
+            .any(|kind| lower.contains(kind));
+    let Some(declared) = encoding::from_content_type(content_type).filter(|_| textual) else {
+        return body;
+    };
+    if declared == encoding::UTF_8 {
+        return body;
+    }
+    let mut out = vec![0xEF, 0xBB, 0xBF];
+    out.extend_from_slice(declared.decode(&body).as_bytes());
+    out
 }
 
 /// Charge la page `url`, ses feuilles de style et ses images.
@@ -629,7 +674,7 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
         _ => fetch(&url),
     };
     let (url, html) = match first {
-        Ok((final_url, bytes)) => (final_url, decode(&bytes)),
+        Ok((final_url, bytes)) => (final_url, decode_document(&bytes)),
         Err(error) => {
             return Loaded {
                 page: Page::from_html(url, ""),
@@ -663,7 +708,7 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     let frames = page.pending_frames();
     for (frame_url, fetched) in frames.iter().zip(fetch_many(&frames, &document)) {
         // Un cadre indisponible reste vide.
-        let html = fetched.ok().map(|(_, bytes)| decode(&bytes));
+        let html = fetched.ok().map(|(_, bytes)| decode_document(&bytes));
         page.set_frame(frame_url, html.as_deref());
     }
     let scripts = page.pending_scripts();
@@ -823,5 +868,24 @@ mod tests {
         assert_eq!(error.kind, ErrorKind::Other);
         assert_eq!(error.code, "ERR_FILE_NOT_FOUND");
         assert_eq!(loaded.page.url(), &url);
+    }
+
+    #[test]
+    fn declared_charsets_are_transcoded() {
+        // L'en-tête l'emporte sur le document : le corps devient de l'UTF-8.
+        let body = text_body(
+            Some("text/html; charset=ISO-8859-1"),
+            b"<meta charset=koi8-r>\xE9t\xE9".to_vec(),
+        );
+        assert_eq!(decode_document(&body), "<meta charset=koi8-r>été");
+        // Sans en-tête, le document dit son encodage ; à défaut, UTF-8 s'il
+        // en est, sinon windows-1252.
+        let raw = text_body(Some("text/html"), b"<meta charset=koi8-r>\xF0".to_vec());
+        assert_eq!(decode_document(&raw), "<meta charset=koi8-r>П");
+        assert_eq!(decode(b"caf\xE9"), "café");
+        assert_eq!(decode("café".as_bytes()), "café");
+        // Une image n'est jamais transcodée.
+        let image = text_body(Some("image/png; charset=latin1"), vec![0xE9]);
+        assert_eq!(image, vec![0xE9]);
     }
 }

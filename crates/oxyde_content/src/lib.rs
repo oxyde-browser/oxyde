@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 pub use oxyde_css::Viewport;
 use oxyde_css::{Color, StyleMap, Stylesheet, parse_stylesheet};
 use oxyde_dom::{Document, NodeId};
+pub use oxyde_html::encoding;
 pub use oxyde_js::ConsoleMessage;
 use oxyde_layout::{Fragment, LayoutTree};
 use oxyde_paint::DisplayList;
@@ -5888,6 +5889,62 @@ mod tests {
         assert_eq!(
             doc.element(body).and_then(|e| e.attr("data-out")),
             Some("obs:childList@parent,attributes@child promesse")
+        );
+    }
+
+    #[test]
+    fn base_element_and_live_search_params() {
+        let mut p = page(
+            "<head><base id=b></head><body><a id=a href='x/y'>l</a><script>
+               const out = [];
+               const a = document.getElementById('a');
+               const before = a.href;
+               document.getElementById('b').setAttribute('href', 'https://autre.test/dossier/');
+               out.push(before !== a.href, a.href, document.baseURI);
+               const params = new URLSearchParams('p0=0&p1=1&p2=2');
+               const seen = [];
+               for (const [name] of params) {
+                 seen.push(name);
+                 params.delete('p1');
+               }
+               out.push(seen.join('+'));
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("true https://autre.test/dossier/x/y https://autre.test/dossier/ p0+p2")
+        );
+    }
+
+    #[test]
+    fn text_decoder_reads_legacy_encodings() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const latin = new TextDecoder('latin1');
+               out.push(latin.encoding, latin.decode(new Uint8Array([0x63, 0x61, 0x66, 0xe9, 0x80])));
+               out.push(new TextDecoder('koi8-r').decode(new Uint8Array([0xf0, 0xd2, 0xc9])));
+               const wide = new TextDecoder('utf-16le');
+               out.push(wide.decode(new Uint8Array([0xff, 0xfe, 0x68]), { stream: true })
+                 + wide.decode(new Uint8Array([0x00, 0x3d, 0xd8]), { stream: true })
+                 + wide.decode(new Uint8Array([0x00, 0xde])));
+               try { new TextDecoder('windows-1253', { fatal: true }).decode(new Uint8Array([0xaa])); }
+               catch (e) { out.push(e.name); }
+               try { new TextDecoder('shift_jis'); } catch (e) { out.push(e.name); }
+               out.push(new TextDecoder().encoding);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("windows-1252 café€ При h😀 TypeError RangeError utf-8")
         );
     }
 }
