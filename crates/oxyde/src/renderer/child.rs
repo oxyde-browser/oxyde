@@ -16,7 +16,7 @@ use oxyde_text::TextContext;
 use url::Url;
 
 use super::protocol::{
-    Frame, FromRenderer, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+    EditAction, Frame, FromRenderer, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
 };
 use crate::loader::{self, LoadError};
 
@@ -314,6 +314,28 @@ impl Renderer {
                     loader::report_console(page);
                     // Ctrl A change le surlignage sans nouvelle mise en page.
                     self.force_frame |= redraw;
+                    if let Some(text) = page.take_copied() {
+                        self.link.send(&FromRenderer::Copied { text })?;
+                    }
+                }
+            }
+            ToRenderer::Context { x, y } => {
+                let info = self
+                    .page
+                    .as_ref()
+                    .map(|page| page.context_at(x, y))
+                    .unwrap_or_default();
+                self.link.send(&FromRenderer::Context {
+                    link: info.link.map(|url| url.to_string()),
+                    selection: info.selection,
+                    editable: info.editable,
+                })?;
+            }
+            ToRenderer::Edit { action } => {
+                if let (Some(page), Some(action)) =
+                    (self.page.as_mut(), EditAction::from_code(action))
+                {
+                    self.force_frame |= action.apply(page);
                     if let Some(text) = page.take_copied() {
                         self.link.send(&FromRenderer::Copied { text })?;
                     }

@@ -17,6 +17,7 @@
 mod find;
 mod horizontal;
 mod library;
+mod menu;
 mod onboarding;
 mod palette;
 mod panes;
@@ -92,6 +93,10 @@ pub enum Hit {
     FindNext,
     /// Recherche dans la page : fermer la barre.
     FindClose,
+    /// Menu contextuel : action d'index donné.
+    MenuItem(usize),
+    /// Menu contextuel : le panneau lui-même, hors de ses actions.
+    Menu,
     /// Premier lancement : navigateur d'où importer, d'index donné.
     OnboardingSource(usize),
     /// Premier lancement : couleur d'accent d'index donné.
@@ -118,6 +123,30 @@ pub enum Hit {
         /// Index de la valeur choisie.
         option: usize,
     },
+}
+
+/// Action d'un menu contextuel.
+#[derive(Clone, Copy, Debug)]
+pub struct MenuItemView<'a> {
+    /// Nom de l'action.
+    pub label: &'a str,
+    /// Raccourci affiché à droite ; vide s'il n'y en a pas.
+    pub shortcut: &'a str,
+    /// Faux : l'action est affichée mais ne peut pas être choisie.
+    pub enabled: bool,
+    /// Un filet sépare cette action de la précédente.
+    pub separator: bool,
+}
+
+/// Menu contextuel tel que l'interface l'affiche.
+#[derive(Clone, Copy, Debug)]
+pub struct MenuView<'a> {
+    /// Point de la fenêtre où le menu s'ouvre, en pixels logiques.
+    pub x: f32,
+    /// Point de la fenêtre où le menu s'ouvre, en pixels logiques.
+    pub y: f32,
+    /// Actions ; leur index est celui porté par [`Hit::MenuItem`].
+    pub items: &'a [MenuItemView<'a>],
 }
 
 /// Barre de recherche dans la page telle que l'interface l'affiche.
@@ -431,6 +460,8 @@ pub struct ChromeState<'a> {
     pub palette: Option<PaletteView<'a>>,
     /// Barre de recherche dans la page active.
     pub find: Option<FindView<'a>>,
+    /// Menu contextuel ouvert par-dessus tout.
+    pub menu: Option<MenuView<'a>>,
     /// Premier lancement, affiché à la place des onglets.
     pub onboarding: Option<OnboardingView<'a>>,
     /// Couleur d'accent.
@@ -1416,6 +1447,15 @@ pub fn build_chrome(state: &ChromeState<'_>, text: &mut TextContext) -> Chrome {
         palette::build(&mut front, typed, view);
         overlay.items.append(&mut front.list.items);
         front.hits.append(&mut hits);
+        hits = std::mem::take(&mut front.hits);
+        front.widgets.append(&mut widgets);
+        widgets = std::mem::take(&mut front.widgets);
+    }
+    // Le menu contextuel : devant tout.
+    if let Some(view) = &state.menu {
+        menu::build(&mut front, typed, view);
+        overlay.items.append(&mut front.list.items);
+        front.hits.append(&mut hits);
         hits = front.hits;
         front.widgets.append(&mut widgets);
         widgets = front.widgets;
@@ -1487,6 +1527,7 @@ mod tests {
             settings: None,
             palette: None,
             find: None,
+            menu: None,
             onboarding: None,
             accent: theme::ACCENT,
             private: false,
@@ -2244,5 +2285,62 @@ mod tests {
         let chrome = build_chrome(&s, &mut text);
         assert!(find_hit(&chrome, Hit::Tab(0)).is_none());
         assert!(find_hit(&chrome, Hit::LibraryBack).is_some());
+    }
+
+    #[test]
+    fn a_context_menu_stays_in_the_window_and_comes_first() {
+        let mut text = TextContext::new();
+        let tabs = tabs();
+        let mut s = state(&tabs, None);
+        let items = [
+            MenuItemView {
+                label: "Copier",
+                shortcut: "Ctrl C",
+                enabled: true,
+                separator: false,
+            },
+            MenuItemView {
+                label: "Coller",
+                shortcut: "Ctrl V",
+                enabled: false,
+                separator: false,
+            },
+            MenuItemView {
+                label: "Actualiser",
+                shortcut: "Ctrl R",
+                enabled: true,
+                separator: true,
+            },
+        ];
+        // Ouvert tout en bas à droite : ramené dans la fenêtre.
+        s.menu = Some(MenuView {
+            x: s.width - 2.0,
+            y: s.height - 2.0,
+            items: &items,
+        });
+        let chrome = build_chrome(&s, &mut text);
+        let panel = find_hit(&chrome, Hit::Menu).expect("panneau");
+        assert!(panel.x + panel.w <= s.width && panel.y + panel.h <= s.height);
+        let copy = find_hit(&chrome, Hit::MenuItem(0)).expect("copier");
+        let reload = find_hit(&chrome, Hit::MenuItem(2)).expect("actualiser");
+        // Les actions passent avant le panneau, et le panneau avant la page.
+        assert_eq!(
+            chrome.hit(copy.x + 4.0, copy.y + 4.0),
+            Some(Hit::MenuItem(0))
+        );
+        assert_eq!(chrome.hit(panel.x + 1.0, panel.y + 1.0), Some(Hit::Menu));
+        // Une action désactivée ne se clique pas ; elle reste annoncée.
+        assert!(find_hit(&chrome, Hit::MenuItem(1)).is_none());
+        assert!(
+            chrome
+                .widgets
+                .iter()
+                .any(|w| w.label == "Coller" && w.disabled && w.hit.is_none())
+        );
+        // Le filet décale la dernière action.
+        assert!(reload.y - copy.y > 2.0 * 32.0);
+        // Rien n'est dessiné sans menu.
+        s.menu = None;
+        assert!(find_hit(&build_chrome(&s, &mut text), Hit::Menu).is_none());
     }
 }

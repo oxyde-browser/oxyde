@@ -288,6 +288,10 @@ pub(crate) enum Command {
     NetworkDiagnostics,
     /// Ouvrir une fenêtre de navigation privée.
     PrivateWindow,
+    /// Placer ce texte dans le presse-papiers.
+    CopyText(String),
+    /// Coller le presse-papiers dans la page active.
+    PastePage,
     /// Lire les favoris de ce fichier d'un autre navigateur, puis les
     /// remettre par [`Browser::finish_import`].
     ImportBookmarks(std::path::PathBuf),
@@ -427,7 +431,44 @@ fn display_url(url: &Url) -> String {
 }
 
 /// Données empruntées au navigateur pour dessiner l'interface.
+/// Action d'un menu contextuel de page.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MenuAction {
+    /// Ouvrir ce lien dans un nouvel onglet.
+    OpenLink(Url),
+    /// Copier l'adresse de ce lien.
+    CopyLink(Url),
+    Copy,
+    Paste,
+    SelectAll,
+    Back,
+    Forward,
+    Reload,
+}
+
+/// Ligne d'un menu contextuel.
+#[derive(Clone, Debug)]
+struct MenuEntry {
+    action: MenuAction,
+    label: &'static str,
+    shortcut: &'static str,
+    enabled: bool,
+    /// Un filet la sépare de la précédente.
+    separator: bool,
+}
+
+/// Menu contextuel ouvert sur une page.
+#[derive(Clone, Debug)]
+struct ContextMenu {
+    /// Identifiant de l'onglet visé.
+    tab: u64,
+    /// Point de la fenêtre où il s'ouvre.
+    at: (f32, f32),
+    entries: Vec<MenuEntry>,
+}
+
 pub(crate) struct Views<'a> {
+    menu: Vec<oxyde_ui::MenuItemView<'a>>,
     tabs: Vec<TabView<'a>>,
     closed: Vec<ClosedView<'a>>,
     spaces: [SpaceView<'static>; SPACES.len()],
@@ -476,6 +517,11 @@ pub(crate) struct Browser {
     private: bool,
     /// Barre de recherche dans la page, quand elle est ouverte.
     find: Option<FindBar>,
+    /// Menu contextuel ouvert sur une page.
+    menu: Option<ContextMenu>,
+    /// Menu demandé à un processus de rendu, en attente de sa réponse :
+    /// identifiant de l'onglet et point de la fenêtre.
+    menu_pending: Option<(u64, (f32, f32))>,
     /// Premier lancement, tant qu'il n'est pas terminé.
     onboarding: Option<Onboarding>,
 }
@@ -523,6 +569,8 @@ impl Browser {
             palette: None,
             private: false,
             find: None,
+            menu: None,
+            menu_pending: None,
             onboarding: None,
         };
         browser.refresh_address();
@@ -724,6 +772,17 @@ impl Browser {
     /// Données d'affichage empruntées au modèle.
     pub(crate) fn views(&self) -> Views<'_> {
         Views {
+            menu: self
+                .menu
+                .iter()
+                .flat_map(|menu| &menu.entries)
+                .map(|entry| oxyde_ui::MenuItemView {
+                    label: entry.label,
+                    shortcut: entry.shortcut,
+                    enabled: entry.enabled,
+                    separator: entry.separator,
+                })
+                .collect(),
             tabs: self
                 .tabs
                 .iter()
@@ -1543,6 +1602,11 @@ impl Browser {
                     current: status.current,
                 }
             }),
+            menu: self.menu.as_ref().map(|menu| oxyde_ui::MenuView {
+                x: menu.at.0,
+                y: menu.at.1,
+                items: &views.menu,
+            }),
             onboarding: self.onboarding.as_ref().map(|onboarding| OnboardingView {
                 step: onboarding.step,
                 sources: &views.onboarding,
@@ -2194,6 +2258,9 @@ impl Browser {
         if self.palette.is_some() {
             return self.palette_click(hit);
         }
+        if self.menu.is_some() || self.menu_pending.is_some() {
+            return self.menu_click(hit);
+        }
         if self.find.is_some() {
             if self.find_click(hit) {
                 return Vec::new();
@@ -2296,6 +2363,8 @@ impl Browser {
             | Hit::OnboardingNext => Vec::new(),
             // La barre de recherche est fermée.
             Hit::FindInput | Hit::FindPrevious | Hit::FindNext | Hit::FindClose => Vec::new(),
+            // Le menu contextuel est traité avant, tant qu'il est ouvert.
+            Hit::MenuItem(_) | Hit::Menu => Vec::new(),
             Hit::LibraryBack
             | Hit::LibrarySection(_)
             | Hit::LibraryRow(_)
@@ -2379,6 +2448,10 @@ impl Browser {
     pub(crate) fn key(&mut self, key: KeyPress) -> Vec<Command> {
         if self.onboarding.is_some() {
             return self.onboarding_key(&key);
+        }
+        // Une touche ferme le menu contextuel, et ne fait rien d'autre.
+        if self.close_menu() {
+            return Vec::new();
         }
         // Ouvrir la palette, la bibliothèque ou les paramètres ferme la
         // barre de recherche : sa page n'est plus affichée.
@@ -2490,7 +2563,25 @@ impl Browser {
         if self.find.as_ref().is_some_and(|bar| Some(bar.tab) != shown) {
             self.close_find();
         }
-        let mut redraw = false;
+        // Le menu contextuel suit son onglet, lui aussi.
+        let mut redraw = self
+            .menu
+            .as_ref()
+            .is_some_and(|menu| Some(menu.tab) != shown)
+            && self.close_menu();
+        // Réponse d'un processus de rendu à une demande de menu.
+        if let Some((id, at)) = self.menu_pending {
+            match self.tabs.iter_mut().find(|tab| tab.id == id) {
+                Some(tab) if Some(id) == shown => {
+                    if let Some(info) = tab.page.take_context() {
+                        self.menu_pending = None;
+                        self.show_menu(id, at, info);
+                        redraw = true;
+                    }
+                }
+                _ => self.menu_pending = None,
+            }
+        }
         let mut commits = Vec::new();
         for (index, tab) in self.tabs.iter_mut().enumerate() {
             let changed = tab.page.tick(now);
@@ -2674,9 +2765,12 @@ impl Browser {
     /// zone défilante sous le pointeur défile, ou la page. Renvoie `true` si
     /// le défilement a changé.
     pub(crate) fn scroll_by(&mut self, index: usize, x: f32, y: f32, dy: f32) -> bool {
+        // La page bouge sous le menu contextuel : il se ferme.
+        let closed = self.close_menu();
         self.tabs
             .get_mut(index)
             .is_some_and(|tab| tab.page.wheel(x, y, 0.0, dy))
+            || closed
     }
 
     fn finish_load_at(&mut self, index: usize, loaded: Loaded, push_history: bool) {
@@ -2729,12 +2823,167 @@ impl Browser {
         y: f32,
     ) -> bool {
         // Un écran posé sur les pages garde la souris pour lui.
-        if self.onboarding.is_some() || self.palette.is_some() || self.library_open() {
+        if self.onboarding.is_some()
+            || self.palette.is_some()
+            || self.library_open()
+            || self.menu.is_some()
+        {
             return false;
         }
         self.tabs
             .get_mut(tab)
             .is_some_and(|tab| tab.page.select(gesture, x, y))
+    }
+
+    /// Clic droit dans la page de l'onglet `tab` : ouvre son menu
+    /// contextuel au point `at` de la fenêtre, pour le point `point` de la
+    /// page. Renvoie `true` si l'affichage a changé.
+    pub(crate) fn open_context_menu(
+        &mut self,
+        tab: usize,
+        at: (f32, f32),
+        point: (f32, f32),
+    ) -> bool {
+        let closed = self.close_menu();
+        if self.onboarding.is_some() || self.palette.is_some() || self.library_open() {
+            return closed;
+        }
+        let Some(page) = self.tabs.get_mut(tab) else {
+            return closed;
+        };
+        // Une page d'erreur n'a rien à proposer.
+        if page.error.is_some() {
+            return closed;
+        }
+        let id = page.id;
+        match page.page.context_at(point.0, point.1) {
+            Some(info) => {
+                self.show_menu(id, at, info);
+                true
+            }
+            // Un processus de rendu répond plus tard (voir `tick`).
+            None => {
+                self.menu_pending = Some((id, at));
+                closed
+            }
+        }
+    }
+
+    /// Compose le menu contextuel de l'onglet d'identifiant `id`.
+    fn show_menu(&mut self, id: u64, at: (f32, f32), info: oxyde_content::ContextInfo) {
+        let Some(tab) = self.tabs.iter().find(|tab| tab.id == id) else {
+            return;
+        };
+        let entry = |action, label, shortcut, enabled| MenuEntry {
+            action,
+            label,
+            shortcut,
+            enabled,
+            separator: false,
+        };
+        let mut groups: Vec<Vec<MenuEntry>> = Vec::new();
+        if let Some(link) = info.link {
+            groups.push(vec![
+                entry(
+                    MenuAction::OpenLink(link.clone()),
+                    "Ouvrir le lien dans un nouvel onglet",
+                    "",
+                    true,
+                ),
+                entry(
+                    MenuAction::CopyLink(link),
+                    "Copier l'adresse du lien",
+                    "",
+                    true,
+                ),
+            ]);
+        }
+        let mut edit = Vec::new();
+        if info.selection {
+            edit.push(entry(MenuAction::Copy, "Copier", "Ctrl C", true));
+        }
+        if info.editable {
+            edit.push(entry(MenuAction::Paste, "Coller", "Ctrl V", true));
+        }
+        edit.push(entry(
+            MenuAction::SelectAll,
+            "Tout sélectionner",
+            "Ctrl A",
+            true,
+        ));
+        groups.push(edit);
+        groups.push(vec![
+            entry(MenuAction::Back, "Précédent", "Alt ←", tab.position > 0),
+            entry(
+                MenuAction::Forward,
+                "Suivant",
+                "Alt →",
+                tab.position + 1 < tab.history.len(),
+            ),
+            entry(MenuAction::Reload, "Actualiser", "Ctrl R", true),
+        ]);
+        let mut entries = Vec::new();
+        for group in groups {
+            let first = entries.len();
+            entries.extend(group);
+            if let Some(entry) = entries.get_mut(first).filter(|_| first > 0) {
+                entry.separator = true;
+            }
+        }
+        self.menu = Some(ContextMenu {
+            tab: id,
+            at,
+            entries,
+        });
+    }
+
+    /// Ferme le menu contextuel et oublie celui qui était demandé. Renvoie
+    /// `true` s'il était affiché.
+    pub(crate) fn close_menu(&mut self) -> bool {
+        self.menu_pending = None;
+        self.menu.take().is_some()
+    }
+
+    /// Clic pendant que le menu contextuel est ouvert : sur une action,
+    /// elle s'exécute ; ailleurs, le menu se ferme seulement.
+    fn menu_click(&mut self, hit: Hit) -> Vec<Command> {
+        self.menu_pending = None;
+        let Some(menu) = self.menu.take() else {
+            return Vec::new();
+        };
+        let Hit::MenuItem(chosen) = hit else {
+            return Vec::new();
+        };
+        let (Some(entry), Some(index)) = (
+            menu.entries.into_iter().nth(chosen).filter(|e| e.enabled),
+            self.tabs.iter().position(|tab| tab.id == menu.tab),
+        ) else {
+            return Vec::new();
+        };
+        match entry.action {
+            MenuAction::OpenLink(url) => {
+                self.editing = None;
+                self.active = self.push_tab(blank(), self.space);
+                self.refresh_address();
+                self.load(self.active, url, true)
+            }
+            MenuAction::CopyLink(url) => vec![Command::CopyText(url.to_string())],
+            MenuAction::Paste => vec![Command::PastePage],
+            MenuAction::Copy | MenuAction::SelectAll => {
+                let action = if entry.action == MenuAction::Copy {
+                    crate::renderer::protocol::EditAction::Copy
+                } else {
+                    crate::renderer::protocol::EditAction::SelectAll
+                };
+                if let Some(tab) = self.tabs.get_mut(index) {
+                    tab.page.edit(action);
+                }
+                Vec::new()
+            }
+            MenuAction::Back => self.go(index, -1),
+            MenuAction::Forward => self.go(index, 1),
+            MenuAction::Reload => self.reload(index),
+        }
     }
 
     /// Colle `text` (Ctrl V) dans la page de l'onglet actif, sauf pendant
@@ -2773,6 +3022,7 @@ impl Browser {
             || self.library_open()
             || self.palette.is_some()
             || self.find.is_some()
+            || self.menu.is_some()
         {
             return (false, false);
         }
@@ -3607,5 +3857,103 @@ mod tests {
             None,
         );
         assert!(!b.horizontal());
+    }
+
+    #[test]
+    fn a_right_click_opens_a_menu_of_page_actions() {
+        let labels = |b: &Browser| -> Vec<(&'static str, bool, bool)> {
+            b.menu
+                .iter()
+                .flat_map(|menu| &menu.entries)
+                .map(|e| (e.label, e.enabled, e.separator))
+                .collect()
+        };
+        let mut b = browser();
+        let first = b.tabs[0].id;
+        assert!(b.open_context_menu(0, (300.0, 200.0), (10.0, 10.0)));
+        // Sans lien ni sélection : l'édition, puis la navigation.
+        assert_eq!(
+            labels(&b),
+            [
+                ("Tout sélectionner", true, false),
+                ("Précédent", false, true),
+                ("Suivant", false, false),
+                ("Actualiser", true, false),
+            ]
+        );
+        {
+            let views = b.views();
+            let state = b.chrome_state(&views, 1280.0, 800.0);
+            let menu = state.menu.expect("menu");
+            assert_eq!((menu.x, menu.y, menu.items.len()), (300.0, 200.0, 4));
+        }
+        // Menu ouvert : la page ne reçoit ni touche ni sélection ; une touche
+        // le ferme sans rien faire d'autre.
+        assert!(!b.page_select(0, crate::renderer::protocol::SelectGesture::Start, 1.0, 1.0));
+        assert!(b.key(KeyPress::Ctrl('t')).is_empty());
+        assert!(b.menu.is_none());
+        assert_eq!(b.tabs.len(), 1);
+        // Une action désactivée ne fait rien ; « Actualiser » recharge.
+        b.open_context_menu(0, (300.0, 200.0), (10.0, 10.0));
+        assert!(b.click(Hit::MenuItem(1), None).is_empty());
+        assert!(b.menu.is_none());
+        b.open_context_menu(0, (300.0, 200.0), (10.0, 10.0));
+        assert!(matches!(
+            b.click(Hit::MenuItem(3), None).as_slice(),
+            [Command::Load { tab, .. }] if *tab == first
+        ));
+        // Un clic ailleurs ferme le menu sans atteindre ce qu'il vise.
+        b.open_context_menu(0, (300.0, 200.0), (10.0, 10.0));
+        assert!(b.click(Hit::NewTab, None).is_empty());
+        assert!(b.menu.is_none());
+        assert_eq!(b.tabs.len(), 1);
+
+        // Sur un lien, avec une sélection et un champ : toutes les actions.
+        let link = Url::parse("https://a.test/b").expect("url");
+        let info = || oxyde_content::ContextInfo {
+            link: Some(Url::parse("https://a.test/b").expect("url")),
+            selection: true,
+            editable: true,
+        };
+        b.show_menu(first, (10.0, 10.0), info());
+        assert_eq!(
+            labels(&b),
+            [
+                ("Ouvrir le lien dans un nouvel onglet", true, false),
+                ("Copier l'adresse du lien", true, false),
+                ("Copier", true, true),
+                ("Coller", true, false),
+                ("Tout sélectionner", true, false),
+                ("Précédent", false, true),
+                ("Suivant", false, false),
+                ("Actualiser", true, false),
+            ]
+        );
+        assert!(matches!(
+            b.click(Hit::MenuItem(1), None).as_slice(),
+            [Command::CopyText(text)] if text == link.as_str()
+        ));
+        b.show_menu(first, (10.0, 10.0), info());
+        assert!(matches!(
+            b.click(Hit::MenuItem(3), None).as_slice(),
+            [Command::PastePage]
+        ));
+        // « Ouvrir dans un nouvel onglet » : l'onglet naît, actif, et charge.
+        b.show_menu(first, (10.0, 10.0), info());
+        let commands = b.click(Hit::MenuItem(0), None);
+        assert_eq!((b.tabs.len(), b.active), (2, 1));
+        assert!(matches!(
+            commands.as_slice(),
+            [Command::Load { tab, url, .. }] if *url == link && *tab == b.tabs[1].id
+        ));
+        // Le menu suit son onglet : il se ferme quand un autre est affiché.
+        b.show_menu(first, (10.0, 10.0), info());
+        assert!(b.tick(std::time::Instant::now()));
+        assert!(b.menu.is_none());
+        // Une page d'erreur n'a pas de menu.
+        let second = b.tabs[1].id;
+        b.finish_load(second, failed("https://a.test/b", ErrorKind::Network), true);
+        assert!(!b.open_context_menu(1, (10.0, 10.0), (1.0, 1.0)));
+        assert!(b.menu.is_none());
     }
 }

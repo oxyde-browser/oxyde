@@ -565,7 +565,14 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       scripts (`getSelection()` reste vide, pas de `selectionchange`) ; pas de triple
       clic, de Maj clic ni de défilement automatique en glissant hors du volet.
       Vérifié par tests ; pas encore essayé à la souris dans la fenêtre.
-- [ ] Menu contextuel de la page (jalon 7).
+- [x] Menu contextuel de la page (clic droit) : ouvrir le lien dans un nouvel onglet, copier
+      son adresse, copier, coller, tout sélectionner, précédent, suivant, actualiser. Le
+      lien qu'annonce un processus de rendu passe les mêmes contrôles qu'une navigation
+      demandée par la page ; sa réponse n'est acceptée que si un menu a été demandé.
+      Limites : pas d'actions sur les images (enregistrer, copier), pas de « Rechercher
+      la sélection », pas d'« Inspecter » ; l'événement `contextmenu` n'est pas distribué
+      (une page ne peut ni le voir ni l'annuler) ; pas de navigation au clavier dans le
+      menu. Vérifié par tests ; ni essayé à la souris ni comparé à la maquette à l'écran.
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;

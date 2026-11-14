@@ -42,6 +42,7 @@ OXYDE_JOURNAL=1 cargo run --release -p oxyde -- --dump-dom https://exemple.test/
 | Ctrl V, Ctrl A | coller, tout sélectionner (pendant la saisie) |
 | glisser, double clic, Ctrl A, Ctrl C | sélectionner du texte dans la page, un mot, tout ; copier |
 | Maj flèches, Ctrl A, C, X, V | dans un champ d'une page : sélectionner, copier, couper, coller |
+| clic droit | menu de la page : lien, copier, coller, précédent, suivant, actualiser |
 | Ctrl T / Ctrl W | nouvel onglet / fermer l'onglet |
 | Ctrl Maj T | rouvrir le dernier onglet fermé |
 | Ctrl Maj P | épingler ou désépingler l'onglet |
