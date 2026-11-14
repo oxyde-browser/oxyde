@@ -573,7 +573,24 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       la sélection », pas d'« Inspecter » ; l'événement `contextmenu` n'est pas distribué
       (une page ne peut ni le voir ni l'annuler) ; pas de navigation au clavier dans le
       menu. Vérifié par tests ; ni essayé à la souris ni comparé à la maquette à l'écran.
-- [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
+- [x] Événements de souris dans les pages (ils manquaient tous, sauf un `click` sans
+      coordonnées) : `mousedown`, `mouseup`, `click` et `dblclick` en `MouseEvent` de
+      confiance (position, bouton, rang du clic, touches tenues), `mousemove`,
+      `mouseover` / `mouseout`, `mouseenter` / `mouseleave`, leurs équivalents
+      `pointer…`, `contextmenu` (l'annuler retient le menu) et `wheel` (avec l'ancien
+      `mousewheel`). La molette n'attend la page que si un écouteur non passif existe ;
+      sinon le navigateur défile tout de suite, comme avant.
+      Limites : `:hover` ne suit pas le pointeur ; la sortie du pointeur hors de la page
+      n'est pas signalée ; annuler `mousedown` n'empêche ni le focus ni la sélection ;
+      annuler `pointerdown` ne retient pas les événements `mouse…` ; `offsetX` /
+      `offsetY` valent `pageX` / `pageY` au lieu d'être relatifs à la cible ; pas de capture du pointeur, pas de
+      glisser-déposer, pas d'événements tactiles ; un écouteur de molette retiré reste
+      compté. Vérifié par tests ; pas encore essayé à la souris dans la fenêtre.
+- [ ] Web Platform Tests `dom/` : de 44,6 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : tests pilotés par `testdriver.js` (molette, tactile,
+      défilement : environ 80 fichiers — le lanceur ne sait pas encore injecter ces
+      gestes), `moveBefore` (49), `Observable` (27), `ranges/tentative` (19),
+      `insertion-removing-steps` (19).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;
       `customElements` est fait.

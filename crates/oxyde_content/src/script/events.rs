@@ -141,6 +141,11 @@ pub(super) fn add_event_listener(vm: &mut Vm, this: &Value, args: &[Value]) -> J
     let Some(h) = host(vm) else {
         return Ok(Value::Undefined);
     };
+    // Un écouteur de molette non passif peut annuler le défilement :
+    // l'embarqueur doit alors attendre la page avant de défiler.
+    if matches!(kind.as_str(), "wheel" | "mousewheel") {
+        h.wheel_listeners = h.wheel_listeners.max(if passive { 1 } else { 2 });
+    }
     let exists = h.listeners.iter().any(|l| {
         l.target == target && l.kind == kind && l.capture == capture && l.callback == callback
     });
@@ -716,6 +721,22 @@ pub(super) fn dispatch_simple(vm: &mut Vm, node: NodeId, kind: &str, bubbles: bo
     let event = new_event(vm, "Event", kind, bubbles, false, true);
     let target = Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX));
     fire(vm, target, event);
+}
+
+/// Distribue comme un événement du navigateur (`isTrusted`) l'événement
+/// `event`, construit par le prélude, sur `target` (la fenêtre si `None`).
+/// Renvoie `true` si `preventDefault()` a été appelé.
+pub(super) fn fire_built(vm: &mut Vm, target: Option<NodeId>, event: &Value) -> bool {
+    let Value::Object(event) = event else {
+        return false;
+    };
+    let event = *event;
+    set_flag(vm, event, TRUSTED, true);
+    let target = match target {
+        Some(node) => Target::Node(u32::try_from(node.index()).unwrap_or(u32::MAX)),
+        None => target_of(vm, &Value::Undefined),
+    };
+    fire(vm, target, event)
 }
 
 /// Distribue un événement du navigateur, de type `kind`, sur `target` (la

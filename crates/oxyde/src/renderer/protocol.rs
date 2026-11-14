@@ -1,6 +1,6 @@
 //! Messages échangés entre le processus navigateur et un processus de rendu.
 
-use oxyde_content::{FetchRequest, FetchResponse, FormPost, Navigation};
+use oxyde_content::{FetchRequest, FetchResponse, FormPost, MouseInput, Navigation};
 use oxyde_ipc::{Bytes, ipc_enum, ipc_struct};
 use oxyde_paint::wire::WireList;
 
@@ -115,6 +115,72 @@ impl SelectGesture {
     }
 }
 
+/// Événement de souris transmis à une page.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MouseKind {
+    /// Le pointeur s'est déplacé.
+    Move,
+    /// Un bouton est enfoncé.
+    Down,
+    /// Un bouton est relâché.
+    Up,
+}
+
+impl MouseKind {
+    /// Code de l'événement dans un message.
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::Move => 0,
+            Self::Down => 1,
+            Self::Up => 2,
+        }
+    }
+
+    /// Événement de code `code` ; `None` pour un code inconnu.
+    pub(crate) fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Move),
+            1 => Some(Self::Down),
+            2 => Some(Self::Up),
+            _ => None,
+        }
+    }
+
+    /// Transmet l'événement à `page`, `input` étant dans le repère de la
+    /// page ; renvoie `true` si elle doit être redessinée.
+    pub(crate) fn apply(self, page: &mut oxyde_content::Page, input: &MouseInput) -> bool {
+        match self {
+            Self::Move => page.mouse_move(input),
+            Self::Down => page.mouse_button(true, input),
+            Self::Up => page.mouse_button(false, input),
+        }
+    }
+}
+
+/// Touches tenues pendant un événement de souris, sur un octet : Ctrl 1,
+/// Maj 2, Alt 4, Méta 8.
+pub(crate) fn pack_modifiers(input: &MouseInput) -> u8 {
+    u8::from(input.ctrl)
+        | u8::from(input.shift) << 1
+        | u8::from(input.alt) << 2
+        | u8::from(input.meta) << 3
+}
+
+/// Pointeur d'un message : l'inverse de [`pack_modifiers`].
+pub(crate) fn mouse_input(x: f32, y: f32, button: u8, detail: u8, modifiers: u8) -> MouseInput {
+    MouseInput {
+        x,
+        y,
+        button,
+        buttons: 0,
+        detail,
+        ctrl: modifiers & 1 != 0,
+        shift: modifiers & 2 != 0,
+        alt: modifiers & 4 != 0,
+        meta: modifiers & 8 != 0,
+    }
+}
+
 /// Action d'édition choisie dans un menu contextuel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum EditAction {
@@ -193,6 +259,28 @@ pub(crate) enum ToRenderer {
     /// Action d'édition choisie dans un menu : `action` est un
     /// [`EditAction`] (0 copier, 1 tout sélectionner).
     Edit { action: u8 },
+    /// Événement de souris au point (`x`, `y`) de la page : `kind` est un
+    /// [`MouseKind`] (0 déplacement, 1 bouton enfoncé, 2 relâché),
+    /// `modifiers` les touches tenues (voir [`pack_modifiers`]).
+    Mouse {
+        kind: u8,
+        x: f32,
+        y: f32,
+        button: u8,
+        detail: u8,
+        modifiers: u8,
+    },
+    /// Molette de (`dx`, `dy`) au point (`x`, `y`) de la fenêtre. `scroll` :
+    /// le processus de rendu fait défiler lui-même si aucun script
+    /// n'annule ; sinon le navigateur a déjà défilé.
+    Wheel {
+        x: f32,
+        y: f32,
+        dx: f32,
+        dy: f32,
+        modifiers: u8,
+        scroll: bool,
+    },
 }
 ipc_enum!(ToRenderer {
     0 => Load { url, post, width, height },
@@ -209,6 +297,8 @@ ipc_enum!(ToRenderer {
     11 => Paste { text },
     12 => Context { x, y },
     13 => Edit { action },
+    14 => Mouse { kind, x, y, button, detail, modifiers },
+    15 => Wheel { x, y, dx, dy, modifiers, scroll },
 });
 
 /// Image de la page, prête à composer.
@@ -223,6 +313,9 @@ pub(crate) struct Frame {
     pub(crate) scroll: Vec<(u32, f32, f32)>,
     pub(crate) url: String,
     pub(crate) title: String,
+    /// Écouteurs de molette de la page : 0 aucun, 1 des passifs seulement,
+    /// 2 au moins un qui peut annuler le défilement.
+    pub(crate) wheel: u8,
 }
 ipc_struct!(Frame {
     list,
@@ -230,7 +323,8 @@ ipc_struct!(Frame {
     background,
     scroll,
     url,
-    title
+    title,
+    wheel
 });
 
 /// Du processus de rendu vers le navigateur.
@@ -258,10 +352,12 @@ pub(crate) enum FromRenderer {
     Copied { text: String },
     /// Réponse à [`ToRenderer::Context`] : lien sous le pointeur, texte
     /// sélectionné, champ de saisie qui a le focus.
+    /// `prevented` : un script a annulé `contextmenu`.
     Context {
         link: Option<String>,
         selection: bool,
         editable: bool,
+        prevented: bool,
     },
 }
 ipc_enum!(FromRenderer {
@@ -273,5 +369,5 @@ ipc_enum!(FromRenderer {
     5 => Hover { link },
     6 => Found { count, current },
     7 => Copied { text },
-    8 => Context { link, selection, editable },
+    8 => Context { link, selection, editable, prevented },
 });

@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use oxyde_compositor::{ROOT_SCROLLER, ScrollTree};
-use oxyde_content::{ContextInfo, FindStatus, FormPost, KeyInput, Navigation, Page};
+use oxyde_content::{ContextInfo, FindStatus, FormPost, KeyInput, MouseInput, Navigation, Page};
 use oxyde_css::{Color, Viewport};
 use oxyde_ipc::{Bytes, ChannelError, Receiver, Sender};
 use oxyde_paint::DisplayList;
@@ -22,7 +22,8 @@ use oxyde_text::TextContext;
 use url::Url;
 
 use super::protocol::{
-    EditAction, FromRenderer, KeyMessage, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+    EditAction, FromRenderer, KeyMessage, MouseKind, NetworkReply, NetworkRequest, SelectGesture,
+    ToRenderer, pack_modifiers,
 };
 use crate::loader::{self, LoadError};
 
@@ -67,6 +68,9 @@ pub(crate) struct RemotePage {
     context_expected: bool,
     /// Réponse à cette demande, en attente du navigateur.
     context: Option<ContextInfo>,
+    /// Écouteurs de molette de la page, d'après sa dernière image : 0
+    /// aucun, 1 des passifs seulement, 2 au moins un qui peut annuler.
+    wheel_listeners: u8,
     crashed: bool,
     /// Site auquel ce processus est voué, tenu par le navigateur seul.
     lock: Arc<Mutex<SiteLock>>,
@@ -179,6 +183,7 @@ impl RemotePage {
             copied: None,
             context_expected: false,
             context: None,
+            wheel_listeners: 0,
             crashed: false,
             lock: Arc::default(),
         };
@@ -331,6 +336,7 @@ impl RemotePage {
                                 self.url = self.trusted_url(url);
                             }
                             self.title = frame.title;
+                            self.wheel_listeners = frame.wheel;
                             self.dirty = true;
                             redraw = true;
                         }
@@ -377,6 +383,7 @@ impl RemotePage {
                     link,
                     selection,
                     editable,
+                    prevented,
                 } => {
                     if std::mem::take(&mut self.context_expected) {
                         // Le lien annoncé suit les mêmes règles qu'une
@@ -392,6 +399,7 @@ impl RemotePage {
                             link,
                             selection,
                             editable,
+                            prevented,
                         });
                         redraw = true;
                     }
@@ -675,14 +683,65 @@ impl PageHost {
         }
     }
 
-    /// Molette au point (`x`, `y`) de la zone d'affichage.
-    pub(crate) fn wheel(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> bool {
+    /// Molette de (`dx`, `dy`) au point (`input.x`, `input.y`) de la zone
+    /// d'affichage : les scripts reçoivent `wheel`, puis la zone sous le
+    /// pointeur défile s'ils ne l'ont pas annulé. Renvoie `true` si
+    /// l'affichage a changé.
+    ///
+    /// Un processus de rendu sans écouteur qui puisse annuler ne fait pas
+    /// attendre la molette : le navigateur défile tout de suite.
+    pub(crate) fn wheel(&mut self, input: &MouseInput, dx: f32, dy: f32) -> bool {
+        let (x, y) = (input.x, input.y);
         match self {
-            Self::Local(page) => page.wheel(x, y, dx, dy),
+            Self::Local(page) => {
+                let prevented = page.wheel_event(input, dx, dy);
+                loader::report_console(page);
+                prevented || page.wheel(x, y, dx, dy)
+            }
             Self::Remote(page) => {
+                let blocking = page.wheel_listeners >= 2;
+                if page.wheel_listeners > 0 {
+                    page.send(&ToRenderer::Wheel {
+                        x,
+                        y,
+                        dx,
+                        dy,
+                        modifiers: pack_modifiers(input),
+                        scroll: blocking,
+                    });
+                }
+                if blocking {
+                    // La page décide : son défilement revient avec sa
+                    // prochaine image.
+                    return false;
+                }
                 let scrolled = page.scroll.wheel(x, y, dx, dy).is_some();
                 page.sync_scroll();
                 scrolled
+            }
+        }
+    }
+
+    /// Événement de souris au point (`input.x`, `input.y`) de la page.
+    /// Renvoie `true` si la page doit être redessinée ; pour un processus
+    /// de rendu, la nouvelle image arrive plus tard.
+    pub(crate) fn mouse(&mut self, kind: MouseKind, input: &MouseInput) -> bool {
+        match self {
+            Self::Local(page) => {
+                let redraw = kind.apply(page, input);
+                loader::report_console(page);
+                redraw
+            }
+            Self::Remote(page) => {
+                page.send(&ToRenderer::Mouse {
+                    kind: kind.code(),
+                    x: input.x,
+                    y: input.y,
+                    button: input.button,
+                    detail: input.detail,
+                    modifiers: pack_modifiers(input),
+                });
+                false
             }
         }
     }
@@ -772,7 +831,16 @@ impl PageHost {
     /// plus tard, par [`PageHost::take_context`].
     pub(crate) fn context_at(&mut self, x: f32, y: f32) -> Option<ContextInfo> {
         match self {
-            Self::Local(page) => Some(page.context_at(x, y)),
+            Self::Local(page) => {
+                // Les scripts voient `contextmenu` d'abord et peuvent
+                // refuser le menu.
+                let prevented = page.context_menu_event(x, y);
+                loader::report_console(page);
+                Some(ContextInfo {
+                    prevented,
+                    ..page.context_at(x, y)
+                })
+            }
             Self::Remote(page) => {
                 page.context = None;
                 page.context_expected = true;

@@ -686,8 +686,17 @@
     screenX: 0, screenY: 0, clientX: 0, clientY: 0, ...modifiers,
     button: 0, buttons: 0, relatedTarget: null, movementX: 0, movementY: 0,
   });
-  for (const [alias, source] of [["pageX", "clientX"], ["pageY", "clientY"], ["x", "clientX"],
-    ["y", "clientY"], ["offsetX", "clientX"], ["offsetY", "clientY"]]) {
+  // Position dans la page : celle dans la fenêtre, plus le défilement.
+  for (const [name, source, scroll] of [["pageX", "clientX", "scrollX"],
+    ["pageY", "clientY", "scrollY"]]) {
+    define(MouseEvent.prototype, name, {
+      get() { return this[source] + (Number(global[scroll]) || 0); },
+      enumerable: true,
+      configurable: true,
+    });
+  }
+  for (const [alias, source] of [["x", "clientX"],
+    ["y", "clientY"], ["offsetX", "pageX"], ["offsetY", "pageY"]]) {
     define(MouseEvent.prototype, alias, {
       get() { return this[source]; },
       enumerable: true,
@@ -697,7 +706,18 @@
   eventInterface("PointerEvent", MouseEvent, {
     pointerId: 0, width: 1, height: 1, pressure: 0, pointerType: "", isPrimary: false,
   });
-  eventInterface("WheelEvent", MouseEvent, { deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0 });
+  const WheelEvent = eventInterface("WheelEvent", MouseEvent, {
+    deltaX: 0, deltaY: 0, deltaZ: 0, deltaMode: 0,
+  });
+  // Anciens attributs : 120 par cran de molette, de signe opposé.
+  for (const [name, source] of [["wheelDeltaX", "deltaX"], ["wheelDeltaY", "deltaY"],
+    ["wheelDelta", "deltaY"]]) {
+    define(WheelEvent.prototype, name, {
+      get() { return Math.round(-this[source] * 1.2) || 0; },
+      enumerable: true,
+      configurable: true,
+    });
+  }
   eventInterface("KeyboardEvent", UIEvent, {
     key: "", code: "", location: 0, repeat: false, isComposing: false, ...modifiers,
     keyCode: 0, charCode: 0, which: 0,
@@ -1445,6 +1465,29 @@
         }));
       }
       return proceed;
+    },
+    // Fabrique l'événement de souris `kind` au point (`x`, `y`) de la
+    // fenêtre ; le moteur le distribue ensuite comme un événement du
+    // navigateur (`isTrusted`).
+    mouse(kind, x, y, button, buttons, detail, ctrlKey, shiftKey, altKey, metaKey,
+      relatedTarget, deltaX, deltaY, cancelable) {
+      // `mouseenter` et `mouseleave` ne remontent pas et ne s'annulent pas.
+      const local = kind.endsWith("enter") || kind.endsWith("leave");
+      const init = {
+        bubbles: !local, cancelable: cancelable && !local, composed: true, view: global,
+        detail, clientX: x, clientY: y, screenX: x, screenY: y, button, buttons,
+        ctrlKey, shiftKey, altKey, metaKey, relatedTarget,
+      };
+      if (kind === "wheel" || kind === "mousewheel") {
+        return new global.WheelEvent(kind, { ...init, deltaX, deltaY });
+      }
+      if (kind.startsWith("pointer")) {
+        return new global.PointerEvent(kind, {
+          ...init, pointerId: 1, pointerType: "mouse", isPrimary: true,
+          pressure: buttons === 0 ? 0 : 0.5,
+        });
+      }
+      return new global.MouseEvent(kind, init);
     },
     // Un module inséré par un script : `load` ou `error` selon l'import.
     moduleScript(element, imported) {
