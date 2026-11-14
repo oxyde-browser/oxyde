@@ -346,7 +346,7 @@ fn slice(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let len = vm.string_units(&s);
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let end = super::relative_index(vm, &arg(args, 1), len, len)?;
-    string(&vm.string_slice(&s, start, end))
+    Ok(vm.string_slice(&s, start, end))
 }
 
 fn substring(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -354,7 +354,7 @@ fn substring(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let len = vm.string_units(&s);
     let a = position(vm, &arg(args, 0), len, 0)?;
     let b = position(vm, &arg(args, 1), len, len)?;
-    string(&vm.string_slice(&s, a.min(b), a.max(b)))
+    Ok(vm.string_slice(&s, a.min(b), a.max(b)))
 }
 
 fn substr(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -362,7 +362,7 @@ fn substr(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let len = vm.string_units(&s);
     let start = super::relative_index(vm, &arg(args, 0), len, 0)?;
     let count = position(vm, &arg(args, 1), len - start, len - start)?;
-    string(&vm.string_slice(&s, start, start + count))
+    Ok(vm.string_slice(&s, start, start + count))
 }
 
 fn to_upper_case(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {

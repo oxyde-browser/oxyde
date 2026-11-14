@@ -2719,6 +2719,29 @@ impl Browser {
         }
     }
 
+    /// Geste de sélection de texte dans la page de l'onglet `tab`, au point
+    /// (`x`, `y`) de la page. Renvoie `true` si l'affichage a changé.
+    pub(crate) fn page_select(
+        &mut self,
+        tab: usize,
+        gesture: crate::renderer::protocol::SelectGesture,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        // Un écran posé sur les pages garde la souris pour lui.
+        if self.onboarding.is_some() || self.palette.is_some() || self.library_open() {
+            return false;
+        }
+        self.tabs
+            .get_mut(tab)
+            .is_some_and(|tab| tab.page.select(gesture, x, y))
+    }
+
+    /// Texte copié dans une page (Ctrl C) depuis le dernier appel.
+    pub(crate) fn take_copied(&mut self) -> Option<String> {
+        self.tabs.iter_mut().find_map(|tab| tab.page.take_copied())
+    }
+
     /// Transmet une touche à la page de l'onglet actif, sauf pendant la
     /// saisie dans la barre d'adresse. Renvoie (action par défaut annulée,
     /// page à redessiner).

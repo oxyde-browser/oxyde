@@ -144,6 +144,35 @@ struct StringCursor {
     byte: usize,
 }
 
+/// Nombre de chaînes dont le repère est gardé.
+const STRING_CURSORS: usize = 4;
+
+impl StringCursor {
+    /// Ramène le repère sur un caractère dont la première unité est au plus
+    /// `unit` : en reculant caractère par caractère si c'est plus court que
+    /// de repartir du début de la chaîne.
+    fn rewind_to(&mut self, unit: usize) {
+        if unit >= self.unit {
+            return;
+        }
+        if self.unit - unit > unit {
+            (self.unit, self.byte) = (0, 0);
+            return;
+        }
+        let Some(head) = self.text.get(..self.byte) else {
+            (self.unit, self.byte) = (0, 0);
+            return;
+        };
+        for c in head.chars().rev() {
+            if self.unit <= unit {
+                break;
+            }
+            self.unit -= c.len_utf16();
+            self.byte -= c.len_utf8();
+        }
+    }
+}
+
 struct Frame {
     closure: ObjId,
     proto: Arc<FunctionProto>,
@@ -242,8 +271,12 @@ pub struct Vm {
     pub(crate) script_url: JsStr,
     /// Exception à lever à la prochaine instruction (reprise par `throw()`).
     pending_throw: Option<Value>,
-    /// Repère dans la dernière chaîne lue par indice (voir [`StringCursor`]).
-    string_cursor: Option<StringCursor>,
+    /// Repères dans les dernières chaînes lues par indice (voir
+    /// [`StringCursor`]) ; la plus récente en dernier.
+    string_cursors: Vec<StringCursor>,
+    /// Compteur d'instructions et dernière ligne du journal des scripts longs.
+    watch_count: u32,
+    watch_last: Option<std::time::Instant>,
     /// Dernières exceptions levées, avec les fonctions alors en cours
     /// (la plus profonde d'abord) : pour dire où une erreur non rattrapée
     /// est née.
@@ -506,7 +539,9 @@ impl Vm {
             iteration_intrinsics: None,
             script_url: Arc::from(""),
             pending_throw: None,
-            string_cursor: None,
+            string_cursors: Vec::new(),
+            watch_count: 0,
+            watch_last: None,
             throw_sites: VecDeque::new(),
             jobs: VecDeque::new(),
             rejections: Vec::new(),
@@ -1006,33 +1041,40 @@ impl Vm {
 
     // ---- Chaînes lues par indice -------------------------------------------
 
-    /// Repère de la chaîne `text`, créé ou repris.
+    /// Repère de la chaîne `text`, créé ou repris. Les repères des dernières
+    /// chaînes lues sont gardés : un analyseur de texte en lit souvent
+    /// plusieurs tour à tour.
     fn cursor_for(&mut self, text: &JsStr) -> &mut StringCursor {
-        let reuse = self
-            .string_cursor
-            .as_ref()
-            .is_some_and(|cursor| Arc::ptr_eq(&cursor.text, text));
-        if !reuse {
-            let ascii = text.is_ascii();
-            self.string_cursor = Some(StringCursor {
-                text: Arc::clone(text),
-                ascii,
-                units: if ascii {
-                    text.len()
-                } else {
-                    text.encode_utf16().count()
-                },
-                unit: 0,
-                byte: 0,
-            });
-        }
-        self.string_cursor.get_or_insert_with(|| StringCursor {
-            text: Arc::clone(text),
-            ascii: false,
-            units: 0,
-            unit: 0,
-            byte: 0,
-        })
+        let found = self
+            .string_cursors
+            .iter()
+            .position(|cursor| Arc::ptr_eq(&cursor.text, text));
+        let at = match found {
+            Some(at) => at,
+            None => {
+                let ascii = text.is_ascii();
+                if self.string_cursors.len() >= STRING_CURSORS {
+                    self.string_cursors.remove(0);
+                }
+                self.string_cursors.push(StringCursor {
+                    text: Arc::clone(text),
+                    ascii,
+                    units: if ascii {
+                        text.len()
+                    } else {
+                        text.encode_utf16().count()
+                    },
+                    unit: 0,
+                    byte: 0,
+                });
+                self.string_cursors.len() - 1
+            }
+        };
+        // Le repère qui vient de servir passe en fin de liste : c'est le
+        // plus ancien qui cède sa place.
+        let last = self.string_cursors.len() - 1;
+        self.string_cursors.swap(at, last);
+        &mut self.string_cursors[last]
     }
 
     /// Longueur de `text` en unités UTF-16 (`length`).
@@ -1056,9 +1098,7 @@ impl Vm {
         if cursor.ascii {
             return text.as_bytes().get(index).map(|byte| u16::from(*byte));
         }
-        if index < cursor.unit {
-            (cursor.unit, cursor.byte) = (0, 0);
-        }
+        cursor.rewind_to(index);
         // Avance de caractère en caractère jusqu'à celui qui porte l'unité.
         let mut chars = text.get(cursor.byte..)?.chars();
         loop {
@@ -1085,9 +1125,7 @@ impl Vm {
         if cursor.ascii {
             return (unit, true);
         }
-        if unit < cursor.unit {
-            (cursor.unit, cursor.byte) = (0, 0);
-        }
+        cursor.rewind_to(unit);
         for c in text.get(cursor.byte..).unwrap_or("").chars() {
             if cursor.unit >= unit {
                 break;
@@ -1122,17 +1160,49 @@ impl Vm {
     ///
     /// LIMITE : une borne qui coupe un caractère en deux laisse un
     /// demi-substitut isolé, rendu U+FFFD.
-    pub(crate) fn string_slice(&mut self, text: &JsStr, start: usize, end: usize) -> String {
+    pub(crate) fn string_slice(&mut self, text: &JsStr, start: usize, end: usize) -> Value {
         if end <= start {
-            return String::new();
+            return Value::string("");
         }
+        let total = self.cursor_for(text).units;
         let (first, first_exact) = self.string_byte_of_unit(text, start);
         let (last, last_exact) = self.string_byte_of_unit(text, end);
-        if first_exact && last_exact {
-            return text.get(first..last).unwrap_or("").to_owned();
+        if !(first_exact && last_exact) {
+            let units: Vec<u16> = text.encode_utf16().skip(start).take(end - start).collect();
+            return Value::string(&String::from_utf16_lossy(&units));
         }
-        let units: Vec<u16> = text.encode_utf16().skip(start).take(end - start).collect();
-        String::from_utf16_lossy(&units)
+        // La chaîne entière : la même, sans copie.
+        if first == 0 && last == text.len() {
+            return Value::String(Arc::clone(text));
+        }
+        let piece = text.get(first..last).unwrap_or("");
+        let result: JsStr = Arc::from(piece);
+        // La longueur de la tranche est connue ici : la noter épargne de la
+        // recompter à la première lecture (un analyseur qui avance par
+        // tranches successives relirait sinon chaque tranche en entier).
+        if result.len() >= 32 {
+            let ascii = piece.is_ascii();
+            self.remember_string(StringCursor {
+                text: Arc::clone(&result),
+                ascii,
+                units: if ascii {
+                    piece.len()
+                } else {
+                    end.min(total) - start
+                },
+                unit: 0,
+                byte: 0,
+            });
+        }
+        Value::String(result)
+    }
+
+    /// Range un repère déjà calculé parmi ceux des dernières chaînes lues.
+    fn remember_string(&mut self, cursor: StringCursor) {
+        if self.string_cursors.len() >= STRING_CURSORS {
+            self.string_cursors.remove(0);
+        }
+        self.string_cursors.push(cursor);
     }
 
     // ---- Variables capturées -----------------------------------------------
@@ -2249,6 +2319,54 @@ impl Vm {
         }
     }
 
+    /// Journal des scripts longs, écrit sur la sortie d'erreur quand la
+    /// variable d'environnement `OXYDE_JOURNAL` est définie : toutes les deux
+    /// secondes d'exécution, les fonctions en cours et l'instruction courante.
+    /// C'est ce qui dit, devant une page qui ne rend pas la main, quel code
+    /// tourne.
+    fn watch_long_script(&mut self) {
+        /// Nombre d'instructions entre deux lectures de l'horloge.
+        const EVERY: u32 = 2048;
+        /// Intervalle entre deux lignes du journal.
+        const PERIOD: std::time::Duration = std::time::Duration::from_secs(2);
+        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        self.watch_count = self.watch_count.wrapping_add(1);
+        if !self.watch_count.is_multiple_of(EVERY)
+            || !*ENABLED.get_or_init(|| std::env::var_os("OXYDE_JOURNAL").is_some())
+        {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let last = *self.watch_last.get_or_insert(now);
+        if now.duration_since(last) < PERIOD {
+            return;
+        }
+        self.watch_last = Some(now);
+        let functions: Vec<String> = self
+            .frames
+            .iter()
+            .rev()
+            .take(6)
+            .map(|frame| {
+                let name = if frame.proto.name.is_empty() {
+                    "(anonyme)"
+                } else {
+                    &*frame.proto.name
+                };
+                name.to_owned()
+            })
+            .collect();
+        let op = self
+            .frames
+            .last()
+            .and_then(|frame| frame.proto.code.get(frame.pc).copied());
+        eprintln!(
+            "[journal] script en cours : {} ; instruction {op:?} ; {} objets",
+            functions.join(" < "),
+            self.heap.live_objects()
+        );
+    }
+
     /// Retient les fonctions en cours au moment où `thrown` est levée. Une
     /// exception qui remonte à travers plusieurs appels natifs n'est notée
     /// qu'à sa naissance.
@@ -2356,6 +2474,7 @@ impl Vm {
                 return Err(thrown);
             }
             self.run_simple_ops();
+            self.watch_long_script();
             if self.heap.should_collect() && self.native_depth == 0 {
                 self.collect_garbage();
             }

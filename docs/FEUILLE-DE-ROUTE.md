@@ -523,6 +523,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       quadratique : X, Vimeo et Mastodon ne rendaient pas la main), retour de fonction
       indépendant du nombre de variables capturées, chemin rapide pour les instructions
       simples. Mesures face à V8 : [bench/moteur-js.md](../bench/moteur-js.md).
+- [x] Pourquoi une page est lente : journal des étapes d'un chargement et des scripts longs
+      (variable `OXYDE_JOURNAL`). Il a montré que le temps partait surtout hors du moteur
+      JavaScript : calcul des styles (chaque règle essayée sur chaque élément ; les règles sont
+      maintenant indexées par identifiant, classe et nom), requêtes sans réponse attendues
+      jusqu'au délai en capture, une connexion neuve par ressource (les connexions HTTP/2 sont
+      maintenant partagées).
+- [ ] Styles : le calcul reste complet à chaque lecture qui suit une écriture (pas de
+      recalcul limité aux éléments touchés) ; un script qui alterne écritures et lectures de
+      `getComputedStyle` le paie à chaque tour.
+- [ ] Réseau : pas de réutilisation des connexions HTTP/1.1, pas de cache HTTP.
 - [ ] Moteur JavaScript, ce qui reste avant le JIT du jalon 8 : concaténation de chaînes
       (quadratique), coût des appels (allocation des arguments), formes d'objets et cache
       d'accès aux propriétés, compilateur moins naïf. Objectif : l'ordre de grandeur de
@@ -538,7 +548,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Saisie, ce qui reste : sélection dans un champ et presse-papiers (Ctrl C, X, V), clic qui
       place le curseur, curseur et édition au milieu d'un `<textarea>`, liste déroulante qui
       se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
-- [ ] Sélection de texte à la souris et copie ; menu contextuel de la page (jalon 7).
+- [x] Sélection de texte à la souris et copie : glisser sélectionne, un double clic prend
+      le mot, Ctrl A toute la page, Ctrl C copie dans le presse-papiers (un processus de
+      rendu n'y écrit que si l'utilisateur vient de copier). Le texte copié est celui
+      qu'on lit : blancs fusionnés hors `white-space: pre`, une ligne par bloc.
+      Limites : la sélection suit l'ordre du document, ignore `user-select`, les
+      transformations et le défilement des zones internes ; elle n'est pas visible des
+      scripts (`getSelection()` reste vide, pas de `selectionchange`) ; pas de triple
+      clic, de Maj clic ni de défilement automatique en glissant hors du volet.
+      Vérifié par tests ; pas encore essayé à la souris dans la fenêtre.
+- [ ] Menu contextuel de la page (jalon 7).
 - [ ] Web Platform Tests `dom/` : de 41 % à 70 % des fichiers ; `html/` branché et mesuré.
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [ ] Shadow DOM (`attachShadow`, `<slot>`) : une grande part des sites récents en dépend ;
@@ -622,6 +641,11 @@ Fin du jalon 5. Un navigateur lit du contenu hostile : sans ce bloc, pas de test
 - [ ] Intégration continue sur le dépôt : le contrôle n'est aujourd'hui lancé qu'à la main.
 
 ### L — Il est assez rapide (bêta)
+
+ORDRE : décidé le 14 novembre 2026, cette étape se fait **après l'étape P**. Les étapes
+H à K puis M à P passent d'abord : qu'il ne manque plus rien au navigateur, ensuite la vitesse.
+Un défaut qui empêche une page de se charger (coût quadratique, boucle sans fin) se corrige
+dans l'étape en cours ; le réglage de vitesse attend.
 
 Jalon 8. Mesure : `oxyde_bench`, puis les bancs publics de l'étape R dès que le moteur les
 fait tourner ; chiffres publiés, jamais en régression.

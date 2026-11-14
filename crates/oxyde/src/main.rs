@@ -231,6 +231,7 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
         }
         let mut page = loaded.page;
         loader::settle_fetches(&mut page);
+        let before = std::time::Instant::now();
         page.update(
             &mut text,
             Viewport {
@@ -238,6 +239,7 @@ fn screenshot(args: &Args, output: &Path) -> Result<()> {
                 height: h,
             },
         );
+        loader::journal("style et mise en page", before);
         if let Some(query) = &args.find {
             page.find(query);
         }

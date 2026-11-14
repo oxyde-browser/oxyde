@@ -1,6 +1,7 @@
 //! Chargement des ressources d'une page : `file:`, `about:`, `data:` et `http(s):`.
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use base64::Engine as _;
 use oxyde_content::{Page, Url, decode_image};
@@ -361,57 +362,116 @@ pub(crate) fn load_late_resources(page: &mut Page) -> bool {
     true
 }
 
+/// Journal des étapes d'un chargement, écrit sur la sortie d'erreur quand la
+/// variable d'environnement `OXYDE_JOURNAL` est définie : il dit où passe
+/// le temps d'une page lente (réseau, scripts, minuteurs, ressources).
+pub(crate) fn journal(step: &str, since: Instant) {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ENABLED.get_or_init(|| std::env::var_os("OXYDE_JOURNAL").is_some()) {
+        eprintln!("[journal] {step} : {:.0?}", since.elapsed());
+    }
+}
+
 /// Laisse `page` finir de se construire, pour un rendu hors écran (pas de
-/// boucle d'événements) : exécute, l'une après l'autre, ses requêtes
-/// (`fetch`, scripts insérés) et ses minuteurs, en avançant un temps virtuel
-/// de deux secondes au plus.
+/// boucle d'événements) : ses requêtes (`fetch`, scripts insérés) partent en
+/// arrière-plan, comme dans la fenêtre, et ses minuteurs tournent pendant
+/// qu'elles arrivent, en avançant un temps virtuel de deux secondes au plus.
+///
+/// Une requête à laquelle le serveur ne répond pas ne retient donc pas la
+/// page : passé le délai, elle est abandonnée et la page est rendue telle
+/// quelle.
 pub(crate) fn settle_fetches(page: &mut Page) {
     /// Borne le nombre de vagues : une page qui relance sans fin est abandonnée.
-    const MAX_ROUNDS: u32 = 40;
-    /// Temps virtuel écoulé entre deux vagues.
-    const STEP: std::time::Duration = std::time::Duration::from_millis(50);
+    const MAX_ROUNDS: u32 = 400;
+    /// Temps virtuel écoulé entre deux vagues, et attente réelle d'une
+    /// réponse quand il en reste à venir.
+    const STEP: Duration = Duration::from_millis(50);
+    /// Temps virtuel total accordé aux minuteurs.
+    const VIRTUAL: Duration = Duration::from_secs(2);
     /// Durée réelle au-delà de laquelle la page est rendue telle quelle.
-    const DEADLINE: std::time::Duration = std::time::Duration::from_secs(20);
+    const DEADLINE: Duration = Duration::from_secs(20);
+    /// Attente réelle, sans aucune réponse, après laquelle les requêtes
+    /// encore en cours sont tenues pour perdues.
+    const STALLED: Duration = Duration::from_secs(5);
     /// Vagues sans activité après lesquelles la page est tenue pour stable.
     const QUIET_ROUNDS: u32 = 4;
-    let start = std::time::Instant::now();
+    /// Durée d'une étape à partir de laquelle le journal la signale.
+    const SLOW: Duration = Duration::from_millis(300);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let start = Instant::now();
+    let mut last_answer = start;
+    let mut outstanding = 0usize;
+    let mut virtual_time = Duration::ZERO;
     let mut quiet = 0;
-    for round in 1..=MAX_ROUNDS {
+    for _ in 0..MAX_ROUNDS {
         let requests = page.take_fetches();
         let mut active = !requests.is_empty();
-        // Les requêtes d'une vague partent ensemble ; les réponses sont
-        // remises dans l'ordre d'émission.
-        for batch in requests.chunks(PARALLEL_FETCHES) {
-            let answers: Vec<_> = std::thread::scope(|scope| {
-                let workers: Vec<_> = batch
-                    .iter()
-                    .map(|request| scope.spawn(move || fetch_for_script(request)))
-                    .collect();
-                workers
-                    .into_iter()
-                    .map(|worker| {
-                        worker
-                            .join()
-                            .unwrap_or_else(|_| Err("le chargement a été interrompu".to_owned()))
-                    })
-                    .collect()
-            });
-            for (request, answer) in batch.iter().zip(answers) {
-                page.complete_fetch(request.id, answer);
+        for request in requests {
+            let sender = sender.clone();
+            let id = request.id;
+            let spawned = std::thread::Builder::new()
+                .name("oxyde-fetch".to_owned())
+                .spawn(move || {
+                    // Le destinataire peut avoir rendu la page entre-temps.
+                    let _ = sender.send((id, fetch_for_script(&request)));
+                });
+            match spawned {
+                Ok(_) => outstanding += 1,
+                Err(error) => {
+                    page.complete_fetch(id, Err(error.to_string()));
+                }
             }
         }
-        active |= page.tick(start + STEP * round);
+        // Les réponses arrivées ; s'il en reste à venir, une courte attente.
+        let mut first = true;
+        loop {
+            let answer = if first && outstanding > 0 {
+                receiver.recv_timeout(STEP).ok()
+            } else {
+                receiver.try_recv().ok()
+            };
+            first = false;
+            let Some((id, answer)) = answer else {
+                break;
+            };
+            outstanding = outstanding.saturating_sub(1);
+            last_answer = Instant::now();
+            active = true;
+            page.complete_fetch(id, answer);
+            if last_answer.elapsed() > SLOW {
+                journal("réponse livrée aux scripts (lente)", last_answer);
+            }
+        }
+        // Les minuteurs suivent le temps virtuel tant qu'il devance l'horloge ;
+        // au-delà de son terme, ils tournent encore mais ne retiennent plus
+        // la page (un minuteur périodique ne s'arrête jamais).
+        let counted = virtual_time < VIRTUAL;
+        if counted {
+            virtual_time += STEP;
+        }
+        let before = Instant::now();
+        let ticked = page.tick(start + virtual_time.max(start.elapsed()));
+        if before.elapsed() > SLOW {
+            journal("minuteurs (lents)", before);
+        }
+        active |= ticked && counted;
+        let before = Instant::now();
         active |= load_late_resources(page);
+        if before.elapsed() > SLOW {
+            journal("ressources ajoutées par les scripts (lentes)", before);
+        }
         quiet = if active { 0 } else { quiet + 1 };
-        if quiet >= QUIET_ROUNDS || start.elapsed() > DEADLINE {
+        let waiting = outstanding > 0 && last_answer.elapsed() < STALLED;
+        if (quiet >= QUIET_ROUNDS && !waiting) || start.elapsed() > DEADLINE {
             break;
         }
     }
+    journal("stabilisation de la page", start);
     report_console(page);
 }
 
 /// Nombre de ressources d'une page demandées en même temps.
-const PARALLEL_FETCHES: usize = 8;
+const PARALLEL_FETCHES: usize = 16;
 
 /// Récupère les ressources `urls` du document `initiator`, plusieurs à la
 /// fois ; les résultats sont rendus dans l'ordre de `urls`.
@@ -563,6 +623,7 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             page: Page::from_html(url, ""),
         };
     }
+    let started = Instant::now();
     let first = match &post {
         Some(form) if matches!(url.scheme(), "http" | "https") => post_http(&url, form),
         _ => fetch(&url),
@@ -576,6 +637,7 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
             };
         }
     };
+    journal("document reçu", started);
     let mut page = Page::from_html(url, &html);
     let document = page.url().clone();
     if let Some(cookies) = read_cookies(&document) {
@@ -626,7 +688,10 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     if let Some(viewport) = viewport_hint() {
         page.set_viewport(viewport);
     }
+    journal("ressources du document reçues", started);
+    let before = Instant::now();
     page.run_scripts();
+    journal("scripts du document exécutés", before);
     report_console(&mut page);
     Loaded { page, error: None }
 }

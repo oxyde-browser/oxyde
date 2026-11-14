@@ -22,9 +22,11 @@ mod find;
 mod flex;
 mod floats;
 mod grid;
+mod selection;
 mod table;
 
 pub use find::{MAX_MATCHES, find_text};
+pub use selection::{TextSelection, select_all, select_between, select_word};
 
 use std::sync::Arc;
 
@@ -95,6 +97,9 @@ pub struct TextFragment {
     /// Texte mis en forme, dans les indices d'octets de `layout` ; vide pour
     /// un texte qui n'appartient pas au document (puce de liste).
     pub text: String,
+    /// Vrai si le bloc garde les blancs de `text` tels quels (`white-space:
+    /// pre`) ; sinon ils sont fusionnés à l'affichage.
+    pub preserves_space: bool,
     /// Boîtes en ligne-bloc placées dans ce texte.
     pub boxes: Vec<Fragment>,
 }
@@ -1639,6 +1644,7 @@ impl Engine<'_> {
             y,
             layout,
             text: String::new(),
+            preserves_space: false,
             boxes: Vec::new(),
         })))
     }
@@ -1843,6 +1849,7 @@ impl Engine<'_> {
             y,
             layout,
             text: source,
+            preserves_space: !style.white_space.collapses(),
             boxes,
         }
     }

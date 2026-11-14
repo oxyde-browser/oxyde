@@ -386,6 +386,23 @@ fn usable_sheets(slots: &[SheetSlot]) -> Vec<Stylesheet> {
 
 /// Calcule le style puis la mise en page de `doc` dans son état du moment,
 /// pour une fenêtre de taille `viewport`.
+/// Styles calculés du document `doc`, sans mise en page : ce que demande
+/// une lecture de style qui ne dépend d'aucune boîte (`display`,
+/// `visibility`, une couleur…). Rend aussi l'instant du calcul s'il en
+/// dépend (animation ou transition en cours).
+pub(crate) fn style_snapshot(
+    doc: &Document,
+    env: &LayoutEnv,
+    viewport: (f32, f32),
+) -> (StyleMap, Option<f64>) {
+    let slots = collect_sheets(doc, &env.base, env.sheets.clone());
+    let viewport = Viewport {
+        width: viewport.0,
+        height: viewport.1,
+    };
+    env.animations.styles(doc, &usable_sheets(&slots), viewport)
+}
+
 pub(crate) fn layout_snapshot(
     doc: &Document,
     env: &LayoutEnv,
@@ -536,6 +553,36 @@ const FIND_CURRENT: Color = Color {
     a: 0x99,
 };
 
+/// Surlignage du texte sélectionné.
+const SELECTION: Color = Color {
+    r: 0x33,
+    g: 0x90,
+    b: 0xFF,
+    a: 0x59,
+};
+
+/// Ce que désigne la sélection de texte : elle est recalculée à chaque
+/// mise en page, les points restant ceux de la page.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum SelectionKind {
+    /// Du point d'ancrage au point courant.
+    Range {
+        anchor: (f32, f32),
+        focus: (f32, f32),
+    },
+    /// Le mot sous ce point.
+    Word { x: f32, y: f32 },
+    /// Toute la page.
+    All,
+}
+
+/// Sélection de texte en cours.
+#[derive(Debug)]
+struct Selected {
+    kind: SelectionKind,
+    current: oxyde_layout::TextSelection,
+}
+
 /// Avancement d'une recherche dans la page.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FindStatus {
@@ -595,6 +642,11 @@ pub struct Page {
     dirty: bool,
     /// Recherche de texte en cours.
     find: Option<Find>,
+    /// Sélection de texte en cours.
+    selection: Option<Selected>,
+    /// Texte que l'utilisateur vient de copier (Ctrl C), en attente du
+    /// presse-papiers de l'embarqueur.
+    copied: Option<String>,
     /// Nombre d'éléments de `list` qui viennent de la page ; les suivants
     /// sont le surlignage de la recherche.
     painted: usize,
@@ -1019,6 +1071,8 @@ impl Page {
             scrolling: std::sync::Arc::default(),
             dirty: true,
             find: None,
+            selection: None,
+            copied: None,
             painted: 0,
         }
     }
@@ -1515,15 +1569,57 @@ impl Page {
         if self.doc.focus().is_some() || input.key == "Tab" {
             self.ensure_engine();
         }
-        let Some(engine) = self.engine.as_mut() else {
-            return (false, false);
+        let (prevented, mut redraw) = match self.engine.as_mut() {
+            Some(engine) => {
+                let prevented = engine.key_event(&mut self.doc, down, input);
+                let redraw = engine.take_dirty();
+                if redraw {
+                    self.dom_changed();
+                }
+                (prevented, redraw)
+            }
+            None => (false, false),
         };
-        let prevented = engine.key_event(&mut self.doc, down, input);
-        let redraw = engine.take_dirty();
-        if redraw {
-            self.dom_changed();
+        // Raccourcis de la sélection, si les scripts n'ont rien annulé.
+        if down && !prevented && self.selection_shortcut(input) {
+            redraw = true;
         }
         (prevented, redraw)
+    }
+
+    /// Ctrl A : sélectionne tout le texte de la page ; Ctrl C : remet le
+    /// texte sélectionné à l'embarqueur (voir [`Page::take_copied`]).
+    /// Renvoie `true` si l'affichage a changé.
+    ///
+    /// LIMITE : dans un champ de saisie ces touches sont laissées au champ,
+    /// qui ne sait pas encore sélectionner ni copier son texte.
+    fn selection_shortcut(&mut self, input: &KeyInput<'_>) -> bool {
+        if !input.ctrl || input.alt || input.meta || input.shift {
+            return false;
+        }
+        let in_field = self.doc.focus().is_some_and(|node| {
+            script::is_text_input(&self.doc, node)
+                || self
+                    .doc
+                    .element(node)
+                    .is_some_and(|e| e.is_html("textarea"))
+        });
+        if in_field {
+            return false;
+        }
+        if input.key.eq_ignore_ascii_case("a") {
+            return self.select_all();
+        }
+        if input.key.eq_ignore_ascii_case("c") && !self.selected_text().is_empty() {
+            self.copied = Some(self.selected_text().to_owned());
+        }
+        false
+    }
+
+    /// Texte que l'utilisateur a copié (Ctrl C) depuis le dernier appel :
+    /// l'embarqueur le place dans le presse-papiers.
+    pub fn take_copied(&mut self) -> Option<String> {
+        self.copied.take()
     }
 
     /// Navigations demandées par les scripts depuis le dernier appel. Un
@@ -1778,6 +1874,8 @@ impl Page {
             find.matches = oxyde_layout::find_text(tree, &find.query);
             find.current = find.current.min(find.matches.len().saturating_sub(1));
         }
+        // La sélection aussi : ses points sont ceux de la page.
+        self.refresh_selection();
         self.paint_find();
         true
     }
@@ -1873,9 +1971,98 @@ impl Page {
         self.set_scroll(oxyde_compositor::ROOT_SCROLLER, target_x, target_y);
     }
 
+    /// Recalcule la sélection dans la mise en page courante.
+    fn refresh_selection(&mut self) {
+        let (Some(selection), Some(tree)) = (&mut self.selection, &self.tree) else {
+            return;
+        };
+        selection.current = match selection.kind {
+            SelectionKind::Range { anchor, focus } => {
+                oxyde_layout::select_between(tree, anchor, focus)
+            }
+            SelectionKind::Word { x, y } => oxyde_layout::select_word(tree, x, y),
+            SelectionKind::All => oxyde_layout::select_all(tree),
+        };
+    }
+
+    /// Remplace la sélection par `kind` ; renvoie `true` si le texte
+    /// sélectionné, donc l'affichage, a changé.
+    fn select(&mut self, kind: Option<SelectionKind>) -> bool {
+        let before = self
+            .selection
+            .take()
+            .map(|selection| selection.current.rects)
+            .unwrap_or_default();
+        self.selection = kind.map(|kind| Selected {
+            kind,
+            current: oxyde_layout::TextSelection::default(),
+        });
+        self.refresh_selection();
+        self.paint_find();
+        let after = self
+            .selection
+            .as_ref()
+            .map_or(&[][..], |selection| selection.current.rects.as_slice());
+        before != after
+    }
+
+    /// Commence une sélection de texte au point (`x`, `y`) de la page
+    /// (bouton de la souris enfoncé) : l'ancienne est effacée. Renvoie
+    /// `true` si l'affichage a changé.
+    ///
+    /// LIMITE : la sélection n'est pas visible des scripts
+    /// (`getSelection()` reste vide) et n'émet pas `selectionchange`.
+    pub fn select_start(&mut self, x: f32, y: f32) -> bool {
+        self.select(Some(SelectionKind::Range {
+            anchor: (x, y),
+            focus: (x, y),
+        }))
+    }
+
+    /// Étend la sélection commencée par [`Page::select_start`] jusqu'au
+    /// point (`x`, `y`) (souris déplacée, bouton enfoncé). Renvoie `true`
+    /// si l'affichage a changé.
+    pub fn select_to(&mut self, x: f32, y: f32) -> bool {
+        match self.selection.as_ref().map(|selection| selection.kind) {
+            Some(SelectionKind::Range { anchor, .. }) => self.select(Some(SelectionKind::Range {
+                anchor,
+                focus: (x, y),
+            })),
+            _ => false,
+        }
+    }
+
+    /// Sélectionne le mot sous le point (`x`, `y`) (double clic).
+    pub fn select_word(&mut self, x: f32, y: f32) -> bool {
+        self.select(Some(SelectionKind::Word { x, y }))
+    }
+
+    /// Sélectionne tout le texte de la page (Ctrl A).
+    pub fn select_all(&mut self) -> bool {
+        self.select(Some(SelectionKind::All))
+    }
+
+    /// Efface la sélection de texte.
+    pub fn clear_selection(&mut self) -> bool {
+        self.select(None)
+    }
+
+    /// Texte sélectionné, une ligne par bloc de texte ; vide sans sélection.
+    #[must_use]
+    pub fn selected_text(&self) -> &str {
+        self.selection
+            .as_ref()
+            .map_or("", |selection| selection.current.text.as_str())
+    }
+
     /// Remplace le surlignage de la recherche à la fin de la liste d'affichage.
     fn paint_find(&mut self) {
         self.list.items.truncate(self.painted);
+        if let Some(selection) = &self.selection {
+            for rect in &selection.current.rects {
+                self.list.rect(*rect, SELECTION, 0.0);
+            }
+        }
         let Some(find) = &self.find else {
             return;
         };
@@ -3802,5 +3989,102 @@ mod tests {
              point dedans boite dedans>boite>body>html null;",
             "{console:?}"
         );
+    }
+
+    #[test]
+    fn text_is_selected_with_the_mouse() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0;font-size:16px'>
+               <p style='margin:0'>Premier paragraphe</p><p style='margin:0'>Second paragraphe</p>
+             </body>",
+        );
+        p.update(&mut text, VIEWPORT);
+        let highlights = |p: &Page| {
+            p.display_list()
+                .items
+                .iter()
+                .filter(
+                    |item| matches!(item, DisplayItem::Rect { color, .. } if *color == SELECTION),
+                )
+                .count()
+        };
+        assert_eq!(p.selected_text(), "");
+        // Bouton enfoncé : rien n'est encore sélectionné.
+        assert!(!p.select_start(0.0, 8.0));
+        assert_eq!(highlights(&p), 0);
+        // Glisser jusqu'à la seconde ligne sélectionne les deux.
+        assert!(p.select_to(400.0, 28.0));
+        assert_eq!(p.selected_text(), "Premier paragraphe\nSecond paragraphe");
+        assert_eq!(highlights(&p), 2);
+        // La sélection survit à une nouvelle mise en page.
+        p.set_viewport(Viewport {
+            width: 500.0,
+            height: 300.0,
+        });
+        p.update(
+            &mut text,
+            Viewport {
+                width: 500.0,
+                height: 300.0,
+            },
+        );
+        assert_eq!(p.selected_text(), "Premier paragraphe\nSecond paragraphe");
+        assert_eq!(highlights(&p), 2);
+        // Double clic : un mot ; Ctrl A : tout ; un clic simple efface.
+        assert!(p.select_word(4.0, 8.0));
+        assert_eq!(p.selected_text(), "Premier");
+        assert!(p.select_all());
+        assert_eq!(p.selected_text(), "Premier paragraphe\nSecond paragraphe");
+        assert!(p.clear_selection());
+        assert_eq!((p.selected_text(), highlights(&p)), ("", 0));
+        assert!(!p.select_to(100.0, 8.0), "sans ancrage, rien ne s'étend");
+    }
+
+    #[test]
+    fn the_selection_is_copied_with_the_keyboard() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0;font-size:16px'>
+               <p style='margin:0'>Bonjour le monde</p><input id=champ>
+               <script>
+                 addEventListener('keydown', e => { if (e.key === 'b') e.preventDefault(); });
+               </script>
+             </body>",
+        );
+        p.update(&mut text, VIEWPORT);
+        let key = |key: &'static str, ctrl: bool| KeyInput {
+            key,
+            code: "",
+            ctrl,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        // Sans sélection, Ctrl C ne copie rien.
+        p.key_event(true, &key("c", true));
+        assert_eq!(p.take_copied(), None);
+        // Ctrl A sélectionne tout ; la touche relâchée ne compte pas.
+        assert_eq!(p.key_event(true, &key("a", true)), (false, true));
+        assert_eq!(p.selected_text(), "Bonjour le monde");
+        p.key_event(false, &key("c", true));
+        assert_eq!(p.take_copied(), None);
+        p.key_event(true, &key("C", true));
+        assert_eq!(p.take_copied().as_deref(), Some("Bonjour le monde"));
+        assert_eq!(p.take_copied(), None, "le texte n'est remis qu'une fois");
+        // Sans Ctrl, « a » n'est qu'une lettre.
+        p.clear_selection();
+        p.key_event(true, &key("a", false));
+        assert_eq!(p.selected_text(), "");
+        // Dans un champ de saisie, Ctrl A est laissé au champ.
+        let field = p
+            .document()
+            .descendants(p.document().root())
+            .find(|n| p.document().element(*n).is_some_and(|e| e.is_html("input")))
+            .expect("champ");
+        p.click_node(field);
+        p.key_event(true, &key("a", true));
+        assert_eq!(p.selected_text(), "");
     }
 }

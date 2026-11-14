@@ -11,7 +11,8 @@
 //!
 //! LIMITES CONNUES : pas de HTTP/3, pas de cache, cookies en mémoire
 //! seulement (voir [`cookies`]), pas de
-//! réutilisation des connexions, décompression `gzip` et `deflate` seulement
+//! réutilisation des connexions HTTP/1.1 (les connexions HTTP/2 sont
+//! partagées par hôte), décompression `gzip` et `deflate` seulement
 //! (ni Brotli ni Zstandard, qui ne sont donc pas annoncés), résolution DNS
 //! par le système, pas de proxy ; le corps d'une requête est envoyé d'un bloc.
 
@@ -205,7 +206,17 @@ pub struct Client {
     tls: TlsConnector,
     /// Cookies reçus, joints aux requêtes suivantes.
     jar: std::sync::Mutex<CookieJar>,
+    /// Connexions HTTP/2 ouvertes, par hôte et port : une connexion porte
+    /// plusieurs requêtes à la fois, ce qui épargne à chaque ressource
+    /// d'une page une poignée de main TCP et TLS.
+    connections: std::sync::Mutex<std::collections::HashMap<(String, u16), Http2Sender>>,
 }
+
+/// Extrémité d'émission d'une connexion HTTP/2.
+type Http2Sender = hyper::client::conn::http2::SendRequest<Full<Bytes>>;
+
+/// Nombre maximal de connexions HTTP/2 gardées ouvertes.
+const MAX_CONNECTIONS: usize = 64;
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -239,6 +250,7 @@ impl Client {
             runtime,
             tls: TlsConnector::from(Arc::new(config)),
             jar: std::sync::Mutex::new(CookieJar::new()),
+            connections: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -334,6 +346,37 @@ impl Client {
         })
     }
 
+    /// Connexion HTTP/2 encore ouverte vers `key`, s'il y en a une.
+    fn pooled(&self, key: &(String, u16)) -> Option<Http2Sender> {
+        let mut connections = self.connections.lock().ok()?;
+        match connections.get(key) {
+            Some(sender) if !sender.is_closed() => Some(sender.clone()),
+            Some(_) => {
+                connections.remove(key);
+                None
+            }
+            None => None,
+        }
+    }
+
+    /// Garde la connexion HTTP/2 `sender` pour les requêtes suivantes vers `key`.
+    fn keep(&self, key: (String, u16), sender: Http2Sender) {
+        if let Ok(mut connections) = self.connections.lock() {
+            connections.retain(|_, kept| !kept.is_closed());
+            if connections.len() >= MAX_CONNECTIONS {
+                connections.clear();
+            }
+            connections.insert(key, sender);
+        }
+    }
+
+    /// Oublie la connexion vers `key` : elle ne sert plus.
+    fn forget(&self, key: &(String, u16)) {
+        if let Ok(mut connections) = self.connections.lock() {
+            connections.remove(key);
+        }
+    }
+
     async fn send_once(&self, request: &HttpRequest) -> Result<Step, NetError> {
         let url = &request.url;
         let method = Method::from_bytes(request.method.as_bytes())
@@ -355,15 +398,6 @@ impl Client {
             .trim_start_matches('[')
             .trim_end_matches(']')
             .to_owned();
-        let tcp = TcpStream::connect((connect_host.as_str(), port))
-            .await
-            .map_err(|source| NetError::Connect {
-                host: host.clone(),
-                source,
-            })?;
-        // Désactiver Nagle n'est qu'une optimisation ; un échec est sans conséquence.
-        let _ = tcp.set_nodelay(true);
-
         let authority = match url.port() {
             Some(p) => format!("{host}:{p}"),
             None => host.clone(),
@@ -434,37 +468,67 @@ impl Client {
                 .map_err(|e| NetError::InvalidRequest(e.to_string()))
         };
 
-        let response = if secure {
-            let name = ServerName::try_from(connect_host.clone())
-                .map_err(|e| NetError::InvalidRequest(e.to_string()))?;
-            let tls = self
-                .tls
-                .connect(name, tcp)
-                .await
-                .map_err(|source| NetError::Tls {
-                    host: host.clone(),
-                    source,
-                })?;
-            let http2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
-            let io = TokioIo::new(tls);
-            if http2 {
-                let (mut sender, connection) =
-                    hyper::client::conn::http2::handshake(TokioExecutor::new(), io).await?;
-                tokio::spawn(connection);
-                // HTTP/2 exige une cible absolue (schéma et autorité).
-                sender
-                    .send_request(build(&format!("https://{authority}{path}"), false)?)
-                    .await?
-            } else {
-                let (mut sender, connection) = hyper::client::conn::http1::handshake(io).await?;
-                tokio::spawn(connection);
-                sender.send_request(build(&path, true)?).await?
+        // Une connexion HTTP/2 déjà ouverte vers cet hôte porte la requête.
+        let key = (host.clone(), port);
+        let h2_target = format!("https://{authority}{path}");
+        let mut response = None;
+        if secure && let Some(mut sender) = self.pooled(&key) {
+            match sender.send_request(build(&h2_target, false)?).await {
+                Ok(answer) => response = Some(answer),
+                Err(error) => {
+                    self.forget(&key);
+                    // La connexion s'est fermée entre-temps : une requête
+                    // sans effet de bord repart sur une connexion neuve.
+                    if !matches!(request.method.as_str(), "GET" | "HEAD") {
+                        return Err(error.into());
+                    }
+                }
             }
-        } else {
-            let (mut sender, connection) =
-                hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await?;
-            tokio::spawn(connection);
-            sender.send_request(build(&path, true)?).await?
+        }
+        let response = match response {
+            Some(response) => response,
+            None => {
+                let tcp = TcpStream::connect((connect_host.as_str(), port))
+                    .await
+                    .map_err(|source| NetError::Connect {
+                        host: host.clone(),
+                        source,
+                    })?;
+                // Désactiver Nagle n'est qu'une optimisation ; un échec est sans conséquence.
+                let _ = tcp.set_nodelay(true);
+                if secure {
+                    let name = ServerName::try_from(connect_host.clone())
+                        .map_err(|e| NetError::InvalidRequest(e.to_string()))?;
+                    let tls =
+                        self.tls
+                            .connect(name, tcp)
+                            .await
+                            .map_err(|source| NetError::Tls {
+                                host: host.clone(),
+                                source,
+                            })?;
+                    let http2 = tls.get_ref().1.alpn_protocol() == Some(b"h2");
+                    let io = TokioIo::new(tls);
+                    if http2 {
+                        let (mut sender, connection) =
+                            hyper::client::conn::http2::handshake(TokioExecutor::new(), io).await?;
+                        tokio::spawn(connection);
+                        self.keep(key, sender.clone());
+                        // HTTP/2 exige une cible absolue (schéma et autorité).
+                        sender.send_request(build(&h2_target, false)?).await?
+                    } else {
+                        let (mut sender, connection) =
+                            hyper::client::conn::http1::handshake(io).await?;
+                        tokio::spawn(connection);
+                        sender.send_request(build(&path, true)?).await?
+                    }
+                } else {
+                    let (mut sender, connection) =
+                        hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await?;
+                    tokio::spawn(connection);
+                    sender.send_request(build(&path, true)?).await?
+                }
+            }
         };
 
         let status = response.status();
