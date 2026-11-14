@@ -2,8 +2,8 @@
 //! modifications ; une micro-tâche, mise en file dès la première, les remet
 //! aux observateurs. La fin de chaque tâche rattrape ce qui reste.
 //!
-//! LIMITES CONNUES : un nœud retiré cesse aussitôt d'être suivi par les
-//! observations de sous-arbre.
+//! Un nœud retiré d'un sous-arbre observé reste suivi jusqu'à la remise
+//! suivante (« observateurs transitoires »).
 
 use oxyde_dom::{Mutation, NodeId};
 use oxyde_js::{JsResult, ObjId, Value, Vm};
@@ -13,6 +13,10 @@ use super::{arg, host, node_arg, report, wrap, wrap_all, wrap_opt};
 /// Nombre maximal de tours de remise par tâche : un observateur qui modifie
 /// le document à chaque appel ne bloque pas la page.
 const MAX_ROUNDS: usize = 64;
+
+/// Nombre maximal de nœuds retirés qu'un observateur suit entre deux
+/// remises.
+const MAX_TRANSIENTS: usize = 10_000;
 
 /// Ce qu'une observation retient.
 #[derive(Clone, Debug, Default)]
@@ -34,6 +38,9 @@ pub(super) struct Observer {
     callback: Value,
     /// Cibles observées : index du nœud et options.
     targets: Vec<(u32, Options)>,
+    /// Nœuds retirés d'un sous-arbre observé : suivis, avec les mêmes
+    /// options, jusqu'à la prochaine remise.
+    transients: Vec<(u32, Options)>,
     /// Enregistrements en attente de remise.
     queue: Vec<Value>,
 }
@@ -53,6 +60,8 @@ fn flag(vm: &mut Vm, options: &Value, name: &str) -> JsResult<Option<bool>> {
 /// `observe(observateur, rappel, cible, options)`.
 pub(super) fn observe(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let (observer, callback) = (arg(args, 0), arg(args, 1));
+    // Ce qui précède l'observation ne la concerne pas.
+    collect(vm);
     let target = node_arg(vm, &arg(args, 2))?;
     let options = arg(args, 3);
     let mut parsed = Options::default();
@@ -125,6 +134,7 @@ pub(super) fn observe(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                 object,
                 callback,
                 targets: Vec::new(),
+                transients: Vec::new(),
                 queue: Vec::new(),
             });
             h.observers.len() - 1
@@ -144,6 +154,10 @@ pub(super) fn observe(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 /// `disconnect(observateur)` : plus aucune cible, file vidée.
 pub(super) fn disconnect(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let observer = arg(args, 0);
+    // Les modifications déjà faites reviennent à qui observait alors : cet
+    // observateur perd les siennes, et une observation reprise ensuite ne
+    // les voit pas.
+    collect(vm);
     if let Some(index) = observer_index(vm, &observer) {
         let removed = host(vm).map(|h| {
             let entry = h.observers.remove(index);
@@ -187,6 +201,8 @@ struct Change<'a> {
     previous: Option<NodeId>,
     next: Option<NodeId>,
     attribute: Option<&'a str>,
+    /// Adresse de l'espace de noms de l'attribut modifié.
+    namespace: Option<String>,
     old: Option<&'a str>,
 }
 
@@ -216,7 +232,13 @@ fn record(vm: &mut Vm, target: NodeId, change: &Change<'_>) -> JsResult {
         ("previousSibling", previous),
         ("nextSibling", next),
         ("attributeName", text(change.attribute)),
-        ("attributeNamespace", Value::Null),
+        (
+            "attributeNamespace",
+            change
+                .namespace
+                .as_deref()
+                .map_or(Value::Null, Value::string),
+        ),
         ("oldValue", text(change.old)),
     ] {
         vm.set(&object, name, value)?;
@@ -244,10 +266,44 @@ fn collect(vm: &mut Vm) {
             .collect();
         // Observateurs intéressés, et s'ils veulent l'ancienne valeur.
         let Some(h) = host(vm) else { return };
+        // Une modification sous un nœud observé, même sans enregistrement,
+        // met en file la micro-tâche de remise.
+        if h.observers.iter().any(|observer| {
+            observer
+                .targets
+                .iter()
+                .chain(&observer.transients)
+                .any(|(node, _)| path.contains(node))
+        }) {
+            h.observers_touched = true;
+        }
+        // Nœuds retirés d'un sous-arbre observé : ils restent suivis.
+        if let Mutation::Children { removed, .. } = &mutation
+            && !removed.is_empty()
+        {
+            for observer in &mut h.observers {
+                let kept: Vec<Options> = observer
+                    .targets
+                    .iter()
+                    .chain(&observer.transients)
+                    .filter(|(node, options)| options.subtree && path.contains(node))
+                    .map(|(_, options)| options.clone())
+                    .collect();
+                for options in kept {
+                    for node in removed {
+                        if observer.transients.len() >= MAX_TRANSIENTS {
+                            break;
+                        }
+                        let node = u32::try_from(node.index()).unwrap_or(u32::MAX);
+                        observer.transients.push((node, options.clone()));
+                    }
+                }
+            }
+        }
         let mut interested: Vec<(usize, bool)> = Vec::new();
         for (index, observer) in h.observers.iter().enumerate() {
             let mut wants = None;
-            for (node, options) in &observer.targets {
+            for (node, options) in observer.targets.iter().chain(&observer.transients) {
                 let in_scope = *node == target_index || (options.subtree && path.contains(node));
                 if !in_scope {
                     continue;
@@ -275,9 +331,10 @@ fn collect(vm: &mut Vm) {
         }
         for (index, with_old) in interested {
             let change = match &mutation {
-                Mutation::Attribute { name, old, .. } => Change {
+                Mutation::Attribute { name, old, ns, .. } => Change {
                     kind: "attributes",
                     attribute: Some(name),
+                    namespace: host(vm).and_then(|h| h.doc.namespace_uri(*ns).map(str::to_owned)),
                     old: old.as_deref().filter(|_| with_old),
                     ..Change::default()
                 },
@@ -324,9 +381,14 @@ pub(super) fn pending(vm: &mut Vm) -> Option<Value> {
         collect(vm);
     }
     let h = host(vm)?;
-    if h.observers_queued || h.observers.iter().all(|observer| observer.queue.is_empty()) {
+    let waiting = h.observers_touched
+        || h.observers
+            .iter()
+            .any(|observer| !observer.queue.is_empty());
+    if h.observers_queued || !waiting {
         return None;
     }
+    h.observers_touched = false;
     h.observers_queued = true;
     h.observers_notify.clone()
 }
@@ -345,6 +407,11 @@ pub(super) fn notify(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
 fn round(vm: &mut Vm) -> bool {
     collect(vm);
     let Some(h) = host(vm) else { return false };
+    // La remise met fin au suivi des nœuds retirés.
+    for observer in &mut h.observers {
+        observer.transients.clear();
+    }
+    h.observers_touched = false;
     let pending: Vec<(ObjId, Value, Vec<Value>)> = h
         .observers
         .iter_mut()

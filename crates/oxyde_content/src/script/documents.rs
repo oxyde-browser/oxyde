@@ -47,6 +47,21 @@ pub(super) fn is_html_document(vm: &mut Vm, document: NodeId) -> bool {
     host(vm).is_none_or(|h| h.kinds.get(&index(document)).is_none_or(|kind| kind.html))
 }
 
+/// Espace de noms des éléments que `createElement` crée dans `document` :
+/// XHTML pour un document HTML ou XHTML, aucun pour un autre document XML.
+pub(super) fn element_namespace(vm: &mut Vm, document: NodeId) -> Namespace {
+    let xhtml = host(vm).is_none_or(|h| {
+        h.kinds
+            .get(&index(document))
+            .is_none_or(|kind| kind.html || kind.content_type == "application/xhtml+xml")
+    });
+    if xhtml {
+        Namespace::Html
+    } else {
+        Namespace::None
+    }
+}
+
 fn new_document(vm: &mut Vm, kind: DocumentKind) -> Option<NodeId> {
     let h = host(vm)?;
     let document = h.doc.create_document();

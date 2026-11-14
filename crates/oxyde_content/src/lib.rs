@@ -3629,7 +3629,8 @@ mod tests {
         assert_eq!(
             out,
             concat!(
-                "avant 4|TypeError|lot 2 true|",
+                "avant 4|TypeError|lot 3 true|",
+                "attributes a class y 0 0|",
                 "attributes root class  0 0|attributes root class z 0 0"
             )
         );
@@ -5781,6 +5782,112 @@ mod tests {
         assert_eq!(
             doc.element(body).and_then(|e| e.attr("data-out")),
             Some("d+s d s d+s  d")
+        );
+    }
+
+    #[test]
+    fn xml_documents_create_plain_elements_and_records_carry_namespaces() {
+        let mut p = page(
+            "<body><div id=a></div><script>
+               const out = [];
+               const xml = new Document();
+               const plain = xml.createElement('DIV');
+               out.push(plain.localName, plain.namespaceURI, plain.constructor === Element);
+               const xhtml = document.implementation.createDocument('http://www.w3.org/1999/xhtml', 'html', null);
+               out.push(xhtml.createElement('p').namespaceURI === 'http://www.w3.org/1999/xhtml',
+                 document.createElement('p') instanceof HTMLElement);
+               const a = document.getElementById('a');
+               new MutationObserver((records) => {
+                 out.push(records.map((r) => r.attributeName + '@' + r.attributeNamespace).join(','));
+                 document.body.setAttribute('data-out', out.join(' '));
+               }).observe(a, { attributes: true });
+               a.setAttributeNS('http://example.org/', 'e:x', '1');
+               a.setAttribute('y', '2');
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("DIV  true true true x@http://example.org/,y@null")
+        );
+    }
+
+    #[test]
+    fn normalize_carries_ranges_and_observers_start_clean() {
+        let mut p = page(
+            "<body><div id=a></div><p id=b></p><script>
+               const out = [];
+               const a = document.getElementById('a');
+               const t1 = a.appendChild(document.createTextNode('Hello'));
+               const t2 = a.appendChild(document.createTextNode(', '));
+               const t3 = a.appendChild(document.createTextNode('world'));
+               a.appendChild(document.createTextNode(''));
+               const range = document.createRange();
+               range.setStart(t2, 1);
+               range.setEnd(t3, 3);
+               const edge = document.createRange();
+               edge.setStart(a, 2);
+               edge.setEnd(a, 3);
+               a.normalize();
+               out.push(a.childNodes.length, range.startContainer === t1, range.startOffset, range.endOffset,
+                 range.toString(), edge.startContainer === t1, edge.startOffset, edge.endOffset);
+               const b = document.getElementById('b');
+               const seen = [];
+               const observer = new MutationObserver((records) => seen.push(...records.map((r) => r.oldValue)));
+               b.id = 'avant';
+               observer.observe(b, { attributes: true });
+               b.id = 'un';
+               observer.disconnect();
+               observer.observe(b, { attributes: true, attributeOldValue: true });
+               b.id = 'deux';
+               out.push(document.implementation.createHTMLDocument('x').defaultView, document.defaultView === window);
+               Promise.resolve().then(() => {
+                 out.push(seen.join(','));
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("1 true 6 10  wor true 7 12  true un")
+        );
+    }
+
+    #[test]
+    fn removed_subtrees_stay_observed_until_delivery() {
+        let mut p = page(
+            "<body><div id=parent><div id=child></div></div><script>
+               const out = [];
+               const parent = document.getElementById('parent');
+               const child = document.getElementById('child');
+               const observer = new MutationObserver((records) => {
+                 out.push('obs:' + records.map((r) => r.type + '@' + r.target.id).join(','));
+               });
+               observer.observe(parent, { attributes: true, childList: true, subtree: true });
+               child.remove();
+               Promise.resolve().then(() => out.push('promesse'));
+               child.setAttribute('data-x', '1');
+               setTimeout(() => {
+                 child.setAttribute('data-y', '2');
+                 setTimeout(() => document.body.setAttribute('data-out', out.join(' ')), 0);
+               }, 0);
+             </script>",
+        );
+        p.run_scripts();
+        for _ in 0..6 {
+            let Some(due) = p.next_wake() else { break };
+            p.tick(due);
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("obs:childList@parent,attributes@child promesse")
         );
     }
 }

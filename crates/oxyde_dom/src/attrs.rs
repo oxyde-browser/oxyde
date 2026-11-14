@@ -187,9 +187,11 @@ impl Document {
         };
         let old = std::mem::replace(&mut attr.value, value.to_owned());
         let name = attr.local().to_owned();
+        let ns = attr.ns;
         self.log(|| Mutation::Attribute {
             target: element,
             name,
+            ns,
             old: Some(old),
         });
     }
@@ -197,6 +199,7 @@ impl Document {
     /// Ajoute à `element` l'attribut `attribute`.
     pub fn push_attr(&mut self, element: NodeId, attribute: Attribute) {
         let name = attribute.local().to_owned();
+        let ns = attribute.ns;
         let Some(data) = self.element_mut(element) else {
             return;
         };
@@ -204,6 +207,7 @@ impl Document {
         self.log(|| Mutation::Attribute {
             target: element,
             name,
+            ns,
             old: None,
         });
     }
@@ -224,10 +228,12 @@ impl Document {
             attr.element = None;
         }
         let name = removed.local().to_owned();
+        let ns = removed.ns;
         let old = removed.value.clone();
         self.log(|| Mutation::Attribute {
             target: element,
             name,
+            ns,
             old: Some(old),
         });
         Some(removed)
@@ -292,6 +298,7 @@ impl Document {
                     previous.element = None;
                 }
                 let name = attribute.local().to_owned();
+                let ns = attribute.ns;
                 if let Some(slot) = self
                     .element_mut(element)
                     .and_then(|e| e.attrs.get_mut(index))
@@ -301,6 +308,7 @@ impl Document {
                 self.log(|| Mutation::Attribute {
                     target: element,
                     name,
+                    ns,
                     old: old.map(|o| o.value),
                 });
             }

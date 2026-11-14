@@ -118,33 +118,7 @@ pub(super) fn normalize(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult 
     let Some(h) = host(vm) else {
         return Ok(Value::Undefined);
     };
-    let doc = &mut h.doc;
-    let parents: Vec<NodeId> = std::iter::once(node).chain(doc.descendants(node)).collect();
-    for parent in parents {
-        let mut child = doc.node(parent).first_child;
-        while let Some(current) = child {
-            let next = doc.node(current).next_sibling;
-            let NodeData::Text(text) = &doc.node(current).data else {
-                child = next;
-                continue;
-            };
-            if text.is_empty() {
-                doc.detach(current);
-                child = next;
-                continue;
-            }
-            // Un voisin texte est absorbé, puis le même nœud est réexaminé.
-            if let Some(sibling) = next
-                && let NodeData::Text(more) = &doc.node(sibling).data
-            {
-                let merged = format!("{text}{more}");
-                doc.set_text(current, &merged);
-                doc.detach(sibling);
-                continue;
-            }
-            child = next;
-        }
-    }
+    h.doc.normalize(node);
     h.dirty = true;
     Ok(Value::Undefined)
 }

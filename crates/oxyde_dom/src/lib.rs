@@ -264,8 +264,10 @@ pub enum Mutation {
     Attribute {
         /// Élément modifié.
         target: NodeId,
-        /// Nom de l'attribut.
+        /// Nom local de l'attribut.
         name: String,
+        /// Espace de noms de l'attribut.
+        ns: Namespace,
         /// Valeur précédente, `None` si l'attribut n'existait pas.
         old: Option<String>,
     },
@@ -886,6 +888,7 @@ impl Document {
             self.log(|| Mutation::Attribute {
                 target: id,
                 name: name.to_owned(),
+                ns: Namespace::None,
                 old,
             });
         }
