@@ -256,6 +256,12 @@ impl App {
                     let found = crate::import_bookmarks(&file);
                     self.browser.finish_import(&found);
                 }
+                Command::CopyText(text) => set_clipboard(text),
+                Command::PastePage => {
+                    if let Some(text) = clipboard_text() {
+                        self.browser.page_paste(&text);
+                    }
+                }
                 Command::NetworkDiagnostics => {
                     // Ouvre le dépannage réseau des Paramètres de Windows. Un
                     // échec de lancement est sans conséquence pour le navigateur.
@@ -484,6 +490,23 @@ impl App {
             } else {
                 let _ = window.drag_window();
             }
+        }
+    }
+
+    /// Clic droit : dans une page, ouvre son menu contextuel ; ailleurs,
+    /// ferme celui qui était ouvert.
+    fn context_menu(&mut self) {
+        let Some(at) = self.cursor_logical() else {
+            return;
+        };
+        let changed = match self.chrome.hit(at.0, at.1) {
+            Some(Hit::Pane(tab)) => self
+                .page_point(tab)
+                .is_some_and(|point| self.browser.open_context_menu(tab, at, point)),
+            _ => self.browser.close_menu(),
+        };
+        if changed {
+            self.request_redraw();
         }
     }
 
@@ -803,6 +826,11 @@ impl ApplicationHandler<UserEvent> for App {
                     self.request_redraw();
                 }
             }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => self.context_menu(),
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,

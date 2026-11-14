@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use oxyde_compositor::{ROOT_SCROLLER, ScrollTree};
-use oxyde_content::{FindStatus, FormPost, KeyInput, Navigation, Page};
+use oxyde_content::{ContextInfo, FindStatus, FormPost, KeyInput, Navigation, Page};
 use oxyde_css::{Color, Viewport};
 use oxyde_ipc::{Bytes, ChannelError, Receiver, Sender};
 use oxyde_paint::DisplayList;
@@ -22,7 +22,7 @@ use oxyde_text::TextContext;
 use url::Url;
 
 use super::protocol::{
-    FromRenderer, KeyMessage, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+    EditAction, FromRenderer, KeyMessage, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
 };
 use crate::loader::{self, LoadError};
 
@@ -62,6 +62,11 @@ pub(crate) struct RemotePage {
     copy_expected: bool,
     /// Texte copié dans la page, en attente du presse-papiers.
     copied: Option<String>,
+    /// Vrai si le navigateur attend la réponse à une demande de menu
+    /// contextuel.
+    context_expected: bool,
+    /// Réponse à cette demande, en attente du navigateur.
+    context: Option<ContextInfo>,
     crashed: bool,
     /// Site auquel ce processus est voué, tenu par le navigateur seul.
     lock: Arc<Mutex<SiteLock>>,
@@ -172,6 +177,8 @@ impl RemotePage {
             found: FindStatus::default(),
             copy_expected: false,
             copied: None,
+            context_expected: false,
+            context: None,
             crashed: false,
             lock: Arc::default(),
         };
@@ -364,6 +371,29 @@ impl RemotePage {
                     // de lui-même : il faut que l'utilisateur vienne de copier.
                     if std::mem::take(&mut self.copy_expected) {
                         self.copied = Some(text);
+                    }
+                }
+                FromRenderer::Context {
+                    link,
+                    selection,
+                    editable,
+                } => {
+                    if std::mem::take(&mut self.context_expected) {
+                        // Le lien annoncé suit les mêmes règles qu'une
+                        // navigation demandée par la page.
+                        let link = link.and_then(|url| Url::parse(&url).ok()).filter(|url| {
+                            self.may_navigate(&Navigation::Load {
+                                url: url.clone(),
+                                replace: false,
+                                post: None,
+                            })
+                        });
+                        self.context = Some(ContextInfo {
+                            link,
+                            selection,
+                            editable,
+                        });
+                        redraw = true;
                     }
                 }
                 FromRenderer::Hover { link } => {
@@ -731,6 +761,47 @@ impl PageHost {
                     gesture: gesture.code(),
                     x,
                     y,
+                });
+                false
+            }
+        }
+    }
+
+    /// Ce qu'un menu contextuel ouvert au point (`x`, `y`) de la page doit
+    /// proposer. `None` pour un processus de rendu : la réponse arrive
+    /// plus tard, par [`PageHost::take_context`].
+    pub(crate) fn context_at(&mut self, x: f32, y: f32) -> Option<ContextInfo> {
+        match self {
+            Self::Local(page) => Some(page.context_at(x, y)),
+            Self::Remote(page) => {
+                page.context = None;
+                page.context_expected = true;
+                page.send(&ToRenderer::Context { x, y });
+                None
+            }
+        }
+    }
+
+    /// Réponse d'un processus de rendu à [`PageHost::context_at`].
+    pub(crate) fn take_context(&mut self) -> Option<ContextInfo> {
+        match self {
+            Self::Local(_) => None,
+            Self::Remote(page) => page.context.take(),
+        }
+    }
+
+    /// Action d'édition choisie dans un menu. Renvoie `true` si la page
+    /// doit être redessinée ; pour un processus de rendu, la nouvelle
+    /// image arrive plus tard.
+    pub(crate) fn edit(&mut self, action: EditAction) -> bool {
+        match self {
+            Self::Local(page) => action.apply(page),
+            Self::Remote(page) => {
+                if action == EditAction::Copy {
+                    page.copy_expected = true;
+                }
+                page.send(&ToRenderer::Edit {
+                    action: action.code(),
                 });
                 false
             }

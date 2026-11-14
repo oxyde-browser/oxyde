@@ -553,6 +553,17 @@ const FIND_CURRENT: Color = Color {
     a: 0x99,
 };
 
+/// Ce qu'un menu contextuel doit savoir de la page au point visé.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ContextInfo {
+    /// Cible du lien sous le pointeur.
+    pub link: Option<Url>,
+    /// Du texte est sélectionné, dans la page ou dans le champ qui a le focus.
+    pub selection: bool,
+    /// Un champ de saisie a le focus : on peut y coller.
+    pub editable: bool,
+}
+
 /// Surlignage du texte sélectionné.
 const SELECTION: Color = Color {
     r: 0x33,
@@ -1600,14 +1611,7 @@ impl Page {
         if !input.ctrl || input.alt || input.meta || input.shift {
             return false;
         }
-        let in_field = self.doc.focus().is_some_and(|node| {
-            script::is_text_input(&self.doc, node)
-                || self
-                    .doc
-                    .element(node)
-                    .is_some_and(|e| e.is_html("textarea"))
-        });
-        if in_field {
+        if self.focused_field().is_some() {
             return false;
         }
         if input.key.eq_ignore_ascii_case("a") {
@@ -1617,6 +1621,79 @@ impl Page {
             self.copied = Some(self.selected_text().to_owned());
         }
         false
+    }
+
+    /// Champ de saisie (d'une ligne, ou zone de texte) qui a le focus.
+    fn focused_field(&self) -> Option<NodeId> {
+        self.doc.focus().filter(|node| {
+            script::is_text_input(&self.doc, *node)
+                || self
+                    .doc
+                    .element(*node)
+                    .is_some_and(|e| e.is_html("textarea"))
+        })
+    }
+
+    /// Texte que « Copier » prendrait : la sélection du champ qui a le
+    /// focus (jamais celle d'un mot de passe), sinon celle de la page.
+    fn copy_text(&self) -> Option<String> {
+        let Some(node) = self.focused_field() else {
+            return Some(self.selected_text())
+                .filter(|text| !text.is_empty())
+                .map(str::to_owned);
+        };
+        let element = self.doc.element(node)?;
+        let secret = element
+            .attr("type")
+            .is_some_and(|kind| kind.eq_ignore_ascii_case("password"));
+        if secret || !script::is_text_input(&self.doc, node) {
+            return None;
+        }
+        let (a, b) = (self.doc.selection_anchor(), self.doc.caret());
+        element
+            .attr("value")?
+            .get(a.min(b)..a.max(b))
+            .filter(|text| !text.is_empty())
+            .map(str::to_owned)
+    }
+
+    /// Ce qu'un menu contextuel ouvert au point (`x`, `y`) de la page doit
+    /// proposer.
+    #[must_use]
+    pub fn context_at(&self, x: f32, y: f32) -> ContextInfo {
+        ContextInfo {
+            link: self.link_at(x, y),
+            selection: self.copy_text().is_some(),
+            editable: self.focused_field().is_some(),
+        }
+    }
+
+    /// « Copier » : remet le texte sélectionné à l'embarqueur (voir
+    /// [`Page::take_copied`]).
+    pub fn copy(&mut self) {
+        if let Some(text) = self.copy_text() {
+            self.copied = Some(text);
+        }
+    }
+
+    /// « Tout sélectionner » : la valeur du champ d'une ligne qui a le
+    /// focus, sinon le texte de la page. Renvoie `true` si l'affichage a
+    /// changé.
+    pub fn select_everything(&mut self) -> bool {
+        let Some(node) = self.focused_field() else {
+            return self.select_all();
+        };
+        if !script::is_text_input(&self.doc, node) {
+            return false;
+        }
+        let end = self
+            .doc
+            .element(node)
+            .and_then(|e| e.attr("value"))
+            .map_or(0, str::len);
+        self.doc.set_field_selection(Some(node), 0, end);
+        self.dom_changed();
+        true
     }
 
     /// Colle `text` (Ctrl V) dans le champ de saisie qui a le focus, à la
@@ -4297,5 +4374,44 @@ mod tests {
         );
         p.update(&mut text, VIEWPORT);
         assert_eq!(rects(&p), plain + 1);
+    }
+
+    #[test]
+    fn a_context_menu_knows_what_is_under_the_pointer() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0;font-size:16px'>
+               <p style='margin:0'><a href='/cible'>Un lien</a></p>
+               <p style='margin:0'>Du texte</p>
+               <input id=champ value='abc'>
+             </body>",
+        );
+        p.update(&mut text, VIEWPORT);
+        // Sur le lien : sa cible ; rien de sélectionné, rien où coller.
+        let on_link = p.context_at(10.0, 8.0);
+        assert_eq!(
+            on_link.link.as_ref().map(Url::as_str),
+            Some("https://exemple.test/cible")
+        );
+        assert!(!on_link.selection && !on_link.editable);
+        assert_eq!(p.context_at(10.0, 28.0).link, None);
+        // « Tout sélectionner » puis « Copier » : le texte de la page.
+        assert!(p.select_everything());
+        assert!(p.context_at(10.0, 28.0).selection);
+        p.copy();
+        assert_eq!(p.take_copied().as_deref(), Some("Un lien\nDu texte"));
+        // Dans un champ : sa valeur, et l'on peut coller.
+        let field = p
+            .document()
+            .descendants(p.document().root())
+            .find(|n| p.document().element(*n).is_some_and(|e| e.is_html("input")))
+            .expect("champ");
+        p.click_node(field);
+        let in_field = p.context_at(10.0, 28.0);
+        assert!(in_field.editable && !in_field.selection);
+        assert!(p.select_everything());
+        assert!(p.context_at(10.0, 28.0).selection);
+        p.copy();
+        assert_eq!(p.take_copied().as_deref(), Some("abc"));
     }
 }

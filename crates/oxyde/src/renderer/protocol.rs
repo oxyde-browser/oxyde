@@ -115,6 +115,45 @@ impl SelectGesture {
     }
 }
 
+/// Action d'édition choisie dans un menu contextuel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EditAction {
+    /// Copier le texte sélectionné.
+    Copy,
+    /// Tout sélectionner.
+    SelectAll,
+}
+
+impl EditAction {
+    /// Code de l'action dans un message.
+    pub(crate) fn code(self) -> u8 {
+        match self {
+            Self::Copy => 0,
+            Self::SelectAll => 1,
+        }
+    }
+
+    /// Action de code `code` ; `None` pour un code inconnu.
+    pub(crate) fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Copy),
+            1 => Some(Self::SelectAll),
+            _ => None,
+        }
+    }
+
+    /// Applique l'action à `page` ; renvoie `true` si l'affichage a changé.
+    pub(crate) fn apply(self, page: &mut oxyde_content::Page) -> bool {
+        match self {
+            Self::Copy => {
+                page.copy();
+                false
+            }
+            Self::SelectAll => page.select_everything(),
+        }
+    }
+}
+
 /// Du navigateur vers le processus de rendu.
 #[derive(Debug)]
 pub(crate) enum ToRenderer {
@@ -148,6 +187,12 @@ pub(crate) enum ToRenderer {
     Select { gesture: u8, x: f32, y: f32 },
     /// Coller `text` (Ctrl V) dans le champ qui a le focus.
     Paste { text: String },
+    /// Demander ce qu'un menu contextuel ouvert au point (`x`, `y`) de la
+    /// page doit proposer ; la réponse est [`FromRenderer::Context`].
+    Context { x: f32, y: f32 },
+    /// Action d'édition choisie dans un menu : `action` est un
+    /// [`EditAction`] (0 copier, 1 tout sélectionner).
+    Edit { action: u8 },
 }
 ipc_enum!(ToRenderer {
     0 => Load { url, post, width, height },
@@ -162,6 +207,8 @@ ipc_enum!(ToRenderer {
     9 => FindStep { forward },
     10 => Select { gesture, x, y },
     11 => Paste { text },
+    12 => Context { x, y },
+    13 => Edit { action },
 });
 
 /// Image de la page, prête à composer.
@@ -209,6 +256,13 @@ pub(crate) enum FromRenderer {
     Found { count: u32, current: u32 },
     /// Texte que l'utilisateur a copié dans la page (Ctrl C).
     Copied { text: String },
+    /// Réponse à [`ToRenderer::Context`] : lien sous le pointeur, texte
+    /// sélectionné, champ de saisie qui a le focus.
+    Context {
+        link: Option<String>,
+        selection: bool,
+        editable: bool,
+    },
 }
 ipc_enum!(FromRenderer {
     0 => Network { id, request },
@@ -219,4 +273,5 @@ ipc_enum!(FromRenderer {
     5 => Hover { link },
     6 => Found { count, current },
     7 => Copied { text },
+    8 => Context { link, selection, editable },
 });
