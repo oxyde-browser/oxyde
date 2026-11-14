@@ -1340,7 +1340,11 @@ fn contains(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 
 /// Signale une exception non rattrapée dans la console de la page.
 fn report(vm: &mut Vm, thrown: &Value) {
-    let message = vm.display(thrown);
+    let mut message = vm.display(thrown);
+    if let Some(site) = vm.throw_site(thrown) {
+        message.push_str("\n    dans ");
+        message.push_str(&site);
+    }
     let console = Value::Object(vm.global());
     if let Ok(console) = vm.get(&console, "console")
         && let Ok(error) = vm.get(&console, "error")

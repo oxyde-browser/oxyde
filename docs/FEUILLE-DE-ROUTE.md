@@ -514,11 +514,13 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
       banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ :
       [conformance/sites.md](../conformance/sites.md). Départ : 14 pages lisibles sur 50 ;
-      au 14 novembre 2026 : 17. Seul l'affichage de la page d'accueil est mesuré ; la
+      au 14 novembre 2026 : 18. Seul l'affichage de la page d'accueil est mesuré ; la
       connexion et l'action principale restent à essayer.
-- [ ] Vu à la mesure : la mise en page de GitHub ne se termine pas ; l'épreuve Cloudflare de
-      Vimeo ne se termine pas (le site s'affichait avant que ses scripts insérés ne soient
-      exécutés) ; les erreurs de script n'indiquent ni fichier ni ligne.
+- [x] Mise en page de conteneurs flex et grille imbriqués en temps linéaire (elle doublait à
+      chaque niveau : GitHub ne s'affichait jamais) ; les erreurs de script disent où elles
+      sont nées (fonctions en cours, ligne et colonne de leur définition, adresse du script).
+- [ ] Vu à la mesure : l'épreuve Cloudflare de Vimeo ne se termine pas (le site s'affichait
+      avant que ses scripts insérés ne soient exécutés).
 - [x] **Saisie dans les pages** : focus (`focus()`, `blur()`, `document.activeElement`,
       `:focus`, `:checked`, `:disabled`, tabulation), champs de texte éditables avec curseur
       (flèches, Début, Fin, Retour arrière, Suppr, `maxlength`, `readonly`, mot de passe

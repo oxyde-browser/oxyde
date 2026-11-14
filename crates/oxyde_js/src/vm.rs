@@ -215,6 +215,10 @@ pub struct Vm {
     pub(crate) script_url: JsStr,
     /// Exception à lever à la prochaine instruction (reprise par `throw()`).
     pending_throw: Option<Value>,
+    /// Dernières exceptions levées, avec les fonctions alors en cours
+    /// (la plus profonde d'abord) : pour dire où une erreur non rattrapée
+    /// est née.
+    throw_sites: VecDeque<(Value, Vec<Arc<FunctionProto>>)>,
     /// File des microtâches (réactions de promesses).
     pub(crate) jobs: VecDeque<Job>,
     /// Promesses rejetées sans gestionnaire, à signaler en fin de microtâches.
@@ -472,6 +476,7 @@ impl Vm {
             iteration_intrinsics: None,
             script_url: Arc::from(""),
             pending_throw: None,
+            throw_sites: VecDeque::new(),
             jobs: VecDeque::new(),
             rejections: Vec::new(),
             constructing: false,
@@ -1768,6 +1773,64 @@ impl Vm {
 
     // ---- Boucle d'interprétation ---------------------------------------------
 
+    /// Retient les fonctions en cours au moment où `thrown` est levée. Une
+    /// exception qui remonte à travers plusieurs appels natifs n'est notée
+    /// qu'à sa naissance.
+    fn note_throw_site(&mut self, thrown: &Value) {
+        /// Nombre d'exceptions retenues, et de fonctions par exception.
+        const KEPT: usize = 8;
+        if self.throw_sites.iter().any(|(value, _)| value == thrown) {
+            return;
+        }
+        let site: Vec<Arc<FunctionProto>> = self
+            .frames
+            .iter()
+            .rev()
+            .take(KEPT)
+            .map(|frame| Arc::clone(&frame.proto))
+            .collect();
+        if site.is_empty() {
+            return;
+        }
+        if self.throw_sites.len() >= KEPT {
+            self.throw_sites.pop_front();
+        }
+        self.throw_sites.push_back((thrown.clone(), site));
+    }
+
+    /// Où l'exception `thrown` est née : les fonctions alors en cours, de la
+    /// plus profonde à la plus extérieure, avec la ligne et la colonne où
+    /// chacune est définie dans son script. `None` si ce n'est pas connu.
+    ///
+    /// LIMITE : la position est celle du début de la fonction, pas celle de
+    /// l'instruction fautive (le code compilé ne garde pas les positions).
+    #[must_use]
+    pub fn throw_site(&self, thrown: &Value) -> Option<String> {
+        let (_, site) = self
+            .throw_sites
+            .iter()
+            .rev()
+            .find(|(value, _)| value == thrown)?;
+        let described: Vec<String> = site
+            .iter()
+            .map(|proto| {
+                let name = if proto.name.is_empty() {
+                    "(anonyme)"
+                } else {
+                    &*proto.name
+                };
+                let position = proto.source.as_ref().and_then(|span| {
+                    let before = span.text.get(..span.start)?;
+                    let line = before.iter().filter(|c| **c == '\n').count() + 1;
+                    let column = before.iter().rev().take_while(|c| **c != '\n').count() + 1;
+                    Some(format!(" [{line}:{column}]"))
+                });
+                format!("{name}{}", position.unwrap_or_default())
+            })
+            .collect();
+        Some(described.join(" < "))
+    }
+
     /// Exécute jusqu'à ce que la pile de cadres redescende à `depth`.
     fn run(&mut self, depth: usize) -> JsResult {
         loop {
@@ -1775,6 +1838,7 @@ impl Vm {
                 Ok(Some(value)) => return Ok(value),
                 Ok(None) => {}
                 Err(thrown) => {
+                    self.note_throw_site(&thrown);
                     // Déroule la pile jusqu'à un gestionnaire, sans dépasser `depth`.
                     let mut handled = false;
                     while self.frames.len() > depth {

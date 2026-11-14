@@ -35,12 +35,12 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 
 | | Départ | 14 novembre 2026 |
 |---|---|---|
-| lisible | 14 | 17 |
+| lisible | 14 | 18 |
 | partiel | 8 | 9 |
 | vide | 13 | 10 |
 | erreur | 3 | 1 |
 | mur | 7 | 8 |
-| délai | 5 | 5 |
+| délai | 5 | 4 |
 
 « Départ » : état avant tout travail sur l'étape H (branche principale au 14 novembre 2026).
 
@@ -82,7 +82,7 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | 34 | docs.rs | documentation | lisible | lisible | |
 | 35 | doc.rust-lang.org | documentation | lisible | lisible | |
 | 36 | stackoverflow.com | documentation | mur | mur | épreuve Cloudflare |
-| 37 | github.com | documentation | délai | délai | les scripts finissent ; la mise en page ne se termine pas |
+| 37 | github.com | documentation | délai | **lisible** | en 20 s ; des conteneurs flex et grille imbriqués coûtaient un temps exponentiel ; mise en forme encore grossière |
 | 38 | crates.io | documentation | vide | vide | |
 | 39 | x.com | réseaux sociaux | lisible | lisible | page de connexion |
 | 40 | facebook.com | réseaux sociaux | vide | vide | |
@@ -105,11 +105,10 @@ ils sont comptés « mur » (Amazon, Cdiscount, Stack Overflow) ou « vide » (M
 1. **Applications qui ne démarrent pas** (Gmail, Outlook, Twitch, Dailymotion, Doctolib,
    crates.io, Facebook, Reddit, Mastodon, SNCF Connect) : il manque `Intl`, `customElements`
    et le Shadow DOM, les cartes d'import, les modules insérés par script, `DOMParser`, les
-   workers. Les erreurs de script n'indiquent ni fichier ni ligne, ce qui ralentit le
-   diagnostic.
+   workers.
 2. **Murs anti-robot** (NYTimes, Leboncoin, Fnac, eBay, PayPal : réponse 403 ; Amazon,
    Cdiscount, Stack Overflow, Vimeo : épreuve en JavaScript). Oxyde s'annonce sous son nom et
    ne cherche pas à se faire passer pour un autre navigateur ; ces sites s'ouvriront quand
    leurs épreuves s'exécuteront correctement.
-3. **Lenteur** : GitHub (mise en page), The Guardian, Instagram, Qwant.
+3. **Lenteur** : The Guardian, Instagram, Qwant.
 4. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants.
