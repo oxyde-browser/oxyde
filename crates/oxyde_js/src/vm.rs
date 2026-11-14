@@ -232,6 +232,10 @@ pub struct HostHooks {
     /// Vrai pour une classe dont les propriétés ordinaires posées par un
     /// script passent avant celles que l'hôte sert sous le même nom.
     pub own_first: fn(u32) -> bool,
+    /// Valeur d'une propriété qu'un objet hôte ne porte pas, ni lui ni sa
+    /// chaîne de prototypes (accès nommé aux éléments d'un document) ;
+    /// `None` : la propriété n'existe pas.
+    pub missing: fn(&mut Vm, u32, u64, &str) -> Option<Value>,
     /// Valeur d'une variable globale que ni les scripts ni l'objet global ne
     /// définissent (accès nommé aux éléments d'une page) ; `None` : la
     /// variable n'existe pas.
@@ -2094,6 +2098,9 @@ impl Vm {
         // Une lecture peut déclencher une construction différée (`Temporal`,
         // espace de noms d'un module différé) : la boucle générale s'en charge.
         let plain_reads = self.deferred_namespaces.is_empty();
+        // Objet global d'un hôte : une propriété absente peut désigner un
+        // élément de la page, ce que seul le chemin général sait demander.
+        let named_global = self.host_hooks.map(|_| self.global);
         let lazy_temporal = !self.lazy_temporal.is_empty();
         // Le budget d'instructions vaut aussi ici ; la dernière unité est
         // laissée à la boucle générale, qui signale l'épuisement.
@@ -2216,7 +2223,9 @@ impl Vm {
                     let mut found = None;
                     for _ in 0..PROTOTYPE_WALK {
                         let Some(holder) = current else {
-                            found = Some(Value::Undefined);
+                            if named_global != Some(*id) {
+                                found = Some(Value::Undefined);
+                            }
                             break;
                         };
                         let object = heap.get(holder);
@@ -2812,7 +2821,10 @@ impl Vm {
                     } else if self.has_property(scope, &name) {
                         self.get(&Value::Object(scope), &name)?
                     } else {
-                        Value::Undefined
+                        // Accès nommé aux éléments de la page.
+                        self.host_hooks
+                            .and_then(|hooks| (hooks.global)(self, &name))
+                            .unwrap_or(Value::Undefined)
                     };
                     if value == Value::Hole {
                         return Err(self.dead_zone(&name));
