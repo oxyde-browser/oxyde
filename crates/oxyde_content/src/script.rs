@@ -2367,6 +2367,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("assignedSlotOf", 1, dom_ops::assigned_slot_of)),
         Value::Object(vm.new_function("assignedNodesOf", 1, dom_ops::assigned_nodes_of)),
         Value::Object(vm.new_function("deepFocused", 0, focus::deep_focused_element)),
+        Value::Object(vm.new_function("shadowRootList", 0, dom_ops::shadow_root_list)),
     ];
     vm.call(&components, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.

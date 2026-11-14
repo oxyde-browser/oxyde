@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44538 / 50203 (88,7 %)** — fichiers entièrement réussis : 459 / 693 (66,2 %).
+**Sous-tests réussis : 44543 / 50203 (88,7 %)** — fichiers entièrement réussis : 462 / 693 (66,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -23,7 +23,7 @@ est le plus honnête des deux.
 | `dom/nodes` | 195 / 265 | 10914 / 13109 (83,3 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
-| `dom/nodes/moveBefore` | 23 / 64 | 95 / 177 (53,7 %) |
+| `dom/nodes/moveBefore` | 26 / 64 | 100 / 177 (56,5 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 38 / 49 | 30715 / 33613 (91,4 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -183,7 +183,6 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/css-transition-cross-shadow.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-to-disconnected-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-trigger.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/custom-element-move-reactions.html` | 6 / 7 |  |
 | `dom/nodes/moveBefore/fire-focusin-focusout.html` | 1 / 5 |  |
 | `dom/nodes/moveBefore/focus-preserve.html` | 1 / 5 |  |
 | `dom/nodes/moveBefore/focus-within.html` | 3 / 5 |  |
@@ -194,11 +193,9 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/listed-form-element-reset.html` | 0 / 6 |  |
 | `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
-| `dom/nodes/moveBefore/moveBefore-from-light-to-shadow.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 1 / 8 |  |
-| `dom/nodes/moveBefore/moveBefore-shadow-inside.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-root.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-size-query.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/mutation-observer-moved-subtree.window.js` | 0 / 1 |  |
@@ -210,7 +207,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/role-updates-after-move.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/select-option-optgroup.html` | 1 / 2 |  |
 | `dom/nodes/moveBefore/selection-preserve.html` | 0 / 6 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/slotchange-events.html` | 0 / 4 |  |
+| `dom/nodes/moveBefore/slotchange-events.html` | 2 / 4 |  |
 | `dom/nodes/moveBefore/stylesheet-cascade-order.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/stylesheet-no-refetch.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/namespaced-attribute-mutations.html` | 14 / 24 |  |

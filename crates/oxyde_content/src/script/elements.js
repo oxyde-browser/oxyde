@@ -671,13 +671,21 @@
     if (control === null || control.hasAttribute("disabled")) return null;
     return control;
   }
+  // Portée d'un groupe de boutons radio : le formulaire du bouton, à défaut
+  // son arbre (le document, ou son arbre fantôme).
+  const radioScope = (radio) => {
+    const form = radio.closest("form");
+    if (form !== null) return form;
+    const tree = radio.getRootNode();
+    return typeof tree.querySelectorAll === "function" ? tree : document;
+  };
   function radioGroup(radio) {
     const name = radio.getAttribute("name");
     if (name === null || name === "") return [radio];
-    const scope = radio.closest("form") ?? document;
+    const scope = radioScope(radio);
     return Array.from(scope.querySelectorAll("input")).filter(
       (other) => inputType(other) === "radio" && other.getAttribute("name") === name
-        && (other.closest("form") ?? document) === scope,
+        && radioScope(other) === scope,
     );
   }
   // Un contrôle détaché du document n'annonce pas son changement.

@@ -596,6 +596,46 @@ impl Document {
         Some(root)
     }
 
+    /// Arbres fantômes déclaratifs (HTML Standard §4.12.3) : chaque
+    /// `<template shadowrootmode="open|closed">`, enfant d'un élément sans
+    /// arbre fantôme, lui en donne un, y verse son contenu et disparaît.
+    /// À appeler une fois, sur un document tout juste analysé. Renvoie le
+    /// nombre d'arbres attachés.
+    pub fn adopt_declarative_shadow_roots(&mut self) -> usize {
+        let mut attached = 0;
+        let mut pending = vec![self.root()];
+        while let Some(scope) = pending.pop() {
+            let templates: Vec<(NodeId, bool)> = self
+                .descendants(scope)
+                .filter_map(|node| {
+                    let element = self.element(node).filter(|e| e.is_html("template"))?;
+                    match element.attr("shadowrootmode")? {
+                        "open" => Some((node, true)),
+                        "closed" => Some((node, false)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            for (template, open) in templates {
+                let Some(parent) = self.node(template).parent else {
+                    continue;
+                };
+                // Un seul arbre par hôte : un second gabarit reste un gabarit.
+                let Some(shadow) = self.attach_shadow(parent, open) else {
+                    continue;
+                };
+                let children: Vec<NodeId> = self.children(template).collect();
+                for child in children {
+                    self.append_child(shadow, child);
+                }
+                self.detach(template);
+                attached += 1;
+                pending.push(shadow);
+            }
+        }
+        attached
+    }
+
     /// Racine de l'arbre fantôme de l'élément `host`, s'il en porte un.
     #[must_use]
     pub fn shadow_root(&self, host: NodeId) -> Option<NodeId> {
@@ -1247,5 +1287,33 @@ mod tests {
         assert_eq!(doc.descendants(root).collect::<Vec<_>>(), vec![a, b, c, d]);
         assert_eq!(doc.descendants(a).collect::<Vec<_>>(), vec![b, c]);
         assert_eq!(doc.ancestors(c).collect::<Vec<_>>(), vec![b, a, root]);
+    }
+
+    #[test]
+    fn declarative_shadow_roots_are_attached() {
+        let mut doc = Document::new();
+        let root = doc.root();
+        let host = doc.create_element("div", Namespace::Html, Vec::new());
+        doc.append_child(root, host);
+        let template = doc.create_element(
+            "template",
+            Namespace::Html,
+            vec![Attribute::new("shadowrootmode", "closed")],
+        );
+        doc.append_child(host, template);
+        let inner = doc.create_element("span", Namespace::Html, Vec::new());
+        doc.append_child(template, inner);
+        // Un second gabarit sur le même hôte reste en place.
+        let second = doc.create_element(
+            "template",
+            Namespace::Html,
+            vec![Attribute::new("shadowrootmode", "open")],
+        );
+        doc.append_child(host, second);
+        assert_eq!(doc.adopt_declarative_shadow_roots(), 1);
+        let shadow = doc.shadow_root(host).expect("arbre fantôme");
+        assert!(!doc.shadow_is_open(shadow));
+        assert_eq!(doc.children(shadow).collect::<Vec<_>>(), vec![inner]);
+        assert_eq!(doc.children(host).collect::<Vec<_>>(), vec![second]);
     }
 }

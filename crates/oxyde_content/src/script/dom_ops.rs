@@ -69,6 +69,26 @@ pub(super) fn shadow_root_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsRe
     Ok(wrap_opt(vm, root))
 }
 
+/// `shadowRootList()` : les racines fantômes du document, chacune suivie
+/// de `true` si elle est ouverte aux scripts : `[racine, ouverte, …]`.
+pub(super) fn shadow_root_list(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let roots: Vec<(NodeId, bool)> = host(vm)
+        .map(|h| {
+            h.doc
+                .shadow_root_list()
+                .into_iter()
+                .map(|root| (root, h.doc.shadow_is_open(root)))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut items = Vec::with_capacity(roots.len() * 2);
+    for (root, open) in roots {
+        items.push(wrap(vm, root));
+        items.push(Value::Bool(open));
+    }
+    Ok(vm.new_array(items))
+}
+
 /// `shadowHostOf(nœud)` : l'hôte dont `nœud` est la racine fantôme, ou `null`.
 pub(super) fn shadow_host_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let element =

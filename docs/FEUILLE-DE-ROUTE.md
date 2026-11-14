@@ -694,10 +694,14 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : `document.nom` rend le premier élément, jamais une collection, et
       passe après les propriétés du prototype ; chaque accès nommé parcourt le
       document ; `dir=auto` est lu comme `ltr`.
-- [ ] Arbres fantômes déclaratifs (`<template shadowrootmode>`), que plusieurs tests
-      `moveBefore` attendent.
-- [ ] Web Platform Tests `dom/` : de 66,2 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (36), `events/scrolling` (25 :
+- [x] Arbres fantômes déclaratifs : `<template shadowrootmode="open|closed">` donne un
+      arbre fantôme à son parent dès l'analyse du document, même sans script. Un
+      groupe de boutons radio est celui de son arbre (document ou arbre fantôme) ;
+      `slotchange` part aussi quand le contenu de repli d'un emplacement change.
+      Limites : pas dans les cadres ni par `setHTMLUnsafe` ; les options
+      (`shadowrootdelegatesfocus`, `shadowrootclonable`…) sont ignorées.
+- [ ] Web Platform Tests `dom/` : de 66,7 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (33), `events/scrolling` (25 :
       défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
