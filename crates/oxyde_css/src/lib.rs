@@ -28,12 +28,14 @@ pub mod syntax;
 pub mod transform;
 pub mod values;
 
-pub use animation::{AnimationEvent, AnimationStyle, Animator, Easing, TransitionStyle};
+pub use animation::{
+    AnimationEvent, AnimationStyle, Animator, Easing, ScriptAnimation, TransitionStyle,
+};
 pub use grid::{Breadth, GridAreas, GridLine, Repeat, TrackEntry, TrackList, TrackSize};
 pub use properties::Side;
 pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
-    LineHeight, ListStyle, Overflow, Position, Size, SizeKeyword, StyleMap, TextAlign,
+    LineHeight, ListStyle, Overflow, Overscroll, Position, Size, SizeKeyword, StyleMap, TextAlign,
     VerticalAlign, Visibility, WhiteSpace, collect_style_elements, compute_styles,
     compute_styles_at,
 };

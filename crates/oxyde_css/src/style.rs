@@ -160,6 +160,18 @@ pub enum Overflow {
     Auto,
 }
 
+/// Valeur calculée de `overscroll-behavior-x` ou `overscroll-behavior-y` :
+/// hors de `auto`, un défilement arrivé en bout de course ne se propage pas
+/// à la zone englobante.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
+pub enum Overscroll {
+    #[default]
+    Auto,
+    Contain,
+    None,
+}
+
 /// Valeur calculée de `visibility`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[allow(missing_docs, reason = "les variantes portent le nom de la valeur CSS")]
@@ -435,6 +447,10 @@ pub struct ComputedStyle {
     pub overflow_x: Overflow,
     /// `overflow-y`
     pub overflow_y: Overflow,
+    /// `overscroll-behavior-x`
+    pub overscroll_x: Overscroll,
+    /// `overscroll-behavior-y`
+    pub overscroll_y: Overscroll,
     /// `visibility`
     pub visibility: Visibility,
     /// `opacity`
@@ -564,6 +580,8 @@ impl ComputedStyle {
             z_index: None,
             overflow_x: Overflow::Visible,
             overflow_y: Overflow::Visible,
+            overscroll_x: Overscroll::Auto,
+            overscroll_y: Overscroll::Auto,
             visibility: Visibility::Visible,
             opacity: 1.0,
             flex_direction: FlexDirection::Row,
@@ -859,6 +877,8 @@ pub(crate) fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, pro
         Longhand::ZIndex => style.z_index = from.z_index,
         Longhand::OverflowX => style.overflow_x = from.overflow_x,
         Longhand::OverflowY => style.overflow_y = from.overflow_y,
+        Longhand::OverscrollX => style.overscroll_x = from.overscroll_x,
+        Longhand::OverscrollY => style.overscroll_y = from.overscroll_y,
         Longhand::Visibility => style.visibility = from.visibility,
         Longhand::Opacity => style.opacity = from.opacity,
         Longhand::FlexDirection => style.flex_direction = from.flex_direction,
@@ -1251,6 +1271,18 @@ pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<
                 {
                     style.order = *n as i32;
                 }
+            }
+        }
+        Longhand::OverscrollX | Longhand::OverscrollY => {
+            let overscroll = match ident {
+                "contain" => Overscroll::Contain,
+                "none" => Overscroll::None,
+                _ => Overscroll::Auto,
+            };
+            if property == Longhand::OverscrollX {
+                style.overscroll_x = overscroll;
+            } else {
+                style.overscroll_y = overscroll;
             }
         }
         Longhand::OverflowX | Longhand::OverflowY => {

@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9010 / 27885 (32,3 %)** — fichiers entièrement réussis : 576 / 2267 (25,4 %).
+**Sous-tests réussis : 9025 / 27885 (32,4 %)** — fichiers entièrement réussis : 579 / 2267 (25,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -82,7 +82,7 @@ est le plus honnête des deux.
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
 | `css/css-position/sticky` | 5 / 33 | 21 / 82 (25,6 %) |
 | `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
-| `css/css-sizing/animation` | 0 / 20 | 0 / 12 (0,0 %) |
+| `css/css-sizing/animation` | 0 / 20 | 2 / 12 (16,7 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 11 / 38 (28,9 %) |
 | `css/css-sizing/contain-intrinsic-size` | 5 / 27 | 94 / 288 (32,6 %) |
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 69 / 233 | 872 / 1816 (48,0 %) |
+| `css/cssom-view` | 72 / 233 | 885 / 1816 (48,7 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1362,7 +1362,7 @@ est le plus honnête des deux.
 | `css/css-position/sticky/position-sticky-transforms-translate.html` | 1 / 3 |  |
 | `css/css-position/sticky/position-sticky-transforms.html` | 0 / 3 |  |
 | `css/css-sizing/abspos-intrinsic-height-inset-percentage-child.html` | 3 / 6 |  |
-| `css/css-sizing/animation/aspect-ratio-interpolation-degenerate.html` | 0 / 12 |  |
+| `css/css-sizing/animation/aspect-ratio-interpolation-degenerate.html` | 2 / 12 |  |
 | `css/css-sizing/animation/aspect-ratio-interpolation-sideways-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/animation/aspect-ratio-interpolation-sideways-rl.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/animation/aspect-ratio-interpolation-vertical-lr.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1659,9 +1659,9 @@ est le plus honnête des deux.
 | `css/cssom-view/cssom-getBoxQuads-001.html` | 0 / 6 |  |
 | `css/cssom-view/cssom-getBoxQuads-002.html` | 0 / 1 |  |
 | `css/cssom-view/cssom-view-img-attributes-001.html` | 0 / 4 |  |
-| `css/cssom-view/element-scroll-promise-after-removal.html` | 0 / 5 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
-| `css/cssom-view/element-scroll-promise-interruption.html` | 0 / 14 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
-| `css/cssom-view/element-scroll-promises.html` | 0 / 24 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
+| `css/cssom-view/element-scroll-promise-after-removal.html` | 0 / 5 |  |
+| `css/cssom-view/element-scroll-promise-interruption.html` | 0 / 14 |  |
+| `css/cssom-view/element-scroll-promises.html` | 0 / 24 |  |
 | `css/cssom-view/elementFromPoint-002.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-003.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-dynamic-anon-box.html` | 0 / 1 |  |
@@ -1705,7 +1705,6 @@ est le plus honnête des deux.
 | `css/cssom-view/idlharness.html` | 0 / 1 |  |
 | `css/cssom-view/image-x-y-zoom.html` | 0 / 2 |  |
 | `css/cssom-view/inheritance.html` | 0 / 2 |  |
-| `css/cssom-view/interrupt-hidden-smooth-scroll.html` | 1 / 2 |  |
 | `css/cssom-view/matchMedia-display-none-iframe.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/cssom-view/matchMedia.html` | 6 / 10 |  |
 | `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 4 | harnais : Unhandled rejection: element click intercepted error |
@@ -1730,17 +1729,16 @@ est le plus honnête des deux.
 | `css/cssom-view/range-client-rects-surrogate-indexing.html` | 0 / 1 |  |
 | `css/cssom-view/resizeTo-negative.html` | 0 / 1 |  |
 | `css/cssom-view/screen-detached-frame.html` | 0 / 1 |  |
-| `css/cssom-view/scroll-behavior-default-css.html` | 1 / 3 |  |
-| `css/cssom-view/scroll-behavior-element.html` | 16 / 39 |  |
-| `css/cssom-view/scroll-behavior-main-frame-root.html` | 2 / 40 |  |
-| `css/cssom-view/scroll-behavior-main-frame-window.html` | 2 / 28 |  |
-| `css/cssom-view/scroll-behavior-scrollintoview-nested.html` | 0 / 2 |  |
-| `css/cssom-view/scroll-behavior-smooth-after-hiding-iframe.html` | 0 / 1 |  |
-| `css/cssom-view/scroll-behavior-smooth-navigation.html` | 0 / 3 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scroll-behavior-smooth-positions.html` | 18 / 23 |  |
-| `css/cssom-view/scroll-behavior-smooth.html` | 0 / 3 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
-| `css/cssom-view/scroll-behavior-subframe-root.html` | 2 / 40 |  |
-| `css/cssom-view/scroll-behavior-subframe-window.html` | 2 / 28 |  |
+| `css/cssom-view/scroll-behavior-default-css.html` | 2 / 3 |  |
+| `css/cssom-view/scroll-behavior-element.html` | 17 / 39 |  |
+| `css/cssom-view/scroll-behavior-main-frame-root.html` | 3 / 40 |  |
+| `css/cssom-view/scroll-behavior-main-frame-window.html` | 3 / 28 |  |
+| `css/cssom-view/scroll-behavior-scrollintoview-nested.html` | 1 / 2 |  |
+| `css/cssom-view/scroll-behavior-smooth-navigation.html` | 1 / 3 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scroll-behavior-smooth-positions.html` | 19 / 23 |  |
+| `css/cssom-view/scroll-behavior-smooth.html` | 1 / 3 |  |
+| `css/cssom-view/scroll-behavior-subframe-root.html` | 3 / 40 |  |
+| `css/cssom-view/scroll-behavior-subframe-window.html` | 3 / 28 |  |
 | `css/cssom-view/scroll-clamp-after-transform-shrinks-overflow.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-overflow-clip-quirks-001.html` | 0 / 1 |  |
 | `css/cssom-view/scroll-overflow-clip-quirks-002.html` | 0 / 1 |  |
@@ -1767,7 +1765,6 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-smooth.html` | 0 / 4 |  |
 | `css/cssom-view/scrollIntoView-stuck.tentative.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-svg-shape.html` | 0 / 3 |  |
-| `css/cssom-view/scrollIntoView-then-scrollBy.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-vertical-lr-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-vertical-lr-writing-mode.html` | 1 / 9 |  |
 | `css/cssom-view/scrollIntoView-vertical-rl-writing-mode.html` | 0 / 9 |  |
@@ -1794,5 +1791,5 @@ est le plus honnête des deux.
 | `css/cssom-view/visual-scrollIntoView-001.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-002.html` | 0 / 1 |  |
 | `css/cssom-view/visual-scrollIntoView-003.html` | 0 / 1 |  |
-| `css/cssom-view/window-scroll-promise-interruption.html` | 0 / 4 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
-| `css/cssom-view/window-scroll-promises.html` | 0 / 18 | harnais : TypeError: .animate n'est pas une fonction (c'est undefined) |
+| `css/cssom-view/window-scroll-promise-interruption.html` | 0 / 4 |  |
+| `css/cssom-view/window-scroll-promises.html` | 0 / 18 |  |

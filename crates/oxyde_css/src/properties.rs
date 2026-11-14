@@ -61,6 +61,8 @@ pub enum Longhand {
     ZIndex,
     OverflowX,
     OverflowY,
+    OverscrollX,
+    OverscrollY,
     Visibility,
     Opacity,
     FlexDirection,
@@ -437,6 +439,7 @@ fn side_of(name: &str) -> Option<Side> {
 }
 
 const OVERFLOWS: &[&str] = &["visible", "hidden", "clip", "scroll", "auto"];
+const OVERSCROLLS: &[&str] = &["auto", "contain", "none"];
 const FLEX_DIRECTIONS: &[&str] = &["row", "row-reverse", "column", "column-reverse"];
 const FLEX_WRAPS: &[&str] = &["nowrap", "wrap", "wrap-reverse"];
 const CONTENT_ALIGNMENTS: &[&str] = &[
@@ -1061,6 +1064,31 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
                 _ => None,
             }
         }
+        "overscroll-behavior" => {
+            if let Some(w) = wide {
+                return Some(vec![
+                    (Longhand::OverscrollX, w.clone()),
+                    (Longhand::OverscrollY, w),
+                ]);
+            }
+            let words: Option<Vec<Value>> = components(tokens)
+                .into_iter()
+                .map(|t| keyword(std::slice::from_ref(t), OVERSCROLLS))
+                .collect();
+            match words?.as_slice() {
+                [both] => Some(vec![
+                    (Longhand::OverscrollX, both.clone()),
+                    (Longhand::OverscrollY, both.clone()),
+                ]),
+                [x, y] => Some(vec![
+                    (Longhand::OverscrollX, x.clone()),
+                    (Longhand::OverscrollY, y.clone()),
+                ]),
+                _ => None,
+            }
+        }
+        "overscroll-behavior-x" => single(Longhand::OverscrollX, keyword(tokens, OVERSCROLLS)),
+        "overscroll-behavior-y" => single(Longhand::OverscrollY, keyword(tokens, OVERSCROLLS)),
         "overflow-x" => single(Longhand::OverflowX, keyword(tokens, OVERFLOWS)),
         "overflow-y" => single(Longhand::OverflowY, keyword(tokens, OVERFLOWS)),
         "visibility" => single(

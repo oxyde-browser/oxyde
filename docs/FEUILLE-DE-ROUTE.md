@@ -671,11 +671,22 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : pas de défilement doux (`behavior: "smooth"` saute à la cible) ni
       d'accrochage (`scroll-snap`) ; `scrollIntoView` sur la fenêtre et le défilement
       au clavier d'un champ ne déclenchent pas ces événements.
-- [ ] API Web Animations (`Element.animate()`, `Animation`, `getAnimations()`) : une
-      vingtaine de fichiers `dom/` l'attendent (`moveBefore`, `events/scrolling`).
-- [ ] Web Platform Tests `dom/` : de 64,6 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (28 :
-      défilement doux, accrochage, `Element.animate`), `ranges/tentative` (19),
+- [x] API Web Animations, en version réduite : `Element.animate()` (images clés en
+      liste ou par propriété ; durée, délai, itérations, direction, remplissage,
+      temporisation), `Animation` (`play`, `pause`, `finish`, `cancel`, `currentTime`,
+      `playState`, `finished`, `ready`, `onfinish`, `oncancel`), `KeyframeEffect`,
+      `AnimationPlaybackEvent`, `document.timeline`, `getAnimations()`. Ces animations
+      passent par l'animateur des animations CSS et suivent la même horloge.
+      Limites : pas de `playbackRate`, de `reverse()`, de `commitStyles()` ni de
+      `setKeyframes()` ; `composite`, `iterationStart`, `endDelay` et la temporisation
+      propre à une image clé sont ignorés ; `getAnimations()` ne rend pas les
+      animations et transitions CSS.
+- [x] `overscroll-behavior` (et `-x`, `-y`) : hors de `auto`, un défilement arrivé en
+      bout de course ne se propage pas à la zone englobante. Le lanceur WPT fait
+      défiler la page sous un doigt qui glisse, comme le ferait une fenêtre tactile.
+- [ ] Web Platform Tests `dom/` : de 65,2 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (43), `events/scrolling` (25 :
+      défilement doux, accrochage, cadres), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).

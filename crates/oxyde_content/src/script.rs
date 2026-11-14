@@ -25,6 +25,7 @@ use oxyde_dom::{Document, Namespace, NodeData, NodeId};
 use oxyde_js::{ConsoleMessage, HostHooks, HostKey, JsResult, NativeFn, ObjId, Value, Vm};
 use url::Url;
 
+mod animations;
 mod attrs;
 mod documents;
 mod dom_ops;
@@ -2295,6 +2296,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let observable = vm.eval_script(include_str!("script/observable.js"))?;
     let abort = vm.get(&hooks, "abort")?;
     vm.call(&observable, &Value::Undefined, &[abort])?;
+    // API Web Animations : `Element.animate()`, `Animation`, `KeyframeEffect`.
+    let factory = vm.eval_script(include_str!("script/animations.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("animate", 8, animations::animate)),
+        Value::Object(vm.new_function("animationControl", 3, animations::control)),
+    ];
+    let finished = vm.call(&factory, &Value::Undefined, &helpers)?;
+    vm.set(&hooks, "animationFinished", finished)?;
     // Interfaces des éléments HTML et formulaires.
     let elements = vm.eval_script(include_str!("script/elements.js"))?;
     let helpers = [
@@ -2839,6 +2848,21 @@ impl ScriptEngine {
     ) {
         self.run(doc, |vm| {
             for event in events {
+                // Fin d'une animation de script : son `Animation` est prévenue.
+                if event.kind == "finish" {
+                    let hooks = host(vm).and_then(|h| h.hooks.clone());
+                    if let Some(hooks) = hooks
+                        && let Ok(finished) = vm.get(&hooks, "animationFinished")
+                        && finished.as_object().is_some()
+                    {
+                        let id = event.name.parse::<f64>().unwrap_or(0.0);
+                        if let Err(thrown) = vm.call(&finished, &hooks, &[Value::Number(id)]) {
+                            report(vm, &thrown);
+                        }
+                    }
+                    vm.run_microtasks();
+                    continue;
+                }
                 let transition = event.kind.starts_with("transition");
                 let (interface, key) = if transition {
                     ("TransitionEvent", "propertyName")

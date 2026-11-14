@@ -886,6 +886,8 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
             .map_or_else(|| "auto".to_owned(), |z| z.to_string()),
         "overflow-x" => format!("{:?}", style.overflow_x).to_ascii_lowercase(),
         "overflow-y" => format!("{:?}", style.overflow_y).to_ascii_lowercase(),
+        "overscroll-behavior-x" => format!("{:?}", style.overscroll_x).to_ascii_lowercase(),
+        "overscroll-behavior-y" => format!("{:?}", style.overscroll_y).to_ascii_lowercase(),
         "visibility" => format!("{:?}", style.visibility).to_ascii_lowercase(),
         "opacity" => format!("{}", style.opacity),
         "animation-name" => names(style.animation.as_ref().map(|a| a.names.as_slice()), "none"),

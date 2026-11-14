@@ -65,6 +65,8 @@ struct WireScroller {
     content: [f32; 2],
     wheel_x: bool,
     wheel_y: bool,
+    chain_x: bool,
+    chain_y: bool,
 }
 ipc_struct!(WireScroller {
     id,
@@ -72,7 +74,9 @@ ipc_struct!(WireScroller {
     port,
     content,
     wheel_x,
-    wheel_y
+    wheel_y,
+    chain_x,
+    chain_y
 });
 
 /// Primitive de la liste d'affichage sur le fil : comme [`DisplayItem`], les
@@ -350,6 +354,8 @@ impl ResourceSender {
                 content: [scroller.content.0, scroller.content.1],
                 wheel_x: scroller.wheel.0,
                 wheel_y: scroller.wheel.1,
+                chain_x: scroller.chain.0,
+                chain_y: scroller.chain.1,
             })
             .collect();
         WireList {
@@ -527,6 +533,7 @@ impl ResourceStore {
                 port: rect_in(scroller.port),
                 content: (scroller.content[0], scroller.content[1]),
                 wheel: (scroller.wheel_x, scroller.wheel_y),
+                chain: (scroller.chain_x, scroller.chain_y),
             });
         }
         Ok(list)
@@ -651,6 +658,8 @@ mod tests {
                 content: [0.0; 2],
                 wheel_x: true,
                 wheel_y: true,
+                chain_x: true,
+                chain_y: true,
             }],
             ..WireList::default()
         };

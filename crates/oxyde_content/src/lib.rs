@@ -345,9 +345,18 @@ impl Animations {
     ) -> (StyleMap, Option<f64>) {
         let now = self.now();
         let mut state = self.lock();
+        state.animator.advance_script_animations(now);
         let styles = oxyde_css::compute_styles_at(doc, sheets, viewport, &mut state.animator, now);
         let time = state.animator.is_effective().then_some(now);
         (styles, time)
+    }
+
+    /// Donne à `f` l'animateur et l'instant courant : le moteur de script
+    /// pilote par là les animations qu'il crée (`Element.animate()`).
+    pub(crate) fn script<R>(&self, f: impl FnOnce(&mut oxyde_css::Animator, f64) -> R) -> R {
+        let now = self.now();
+        let mut state = self.lock();
+        f(&mut state.animator, now)
     }
 
     /// Vrai si une animation ou une transition demande une nouvelle image.
@@ -5571,6 +5580,49 @@ mod tests {
         assert_eq!(
             doc.element(body).and_then(|e| e.attr("data-out")),
             Some("true scroll40 image fin40")
+        );
+    }
+
+    #[test]
+    fn element_animate_drives_style_and_finishes() {
+        let mut p = page(
+            "<body><div id=a></div><script>
+               const out = [];
+               const note = (...items) => {
+                 out.push(...items);
+                 document.body.setAttribute('data-out', out.join(' '));
+               };
+               const a = document.getElementById('a');
+               const anim = a.animate({ opacity: [0, 1] }, { duration: 100, fill: 'forwards' });
+               note(anim.playState, a.getAnimations().length, anim.effect.target === a);
+               anim.pause();
+               anim.currentTime = 50;
+               note(anim.playState, getComputedStyle(a).opacity);
+               anim.play();
+               anim.onfinish = (e) => note(e.type);
+               anim.finished.then((same) => note('fini', same === anim, anim.playState,
+                 getComputedStyle(a).opacity));
+               const short = a.animate([{ marginLeft: '0px' }, { marginLeft: '10px' }], 20);
+               const first = short.finished;
+               short.cancel();
+               note(short.playState, a.getAnimations().length);
+               first.catch((e) => note(e.name));
+               try { a.animate({}, { easing: 'pas-une-courbe' }); } catch (e) { note(e.name); }
+             </script>",
+        );
+        p.run_scripts();
+        for _ in 0..40 {
+            let Some(due) = p.next_wake() else { break };
+            p.tick(due);
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "running 1 true paused 0.5 idle 1 TypeError AbortError \
+                 fini true finished 1 finish"
+            )
         );
     }
 }

@@ -175,6 +175,7 @@ impl ScrollTree {
     /// l'emporte, la fenêtre en dernier recours. Renvoie l'identifiant de la
     /// zone qui a défilé.
     pub fn wheel(&mut self, x: f32, y: f32, dx: f32, dy: f32) -> Option<u32> {
+        let (mut dx, mut dy) = (dx, dy);
         let (root_x, root_y) = self.offset(ROOT_SCROLLER);
         let mut current = self.scroller_at(x + root_x, y + root_y);
         while let Some(index) = current {
@@ -188,6 +189,17 @@ impl ScrollTree {
             let target_y = if scroller.wheel.1 { oy + dy } else { oy };
             if self.scroll_to(scroller.id, target_x, target_y, max) {
                 return Some(scroller.id);
+            }
+            // `overscroll-behavior` : le défilement ne se propage pas à la
+            // zone englobante sur les axes que celle-ci retient.
+            if !scroller.chain.0 {
+                dx = 0.0;
+            }
+            if !scroller.chain.1 {
+                dy = 0.0;
+            }
+            if dx == 0.0 && dy == 0.0 {
+                return None;
             }
             current = scroller.parent;
         }
@@ -221,6 +233,7 @@ mod tests {
             port,
             content,
             wheel: (true, true),
+            chain: (true, true),
         }
     }
 
@@ -274,5 +287,21 @@ mod tests {
         // La fenêtre ne défile pas au-delà du contenu.
         assert_eq!(tree.wheel(10.0, 10.0, 0.0, 30.0), None);
         assert!(!tree.scroll_to(ROOT_SCROLLER, f32::NAN, f32::NAN, (10.0, 10.0)));
+    }
+
+    #[test]
+    fn overscroll_behavior_stops_the_chain() {
+        let mut tree = ScrollTree::default();
+        let inner = Scroller {
+            chain: (true, false),
+            ..scroller(7, None, rect(0.0, 0.0, 100.0, 100.0), (100.0, 300.0))
+        };
+        tree.update(&[inner], (200.0, 200.0), (200.0, 2000.0));
+        // La zone défile jusqu'au bout, puis retient la molette verticale.
+        assert_eq!(tree.wheel(10.0, 10.0, 0.0, 500.0), Some(7));
+        assert_eq!(tree.wheel(10.0, 10.0, 0.0, 500.0), None);
+        assert_eq!(tree.offset(ROOT_SCROLLER), (0.0, 0.0));
+        // Hors de la zone, la fenêtre défile.
+        assert_eq!(tree.wheel(150.0, 150.0, 0.0, 50.0), Some(ROOT_SCROLLER));
     }
 }
