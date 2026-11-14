@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 10059 / 28942 (34,8 %)** — fichiers entièrement réussis : 569 / 2267 (25,1 %).
+**Sous-tests réussis : 10060 / 28942 (34,8 %)** — fichiers entièrement réussis : 570 / 2267 (25,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 64 / 233 | 879 / 1830 (48,0 %) |
+| `css/cssom-view` | 65 / 233 | 880 / 1830 (48,1 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1711,7 +1711,6 @@ est le plus honnête des deux.
 | `css/cssom-view/matchMedia-display-none-iframe.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/matchMedia.html` | 6 / 10 |  |
 | `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `css/cssom-view/mouseEvent.html` | 2 / 3 |  |
 | `css/cssom-view/negativeMargins.html` | 1 / 2 |  |
 | `css/cssom-view/offsetParent-body-and-html.html` | 5 / 6 |  |
 | `css/cssom-view/offsetParent-fixed.html` | 0 / 2 |  |

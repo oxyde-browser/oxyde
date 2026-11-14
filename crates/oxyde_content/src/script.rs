@@ -94,6 +94,9 @@ struct DomHost {
     /// Prototype de chaque interface décrite par l'IDL, par nom.
     protos: HashMap<&'static str, ObjId>,
     listeners: Vec<Listener>,
+    /// Écouteurs de molette posés depuis le chargement : 0 aucun, 1 des
+    /// passifs seulement, 2 au moins un qui peut annuler le défilement.
+    wheel_listeners: u8,
     /// Observateurs de mutation en activité.
     observers: Vec<mutation::Observer>,
     /// Navigations demandées par les scripts, pas encore prises en charge
@@ -1399,7 +1402,58 @@ fn random_bytes(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 /// Distribue `click` sur `node`, entouré des fonctions d'activation (case
 /// cochée, bouton radio, envoi de formulaire). Renvoie `true` si un script
 /// a annulé l'action par défaut.
-fn activate(vm: &mut Vm, node: NodeId) -> bool {
+/// Distribue l'événement de souris `kind` sur `target` (le document à
+/// défaut). `related` : l'élément quitté ou rejoint ; `delta` : le
+/// défilement demandé par la molette. Renvoie `true` si un script a annulé
+/// l'action par défaut.
+fn fire_mouse(
+    vm: &mut Vm,
+    kind: &str,
+    target: Option<NodeId>,
+    related: Option<NodeId>,
+    input: &crate::MouseInput,
+    delta: (f32, f32),
+    cancelable: bool,
+) -> bool {
+    let Some(hooks) = host(vm).and_then(|h| h.hooks.clone()) else {
+        return false;
+    };
+    let related = wrap_opt(vm, related);
+    let args = [
+        Value::string(kind),
+        Value::Number(f64::from(input.x)),
+        Value::Number(f64::from(input.y)),
+        Value::Number(f64::from(input.button)),
+        Value::Number(f64::from(input.buttons)),
+        Value::Number(f64::from(input.detail)),
+        Value::Bool(input.ctrl),
+        Value::Bool(input.shift),
+        Value::Bool(input.alt),
+        Value::Bool(input.meta),
+        related,
+        Value::Number(f64::from(delta.0)),
+        Value::Number(f64::from(delta.1)),
+        Value::Bool(cancelable),
+    ];
+    match vm
+        .get(&hooks, "mouse")
+        .and_then(|f| vm.call(&f, &hooks, &args))
+    {
+        Ok(event) => {
+            let document = host(vm).map(|h| h.doc.root());
+            events::fire_built(vm, target.or(document), &event)
+        }
+        Err(thrown) => {
+            report(vm, &thrown);
+            false
+        }
+    }
+}
+
+/// Clic sur `node` : `pointer` décrit le pointeur pour un clic de
+/// l'utilisateur ; sans lui (`element.click()`, touche Entrée) l'événement
+/// porte des coordonnées nulles.
+fn activate(vm: &mut Vm, node: NodeId, pointer: Option<&crate::MouseInput>) -> bool {
     let activation = host(vm).and_then(|h| h.activation.clone());
     let target = wrap(vm, node);
     let hook = |vm: &mut Vm, name: &str, args: &[Value]| {
@@ -1413,7 +1467,15 @@ fn activate(vm: &mut Vm, node: NodeId) -> bool {
         }
     };
     let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
-    let prevented = dispatch(vm, Some(node), "click");
+    let prevented = fire_mouse(
+        vm,
+        "click",
+        Some(node),
+        None,
+        pointer.unwrap_or(&crate::MouseInput::default()),
+        (0.0, 0.0),
+        true,
+    );
     hook(vm, "after", &[state, Value::Bool(prevented)]);
     prevented
 }
@@ -1421,7 +1483,7 @@ fn activate(vm: &mut Vm, node: NodeId) -> bool {
 fn element_click(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let node = this_node(vm, this)?;
     // Comme un clic de l'utilisateur : la case se coche, le bouton envoie.
-    activate(vm, node);
+    activate(vm, node, None);
     Ok(Value::Undefined)
 }
 
@@ -1921,6 +1983,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             storage: [Vec::new(), Vec::new()],
             protos: fresh.protos,
             listeners: Vec::new(),
+            wheel_listeners: 0,
             observers: Vec::new(),
             navigations: Vec::new(),
             hooks: None,
@@ -2392,12 +2455,61 @@ impl ScriptEngine {
     /// Clic sur `node` : comportement d'activation (case cochée, bouton de
     /// formulaire) autour de l'événement `click`. Renvoie `true` si un script
     /// a annulé l'action par défaut.
-    pub(crate) fn click(&mut self, doc: &mut Document, node: NodeId) -> bool {
+    /// Distribue l'événement de souris `kind` sur `target` ; voir
+    /// [`fire_mouse`]. Renvoie `true` si un script l'a annulé.
+    pub(crate) fn mouse_event(
+        &mut self,
+        doc: &mut Document,
+        kind: &str,
+        target: Option<NodeId>,
+        related: Option<NodeId>,
+        input: &crate::MouseInput,
+    ) -> bool {
+        self.run(doc, |vm| {
+            fire_mouse(vm, kind, target, related, input, (0.0, 0.0), true)
+        })
+    }
+
+    /// Molette de (`dx`, `dy`) au-dessus de `target` : `wheel`, puis
+    /// l'ancien `mousewheel`. Ils ne s'annulent que si un écouteur non
+    /// passif existe. Renvoie `true` si le défilement est annulé.
+    pub(crate) fn wheel_event(
+        &mut self,
+        doc: &mut Document,
+        target: Option<NodeId>,
+        input: &crate::MouseInput,
+        delta: (f32, f32),
+    ) -> bool {
+        self.run(doc, |vm| {
+            let cancelable = host(vm).is_some_and(|h| h.wheel_listeners >= 2);
+            let wheel = fire_mouse(vm, "wheel", target, None, input, delta, cancelable);
+            let legacy = fire_mouse(vm, "mousewheel", target, None, input, delta, cancelable);
+            wheel || legacy
+        })
+    }
+
+    /// Écouteurs de molette de la page : 0 aucun, 1 des passifs seulement,
+    /// 2 au moins un qui peut annuler le défilement.
+    pub(crate) fn wheel_listeners(&mut self) -> u8 {
+        host(&mut self.vm).map_or(0, |h| h.wheel_listeners)
+    }
+
+    pub(crate) fn click(
+        &mut self,
+        doc: &mut Document,
+        node: NodeId,
+        pointer: Option<&crate::MouseInput>,
+    ) -> bool {
         self.run(doc, |vm| {
             // Le focus va à l'élément cliqué, ou quitte celui qui l'avait.
             let target = host(vm).and_then(|h| focus::focus_target(&h.doc, node));
             focus::move_focus(vm, target);
-            activate(vm, node)
+            let prevented = activate(vm, node, pointer);
+            // Second clic d'un double clic.
+            if let Some(pointer) = pointer.filter(|pointer| pointer.detail == 2) {
+                fire_mouse(vm, "dblclick", Some(node), None, pointer, (0.0, 0.0), true);
+            }
+            prevented
         })
     }
 

@@ -467,6 +467,6 @@ pub(super) fn default_key(vm: &mut Vm, input: &crate::KeyInput<'_>) {
             }
         }
     } else if activates {
-        super::activate(vm, node);
+        super::activate(vm, node, None);
     }
 }

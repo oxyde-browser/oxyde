@@ -2575,8 +2575,10 @@ impl Browser {
                 Some(tab) if Some(id) == shown => {
                     if let Some(info) = tab.page.take_context() {
                         self.menu_pending = None;
-                        self.show_menu(id, at, info);
-                        redraw = true;
+                        if !info.prevented {
+                            self.show_menu(id, at, info);
+                            redraw = true;
+                        }
                     }
                 }
                 _ => self.menu_pending = None,
@@ -2764,12 +2766,17 @@ impl Browser {
     /// Molette de `dy` au point (`x`, `y`) du volet de l'onglet `index` : la
     /// zone défilante sous le pointeur défile, ou la page. Renvoie `true` si
     /// le défilement a changé.
-    pub(crate) fn scroll_by(&mut self, index: usize, x: f32, y: f32, dy: f32) -> bool {
+    pub(crate) fn scroll_by(
+        &mut self,
+        index: usize,
+        input: &oxyde_content::MouseInput,
+        dy: f32,
+    ) -> bool {
         // La page bouge sous le menu contextuel : il se ferme.
         let closed = self.close_menu();
         self.tabs
             .get_mut(index)
-            .is_some_and(|tab| tab.page.wheel(x, y, 0.0, dy))
+            .is_some_and(|tab| tab.page.wheel(input, 0.0, dy))
             || closed
     }
 
@@ -2835,6 +2842,28 @@ impl Browser {
             .is_some_and(|tab| tab.page.select(gesture, x, y))
     }
 
+    /// Événement de souris dans la page de l'onglet `tab`, `input` étant
+    /// dans le repère de la page. Renvoie `true` si l'affichage a changé.
+    pub(crate) fn page_mouse(
+        &mut self,
+        tab: usize,
+        kind: crate::renderer::protocol::MouseKind,
+        input: &oxyde_content::MouseInput,
+    ) -> bool {
+        // Un écran posé sur les pages garde la souris pour lui.
+        if self.onboarding.is_some()
+            || self.palette.is_some()
+            || self.library_open()
+            || self.menu.is_some()
+        {
+            return false;
+        }
+        self.tabs
+            .get_mut(tab)
+            .filter(|tab| tab.error.is_none())
+            .is_some_and(|tab| tab.page.mouse(kind, input))
+    }
+
     /// Clic droit dans la page de l'onglet `tab` : ouvre son menu
     /// contextuel au point `at` de la fenêtre, pour le point `point` de la
     /// page. Renvoie `true` si l'affichage a changé.
@@ -2857,6 +2886,8 @@ impl Browser {
         }
         let id = page.id;
         match page.page.context_at(point.0, point.1) {
+            // Un script a annulé `contextmenu` : pas de menu.
+            Some(info) if info.prevented => closed,
             Some(info) => {
                 self.show_menu(id, at, info);
                 true
@@ -3914,6 +3945,7 @@ mod tests {
             link: Some(Url::parse("https://a.test/b").expect("url")),
             selection: true,
             editable: true,
+            prevented: false,
         };
         b.show_menu(first, (10.0, 10.0), info());
         assert_eq!(

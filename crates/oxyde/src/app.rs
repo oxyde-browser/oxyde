@@ -19,7 +19,7 @@ use winit::window::{CursorIcon, ResizeDirection, Window, WindowId};
 
 use crate::browser::{Browser, Command, KeyPress};
 use crate::loader::{self, Loaded};
-use crate::renderer::protocol::SelectGesture;
+use crate::renderer::protocol::{MouseKind, SelectGesture};
 use crate::{a11y, frame};
 
 /// Pixels CSS défilés par cran de molette.
@@ -87,6 +87,11 @@ struct App {
     dragged: bool,
     /// Dernier clic dans une page : instant et point de la fenêtre.
     last_pane_click: Option<(Instant, (f32, f32))>,
+    /// Rang du clic en cours dans une série rapprochée : 1, ou 2 pour le
+    /// second clic d'un double clic.
+    click_detail: u8,
+    /// Onglet dont la page a reçu le bouton droit enfoncé.
+    right_pressed: Option<usize>,
     /// Première erreur fatale rencontrée dans la boucle d'événements.
     error: Option<anyhow::Error>,
     /// Profil où le navigateur range sa session, son historique et ses
@@ -202,6 +207,45 @@ impl App {
         let pane = self.chrome.panes.iter().find(|p| p.tab == tab)?;
         let (scroll_x, scroll_y) = self.browser.tab(tab)?.page.scroll_offset();
         Some((x - pane.rect.x + scroll_x, y - pane.rect.y + scroll_y))
+    }
+
+    /// Pointeur dans la page de l'onglet `tab`, pour un événement de
+    /// souris du bouton `button` : sa position et les touches tenues.
+    fn pointer(&self, tab: usize, button: u8, detail: u8) -> Option<oxyde_content::MouseInput> {
+        let (x, y) = self.page_point(tab)?;
+        Some(oxyde_content::MouseInput {
+            x,
+            y,
+            button,
+            buttons: 0,
+            detail,
+            ctrl: self.modifiers.control_key(),
+            shift: self.modifiers.shift_key(),
+            alt: self.modifiers.alt_key(),
+            meta: self.modifiers.super_key(),
+        })
+    }
+
+    /// Transmet un événement de souris à la page de l'onglet `tab`.
+    fn page_mouse(&mut self, tab: usize, kind: MouseKind, button: u8, detail: u8) {
+        if let Some(input) = self.pointer(tab, button, detail)
+            && self.browser.page_mouse(tab, kind, &input)
+        {
+            self.request_redraw();
+        }
+    }
+
+    /// Pointeur déplacé : la page qui est dessous, ou celle où un bouton
+    /// est resté enfoncé, reçoit le déplacement.
+    fn pointer_moved(&mut self) {
+        let under = self
+            .cursor_logical()
+            .and_then(|(x, y)| self.chrome.hit(x, y));
+        let tab = match (self.selecting, under) {
+            (Some((tab, _)), _) | (None, Some(Hit::Pane(tab))) => tab,
+            _ => return,
+        };
+        self.page_mouse(tab, MouseKind::Move, 0, 0);
     }
 
     /// Bord de redimensionnement sous le pointeur (fenêtre non agrandie).
@@ -469,6 +513,9 @@ impl App {
                 .last_pane_click
                 .is_some_and(|(t, p)| now.duration_since(t) < DOUBLE_CLICK && near(p, at));
             self.last_pane_click = if double { None } else { Some((now, at)) };
+            // Les scripts voient le bouton enfoncé avant tout le reste.
+            self.click_detail = if double { 2 } else { 1 };
+            self.page_mouse(tab, MouseKind::Down, 0, self.click_detail);
             let gesture = if double {
                 SelectGesture::Word
             } else {
@@ -500,9 +547,14 @@ impl App {
             return;
         };
         let changed = match self.chrome.hit(at.0, at.1) {
-            Some(Hit::Pane(tab)) => self
-                .page_point(tab)
-                .is_some_and(|point| self.browser.open_context_menu(tab, at, point)),
+            Some(Hit::Pane(tab)) => {
+                // Les scripts voient le bouton droit enfoncé, puis
+                // `contextmenu`, qu'ils peuvent annuler.
+                self.right_pressed = Some(tab);
+                self.page_mouse(tab, MouseKind::Down, 2, 1);
+                self.page_point(tab)
+                    .is_some_and(|point| self.browser.open_context_menu(tab, at, point))
+            }
             _ => self.browser.close_menu(),
         };
         if changed {
@@ -534,7 +586,13 @@ impl App {
         // Un clic compte si le bouton est relâché sur l'élément où il a été enfoncé.
         // Un glissement a sélectionné du texte : ce n'est pas un clic.
         let dragged = self.selecting.take().is_some() && std::mem::take(&mut self.dragged);
-        let (Some(hit), true) = (hit, hit == self.pressed.take()) else {
+        let pressed = self.pressed.take();
+        // La page où le bouton a été enfoncé le voit relâché, où que soit
+        // le pointeur.
+        if let Some(Hit::Pane(tab)) = pressed {
+            self.page_mouse(tab, MouseKind::Up, 0, self.click_detail);
+        }
+        let (Some(hit), true) = (hit, hit == pressed) else {
             return;
         };
         if dragged {
@@ -809,9 +867,19 @@ impl ApplicationHandler<UserEvent> for App {
                 }
                 if let Some(Hit::Pane(tab)) = self.chrome.hit(x, y)
                     && let Some(pane) = self.chrome.panes.iter().find(|p| p.tab == tab)
-                    && self
-                        .browser
-                        .scroll_by(tab, x - pane.rect.x, y - pane.rect.y, -dy)
+                    && self.browser.scroll_by(
+                        tab,
+                        &oxyde_content::MouseInput {
+                            x: x - pane.rect.x,
+                            y: y - pane.rect.y,
+                            ctrl: self.modifiers.control_key(),
+                            shift: self.modifiers.shift_key(),
+                            alt: self.modifiers.alt_key(),
+                            meta: self.modifiers.super_key(),
+                            ..oxyde_content::MouseInput::default()
+                        },
+                        -dy,
+                    )
                 {
                     self.request_redraw();
                 }
@@ -819,6 +887,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor = position;
                 self.update_hover();
+                self.pointer_moved();
                 self.drag_selection();
             }
             WindowEvent::CursorLeft { .. } => {
@@ -827,10 +896,17 @@ impl ApplicationHandler<UserEvent> for App {
                 }
             }
             WindowEvent::MouseInput {
-                state: ElementState::Pressed,
+                state,
                 button: MouseButton::Right,
                 ..
-            } => self.context_menu(),
+            } => match state {
+                ElementState::Pressed => self.context_menu(),
+                ElementState::Released => {
+                    if let Some(tab) = self.right_pressed.take() {
+                        self.page_mouse(tab, MouseKind::Up, 2, 1);
+                    }
+                }
+            },
             WindowEvent::MouseInput {
                 state,
                 button: MouseButton::Left,
@@ -867,6 +943,8 @@ pub(crate) fn run(browser: Browser, multi_process: bool, profile: Option<Profile
         selecting: None,
         dragged: false,
         last_pane_click: None,
+        click_detail: 1,
+        right_pressed: None,
         error: None,
         multi_process,
         // La session du disque est celle dont le navigateur vient de renaître,

@@ -16,7 +16,8 @@ use oxyde_text::TextContext;
 use url::Url;
 
 use super::protocol::{
-    EditAction, Frame, FromRenderer, NetworkReply, NetworkRequest, SelectGesture, ToRenderer,
+    EditAction, Frame, FromRenderer, MouseKind, NetworkReply, NetworkRequest, SelectGesture,
+    ToRenderer, mouse_input,
 };
 use crate::loader::{self, LoadError};
 
@@ -243,6 +244,8 @@ struct Renderer {
     force_frame: bool,
     /// Dernier titre et dernière adresse envoyés.
     sent_meta: (String, String),
+    /// Écouteurs de molette annoncés au navigateur en dernier.
+    sent_wheel: u8,
 }
 
 impl Renderer {
@@ -320,16 +323,53 @@ impl Renderer {
                 }
             }
             ToRenderer::Context { x, y } => {
-                let info = self
-                    .page
-                    .as_ref()
-                    .map(|page| page.context_at(x, y))
-                    .unwrap_or_default();
+                // Les scripts voient `contextmenu` d'abord et peuvent
+                // refuser le menu.
+                let (info, prevented) = match self.page.as_mut() {
+                    Some(page) => {
+                        let prevented = page.context_menu_event(x, y);
+                        loader::report_console(page);
+                        (page.context_at(x, y), prevented)
+                    }
+                    None => (oxyde_content::ContextInfo::default(), false),
+                };
                 self.link.send(&FromRenderer::Context {
                     link: info.link.map(|url| url.to_string()),
                     selection: info.selection,
                     editable: info.editable,
+                    prevented,
                 })?;
+            }
+            ToRenderer::Mouse {
+                kind,
+                x,
+                y,
+                button,
+                detail,
+                modifiers,
+            } => {
+                if let (Some(page), Some(kind)) = (self.page.as_mut(), MouseKind::from_code(kind)) {
+                    kind.apply(page, &mouse_input(x, y, button, detail, modifiers));
+                    loader::report_console(page);
+                }
+            }
+            ToRenderer::Wheel {
+                x,
+                y,
+                dx,
+                dy,
+                modifiers,
+                scroll,
+            } => {
+                if let Some(page) = self.page.as_mut() {
+                    let prevented = page.wheel_event(&mouse_input(x, y, 0, 0, modifiers), dx, dy);
+                    loader::report_console(page);
+                    // Le navigateur attendait la page : elle défile ici,
+                    // et le décalage lui revient avec la prochaine image.
+                    if scroll && !prevented {
+                        page.wheel(x, y, dx, dy);
+                    }
+                }
             }
             ToRenderer::Edit { action } => {
                 if let (Some(page), Some(action)) =
@@ -445,12 +485,19 @@ impl Renderer {
             }
         }
         let meta = (page.url().to_string(), page.title());
-        if !repainted && !self.force_frame && scroll.is_empty() && meta == self.sent_meta {
+        let wheel = page.wheel_listeners();
+        if !repainted
+            && !self.force_frame
+            && scroll.is_empty()
+            && meta == self.sent_meta
+            && wheel == self.sent_wheel
+        {
             return Ok(());
         }
         self.known_scroll = current;
         self.force_frame = false;
         self.sent_meta = meta.clone();
+        self.sent_wheel = wheel;
         let background = page.background();
         let (content_w, content_h) = page.content_size();
         let frame = Frame {
@@ -460,6 +507,7 @@ impl Renderer {
             scroll,
             url: meta.0,
             title: meta.1,
+            wheel,
         };
         self.link.send(&FromRenderer::Frame(Box::new(frame)))
     }
@@ -519,6 +567,7 @@ pub(crate) fn run() -> ExitCode {
         fetches: HashMap::new(),
         force_frame: false,
         sent_meta: (String::new(), String::new()),
+        sent_wheel: 0,
     };
     match renderer.run() {
         // Le navigateur a fermé le canal : fin normale.

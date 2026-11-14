@@ -87,6 +87,30 @@ pub struct KeyInput<'a> {
     pub repeat: bool,
 }
 
+/// État du pointeur pour un événement de souris.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MouseInput {
+    /// Abscisse du pointeur ; chaque fonction dit dans quel repère.
+    pub x: f32,
+    /// Ordonnée du pointeur.
+    pub y: f32,
+    /// Bouton en cause : 0 principal, 1 du milieu, 2 secondaire.
+    pub button: u8,
+    /// Boutons enfoncés : 1 principal, 2 secondaire, 4 du milieu, additionnés.
+    pub buttons: u8,
+    /// Rang du clic dans une série rapprochée (1 simple, 2 double) ; 0
+    /// hors d'un clic.
+    pub detail: u8,
+    /// Touche Ctrl enfoncée.
+    pub ctrl: bool,
+    /// Touche Maj enfoncée.
+    pub shift: bool,
+    /// Touche Alt enfoncée.
+    pub alt: bool,
+    /// Touche Méta (Windows) enfoncée.
+    pub meta: bool,
+}
+
 /// Corps d'une soumission de formulaire par la méthode `POST`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormPost {
@@ -562,6 +586,8 @@ pub struct ContextInfo {
     pub selection: bool,
     /// Un champ de saisie a le focus : on peut y coller.
     pub editable: bool,
+    /// Un script a annulé `contextmenu` : aucun menu ne doit s'ouvrir.
+    pub prevented: bool,
 }
 
 /// Surlignage du texte sélectionné.
@@ -658,6 +684,13 @@ pub struct Page {
     /// Texte que l'utilisateur vient de copier (Ctrl C), en attente du
     /// presse-papiers de l'embarqueur.
     copied: Option<String>,
+    /// Élément sous le pointeur au dernier déplacement connu.
+    hovered: Option<NodeId>,
+    /// Boutons de la souris enfoncés (voir [`MouseInput::buttons`]).
+    buttons: u8,
+    /// Pointeur au dernier bouton relâché : le clic qui suit en reprend
+    /// le rang et les touches.
+    released: MouseInput,
     /// Nombre d'éléments de `list` qui viennent de la page ; les suivants
     /// sont le surlignage de la recherche.
     painted: usize,
@@ -1084,6 +1117,9 @@ impl Page {
             find: None,
             selection: None,
             copied: None,
+            hovered: None,
+            buttons: 0,
+            released: MouseInput::default(),
             painted: 0,
         }
     }
@@ -1665,6 +1701,7 @@ impl Page {
             link: self.link_at(x, y),
             selection: self.copy_text().is_some(),
             editable: self.focused_field().is_some(),
+            prevented: false,
         }
     }
 
@@ -1891,9 +1928,205 @@ impl Page {
     /// n'a pas été annulée.
     pub fn click(&mut self, x: f32, y: f32) -> Option<Url> {
         let node = self.node_at(x, y)?;
-        let link = self.click_node(node);
+        // Le clic reprend le rang et les touches du bouton relâché.
+        let pointer = self.client_input(&MouseInput {
+            x,
+            y,
+            button: 0,
+            buttons: 0,
+            detail: self.released.detail.max(1),
+            ..self.released
+        });
+        // Ce relâchement est consommé : un clic venu d'ailleurs ne le reprend pas.
+        self.released = MouseInput::default();
+        let link = self.click_with(node, Some(&pointer));
         self.place_caret(node, x);
         link
+    }
+
+    /// Le même pointeur, dans le repère de la fenêtre (`clientX`,
+    /// `clientY`) : `input` est dans celui de la page.
+    fn client_input(&self, input: &MouseInput) -> MouseInput {
+        let (scroll_x, scroll_y) = self.scroll_offset();
+        MouseInput {
+            x: input.x - scroll_x,
+            y: input.y - scroll_y,
+            ..*input
+        }
+    }
+
+    /// Élément visé par un événement de souris au point (`x`, `y`) de la
+    /// page : celui sous le pointeur, ou celui qui contient le texte visé.
+    fn mouse_target(&self, x: f32, y: f32) -> Option<NodeId> {
+        let node = self.node_at(x, y)?;
+        std::iter::once(node)
+            .chain(self.doc.ancestors(node))
+            .find(|n| self.doc.element(*n).is_some())
+    }
+
+    /// Distribue les événements de souris `kinds` sur `target` et note si
+    /// la page doit être redessinée. Renvoie `true` si l'un est annulé.
+    fn fire_mouse(
+        &mut self,
+        kinds: &[&str],
+        target: Option<NodeId>,
+        related: Option<NodeId>,
+        input: &MouseInput,
+    ) -> bool {
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        let mut prevented = false;
+        for kind in kinds {
+            prevented |= engine.mouse_event(&mut self.doc, kind, target, related, input);
+        }
+        if engine.take_dirty() {
+            self.dom_changed();
+        }
+        prevented
+    }
+
+    /// Le pointeur est au point (`input.x`, `input.y`) de la page : les
+    /// scripts reçoivent `pointermove` et `mousemove`, précédés, quand
+    /// l'élément survolé change, de `mouseout` et `mouseleave` sur ceux
+    /// qui sont quittés puis de `mouseover` et `mouseenter` sur ceux qui
+    /// sont rejoints (et de leurs équivalents `pointer…`). Renvoie `true`
+    /// si la page doit être redessinée.
+    ///
+    /// Une page sans script ne reçoit rien : personne n'écoute.
+    ///
+    /// LIMITES : `:hover` ne suit pas le pointeur ; la sortie du pointeur
+    /// hors de la page n'est pas signalée ; `offsetX` et `offsetY` valent
+    /// `pageX` et `pageY` au lieu d'être relatifs à la cible.
+    pub fn mouse_move(&mut self, input: &MouseInput) -> bool {
+        if self.engine.is_none() {
+            return false;
+        }
+        let target = self.mouse_target(input.x, input.y);
+        let pointer = MouseInput {
+            buttons: self.buttons,
+            detail: 0,
+            ..self.client_input(input)
+        };
+        let before = self.dirty;
+        let old = self.hovered;
+        if old != target {
+            let chain = |node: Option<NodeId>| -> Vec<NodeId> {
+                node.into_iter()
+                    .flat_map(|n| std::iter::once(n).chain(self.doc.ancestors(n)))
+                    .filter(|n| self.doc.element(*n).is_some())
+                    .collect()
+            };
+            let (left, entered) = (chain(old), chain(target));
+            if old.is_some() {
+                self.fire_mouse(&["pointerout", "mouseout"], old, target, &pointer);
+            }
+            // Du plus profond au plus englobant.
+            for node in left.iter().filter(|n| !entered.contains(n)) {
+                self.fire_mouse(
+                    &["pointerleave", "mouseleave"],
+                    Some(*node),
+                    target,
+                    &pointer,
+                );
+            }
+            if target.is_some() {
+                self.fire_mouse(&["pointerover", "mouseover"], target, old, &pointer);
+            }
+            // Du plus englobant au plus profond.
+            for node in entered.iter().rev().filter(|n| !left.contains(n)) {
+                self.fire_mouse(&["pointerenter", "mouseenter"], Some(*node), old, &pointer);
+            }
+            self.hovered = target;
+        }
+        self.fire_mouse(&["pointermove", "mousemove"], target, None, &pointer);
+        self.dirty && !before
+    }
+
+    /// Bouton `input.button` enfoncé (`down`) ou relâché au point
+    /// (`input.x`, `input.y`) de la page : `pointerdown` et `mousedown`,
+    /// ou `pointerup` et `mouseup`. Le clic lui-même est [`Page::click`].
+    /// Renvoie `true` si la page doit être redessinée.
+    ///
+    /// LIMITE : annuler `mousedown` n'empêche ni le focus ni la sélection
+    /// de texte.
+    pub fn mouse_button(&mut self, down: bool, input: &MouseInput) -> bool {
+        let bit = match input.button {
+            0 => 1,
+            1 => 4,
+            2 => 2,
+            _ => 0,
+        };
+        if down {
+            self.buttons |= bit;
+        } else {
+            self.buttons &= !bit;
+            self.released = *input;
+        }
+        if self.engine.is_none() {
+            return false;
+        }
+        let target = self.mouse_target(input.x, input.y);
+        let pointer = MouseInput {
+            buttons: self.buttons,
+            ..self.client_input(input)
+        };
+        let before = self.dirty;
+        let kinds: &[&str] = if down {
+            &["pointerdown", "mousedown"]
+        } else {
+            &["pointerup", "mouseup"]
+        };
+        self.fire_mouse(kinds, target, None, &pointer);
+        self.dirty && !before
+    }
+
+    /// Clic droit au point (`x`, `y`) de la page : les scripts reçoivent
+    /// `contextmenu`. Renvoie `true` s'ils l'ont annulé : l'embarqueur
+    /// n'ouvre alors pas son menu.
+    pub fn context_menu_event(&mut self, x: f32, y: f32) -> bool {
+        let target = self.mouse_target(x, y);
+        let pointer = self.client_input(&MouseInput {
+            x,
+            y,
+            button: 2,
+            ..MouseInput::default()
+        });
+        self.fire_mouse(&["contextmenu"], target, None, &pointer)
+    }
+
+    /// Molette de (`dx`, `dy`) au point (`input.x`, `input.y`) de la
+    /// fenêtre : les scripts reçoivent `wheel` (et l'ancien `mousewheel`).
+    /// Renvoie `true` s'ils ont annulé le défilement : l'embarqueur
+    /// n'appelle alors pas [`Page::wheel`].
+    pub fn wheel_event(&mut self, input: &MouseInput, dx: f32, dy: f32) -> bool {
+        let (scroll_x, scroll_y) = self.scroll_offset();
+        let target = self.mouse_target(input.x + scroll_x, input.y + scroll_y);
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        if engine.wheel_listeners() == 0 {
+            return false;
+        }
+        let pointer = MouseInput {
+            buttons: self.buttons,
+            detail: 0,
+            ..*input
+        };
+        let prevented = engine.wheel_event(&mut self.doc, target, &pointer, (dx, dy));
+        if engine.take_dirty() {
+            self.dom_changed();
+        }
+        prevented
+    }
+
+    /// Écouteurs de molette de la page : 0 aucun, 1 des passifs seulement,
+    /// 2 au moins un qui peut annuler le défilement — l'embarqueur doit
+    /// alors attendre [`Page::wheel_event`] avant de faire défiler.
+    pub fn wheel_listeners(&mut self) -> u8 {
+        self.engine
+            .as_mut()
+            .map_or(0, |engine| engine.wheel_listeners())
     }
 
     /// Après un clic sur le champ de texte `node`, qui vient de prendre le
@@ -1937,6 +2170,12 @@ impl Page {
     /// Clic sur le nœud `node`, comme [`Page::click`] quand ce nœud est sous
     /// le pointeur.
     pub fn click_node(&mut self, node: NodeId) -> Option<Url> {
+        self.click_with(node, None)
+    }
+
+    /// Clic sur `node` ; `pointer` : le pointeur, dans le repère de la
+    /// fenêtre, quand le clic vient de la souris.
+    fn click_with(&mut self, node: NodeId, pointer: Option<&MouseInput>) -> Option<Url> {
         let link = self.link_from(node);
         // Une page sans script a aussi des formulaires : le moteur naît au
         // premier geste qui en a besoin.
@@ -1944,7 +2183,7 @@ impl Page {
         let Some(engine) = self.engine.as_mut() else {
             return link;
         };
-        let prevented = engine.click(&mut self.doc, node);
+        let prevented = engine.click(&mut self.doc, node, pointer);
         if engine.take_dirty() {
             self.dom_changed();
         }
@@ -4413,5 +4652,197 @@ mod tests {
         assert!(p.context_at(10.0, 28.0).selection);
         p.copy();
         assert_eq!(p.take_copied().as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn scripts_receive_mouse_events() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'>
+               <div id=a style='height:40px'><span id=s>dedans</span></div>
+               <div id=b style='height:40px'></div>
+               <div style='height:3000px'></div>
+               <script>
+                 const journal = [];
+                 const note = (e) => journal.push(
+                   e.type + ':' + (e.target.id || e.target.nodeName) + '@' + e.clientX + ',' + e.clientY);
+                 for (const kind of ['mouseover', 'mouseout', 'mousemove', 'mousedown', 'mouseup',
+                   'click', 'dblclick', 'contextmenu', 'pointerdown']) {
+                   document.addEventListener(kind, note);
+                 }
+                 for (const id of ['a', 'b']) {
+                   const element = document.getElementById(id);
+                   element.addEventListener('mouseenter', note);
+                   element.addEventListener('mouseleave', note);
+                 }
+                 document.addEventListener('click', (e) => {
+                   document.documentElement.setAttribute('data-clic', [
+                     e instanceof MouseEvent, e.isTrusted, e.button, e.detail, e.ctrlKey,
+                     e.pageY, e.buttons].join(' '));
+                 });
+                 document.getElementById('b').addEventListener('contextmenu', (e) => e.preventDefault());
+                 globalThis.lire = () => {
+                   document.documentElement.setAttribute('data-journal', journal.join(' '));
+                   journal.length = 0;
+                 };
+                 document.addEventListener('keydown', () => lire());
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let attr = |p: &Page, name: &str| {
+            let doc = p.document();
+            let html = doc.find_html_element(doc.root(), "html").expect("html");
+            doc.element(html)
+                .and_then(|e| e.attr(name))
+                .unwrap_or("")
+                .to_owned()
+        };
+        // Une touche fait écrire le journal dans le document.
+        let read = |p: &mut Page| {
+            p.key_event(
+                true,
+                &KeyInput {
+                    key: "j",
+                    code: "",
+                    ctrl: false,
+                    shift: false,
+                    alt: false,
+                    meta: false,
+                    repeat: false,
+                },
+            );
+            attr(p, "data-journal")
+        };
+        let at = |x: f32, y: f32| MouseInput {
+            x,
+            y,
+            ..MouseInput::default()
+        };
+        // Entrée dans la page, sur le texte de `a` : la cible est l'élément.
+        p.mouse_move(&at(5.0, 10.0));
+        assert_eq!(
+            read(&mut p),
+            "mouseover:s@5,10 mouseenter:a@5,10 mousemove:s@5,10"
+        );
+        // De `a` à `b` : sortie, puis entrée, puis déplacement.
+        p.mouse_move(&at(5.0, 50.0));
+        assert_eq!(
+            read(&mut p),
+            "mouseout:s@5,50 mouseleave:a@5,50 mouseover:b@5,50 mouseenter:b@5,50 mousemove:b@5,50"
+        );
+        // Sans changer d'élément : un déplacement seul.
+        p.mouse_move(&at(6.0, 51.0));
+        assert_eq!(read(&mut p), "mousemove:b@6,51");
+        // Bouton enfoncé, relâché, puis clic : un `MouseEvent` de confiance
+        // qui porte le rang du clic et les touches.
+        let press = MouseInput {
+            detail: 2,
+            ctrl: true,
+            ..at(5.0, 10.0)
+        };
+        p.mouse_button(true, &press);
+        p.mouse_button(false, &press);
+        p.click(5.0, 10.0);
+        assert_eq!(
+            read(&mut p),
+            "pointerdown:s@5,10 mousedown:s@5,10 mouseup:s@5,10 click:s@5,10 dblclick:s@5,10"
+        );
+        assert_eq!(attr(&p, "data-clic"), "true true 0 2 true 10 0");
+        // `element.click()` : un `MouseEvent` sans coordonnées.
+        let b = p
+            .document()
+            .descendants(p.document().root())
+            .find(|n| {
+                p.document()
+                    .element(*n)
+                    .is_some_and(|e| e.attr("id") == Some("b"))
+            })
+            .expect("b");
+        p.click_node(b);
+        assert_eq!(read(&mut p), "click:b@0,0");
+        // `contextmenu` : annulé sur `b`, pas sur `a`.
+        assert!(p.context_menu_event(5.0, 50.0));
+        assert!(!p.context_menu_event(5.0, 10.0));
+        assert_eq!(read(&mut p), "contextmenu:b@5,50 contextmenu:s@5,10");
+        // Page défilée : `clientY` est dans la fenêtre, `pageY` dans la page.
+        p.set_scroll(oxyde_compositor::ROOT_SCROLLER, 0.0, 30.0);
+        p.mouse_button(false, &at(5.0, 45.0));
+        p.click(5.0, 45.0);
+        assert_eq!(read(&mut p), "mouseup:b@5,15 click:b@5,15");
+        assert_eq!(attr(&p, "data-clic"), "true true 0 1 false 45 0");
+    }
+
+    #[test]
+    fn the_wheel_reaches_scripts_and_can_be_canceled() {
+        let mut text = TextContext::new();
+        let source = |listener: &str| {
+            format!(
+                "<body style='margin:0'><div id=zone style='height:3000px'></div>
+                 <script>
+                   let vu = '';
+                   {listener}
+                   addEventListener('keydown', () => document.documentElement.setAttribute('data-vu', vu));
+                 </script></body>"
+            )
+        };
+        let seen = |p: &mut Page| {
+            p.key_event(
+                true,
+                &KeyInput {
+                    key: "j",
+                    code: "",
+                    ctrl: false,
+                    shift: false,
+                    alt: false,
+                    meta: false,
+                    repeat: false,
+                },
+            );
+            let doc = p.document();
+            let html = doc.find_html_element(doc.root(), "html").expect("html");
+            doc.element(html)
+                .and_then(|e| e.attr("data-vu"))
+                .unwrap_or("")
+                .to_owned()
+        };
+        let input = MouseInput {
+            x: 10.0,
+            y: 10.0,
+            shift: true,
+            ..MouseInput::default()
+        };
+        // Sans écouteur : rien n'est distribué, rien n'est annulé.
+        let mut p = page(&source(""));
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(p.wheel_listeners(), 0);
+        assert!(!p.wheel_event(&input, 0.0, 100.0));
+        // Écouteur passif (par défaut sur la fenêtre) : l'événement arrive,
+        // sans pouvoir être annulé.
+        let mut p = page(&source(
+            "addEventListener('wheel', (e) => { e.preventDefault();
+               vu = [e.type, e.target.id, e.deltaY, e.wheelDeltaY, e.cancelable, e.shiftKey,
+                     e.isTrusted, e.defaultPrevented].join(' '); });",
+        ));
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(p.wheel_listeners(), 1);
+        assert!(!p.wheel_event(&input, 0.0, 100.0));
+        assert_eq!(seen(&mut p), "wheel zone 100 -120 false true true false");
+        // Écouteur non passif sur un élément : il annule le défilement ;
+        // l'ancien `mousewheel` est distribué lui aussi.
+        let mut p = page(&source(
+            "const zone = document.getElementById('zone');
+             zone.addEventListener('mousewheel', (e) => { vu += e.type + ' '; });
+             zone.addEventListener('wheel', (e) => { vu += e.type + ' ' + e.cancelable + ' ';
+               e.preventDefault(); });",
+        ));
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        assert_eq!(p.wheel_listeners(), 2);
+        assert!(p.wheel_event(&input, 0.0, 100.0));
+        assert_eq!(seen(&mut p), "wheel true mousewheel ");
     }
 }
