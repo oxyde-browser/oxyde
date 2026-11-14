@@ -663,9 +663,19 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : une `NodeList` figée (`querySelectorAll`) reste un tableau
       (`Array.isArray` vrai) ; `length` lu sur un objet qui hérite d'une collection ne
       lève pas d'erreur.
-- [ ] Web Platform Tests `dom/` : de 63,5 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (35 :
-      `scrollend`, défilement tactile), `ranges/tentative` (19),
+- [x] `element.style = "…"` écrit l'attribut `style` (l'affectation d'une chaîne était
+      sans effet). Événement `scrollend` : une zone qui a défilé et ne bouge plus à
+      l'image suivante le reçoit (`onscrollend` sur la fenêtre et les éléments) ; les
+      événements de défilement précèdent les minuteurs et `requestAnimationFrame` de
+      la même image ; une zone retirée du document ne reçoit rien.
+      Limites : pas de défilement doux (`behavior: "smooth"` saute à la cible) ni
+      d'accrochage (`scroll-snap`) ; `scrollIntoView` sur la fenêtre et le défilement
+      au clavier d'un champ ne déclenchent pas ces événements.
+- [ ] API Web Animations (`Element.animate()`, `Animation`, `getAnimations()`) : une
+      vingtaine de fichiers `dom/` l'attendent (`moveBefore`, `events/scrolling`).
+- [ ] Web Platform Tests `dom/` : de 64,6 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (45), `events/scrolling` (28 :
+      défilement doux, accrochage, `Element.animate`), `ranges/tentative` (19),
       `NodeList` figée (6),
       `Document-contentType` (12), royaumes des cadres (~15).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).

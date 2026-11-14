@@ -1341,7 +1341,7 @@
 
   // ---- Fenêtre : ce que les pages lisent sans vérifier -----------------------------------------------------------
   // Gestionnaires d'événements de la fenêtre : `null` tant qu'aucun n'est posé.
-  for (const kind of ["load", "error", "beforeunload", "unload", "resize", "scroll", "message",
+  for (const kind of ["load", "error", "beforeunload", "unload", "resize", "scroll", "scrollend", "message",
     "popstate", "hashchange", "focus", "blur", "pageshow", "pagehide", "storage",
     "unhandledrejection", "rejectionhandled", "online", "offline", "languagechange",
     "click", "keydown", "keyup", "keypress", "mousedown", "mouseup", "mousemove",

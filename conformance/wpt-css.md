@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9002 / 27885 (32,3 %)** — fichiers entièrement réussis : 573 / 2267 (25,3 %).
+**Sous-tests réussis : 9010 / 27885 (32,3 %)** — fichiers entièrement réussis : 576 / 2267 (25,4 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 66 / 233 | 864 / 1816 (47,6 %) |
+| `css/cssom-view` | 69 / 233 | 872 / 1816 (48,0 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1705,7 +1705,7 @@ est le plus honnête des deux.
 | `css/cssom-view/idlharness.html` | 0 / 1 |  |
 | `css/cssom-view/image-x-y-zoom.html` | 0 / 2 |  |
 | `css/cssom-view/inheritance.html` | 0 / 2 |  |
-| `css/cssom-view/interrupt-hidden-smooth-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/cssom-view/interrupt-hidden-smooth-scroll.html` | 1 / 2 |  |
 | `css/cssom-view/matchMedia-display-none-iframe.html` | 0 / 0 | le harnais n'a pas terminé |
 | `css/cssom-view/matchMedia.html` | 6 / 10 |  |
 | `css/cssom-view/mouseEvent-offsetXY-svg.html` | 0 / 4 | harnais : Unhandled rejection: element click intercepted error |
@@ -1754,8 +1754,6 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 3 / 9 |  |
 | `css/cssom-view/scrollIntoView-iframes.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scrollIntoView-multiple-nested.html` | 1 / 4 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scrollIntoView-multiple.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollIntoView-nearest-oversized-element.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-root-overflow-clip.html` | 1 / 2 |  |
 | `css/cssom-view/scrollIntoView-scrollMargin.html` | 0 / 3 |  |
@@ -1766,7 +1764,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-sideways-lr-writing-mode.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-sideways-rl-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-sideways-rl-writing-mode.html` | 0 / 9 |  |
-| `css/cssom-view/scrollIntoView-smooth.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scrollIntoView-smooth.html` | 0 / 4 |  |
 | `css/cssom-view/scrollIntoView-stuck.tentative.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-svg-shape.html` | 0 / 3 |  |
 | `css/cssom-view/scrollIntoView-then-scrollBy.html` | 0 / 1 |  |
@@ -1786,7 +1784,6 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollintoview-zero-height-item.html` | 0 / 1 |  |
 | `css/cssom-view/scrollintoview.html` | 0 / 40 |  |
 | `css/cssom-view/smooth-scroll-in-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/cssom-view/smooth-scroll-nonstop.html` | 1 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/smooth-scrollIntoView-with-smooth-fragment-scroll.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `css/cssom-view/subpixel-sizes-and-offsets.tentative.html` | 12 / 15 |  |
 | `css/cssom-view/table-client-props.html` | 11 / 15 |  |

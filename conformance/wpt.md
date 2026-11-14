@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44440 / 50203 (88,5 %)** — fichiers entièrement réussis : 440 / 693 (63,5 %).
+**Sous-tests réussis : 44457 / 50203 (88,6 %)** — fichiers entièrement réussis : 448 / 693 (64,6 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -18,9 +18,9 @@ est le plus honnête des deux.
 | `dom/collections` | 10 / 12 | 58 / 60 (96,7 %) |
 | `dom/events` | 72 / 100 | 483 / 636 (75,9 %) |
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
-| `dom/events/scrolling` | 4 / 39 | 15 / 94 (16,0 %) |
+| `dom/events/scrolling` | 11 / 39 | 31 / 94 (33,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 193 / 265 | 10853 / 13109 (82,8 %) |
+| `dom/nodes` | 194 / 265 | 10854 / 13109 (82,8 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
 | `dom/nodes/moveBefore` | 17 / 64 | 81 / 177 (45,8 %) |
@@ -62,31 +62,24 @@ est le plus honnête des deux.
 | `dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-cross-origin-iframes.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scroll-event-fired-to-element.html` | 2 / 4 |  |
 | `dom/events/scrolling/scroll-event-fired-to-iframe.html` | 2 / 4 |  |
-| `dom/events/scrolling/scroll-event-not-fired-on-ancestor-style-change.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-events-fired-once-per-frame-across-display-none.html` | 0 / 2 |  |
-| `dom/events/scrolling/scrollend-event-fired-after-instant-scroll-in-microtask.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-layout-clamping.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-sequence-of-scrolls.tentative.html` | 0 / 2 |  |
 | `dom/events/scrolling/scrollend-event-fired-after-snap.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fired-for-mandatory-snap-point-after-load.html` | 0 / 1 |  |
-| `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html` | 0 / 5 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fired-to-document.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fired-to-element-with-overscroll-behavior.html` | 0 / 1 |  |
-| `dom/events/scrolling/scrollend-event-fired-to-window.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-fired-for-programmatic-scroll.html` | 1 / 8 |  |
+| `dom/events/scrolling/scrollend-event-fired-for-scroll-attr-change.html` | 2 / 8 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-fired-for-scrollIntoView.html` | 2 / 5 |  |
+| `dom/events/scrolling/scrollend-event-fired-to-document.html` | 0 / 2 | harnais : Uncaught { message: 'assert_true: expected true got false', stack: 'Error' } |
 | `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : Unhandled rejection: pinchZoomIn n'est pas défini |
 | `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 2 / 6 |  |
 | `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
-| `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 2 / 3 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 2 / 4 | harnais : Uncaught { message: 'assert_true: Scrollend should not be called on: [object Document] expected true got false', stack:  |
 | `dom/events/scrolling/scrollend-event-not-fired-on-no-scroll.html` | 1 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-fires-to-text-input.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-with-snap-on-fractional-offset.html` | 0 / 1 |  |
-| `dom/events/scrolling/visibility-hidden-scrolls.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/wheel-event-transactions-basic.html` | 0 / 3 |  |
 | `dom/events/scrolling/wheel-event-transactions-multiple-action-chains.html` | 0 / 1 |  |
 | `dom/events/scrolling/wheel-event-transactions-target-display-change.html` | 0 / 2 |  |
@@ -173,7 +166,6 @@ est le plus honnête des deux.
 | `dom/nodes/ParentNode-replaceChildren.html` | 50 / 62 | harnais : Uncaught { message: 'assert_equals: mutations.length expected 3 but got 5', stack: 'Error' } |
 | `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 2 / 5 |  |
-| `dom/nodes/attributes.html` | 66 / 67 |  |
 | `dom/nodes/create-element-realm-after-adoption.html` | 2 / 5 |  |
 | `dom/nodes/getElementById-namespaced-id.html` | 0 / 4 |  |
 | `dom/nodes/insertion-removing-steps/Node-append-form-and-script-from-fragment.html` | 0 / 1 |  |
