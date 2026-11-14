@@ -601,10 +601,35 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `cellIndex`…), `window.event`, `MutationRecord` pour `instanceof`.
       Limites : les collections des tableaux sont figées à la lecture ; un script posé
       par `innerHTML` s'exécute encore en fin de tâche (il ne devrait pas s'exécuter).
-- [ ] Web Platform Tests `dom/` : de 53,5 % à 70 % des fichiers ; `html/` branché et mesuré.
-      Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (39 :
-      `scrollend`, défilement tactile), gestes tactiles (20), `Observable` (27),
-      `ranges/tentative` (19), `insertion-removing-steps` (19).
+- [x] Exceptions non rattrapées : événement `error` (un `ErrorEvent` annulable) sur la
+      fenêtre, `window.onerror(message, fichier, ligne, colonne, erreur)` qui annule en
+      rendant `true`, `reportError()` ; promesses rejetées sans gestionnaire : événement
+      `unhandledrejection` (`PromiseRejectionEvent`). Un gestionnaire en attribut annule
+      l'événement en rendant `false`. Rien n'arrivait à la page jusque-là : seule la
+      console recevait l'erreur.
+      Limites : `lineno` et `colno` valent 0 (le code compilé ne garde pas les
+      positions) ; pas de `rejectionhandled` ; l'erreur d'un cadre est signalée à la
+      fenêtre du dernier royaume initialisé.
+- [x] `AbortSignal` selon la norme : algorithmes d'abandon, signaux dépendants de
+      `AbortSignal.any()` prévenus dans l'ordre après leur source, événement `abort` du
+      navigateur (`isTrusted`), option `signal` de `addEventListener`.
+      Limite : un signal dépendant reste tenu par ses sources jusqu'à son abandon.
+- [x] `Observable` (proposition WICG) : `Observable`, `Subscriber`, producteur partagé
+      entre abonnés, `map`, `filter`, `take`, `drop`, `takeUntil`, `flatMap`,
+      `switchMap`, `inspect`, `catch`, `finally`, `toArray`, `forEach`, `every`, `some`,
+      `find`, `first`, `last`, `reduce`, `Observable.from()` (observable, itérable,
+      itérable asynchrone, promesse), `EventTarget.when()`.
+      Limite : pas de contrôle « document pleinement actif » (cadre détaché).
+- [x] Cadres : l'événement `load` d'un `<iframe>` ne remonte plus jusqu'à la fenêtre
+      (`<body onload>` et les écouteurs `load` de la page s'exécutaient une fois par
+      cadre chargé) ; un cadre inséré pendant le chargement d'un autre prend son contenu
+      dans la même tâche ; un `<img>` inséré ou cloné par un script prend tout de suite
+      la taille d'une image déjà reçue.
+- [ ] Web Platform Tests `dom/` : de 57,0 % à 70 % des fichiers ; `html/` branché et mesuré.
+      Les plus gros lots restants : `moveBefore` (49), `events/scrolling` (35 :
+      `scrollend`, défilement tactile), gestes tactiles (20), `ranges/tentative` (19),
+      collections exotiques (`HTMLCollection`, `NamedNodeMap`, `NodeList` : ~18),
+      `Document-contentType` (12), royaumes des cadres (~15).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

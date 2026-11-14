@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 43625 / 50188 (86,9 %)** — fichiers entièrement réussis : 371 / 693 (53,5 %).
+**Sous-tests réussis : 43883 / 50203 (87,4 %)** — fichiers entièrement réussis : 395 / 693 (57,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -14,17 +14,17 @@ est le plus honnête des deux.
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
 | `dom` | 5 / 9 | 120 / 142 (84,5 %) |
-| `dom/abort` | 3 / 6 | 34 / 37 (91,9 %) |
+| `dom/abort` | 5 / 6 | 36 / 37 (97,3 %) |
 | `dom/collections` | 4 / 12 | 35 / 60 (58,3 %) |
-| `dom/events` | 66 / 100 | 464 / 637 (72,8 %) |
+| `dom/events` | 69 / 100 | 476 / 636 (74,8 %) |
 | `dom/events/non-cancelable-when-passive` | 22 / 42 | 33 / 53 (62,3 %) |
-| `dom/events/scrolling` | 4 / 39 | 19 / 108 (17,6 %) |
+| `dom/events/scrolling` | 4 / 39 | 15 / 94 (16,0 %) |
 | `dom/lists` | 3 / 5 | 180 / 189 (95,2 %) |
-| `dom/nodes` | 181 / 265 | 10707 / 13078 (81,9 %) |
+| `dom/nodes` | 181 / 265 | 10732 / 13109 (81,9 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 18 / 38 (47,4 %) |
-| `dom/nodes/moveBefore` | 15 / 64 | 70 / 178 (39,3 %) |
-| `dom/observable/tentative` | 0 / 27 | 0 / 242 (0,0 %) |
+| `dom/nodes/moveBefore` | 15 / 64 | 70 / 177 (39,5 %) |
+| `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 37 / 49 | 30343 / 33613 (90,3 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
 | `dom/traversal` | 14 / 18 | 1598 / 1608 (99,4 %) |
@@ -33,9 +33,7 @@ est le plus honnête des deux.
 
 | Fichier | Sous-tests | Cause |
 |---|---:|---|
-| `dom/abort/abort-signal-any.any.js` | 13 / 14 |  |
 | `dom/abort/abort-signal-timeout.html` | 0 / 1 |  |
-| `dom/abort/event.any.js` | 15 / 16 |  |
 | `dom/collections/HTMLCollection-as-prototype.html` | 1 / 2 |  |
 | `dom/collections/HTMLCollection-delete.html` | 2 / 4 |  |
 | `dom/collections/HTMLCollection-iterator.html` | 3 / 6 |  |
@@ -44,27 +42,24 @@ est le plus honnête des deux.
 | `dom/collections/HTMLCollection-supported-property-names.html` | 3 / 6 |  |
 | `dom/collections/domstringmap-supported-property-names.html` | 0 / 5 |  |
 | `dom/collections/namednodemap-supported-property-names.html` | 0 / 3 |  |
-| `dom/events/AddEventListenerOptions-signal.any.js` | 4 / 11 |  |
 | `dom/events/Body-FrameSet-Event-Handlers.html` | 1 / 5 |  |
 | `dom/events/Event-dispatch-click.html` | 18 / 33 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-detached-input-and-change.html` | 8 / 12 |  |
 | `dom/events/Event-dispatch-on-disabled-elements.html` | 4 / 9 | harnais : délai du harnais dépassé |
 | `dom/events/Event-dispatch-single-activation-behavior.html` | 80 / 132 |  |
-| `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `dom/events/Event-dispatch-throwing.html` | 0 / 2 |  |
+| `dom/events/Event-dispatch-throwing-multiple-globals.html` | 0 / 2 |  |
 | `dom/events/Event-init-while-dispatching.html` | 2 / 5 |  |
 | `dom/events/Event-isTrusted.any.js` | 0 / 1 |  |
 | `dom/events/Event-timestamp-high-resolution.https.html` | 0 / 1 |  |
 | `dom/events/Event-timestamp-safe-resolution.html` | 0 / 1 |  |
 | `dom/events/EventListener-handleEvent-cross-realm.html` | 0 / 5 |  |
-| `dom/events/EventListener-handleEvent.html` | 3 / 6 |  |
 | `dom/events/EventListener-incumbent-global-1.sub.html` | 0 / 1 |  |
 | `dom/events/EventListener-incumbent-global-2.sub.html` | 0 / 1 |  |
 | `dom/events/EventListener-invoke-legacy.html` | 3 / 6 | harnais : délai du harnais dépassé |
 | `dom/events/EventTarget-dispatchEvent.html` | 5 / 25 |  |
 | `dom/events/click-on-absolute-pseudo.html` | 0 / 1 |  |
 | `dom/events/event-global-extra.window.js` | 0 / 6 |  |
-| `dom/events/event-global-is-still-set-when-coercing-beforeunload-result.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `dom/events/event-global-is-still-set-when-coercing-beforeunload-result.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/event-global-is-still-set-when-reporting-exception-onerror.html` | 0 / 1 |  |
 | `dom/events/event-global.html` | 5 / 8 |  |
 | `dom/events/event-listener-not-fully-active-adopted-node.html` | 3 / 5 |  |
@@ -94,7 +89,7 @@ est le plus honnête des deux.
 | `dom/events/non-cancelable-when-passive/passive-touchstart-event-listener-on-window.html` | 0 / 1 |  |
 | `dom/events/relatedTarget.window.js` | 0 / 6 |  |
 | `dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html` | 0 / 2 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `dom/events/scrolling/save-iframe-scroll-offset-when-display-none.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-cross-origin-iframes.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scroll-event-fired-to-element.html` | 2 / 4 |  |
 | `dom/events/scrolling/scroll-event-fired-to-iframe.html` | 2 / 4 |  |
@@ -112,8 +107,8 @@ est le plus honnête des deux.
 | `dom/events/scrolling/scrollend-event-fired-to-element-with-overscroll-behavior.html` | 0 / 1 |  |
 | `dom/events/scrolling/scrollend-event-fired-to-window.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-fires-for-repeat-key-ending-after-scroll-container-end-is-reached.html` | 0 / 1 |  |
-| `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 6 / 18 | harnais : 6 duplicate test names: "Tests that the target_div within iframe gets scrollend event when touch dragging.", "Tests that |
+| `dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html` | 0 / 0 | harnais : Unhandled rejection: pinchZoomIn n'est pas défini |
+| `dom/events/scrolling/scrollend-event-fires-to-iframe-window.html` | 2 / 6 |  |
 | `dom/events/scrolling/scrollend-event-for-user-scroll.html` | 2 / 5 |  |
 | `dom/events/scrolling/scrollend-event-handler-content-attributes.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `dom/events/scrolling/scrollend-event-not-fired-after-removing-scroller.tentative.html` | 2 / 3 | harnais : délai du harnais dépassé |
@@ -175,7 +170,7 @@ est le plus honnête des deux.
 | `dom/nodes/Element-children.html` | 0 / 2 |  |
 | `dom/nodes/Element-classlist.html` | 1415 / 1420 |  |
 | `dom/nodes/Element-closest.html` | 28 / 29 |  |
-| `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 |  |
 | `dom/nodes/Element-getElementsByTagName.html` | 16 / 19 |  |
 | `dom/nodes/Element-matches-disabled-pseudo-class.html` | 3 / 11 |  |
 | `dom/nodes/Element-matches-namespaced-elements.html` | 4 / 6 |  |
@@ -213,7 +208,7 @@ est le plus honnête des deux.
 | `dom/nodes/ParentNode-querySelector-namespace-tagname-attribute.html` | 2 / 8 |  |
 | `dom/nodes/ParentNode-querySelector-xml-capitalization.window.js` | 2 / 3 |  |
 | `dom/nodes/ParentNode-querySelectors-namespaces.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/ParentNode-replaceChildren.html` | 25 / 31 | harnais : délai du harnais dépassé |
+| `dom/nodes/ParentNode-replaceChildren.html` | 50 / 62 | harnais : Uncaught { message: 'assert_equals: mutations.length expected 3 but got 7', stack: 'Error' } |
 | `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 2 / 5 |  |
 | `dom/nodes/attributes.html` | 59 / 67 |  |
@@ -237,7 +232,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/continue-css-transition-transform-pseudo.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/continue-css-transition-transform.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-animation-commit-styles.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `dom/nodes/moveBefore/css-transition-cross-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `dom/nodes/moveBefore/css-transition-cross-document.html` | 0 / 0 | le harnais n'a pas terminé |
 | `dom/nodes/moveBefore/css-transition-cross-shadow.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-to-disconnected-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/css-transition-trigger.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -291,32 +286,13 @@ est le plus honnête des deux.
 | `dom/nodes/remove-and-adopt-thcrash.html` | 0 / 1 |  |
 | `dom/nodes/remove-unscopable.html` | 0 / 6 |  |
 | `dom/observable/tentative/idlharness.html` | 0 / 1 |  |
-| `dom/observable/tentative/observable-catch.any.js` | 0 / 9 |  |
-| `dom/observable/tentative/observable-constructor.any.js` | 0 / 44 |  |
+| `dom/observable/tentative/observable-constructor.any.js` | 36 / 44 |  |
 | `dom/observable/tentative/observable-constructor.window.js` | 0 / 4 |  |
-| `dom/observable/tentative/observable-drop.any.js` | 0 / 7 |  |
-| `dom/observable/tentative/observable-event-target.any.js` | 0 / 3 |  |
-| `dom/observable/tentative/observable-event-target.window.js` | 0 / 2 |  |
-| `dom/observable/tentative/observable-every.any.js` | 0 / 10 |  |
-| `dom/observable/tentative/observable-filter.any.js` | 0 / 6 |  |
-| `dom/observable/tentative/observable-finally.any.js` | 0 / 10 |  |
-| `dom/observable/tentative/observable-find.any.js` | 0 / 6 |  |
-| `dom/observable/tentative/observable-first.any.js` | 0 / 5 |  |
-| `dom/observable/tentative/observable-flatMap.any.js` | 0 / 7 |  |
-| `dom/observable/tentative/observable-forEach.any.js` | 0 / 6 |  |
-| `dom/observable/tentative/observable-forEach.window.js` | 0 / 2 |  |
-| `dom/observable/tentative/observable-from.any.js` | 0 / 48 |  |
-| `dom/observable/tentative/observable-inspect.any.js` | 0 / 13 |  |
-| `dom/observable/tentative/observable-last.any.js` | 0 / 5 |  |
-| `dom/observable/tentative/observable-map.any.js` | 0 / 6 |  |
+| `dom/observable/tentative/observable-forEach.window.js` | 1 / 2 |  |
 | `dom/observable/tentative/observable-map.window.js` | 0 / 1 |  |
-| `dom/observable/tentative/observable-reduce.any.js` | 0 / 8 |  |
-| `dom/observable/tentative/observable-some.any.js` | 0 / 7 |  |
-| `dom/observable/tentative/observable-switchMap.any.js` | 0 / 6 |  |
-| `dom/observable/tentative/observable-take.any.js` | 0 / 6 |  |
-| `dom/observable/tentative/observable-takeUntil.any.js` | 0 / 12 |  |
-| `dom/observable/tentative/observable-takeUntil.window.js` | 0 / 2 |  |
-| `dom/observable/tentative/observable-toArray.any.js` | 0 / 6 |  |
+| `dom/observable/tentative/observable-takeUntil.any.js` | 11 / 12 |  |
+| `dom/observable/tentative/observable-takeUntil.window.js` | 1 / 2 |  |
+| `dom/observable/tentative/observable-toArray.any.js` | 4 / 6 |  |
 | `dom/ranges/Range-cloneContents-around-shadow.tentative.html` | 4 / 5 |  |
 | `dom/ranges/Range-cloneContents.html` | 109 / 187 |  |
 | `dom/ranges/Range-deleteContents.html` | 65 / 125 |  |

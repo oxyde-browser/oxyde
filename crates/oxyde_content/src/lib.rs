@@ -207,6 +207,9 @@ pub(crate) struct LayoutEnv {
     sheets: Vec<SheetSlot>,
     base: Url,
     sizes: HashMap<NodeId, (f32, f32)>,
+    /// Tailles des images déjà reçues, par adresse : un `<img>` qu'un
+    /// script vient d'insérer (ou de cloner) a sa taille sans attendre.
+    known_sizes: HashMap<String, (f32, f32)>,
     fonts: Vec<FontSlot>,
     pub(crate) animations: std::sync::Arc<Animations>,
     pub(crate) scrolling: std::sync::Arc<Scrolling>,
@@ -441,7 +444,13 @@ pub(crate) fn layout_snapshot(
         height: viewport.1,
     };
     let (styles, time) = env.animations.styles(doc, &usable_sheets(&slots), viewport);
-    let intrinsic = |node: NodeId| env.sizes.get(&node).copied();
+    let intrinsic = |node: NodeId| {
+        env.sizes.get(&node).copied().or_else(|| {
+            let el = doc.element(node).filter(|el| el.is_html("img"))?;
+            let target = image_target(el, &env.base)?;
+            env.known_sizes.get(target.as_str()).copied()
+        })
+    };
     let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
     (styles, tree, time)
 }
@@ -1577,10 +1586,23 @@ impl Page {
                 Some((*node, (image.width() as f32, image.height() as f32)))
             })
             .collect();
+        #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
+        let known_sizes = self
+            .images
+            .values()
+            .filter_map(|slot| {
+                let image = slot.image.as_ref()?;
+                Some((
+                    slot.url.as_str().to_owned(),
+                    (image.width() as f32, image.height() as f32),
+                ))
+            })
+            .collect();
         LayoutEnv {
             sheets: self.sheets.clone(),
             base: self.base.clone(),
             sizes,
+            known_sizes,
             fonts: self.fonts.clone(),
             animations: std::sync::Arc::clone(&self.animations),
             scrolling: std::sync::Arc::clone(&self.scrolling),
@@ -5099,6 +5121,114 @@ mod tests {
                 "4 1 2 true titre a 3 1 1 1 tbody 1 avantneuf 0 4 2 IndexSizeError \
                  true caption tbody tbody"
             )
+        );
+    }
+
+    #[test]
+    fn uncaught_exceptions_reach_window_error_handlers() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               window.onerror = (message, file, line, column, error) => {
+                 out.push('onerror:' + error.message + ':' + (typeof message));
+                 return true;
+               };
+               addEventListener('error', (e) => {
+                 out.push('error:' + e.error.message + ':' + e.isTrusted + ':' + e.defaultPrevented);
+               });
+               addEventListener('unhandledrejection', (e) => {
+                 out.push('rejet:' + e.reason + ':' + (e.promise instanceof Promise));
+                 e.preventDefault();
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+               reportError(new Error('un'));
+               document.body.addEventListener('click', () => { throw new Error('deux'); });
+               document.body.click();
+               Promise.reject('trois');
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "error:un:true:false onerror:un:string error:deux:true:false onerror:deux:string \
+                 rejet:trois:true"
+            )
+        );
+    }
+
+    #[test]
+    fn abort_signals_run_algorithms_and_dependents_in_order() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const controller = new AbortController();
+               const any = AbortSignal.any([controller.signal]);
+               const deep = AbortSignal.any([any]);
+               deep.addEventListener('abort', () => out.push('profond'));
+               any.addEventListener('abort', () => out.push('suiveur:' + deep.aborted));
+               controller.signal.addEventListener('abort', (e) => out.push('source:' + any.aborted + ':' + e.isTrusted));
+               // L'option `signal` retire l'écouteur à l'abandon.
+               let clicks = 0;
+               document.body.addEventListener('click', () => { clicks += 1; }, { signal: controller.signal });
+               document.body.click();
+               controller.abort('fini');
+               document.body.click();
+               document.body.addEventListener('click', () => { clicks += 10; }, { signal: controller.signal });
+               document.body.click();
+               out.push(clicks, deep.reason, AbortSignal.abort().reason.name);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("source:true:true suiveur:true profond 1 fini AbortError")
+        );
+    }
+
+    #[test]
+    fn observables_share_a_producer_and_compose() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               let producers = 0;
+               const source = new Observable((subscriber) => {
+                 producers += 1;
+                 subscriber.addTeardown(() => out.push('nettoyage'));
+                 queueMicrotask(() => {
+                   for (const value of [1, 2, 3, 4]) subscriber.next(value);
+                   subscriber.complete();
+                 });
+               });
+               source.map((v) => v * 10).filter((v) => v > 10).take(2).subscribe({
+                 next: (v) => out.push(v),
+                 complete: () => out.push('fin'),
+               });
+               source.subscribe((v) => out.push('b' + v));
+               Observable.from([5, 6]).toArray().then((values) => out.push(values.join('+')));
+               const clicks = document.body.when('click').map((e) => e.type);
+               const controller = new AbortController();
+               clicks.subscribe((type) => out.push(type), { signal: controller.signal });
+               document.body.click();
+               controller.abort();
+               document.body.click();
+               source.last().then((v) => {
+                 out.push('dernier' + v, producers);
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("click b1 20 b2 30 fin b3 b4 nettoyage 5+6 dernier4 1")
         );
     }
 }

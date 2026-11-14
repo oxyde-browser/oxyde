@@ -285,6 +285,10 @@ pub struct Vm {
     pub(crate) jobs: VecDeque<Job>,
     /// Promesses rejetées sans gestionnaire, à signaler en fin de microtâches.
     pub(crate) rejections: Vec<ObjId>,
+    /// Fonction de l'hôte appelée avec (promesse, raison) pour chaque
+    /// promesse rejetée sans gestionnaire ; elle rend `true` si le rejet a
+    /// été pris en charge (rien n'est alors écrit dans la console).
+    pub(crate) rejection_handler: Option<Value>,
     /// Vrai pendant l'appel d'un constructeur natif par `new`.
     pub(crate) constructing: bool,
     /// `new.target` du constructeur natif en cours d'appel.
@@ -545,6 +549,7 @@ impl Vm {
             throw_sites: VecDeque::new(),
             jobs: VecDeque::new(),
             rejections: Vec::new(),
+            rejection_handler: None,
             constructing: false,
             native_new_target: Value::Undefined,
             native_proto: None,
@@ -645,6 +650,13 @@ impl Vm {
         if let Some(index) = self.roots.iter().position(|v| v == value) {
             self.roots.swap_remove(index);
         }
+    }
+
+    /// Installe la fonction appelée avec (promesse, raison) pour chaque
+    /// promesse rejetée sans gestionnaire, en fin de microtâches. Elle rend
+    /// `true` si l'hôte a pris le rejet en charge.
+    pub fn set_rejection_handler(&mut self, handler: Value) {
+        self.rejection_handler = Some(handler);
     }
 
     /// Installe les crochets d'accès aux objets de l'hôte.
@@ -837,6 +849,7 @@ impl Vm {
             .chain(self.async_waits.iter().map(|w| Value::Object(w.promise)))
             .chain(job_values)
             .chain(self.rejections.iter().map(|id| Value::Object(*id)))
+            .chain(self.rejection_handler.iter().cloned())
             .chain(self.typed_protos.iter().map(|id| Value::Object(*id)))
             .chain(self.pending_throw.iter().cloned())
             .chain(std::iter::once(Value::Object(self.global_lexicals)))
