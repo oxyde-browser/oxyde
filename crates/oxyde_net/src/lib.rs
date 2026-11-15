@@ -9,12 +9,10 @@
 //! « 100 % Rust » de la maquette ; elle doit être réévaluée avant toute
 //! diffusion du navigateur.
 //!
-//! LIMITES CONNUES : pas de HTTP/3, pas de cache, cookies en mémoire
-//! seulement (voir [`cookies`]), pas de
-//! réutilisation des connexions HTTP/1.1 (les connexions HTTP/2 sont
-//! partagées par hôte), décompression `gzip` et `deflate` seulement
-//! (ni Brotli ni Zstandard, qui ne sont donc pas annoncés), résolution DNS
-//! par le système, pas de proxy ; le corps d'une requête est envoyé d'un bloc.
+//! LIMITES CONNUES : pas de HTTP/3, cache et cookies en mémoire seulement
+//! (voir [`cookies`]), décompression `gzip`, `deflate` et Brotli (pas
+//! Zstandard, qui n'est donc pas annoncé), résolution DNS par le système,
+//! pas de proxy ; le corps d'une requête est envoyé d'un bloc.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +20,7 @@ use std::time::Duration;
 mod cache;
 pub mod cookies;
 pub mod stream;
+pub mod suffixes;
 pub mod websocket;
 
 use bytes::Bytes;
@@ -599,7 +598,7 @@ impl Client {
             let mut builder = Request::builder()
                 .method(method.clone())
                 .uri(target)
-                .header(header::ACCEPT_ENCODING, "gzip, deflate");
+                .header(header::ACCEPT_ENCODING, "gzip, deflate, br");
             if host_header {
                 builder = builder.header(header::HOST, &authority);
             }
@@ -836,6 +835,10 @@ fn decode_body(mut body: Vec<u8>, encodings: &str) -> Result<Vec<u8>, NetError> 
             // le flux brut, sans en-tête.
             "deflate" => inflate(&mut flate2::read::ZlibDecoder::new(body.as_slice()))
                 .or_else(|| inflate(&mut flate2::read::DeflateDecoder::new(body.as_slice()))),
+            "br" => inflate(&mut brotli_decompressor::Decompressor::new(
+                body.as_slice(),
+                4096,
+            )),
             _ => None,
         }
         .ok_or_else(unreadable)?;
@@ -1130,8 +1133,17 @@ mod tests {
             text
         );
         // Un encodage inconnu ou un corps abîmé est une erreur, pas du texte.
+        // Brotli : « hello » dans un bloc non compressé.
+        assert_eq!(
+            decode_body(b"\x0b\x02\x80hello\x03".to_vec(), "br").expect("brotli"),
+            b"hello"
+        );
         assert!(matches!(
             decode_body(gzip.clone(), "br"),
+            Err(NetError::Encoding(_))
+        ));
+        assert!(matches!(
+            decode_body(gzip.clone(), "zstd"),
             Err(NetError::Encoding(_))
         ));
         assert!(matches!(

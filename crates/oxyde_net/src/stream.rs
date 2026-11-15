@@ -2,8 +2,8 @@
 //! morceau, à mesure qu'il arrive, au lieu d'être attendu en entier. C'est ce
 //! qu'il faut à `EventSource`, dont le serveur garde la réponse ouverte.
 //!
-//! LIMITES CONNUES : seuls les corps non compressés ou compressés en `gzip`
-//! ou `deflate` se lisent ainsi ; un flux n'a pas de délai une fois son
+//! LIMITES CONNUES : seuls les corps non compressés ou compressés en `gzip`,
+//! `deflate` ou Brotli se lisent ainsi ; un flux n'a pas de délai une fois son
 //! en-tête reçu (c'est voulu : il peut rester muet longtemps), mais il occupe
 //! le fil qui l'a ouvert jusqu'à sa fin ou son abandon.
 
@@ -45,6 +45,7 @@ enum Inflater {
     Plain,
     Gzip(flate2::write::GzDecoder<Vec<u8>>),
     Deflate(flate2::write::ZlibDecoder<Vec<u8>>),
+    Brotli(Box<brotli_decompressor::DecompressorWriter<Vec<u8>>>),
 }
 
 impl Inflater {
@@ -53,6 +54,9 @@ impl Inflater {
             None | Some("" | "identity") => Some(Self::Plain),
             Some("gzip" | "x-gzip") => Some(Self::Gzip(flate2::write::GzDecoder::new(Vec::new()))),
             Some("deflate") => Some(Self::Deflate(flate2::write::ZlibDecoder::new(Vec::new()))),
+            Some("br") => Some(Self::Brotli(Box::new(
+                brotli_decompressor::DecompressorWriter::new(Vec::new(), 4096),
+            ))),
             Some(_) => None,
         }
     }
@@ -67,6 +71,11 @@ impl Inflater {
                 Ok(std::mem::take(decoder.get_mut()))
             }
             Self::Deflate(decoder) => {
+                decoder.write_all(chunk)?;
+                decoder.flush()?;
+                Ok(std::mem::take(decoder.get_mut()))
+            }
+            Self::Brotli(decoder) => {
                 decoder.write_all(chunk)?;
                 decoder.flush()?;
                 Ok(std::mem::take(decoder.get_mut()))
