@@ -501,13 +501,19 @@
     }
     throw new TypeError("TextDecoder.decode : un tampon d'octets est attendu");
   }
+  // Marque d'ordre d'octets des encodages qui en ont une.
+  const BOMS = { "UTF-8": "\xef\xbb\xbf", "UTF-16LE": "\xff\xfe", "UTF-16BE": "\xfe\xff" };
   class TextDecoder {
     #fatal;
     #ignoreBOM;
     #name;
-    // Octets d'un flux pas encore décodés, et début de flux déjà passé.
+    // Octets d'un flux pas encore décodés (une chaîne, un caractère par
+    // octet), et début de flux déjà passé.
     #pending = "";
     #started = false;
+    // ISO-2022-JP garde un état d'un caractère au suivant : son flux est
+    // redécodé depuis le début, et seul le texte nouveau est rendu.
+    #emitted = 0;
     constructor(label = "utf-8", options = {}) {
       const name = encodingName(String(label));
       if (name === null) {
@@ -520,87 +526,49 @@
     get encoding() { return this.#name.toLowerCase(); }
     get fatal() { return this.#fatal; }
     get ignoreBOM() { return this.#ignoreBOM; }
-    // Encodages autres qu'UTF-8 : le moteur décode ; ici, la marque d'ordre
-    // d'octets et les unités UTF-16 coupées entre deux morceaux d'un flux.
-    #legacy(bytes, stream) {
+    #reset() {
+      this.#pending = "";
+      this.#started = false;
+      this.#emitted = 0;
+    }
+    // Le moteur décode ; ici, la marque d'ordre d'octets et les octets d'un
+    // caractère coupé entre deux morceaux d'un flux, gardés pour la suite.
+    decode(input = undefined, options = undefined) {
+      const stream = Boolean(options?.stream);
+      const bytes = bytesOf(input);
       const parts = [];
       for (let i = 0; i < bytes.length; i++) parts.push(String.fromCharCode(bytes[i]));
       let data = this.#pending + parts.join("");
-      const wide = this.#name.startsWith("UTF-16");
-      const little = this.#name === "UTF-16LE";
-      if (wide && !this.#started && data.length >= 2) {
+      const bom = BOMS[this.#name];
+      if (bom !== undefined && !this.#started) {
+        // Une marque peut arriver en plusieurs morceaux.
+        if (stream && data.length < bom.length && bom.startsWith(data)) {
+          this.#pending = data;
+          return "";
+        }
         this.#started = true;
-        if (!this.#ignoreBOM && data.startsWith(little ? "\xff\xfe" : "\xfe\xff")) data = data.slice(2);
+        if (!this.#ignoreBOM && data.startsWith(bom)) data = data.slice(bom.length);
       }
-      let cut = data.length;
-      if (stream && wide) {
-        cut -= cut % 2;
-        // Une unité haute attend sa moitié basse.
-        if (cut >= 2) {
-          const high = data.charCodeAt(little ? cut - 1 : cut - 2);
-          if (high >= 0xd8 && high <= 0xdb) cut -= 2;
-        }
+      const result = decodeBytes(this.#name, data, this.#fatal, stream);
+      if (result === null) {
+        this.#reset();
+        throw new TypeError("TextDecoder : suite d'octets invalide en " + this.#name);
       }
-      this.#pending = stream ? data.slice(cut) : "";
-      if (!stream) this.#started = false;
-      const text = decodeBytes(this.#name, data.slice(0, cut), this.#fatal);
-      if (text === null) throw new TypeError("TextDecoder : suite d'octets invalide en " + this.#name);
-      return text;
-    }
-    decode(input, options) {
-      const bytes = bytesOf(input);
-      if (this.#name !== "UTF-8") return this.#legacy(bytes, Boolean(options?.stream));
-      let out = "";
-      let i = 0;
-      if (!this.#ignoreBOM && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) i = 3;
-      const invalid = () => {
-        if (this.#fatal) throw new TypeError("TextDecoder : la suite d'octets n'est pas de l'UTF-8");
-        out += "�";
-      };
-      while (i < bytes.length) {
-        const first = bytes[i++];
-        if (first < 0x80) {
-          out += String.fromCharCode(first);
-          continue;
-        }
-        // Nombre d'octets de suite, et bornes du premier d'entre eux.
-        let needed = 0;
-        let lower = 0x80;
-        let upper = 0xbf;
-        let code = 0;
-        if (first >= 0xc2 && first <= 0xdf) {
-          needed = 1;
-          code = first & 0x1f;
-        } else if (first >= 0xe0 && first <= 0xef) {
-          needed = 2;
-          code = first & 0x0f;
-          if (first === 0xe0) lower = 0xa0;
-          if (first === 0xed) upper = 0x9f;
-        } else if (first >= 0xf0 && first <= 0xf4) {
-          needed = 3;
-          code = first & 0x07;
-          if (first === 0xf0) lower = 0x90;
-          if (first === 0xf4) upper = 0x8f;
-        } else {
-          invalid();
-          continue;
-        }
-        let complete = true;
-        for (let k = 0; k < needed; k++) {
-          const next = bytes[i];
-          if (next === undefined || next < lower || next > upper) {
-            complete = false;
-            break;
-          }
-          code = (code << 6) | (next & 0x3f);
-          lower = 0x80;
-          upper = 0xbf;
-          i++;
-        }
-        if (complete) out += String.fromCodePoint(code);
-        else invalid();
+      if (!stream) {
+        const fresh = result.slice(this.#emitted);
+        this.#reset();
+        return fresh;
       }
-      return out;
+      // Premier caractère : le nombre d'octets de fin qui attendent la suite.
+      const text = result.slice(1);
+      const fresh = text.slice(this.#emitted);
+      if (this.#name === "ISO-2022-JP") {
+        this.#pending = data;
+        this.#emitted = text.length;
+      } else {
+        this.#pending = data.slice(data.length - result.charCodeAt(0));
+      }
+      return fresh;
     }
   }
   tag(TextDecoder, "TextDecoder");

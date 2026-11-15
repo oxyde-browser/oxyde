@@ -1783,14 +1783,18 @@ fn clear_timer(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 /// charge.
 fn encoding_name(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let label = vm.to_string(&arg(args, 0))?;
+    // `replacement` ne se choisit pas par script.
     Ok(oxyde_html::encoding::Encoding::for_label(&label)
+        .filter(|encoding| !encoding.is_replacement())
         .map_or(Value::Null, |encoding| Value::string(encoding.name())))
 }
 
-/// `decodeBytes(nom, octets, strict)` : décode `octets` (une chaîne dont
-/// chaque caractère vaut un octet) dans l'encodage `nom`, sans traiter de
-/// marque d'ordre d'octets. Rend `null` si `strict` et que la suite est
-/// invalide.
+/// `decodeBytes(nom, octets, strict, flux)` : décode `octets` (une chaîne
+/// dont chaque caractère vaut un octet) dans l'encodage `nom`, sans traiter
+/// de marque d'ordre d'octets. Rend `null` si `strict` et que la suite est
+/// invalide. Si `flux`, d'autres octets suivront : le premier caractère du
+/// résultat vaut alors le nombre d'octets de fin laissés de côté (début
+/// d'un caractère à plusieurs octets), et le texte vient après.
 fn decode_bytes(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let name = vm.to_string(&arg(args, 0))?;
     let data = vm.to_string(&arg(args, 1))?;
@@ -1803,7 +1807,17 @@ fn decode_bytes(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         .chars()
         .filter_map(|c| u8::try_from(u32::from(c)).ok())
         .collect();
-    let (text, replaced) = encoding.decode_raw(&bytes);
+    let (text, replaced) = if arg(args, 3).truthy() {
+        let (text, replaced, pending) = encoding.decode_partial(&bytes);
+        // Au plus trois octets en attente : toujours un caractère.
+        let count = u32::try_from(pending)
+            .ok()
+            .and_then(char::from_u32)
+            .unwrap_or('\0');
+        (format!("{count}{text}"), replaced)
+    } else {
+        encoding.decode_raw(&bytes)
+    };
     Ok(if strict && replaced {
         Value::Null
     } else {
@@ -2404,7 +2418,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("randomBytes", 1, random_bytes)),
         Value::Object(vm.new_function("fireTrusted", 2, events::dispatch_trusted)),
         Value::Object(vm.new_function("encodingName", 1, encoding_name)),
-        Value::Object(vm.new_function("decodeBytes", 3, decode_bytes)),
+        Value::Object(vm.new_function("decodeBytes", 4, decode_bytes)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());

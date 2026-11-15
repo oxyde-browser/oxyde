@@ -11,6 +11,8 @@
 //! ```
 
 pub mod encoding;
+mod encoding_legacy;
+mod encoding_multibyte;
 mod encoding_tables;
 mod entities;
 pub mod tokenizer;

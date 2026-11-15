@@ -5951,7 +5951,19 @@ mod tests {
                  + wide.decode(new Uint8Array([0x00, 0xde])));
                try { new TextDecoder('windows-1253', { fatal: true }).decode(new Uint8Array([0xaa])); }
                catch (e) { out.push(e.name); }
-               try { new TextDecoder('shift_jis'); } catch (e) { out.push(e.name); }
+               try { new TextDecoder('iso-2022-kr'); } catch (e) { out.push(e.name); }
+               const sjis = new TextDecoder('shift_jis');
+               out.push(sjis.encoding, sjis.decode(new Uint8Array([0x93]), { stream: true })
+                 + sjis.decode(new Uint8Array([0xfa, 0x96]), { stream: true })
+                 + sjis.decode(new Uint8Array([0x7b])));
+               const jis = new TextDecoder('iso-2022-jp');
+               out.push(jis.decode(new Uint8Array([0x61, 0x1b, 0x24]), { stream: true })
+                 + jis.decode(new Uint8Array([0x42, 0x46]), { stream: true })
+                 + jis.decode(new Uint8Array([0x7c, 0x4b, 0x5c]), { stream: true })
+                 + jis.decode());
+               out.push(new TextDecoder('gbk').decode(new Uint8Array([0x81, 0x30, 0x81, 0x30])).charCodeAt(0));
+               try { new TextDecoder('big5', { fatal: true }).decode(new Uint8Array([0xa4])); }
+               catch (e) { out.push(e.name); }
                out.push(new TextDecoder().encoding);
                document.body.setAttribute('data-out', out.join(' '));
              </script>",
@@ -5961,7 +5973,9 @@ mod tests {
         let body = doc.find_html_element(doc.root(), "body").expect("body");
         assert_eq!(
             doc.element(body).and_then(|e| e.attr("data-out")),
-            Some("windows-1252 café€ При h😀 TypeError RangeError utf-8")
+            Some(
+                "windows-1252 café€ При h😀 TypeError RangeError shift_jis 日本 a日本 128 TypeError utf-8"
+            )
         );
     }
 

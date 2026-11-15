@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 oxyde_content.workspace = true
+oxyde_platform.workspace = true
 oxyde_text.workspace = true
 
 [lints]
