@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 46098 / 123280 (37,4 %)** — fichiers entièrement réussis : 847 / 7308 (11,6 %).
+**Sous-tests réussis : 46283 / 119637 (38,7 %)** — fichiers entièrement réussis : 854 / 7308 (11,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -39,7 +39,7 @@ est le plus honnête des deux.
 | `html/browsers/browsing-the-web/unloading-documents/prompt` | 2 / 4 | 2 / 4 (50,0 %) |
 | `html/browsers/browsing-the-web/unloading-documents/unload` | 0 / 10 | 0 / 10 (0,0 %) |
 | `html/browsers/history/joint-session-history` | 2 / 3 | 2 / 3 (66,7 %) |
-| `html/browsers/history/the-history-interface` | 13 / 63 | 37 / 100 (37,0 %) |
+| `html/browsers/history/the-history-interface` | 13 / 63 | 59 / 135 (43,7 %) |
 | `html/browsers/history/the-history-interface/joint_session_history` | 0 / 2 | 0 / 10 (0,0 %) |
 | `html/browsers/history/the-history-interface/pushstate-replacestate-empty-string` | 4 / 6 | 4 / 6 (66,7 %) |
 | `html/browsers/history/the-location-interface` | 14 / 66 | 92 / 282 (32,6 %) |
@@ -64,7 +64,7 @@ est le plus honnête des deux.
 | `html/browsers/the-window-object/open-close` | 0 / 33 | 12 / 116 (10,3 %) |
 | `html/browsers/the-window-object/security-window` | 0 / 1 | 14 / 124 (11,3 %) |
 | `html/browsers/the-windowproxy-exotic-object` | 0 / 8 | 15 / 55 (27,3 %) |
-| `html/browsers/windows` | 1 / 16 | 5 / 43 (11,6 %) |
+| `html/browsers/windows` | 1 / 16 | 5 / 40 (12,5 %) |
 | `html/browsers/windows/auxiliary-browsing-contexts` | 0 / 10 | 0 / 19 (0,0 %) |
 | `html/browsers/windows/browsing-context-names` | 0 / 18 | 0 / 21 (0,0 %) |
 | `html/browsers/windows/consume-user-activation` | 0 / 2 | 0 / 3 (0,0 %) |
@@ -96,7 +96,7 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/filters` | 0 / 7 | 0 / 18 (0,0 %) |
 | `html/canvas/element/manual/filters/tentative/idl-conversions` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/canvas/element/manual/image-smoothing` | 0 / 1 | 0 / 9 (0,0 %) |
-| `html/canvas/element/manual/imagebitmap` | 0 / 20 | 0 / 257 (0,0 %) |
+| `html/canvas/element/manual/imagebitmap` | 0 / 20 | 0 / 281 (0,0 %) |
 | `html/canvas/element/manual/line-styles` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/canvas/element/manual/shadows` | 0 / 2 | 0 / 4 (0,0 %) |
 | `html/canvas/element/manual/the-canvas-state` | 0 / 2 | 0 / 4 (0,0 %) |
@@ -141,7 +141,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/transformations` | 0 / 22 | 0 / 22 (0,0 %) |
 | `html/canvas/offscreen/wide-gamut-canvas` | 0 / 3 | 0 / 8 (0,0 %) |
 | `html/capability-delegation` | 0 / 7 | 0 / 17 (0,0 %) |
-| `html/cross-origin-embedder-policy` | 1 / 53 | 54 / 390 (13,8 %) |
+| `html/cross-origin-embedder-policy` | 1 / 53 | 57 / 406 (14,0 %) |
 | `html/cross-origin-embedder-policy/credentialless` | 0 / 22 | 6 / 38 (15,8 %) |
 | `html/cross-origin-embedder-policy/multi-globals` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/cross-origin-opener-policy` | 0 / 55 | 6 / 449 (1,3 %) |
@@ -152,7 +152,7 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/reporting/tentative` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/document-isolation-policy` | 0 / 46 | 9 / 253 (3,6 %) |
-| `html/dom` | 1 / 23 | 30306 / 51854 (58,4 %) |
+| `html/dom` | 1 / 23 | 30307 / 51854 (58,4 %) |
 | `html/dom/documents/dom-tree-accessors` | 15 / 42 | 99 / 245 (40,4 %) |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 12 / 15 | 31 / 34 (91,2 %) |
 | `html/dom/documents/resource-metadata-management` | 6 / 11 | 13 / 23 (56,5 %) |
@@ -193,8 +193,8 @@ est le plus honnête des deux.
 | `html/infrastructure/common-dom-interfaces/collections` | 0 / 7 | 19 / 104 (18,3 %) |
 | `html/infrastructure/conformance-requirements/extensibility` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/infrastructure/fetching-resources` | 0 / 1 | 0 / 2 (0,0 %) |
-| `html/infrastructure/safe-passing-of-structured-data` | 1 / 11 | 79 / 205 (38,5 %) |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 0 / 21 | 1 / 48 (2,1 %) |
+| `html/infrastructure/safe-passing-of-structured-data` | 2 / 11 | 150 / 248 (60,5 %) |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 1 / 21 | 8 / 55 (14,5 %) |
 | `html/infrastructure/terminology/plugins` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/infrastructure/urls/base-url` | 1 / 11 | 2 / 17 (11,8 %) |
 | `html/infrastructure/urls/dynamic-changes-to-base-urls` | 0 / 2 | 15 / 39 (38,5 %) |
@@ -293,14 +293,14 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/media-elements/track/track-element` | 1 / 95 | 1 / 131 (0,8 %) |
 | `html/semantics/embedded-content/media-elements/track/track-element/cors` | 0 / 44 | 0 / 44 (0,0 %) |
 | `html/semantics/embedded-content/media-elements/user-interface` | 0 / 2 | 28 / 57 (49,1 %) |
-| `html/semantics/embedded-content/the-area-element` | 1 / 7 | 33 / 79 (41,8 %) |
+| `html/semantics/embedded-content/the-area-element` | 2 / 7 | 34 / 79 (43,0 %) |
 | `html/semantics/embedded-content/the-audio-element` | 2 / 14 | 7 / 24 (29,2 %) |
 | `html/semantics/embedded-content/the-canvas-element` | 13 / 70 | 34 / 129 (26,4 %) |
 | `html/semantics/embedded-content/the-embed-element` | 3 / 16 | 5 / 27 (18,5 %) |
 | `html/semantics/embedded-content/the-frame-element` | 0 / 2 | 0 / 3 (0,0 %) |
-| `html/semantics/embedded-content/the-iframe-element` | 19 / 147 | 44 / 215 (20,5 %) |
+| `html/semantics/embedded-content/the-iframe-element` | 20 / 147 | 46 / 215 (21,4 %) |
 | `html/semantics/embedded-content/the-iframe-element/cross-site` | 0 / 6 | 0 / 1 (0,0 %) |
-| `html/semantics/embedded-content/the-img-element` | 11 / 89 | 195 / 639 (30,5 %) |
+| `html/semantics/embedded-content/the-img-element` | 11 / 89 | 195 / 635 (30,7 %) |
 | `html/semantics/embedded-content/the-img-element/current-pixel-density` | 0 / 2 | 3 / 21 (14,3 %) |
 | `html/semantics/embedded-content/the-img-element/decode` | 0 / 9 | 17 / 64 (26,6 %) |
 | `html/semantics/embedded-content/the-img-element/environment-changes` | 0 / 2 | 0 / 1 (0,0 %) |
@@ -377,9 +377,9 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/fetch-src/alpha` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/semantics/scripting-1/the-script-element/import-attributes` | 2 / 5 | 4 / 7 (57,1 %) |
 | `html/semantics/scripting-1/the-script-element/json-module` | 1 / 18 | 9 / 159 (5,7 %) |
-| `html/semantics/scripting-1/the-script-element/microtasks` | 1 / 8 | 1 / 11 (9,1 %) |
-| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 4154 (1,4 %) |
-| `html/semantics/scripting-1/the-script-element/module/dynamic-import` | 8 / 32 | 15 / 154 (9,7 %) |
+| `html/semantics/scripting-1/the-script-element/microtasks` | 1 / 8 | 2 / 13 (15,4 %) |
+| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 153 (37,9 %) |
+| `html/semantics/scripting-1/the-script-element/module/dynamic-import` | 8 / 32 | 17 / 154 (11,0 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha` | 0 / 3 | 0 / 0 (—) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks` | 1 / 2 | 3 / 4 (75,0 %) |
 | `html/semantics/scripting-1/the-script-element/module/import-meta` | 0 / 3 | 3 / 13 (23,1 %) |
@@ -409,7 +409,7 @@ est le plus honnête des deux.
 | `html/semantics/tabular-data/the-thead-element` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/semantics/tabular-data/the-tr-element` | 2 / 5 | 36 / 45 (80,0 %) |
 | `html/semantics/text-level-semantics` | 1 / 1 | 3 / 3 (100,0 %) |
-| `html/semantics/text-level-semantics/the-a-element` | 4 / 7 | 22 / 26 (84,6 %) |
+| `html/semantics/text-level-semantics/the-a-element` | 5 / 7 | 23 / 26 (88,5 %) |
 | `html/semantics/text-level-semantics/the-time-element` | 0 / 1 | 4 / 8 (50,0 %) |
 | `html/semantics/the-button-element/command-and-commandfor` | 2 / 26 | 212 / 482 (44,0 %) |
 | `html/syntax/charset` | 1 / 12 | 4 / 39 (10,3 %) |
@@ -447,14 +447,14 @@ est le plus honnête des deux.
 | `html/webappapis/scripting` | 0 / 2 | 2 / 6 (33,3 %) |
 | `html/webappapis/scripting/event-loops` | 3 / 8 | 4 / 9 (44,4 %) |
 | `html/webappapis/scripting/events` | 6 / 35 | 43 / 109 (39,4 %) |
-| `html/webappapis/scripting/events/event-handler-processing-algorithm-error` | 8 / 12 | 20 / 24 (83,3 %) |
+| `html/webappapis/scripting/events/event-handler-processing-algorithm-error` | 10 / 12 | 24 / 24 (100,0 %) |
 | `html/webappapis/scripting/processing-model-2` | 6 / 36 | 11 / 55 (20,0 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 0 / 3 (0,0 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue` | 1 / 4 | 14 / 31 (45,2 %) |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 1 / 14 | 36 / 61 (59,0 %) |
-| `html/webappapis/structured-clone` | 0 / 2 | 63 / 156 (40,4 %) |
-| `html/webappapis/system-state-and-capabilities/the-navigator-object` | 8 / 19 | 34 / 116 (29,3 %) |
-| `html/webappapis/the-windoworworkerglobalscope-mixin` | 0 / 1 | 0 / 4 (0,0 %) |
+| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 1 / 14 | 73 / 103 (70,9 %) |
+| `html/webappapis/structured-clone` | 0 / 2 | 94 / 156 (60,3 %) |
+| `html/webappapis/system-state-and-capabilities/the-navigator-object` | 8 / 19 | 34 / 310 (11,0 %) |
+| `html/webappapis/the-windoworworkerglobalscope-mixin` | 0 / 1 | 2 / 6 (33,3 %) |
 | `html/webappapis/timers` | 10 / 17 | 16 / 27 (59,3 %) |
 | `html/webappapis/update-rendering` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/webappapis/user-prompts` | 1 / 3 | 1 / 3 (33,3 %) |
@@ -831,7 +831,7 @@ est le plus honnête des deux.
 | `html/browsers/history/the-history-interface/history_pushstate_too_many_calls.optional.html` | 0 / 1 |  |
 | `html/browsers/history/the-history-interface/history_pushstate_too_many_calls_ordering.optional.html` | 0 / 4 |  |
 | `html/browsers/history/the-history-interface/history_pushstate_url.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/browsers/history/the-history-interface/history_pushstate_url_rewriting.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/browsers/history/the-history-interface/history_pushstate_url_rewriting.html` | 22 / 35 | harnais : délai du harnais dépassé |
 | `html/browsers/history/the-history-interface/history_replacestate_too_many_calls.optional.html` | 0 / 1 |  |
 | `html/browsers/history/the-history-interface/history_replacestate_too_many_calls_ordering.optional.html` | 0 / 4 |  |
 | `html/browsers/history/the-history-interface/iframe_history_go_0.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -915,7 +915,7 @@ est le plus honnête des deux.
 | `html/browsers/origin/api/origin-from-string.any.js` | 0 / 27 |  |
 | `html/browsers/origin/api/origin-from-url.any.js` | 0 / 27 |  |
 | `html/browsers/origin/api/origin-from-window.window.js` | 0 / 7 | harnais : délai du harnais dépassé |
-| `html/browsers/origin/api/origin-from-worker.window.js` | 0 / 2 |  |
+| `html/browsers/origin/api/origin-from-worker.window.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/api/origin-from.any.js` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/cross-origin-objects/cross-origin-due-to-document-domain-only.html` | 0 / 1 |  |
 | `html/browsers/origin/cross-origin-objects/cross-origin-objects-function-length.html` | 3 / 4 |  |
@@ -1163,7 +1163,7 @@ est le plus honnête des deux.
 | `html/browsers/windows/nested-browsing-contexts/window-top-null.html` | 0 / 2 |  |
 | `html/browsers/windows/nested-browsing-contexts/window-top.html` | 1 / 3 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/noreferrer-null-opener.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/browsers/windows/noreferrer-window-name.html` | 0 / 6 | harnais : Test named 'Targeting a rel=noreferrer link at an existing named window should work' specified 3 'cleanup' functions, an |
+| `html/browsers/windows/noreferrer-window-name.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/opener-string.window.js` | 0 / 1 | harnais : Test named 'Setting popup.opener to a string' specified 1 'cleanup' function, and 1 failed. |
 | `html/browsers/windows/targeting-cross-origin-nested-browsing-contexts.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/targeting-with-embedded-null-in-target.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -1905,14 +1905,14 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation_none.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-flipY.html` | 0 / 22 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-in-worker-transfer.html` | 0 / 1 |  |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-in-worker-transfer.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-invalid-args.html` | 0 / 93 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-origin.sub.html` | 0 / 27 |  |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-premultiplyAlpha.html` | 0 / 12 |  |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-resolves-in-task.any.js` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-serializable.html` | 0 / 0 | harnais : ReferenceError: Worker n'est pas défini |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-serializable.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-sizeOverflow.html` | 0 / 7 |  |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-transfer.html` | 0 / 0 | harnais : ReferenceError: Worker n'est pas défini |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-transfer.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/imagebitmap-replication-exif-orientation.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/line-styles/setLineDash.html` | 0 / 2 |  |
 | `html/canvas/element/manual/shadows/canvas_shadows_001.htm` | 0 / 1 |  |
@@ -3008,13 +3008,13 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/manual/context-attributes/getContextAttributes.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.w.html` | 0 / 16 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/draw-element-image/animated-gif-worker.tentative.html` | 0 / 2 | harnais : Uncaught ReferenceError: Worker n'est pas défini |
+| `html/canvas/offscreen/manual/draw-element-image/animated-gif-worker.tentative.html` | 0 / 2 | harnais : Uncaught TypeError: .transferControlToOffscreen n'est pas une fonction (c'est undefined) |
 | `html/canvas/offscreen/manual/draw-element-image/canvas-transform-update-worker.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage-worker.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage.tentative.html` | 0 / 2 |  |
 | `html/canvas/offscreen/manual/draw-element-image/video-worker.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.html` | 0 / 5 |  |
-| `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.w.html` | 0 / 5 |  |
+| `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.w.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/filter/offscreencanvas.filter.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/image-smoothing/image.smoothing.html` | 0 / 9 |  |
@@ -3561,7 +3561,7 @@ est le plus honnête des deux.
 | `html/capability-delegation/frame-capability-delegation-popup-blocked.tentative.html` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/about-blank-popup.https.html` | 0 / 1 | harnais : Test named 'Cross-Origin-Embedder-Policy is inherited by about:blank popup.' specified 1 'cleanup' function, and 1 faile |
 | `html/cross-origin-embedder-policy/blob.https.html` | 0 / 9 | harnais : délai du harnais dépassé |
-| `html/cross-origin-embedder-policy/block-local-documents-inheriting-none.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/cross-origin-embedder-policy/block-local-documents-inheriting-none.https.html` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/cache-storage-reporting-dedicated-worker.https.html` | 0 / 2 |  |
 | `html/cross-origin-embedder-policy/cache-storage-reporting-document.https.html` | 0 / 2 |  |
 | `html/cross-origin-embedder-policy/cache-storage-reporting-service-worker.https.html` | 0 / 2 |  |
@@ -3592,7 +3592,7 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy/credentialless/websocket.https.window.js` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/cross-origin-iframe-navigates-to-own-blob.https.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/cross-origin-embedder-policy/cross-origin-isolated-permission-iframe.https.window.js` | 2 / 8 | harnais : délai du harnais dépassé |
-| `html/cross-origin-embedder-policy/cross-origin-isolated-permission-worker.https.window.js` | 1 / 15 | harnais : Unhandled rejection: impossible de lire la propriété « register » de undefined (valeur de .serviceWorker) |
+| `html/cross-origin-embedder-policy/cross-origin-isolated-permission-worker.https.window.js` | 4 / 30 | harnais : Unhandled rejection: impossible de lire la propriété « register » de undefined (valeur de .serviceWorker) |
 | `html/cross-origin-embedder-policy/data.https.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/cross-origin-embedder-policy/dedicated-worker-cache-storage.https.html` | 0 / 8 |  |
 | `html/cross-origin-embedder-policy/dedicated-worker.https.html` | 0 / 14 | harnais : délai du harnais dépassé |
@@ -3618,7 +3618,7 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy/reporting-to-document-reporting-endpoint.https.window.js` | 0 / 3 |  |
 | `html/cross-origin-embedder-policy/reporting-to-endpoint.https.html` | 0 / 5 |  |
 | `html/cross-origin-embedder-policy/reporting-to-frame-owner.https.html` | 0 / 9 |  |
-| `html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html` | 0 / 9 |  |
+| `html/cross-origin-embedder-policy/reporting-to-worker-owner.https.html` | 0 / 9 | harnais : délai du harnais dépassé |
 | `html/cross-origin-embedder-policy/require-corp-about-blank.https.html` | 2 / 3 |  |
 | `html/cross-origin-embedder-policy/require-corp-about-srcdoc.https.html` | 2 / 3 |  |
 | `html/cross-origin-embedder-policy/require-corp-cached-images.https.html` | 0 / 5 | harnais : délai du harnais dépassé |
@@ -3631,11 +3631,11 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy/require-corp.https.html` | 4 / 16 | harnais : délai du harnais dépassé |
 | `html/cross-origin-embedder-policy/sandbox.https.html` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/service-worker-cache-storage.https.html` | 0 / 4 |  |
-| `html/cross-origin-embedder-policy/shared-workers.https.html` | 0 / 11 | harnais : délai du harnais dépassé |
+| `html/cross-origin-embedder-policy/shared-workers.https.html` | 0 / 11 |  |
 | `html/cross-origin-embedder-policy/srcdoc.https.html` | 0 / 1 |  |
-| `html/cross-origin-embedder-policy/worker-inheritance.sub.https.html` | 0 / 1 |  |
-| `html/cross-origin-opener-policy/blob-popup.https.html` | 0 / 1 |  |
-| `html/cross-origin-opener-policy/coep-blob-popup.https.html` | 0 / 3 |  |
+| `html/cross-origin-embedder-policy/worker-inheritance.sub.https.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/blob-popup.https.html` | 0 / 1 | harnais : Timeout while running cleanup for test named "Cross-Origin-Opener-Policy and a blob URL popup". |
+| `html/cross-origin-opener-policy/coep-blob-popup.https.html` | 0 / 3 | harnais : Test named 'COOP+COEP blob URL popup: window.open()' specified 1 'cleanup' function, and 1 failed. |
 | `html/cross-origin-opener-policy/coep-navigate-popup.https.html` | 0 / 12 | harnais : Timeout while running cleanup for test named "Popup navigating to same-origin with coop/coep". |
 | `html/cross-origin-opener-policy/coep-redirect.https.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/coep-with-cross-origin.https.html` | 0 / 5 |  |
@@ -3796,7 +3796,7 @@ est le plus honnête des deux.
 | `html/document-isolation-policy/service-worker-coep-credentialless-proxy.https.tentative.window.js` | 0 / 1 |  |
 | `html/document-isolation-policy/service-worker-coep-none-proxy.https.tentative.window.js` | 0 / 1 |  |
 | `html/document-isolation-policy/shared-array-buffer.tentative.https.html` | 0 / 3 | harnais : Test named 'A SharedArrayBuffer posted by a popup with isolate-and-require-corp to its same-origin frame with isolate-an |
-| `html/document-isolation-policy/shared-workers.tentative.https.html` | 0 / 9 | harnais : délai du harnais dépassé |
+| `html/document-isolation-policy/shared-workers.tentative.https.html` | 0 / 9 |  |
 | `html/document-isolation-policy/window-reuse.tentative.https.html` | 0 / 6 | harnais : Test named 'A frame's initial about:blank document created by a document with a policy that navigates to a same-origin d |
 | `html/dom/access-key-label.html` | 1 / 2 |  |
 | `html/dom/aria-attribute-reflection-enumerated.tentative.html` | 267 / 1761 |  |
@@ -3959,7 +3959,7 @@ est le plus honnête des deux.
 | `html/dom/render-blocking/script-inserted-stylesheet-link.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/dom/render-blocking/stylesheet-link-href-change-keeps-blocking.html` | 0 / 1 |  |
 | `html/dom/self-origin.any.js` | 0 / 1 |  |
-| `html/dom/self-origin.sub.html` | 0 / 11 | harnais : délai du harnais dépassé |
+| `html/dom/self-origin.sub.html` | 1 / 11 | harnais : délai du harnais dépassé |
 | `html/dom/usvstring-reflection.https.html` | 8 / 19 |  |
 | `html/editing/activation/click-bail-on-disabled.html` | 0 / 4 |  |
 | `html/editing/activation/click.html` | 0 / 1 |  |
@@ -4086,15 +4086,14 @@ est le plus honnête des deux.
 | `html/infrastructure/fetching-resources/crossorigin-enumerated-ascii-case-insensitive.html` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/cross-origin-transfer-resizable-arraybuffer.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/infrastructure/safe-passing-of-structured-data/messagechannel.any.js` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/blob-data.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/blob-data.https.html` | 2 / 5 | harnais : délai du harnais dépassé |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/broadcastchannel-success-and-failure.https.html` | 0 / 1 |  |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/broadcastchannel-success.https.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/identity-not-preserved.https.html` | 1 / 3 |  |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/broadcastchannel-success.https.html` | 0 / 1 |  |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/identity-not-preserved.https.html` | 0 / 3 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-sharedworker-success.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-worker-success.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-worker-success.https.html` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/no-coop-coep.https.any.js` | 0 / 3 |  |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/no-transferring.https.html` | 0 / 3 |  |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/serialization-via-history.https.html` | 0 / 4 |  |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/no-transferring.https.html` | 2 / 3 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/serialization-via-idb.any.js` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/serialization-via-notifications-api.any.js` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-domain-failure.https.sub.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -4107,14 +4106,13 @@ est le plus honnête des deux.
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-serviceworker-failure.https.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-sharedworker-failure.https.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-simple-success.https.html` | 0 / 16 |  |
-| `html/infrastructure/safe-passing-of-structured-data/structured-cloning-error-extra.html` | 0 / 2 |  |
-| `html/infrastructure/safe-passing-of-structured-data/structured-cloning-error-stack-optional.sub.window.js` | 4 / 20 |  |
-| `html/infrastructure/safe-passing-of-structured-data/structuredclone_0.html` | 0 / 0 | harnais : ReferenceError: Worker n'est pas défini |
+| `html/infrastructure/safe-passing-of-structured-data/structured-cloning-error-stack-optional.sub.window.js` | 16 / 20 |  |
+| `html/infrastructure/safe-passing-of-structured-data/structuredclone_0.html` | 31 / 43 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-audiodata.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-errors.window.js` | 2 / 17 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-mediasourcehandle.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-videoframe.html` | 0 / 1 |  |
-| `html/infrastructure/safe-passing-of-structured-data/window-postmessage.window.js` | 63 / 152 |  |
+| `html/infrastructure/safe-passing-of-structured-data/window-postmessage.window.js` | 89 / 152 |  |
 | `html/infrastructure/terminology/plugins/text-plain.html` | 0 / 1 |  |
 | `html/infrastructure/urls/base-url/base-url-detached-document-blank.https.window.js` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected "https://example.com/" but got "https://web-platform.test/html/infrastructu |
 | `html/infrastructure/urls/base-url/base-url-detached-document-srcdoc.https.window.js` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected "https://example.com/" but got "https://web-platform.test/html/infrastructu |
@@ -4496,7 +4494,7 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-link-element/link-rel-attribute-tokenization.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/link-rel-attribute.html` | 0 / 2 |  |
 | `html/semantics/document-metadata/the-link-element/link-rellist.html` | 0 / 1 |  |
-| `html/semantics/document-metadata/the-link-element/link-style-data-url-quirks.html` | 0 / 3 |  |
+| `html/semantics/document-metadata/the-link-element/link-style-data-url-quirks.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/link-style-error-01.html` | 0 / 26 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/link-style-error-limited-quirks.html` | 0 / 24 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/link-style-error-quirks.html` | 0 / 24 | harnais : délai du harnais dépassé |
@@ -4512,7 +4510,7 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-link-element/tentative/module-stylesheet-document-context.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/tentative/module-stylesheet-failure-events.html` | 0 / 9 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-link-element/tentative/module-stylesheet-fetch.html` | 0 / 7 | harnais : délai du harnais dépassé |
-| `html/semantics/document-metadata/the-link-element/tentative/module-stylesheet-module-map-reuse.html` | 0 / 3 |  |
+| `html/semantics/document-metadata/the-link-element/tentative/module-stylesheet-module-map-reuse.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-meta-element/color-scheme/meta-color-scheme-attribute-changes.html` | 0 / 8 |  |
 | `html/semantics/document-metadata/the-meta-element/color-scheme/meta-color-scheme-empty-content-value.html` | 0 / 1 |  |
 | `html/semantics/document-metadata/the-meta-element/color-scheme/meta-color-scheme-first-valid-applies.html` | 0 / 1 |  |
@@ -4876,7 +4874,6 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/media-elements/volume_nonfinite.html` | 0 / 6 |  |
 | `html/semantics/embedded-content/media-elements/volumechange-ratechange-queue-task.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-area-element/area-coords.html` | 10 / 32 |  |
-| `html/semantics/embedded-content/the-area-element/area-download-click.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-area-element/area-image-cursor.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-area-element/area-processing.html` | 7 / 14 |  |
 | `html/semantics/embedded-content/the-area-element/area-shape.html` | 4 / 17 |  |
@@ -4980,7 +4977,6 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-iframe-element/iframe-allowfullscreen.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-iframe-element/iframe-append-to-child-document.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-iframe-element/iframe-first-load-canceled-second-load-blank.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/embedded-content/the-iframe-element/iframe-load-event.html` | 1 / 2 |  |
 | `html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-adopt-lazy-iframe-from-script-disabled-document.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-base-url-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-base-url-3.html` | 0 / 0 | harnais : Uncaught ReferenceError: below_viewport_iframe est utilisé avant son initialisation |
@@ -5098,7 +5094,7 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-iframe-element/srcdoc-attribute-reset.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-iframe-element/srcdoc-lifecycle-crash-crbug-1472607.https.html` | 0 / 2 |  |
 | `html/semantics/embedded-content/the-iframe-element/srcdoc_change_hash.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-iframe-element/srcdoc_process_attributes.html` | 0 / 3 |  |
+| `html/semantics/embedded-content/the-iframe-element/srcdoc_process_attributes.html` | 1 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/404-response-with-actual-image-data.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/Image-constructor.html` | 3 / 5 |  |
 | `html/semantics/embedded-content/the-img-element/adoption.html` | 0 / 8 | harnais : délai du harnais dépassé |
@@ -5156,7 +5152,7 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-img-element/image-loading-lazy-to-eager.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/image-loading-lazy-use-list-of-available-images.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/image-loading-lazy-zero-intersection-area.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/embedded-content/the-img-element/image-loading-lazy.html` | 0 / 8 | harnais : Uncaught TypeError: .createObjectURL n'est pas une fonction (c'est undefined) |
+| `html/semantics/embedded-content/the-img-element/image-loading-lazy.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/img-complete-after-error.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-img-element/img-complete-invalid-url.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-img-element/img-picture-ancestor.html` | 1 / 4 |  |
@@ -5987,7 +5983,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/css-module/cors-crossorigin-requests.html` | 0 / 3 |  |
 | `html/semantics/scripting-1/the-script-element/css-module/credentials.sub.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/css-module/css-module-parse-error.html` | 0 / 3 |  |
-| `html/semantics/scripting-1/the-script-element/css-module/css-module-worker-test.html` | 0 / 3 |  |
+| `html/semantics/scripting-1/the-script-element/css-module/css-module-worker-test.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/css-module/import-css-module-basic.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/css-module/import-css-module-dynamic.html` | 0 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/css-module/integrity.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -6124,7 +6120,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/microtasks/checkpoint-after-window-onerror-module.html` | 0 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/microtasks/checkpoint-after-window-onerror.html` | 0 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/microtasks/checkpoint-after-workerglobalscope-onerror-module.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/microtasks/checkpoint-after-workerglobalscope-onerror.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/semantics/scripting-1/the-script-element/microtasks/checkpoint-after-workerglobalscope-onerror.html` | 1 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/microtasks/evaluation-order-1.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/microtasks/evaluation-order-2.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/microtasks/evaluation-order-4.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6139,11 +6135,11 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/concurrent-failed-imports.html` | 0 / 4 | harnais : Uncaught SyntaxError: module https://web-platform.test/html/semantics/scripting-1/the-script-element/module-fetch-tester |
 | `html/semantics/scripting-1/the-script-element/module/credentials.sub.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/module/crossorigin.html` | 0 / 8 |  |
-| `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha/base-url-worker-importScripts.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha/base-url-worker-importScripts.html` | 0 / 0 | harnais : Uncaught SyntaxError: « ; » attendu |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha/base-url-worker.sub.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha/base-url.sub.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url-workers.window.js` | 0 / 3 |  |
-| `html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.js` | 0 / 6 |  |
+| `html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url-workers.window.js` | 1 / 3 |  |
+| `html/semantics/scripting-1/the-script-element/module/dynamic-import/blob-url.any.js` | 1 / 6 |  |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-base-url.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/code-cache-nonce.html` | 0 / 3 |  |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/concurrent-failed-imports.any.js` | 0 / 2 |  |
@@ -6199,7 +6195,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer-base-url.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-cross-origin-referrerpolicy.sub.html` | 0 / 7 |  |
-| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 4001 | harnais : délai du harnais dépassé |
+| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrer-check.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrerpolicy.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/nested-imports.html` | 0 / 1 |  |
@@ -6415,7 +6411,6 @@ est le plus honnête des deux.
 | `html/semantics/tabular-data/the-tr-element/cells.html` | 0 / 1 |  |
 | `html/semantics/tabular-data/the-tr-element/deleteCell.html` | 5 / 6 |  |
 | `html/semantics/tabular-data/the-tr-element/rowIndex.html` | 5 / 12 |  |
-| `html/semantics/text-level-semantics/the-a-element/a-download-click.html` | 0 / 1 |  |
 | `html/semantics/text-level-semantics/the-a-element/a-stringifier.html` | 9 / 11 |  |
 | `html/semantics/text-level-semantics/the-a-element/a-type.historical.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/text-level-semantics/the-time-element/001.html` | 4 / 8 |  |
@@ -6793,7 +6788,7 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/form-control-state.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/history.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/ignore-opens-during-unload.window.js` | 0 / 12 | harnais : délai du harnais dépassé |
-| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/location-set-and-document-open.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/location-set-and-document-open.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/mutation-observer.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/open-with-defer-script-during-initial-about-blank-load.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/origin-check-in-document-open-same-origin-domain.sub.html` | 0 / 2 |  |
@@ -6836,8 +6831,6 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/events/event-handler-onmove-02.tentative.html` | 0 / 1 |  |
 | `html/webappapis/scripting/events/event-handler-processing-algorithm-error/frameset-element-synthetic-errorevent.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/events/event-handler-processing-algorithm-error/frameset-element-synthetic-event.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/webappapis/scripting/events/event-handler-processing-algorithm-error/synthetic-errorevent-click.html` | 3 / 4 |  |
-| `html/webappapis/scripting/events/event-handler-processing-algorithm-error/worker.html` | 0 / 3 |  |
 | `html/webappapis/scripting/events/event-handler-removal.window.js` | 1 / 5 |  |
 | `html/webappapis/scripting/events/event-handler-sourcetext.html` | 0 / 5 |  |
 | `html/webappapis/scripting/events/event-handler-spec-example.window.js` | 0 / 9 |  |
@@ -6884,10 +6877,10 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-event-constructor.html` | 0 / 1 |  |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-event-during-parse.html` | 0 / 1 |  |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-iframe.html` | 1 / 3 | harnais : délai du harnais dépassé |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-many-promises.dedicatedworker.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-many-promises.dedicatedworker.html` | 4 / 6 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-many-promises.html` | 4 / 6 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-onerror.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.dedicatedworker.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.dedicatedworker.html` | 33 / 36 |  |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.html` | 30 / 43 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.serviceworker.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.sharedworker.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -6901,7 +6894,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/reporterror-cross-realm-method.html` | 0 / 1 |  |
 | `html/webappapis/scripting/reporterror.any.js` | 2 / 5 |  |
 | `html/webappapis/structured-clone/structured-clone-cross-realm-method.html` | 0 / 4 |  |
-| `html/webappapis/structured-clone/structured-clone.any.js` | 63 / 152 |  |
+| `html/webappapis/structured-clone/structured-clone.any.js` | 94 / 152 |  |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/historical.https.window.js` | 4 / 5 |  |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/navigator-window-controls-overlay.tentative.html` | 0 / 7 |  |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/navigator.any.js` | 8 / 12 |  |
@@ -6911,9 +6904,9 @@ est le plus honnête des deux.
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol-handler-path.https.html` | 0 / 0 | harnais : Error: unimplemented |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol-handler-query-nosw.https.html` | 0 / 0 | harnais : Error: unimplemented |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol-handler-query.https.html` | 0 / 0 | harnais : Error: unimplemented |
-| `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol.https.html` | 0 / 50 |  |
+| `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol.https.html` | 0 / 244 |  |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object/protocol.tentative.https.html` | 0 / 18 |  |
-| `html/webappapis/the-windoworworkerglobalscope-mixin/Worker_Self_Origin.html` | 0 / 4 |  |
+| `html/webappapis/the-windoworworkerglobalscope-mixin/Worker_Self_Origin.html` | 2 / 6 | harnais : délai du harnais dépassé |
 | `html/webappapis/timers/errors.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/webappapis/timers/evil-spec-example.any.js` | 0 / 2 | harnais : Uncaught TypeError: la valeur appelée n'est pas une fonction |
 | `html/webappapis/timers/setinterval-cross-realm-callback-report-exception.html` | 0 / 1 |  |

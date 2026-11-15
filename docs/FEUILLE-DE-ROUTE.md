@@ -792,7 +792,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [ ] Web Platform Tests `html/` : de 11,6 % vers 30 % des fichiers (cadres, `canvas`,
+- [ ] Web Platform Tests `html/` : de 11,7 % vers 30 % des fichiers (cadres, `canvas`,
       contenus embarqués, scripts).
 - [x] Analyseur XML 1.0 avec espaces de noms (`oxyde_html::parse_xml`) : documents
       bien formés seulement (première faute signalée avec sa ligne et sa colonne),
@@ -852,7 +852,23 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       rien dessiner), `document.write`,
       `postMessage` entre fenêtres (la source n'est pas connue), `crypto.subtle`, Brotli
       (demande un crate à télécharger), chargement des ressources en parallèle.
-- [ ] Workers (`Worker`, `MessageChannel`, `postMessage` structuré) : ce qui reste du jalon 5.
+- [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
+      (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,
+      `importScripts`, `name`, `WorkerGlobalScope`, plus `fetch`, minuteurs, `URL`…), les
+      erreurs non rattrapées remontent à l'objet `Worker`. Adresses `blob:`
+      (`URL.createObjectURL`, `revokeObjectURL`), lisibles par `fetch`, `XMLHttpRequest`
+      et `Worker` (workers en ligne). `structuredClone` clone entre royaumes (nature lue
+      à l'étiquette de l'objet), garde les tampons partagés par plusieurs tableaux,
+      refuse ce qui n'est pas clonable et transfère `ArrayBuffer` (l'original est
+      détaché) et `MessagePort` ; `postMessage` des ports et des workers prend une liste
+      de transfert et l'événement porte `ports`.
+      Limites : un worker partage le fil de la page (un calcul long la fige, dans la
+      limite du budget d'une tâche) ; `importScripts` ne rend que les scripts dont
+      l'adresse est écrite en toutes lettres dans le source (lus d'avance) ; pas de
+      worker de type module, de `SharedWorker` ni de service worker ; `terminate()`
+      ne libère pas le royaume (32 workers au plus par page) ; un `Blob` cloné est le
+      même objet ; une adresse `blob:` ne se lit pas par `<img src>` ; les tests WPT
+      `.worker.js` ne sont pas exécutés par le lanceur.
 - [ ] `WebSocket` et `EventSource`.
 - [ ] Liste des suffixes publics (frontière des sites, cookies).
 - [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
