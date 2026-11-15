@@ -4,12 +4,11 @@
 //! document ([`Document::focus`], [`Document::caret`]) : le style (`:focus`)
 //! et la mise en page (curseur du champ) les y lisent.
 //!
-//! LIMITES CONNUES : pas de sélection de texte (le curseur seul) ; la valeur
-//! d'un champ vit dans son attribut `value`, donc la frappe se voit aussi
-//! par `getAttribute` et par les observateurs de mutation ; dans un
-//! `<textarea>`, la frappe se fait en fin de texte ; une liste déroulante ne
-//! se déroule pas, les flèches y changent l'option choisie ; `tabindex` rend un
-//! élément focalisable mais son ordre n'est pas suivi.
+//! LIMITES CONNUES : la valeur d'un champ vit dans son attribut `value`,
+//! donc la frappe se voit aussi par `getAttribute` et par les observateurs
+//! de mutation ; dans un `<textarea>`, les flèches Haut et Bas suivent les
+//! lignes du texte (ses sauts de ligne), pas les lignes affichées quand le
+//! texte est replié ; pas de saisie par méthode d'entrée (IME).
 
 use oxyde_dom::{Document, NodeId};
 use oxyde_js::{JsResult, Value, Vm};
@@ -40,6 +39,20 @@ fn is_text_type(kind: Option<&str>) -> bool {
 pub(crate) fn is_text_input(doc: &Document, node: NodeId) -> bool {
     doc.element(node)
         .is_some_and(|e| e.is_html("input") && is_text_type(e.attr("type")))
+}
+
+/// Vrai si `node` est une zone de texte (`<textarea>`).
+pub(crate) fn is_text_area(doc: &Document, node: NodeId) -> bool {
+    doc.element(node).is_some_and(|e| e.is_html("textarea"))
+}
+
+/// Rang de `node` dans l'ordre de tabulation : la valeur de son attribut
+/// `tabindex`, 0 s'il n'en a pas de lisible.
+fn tab_index(doc: &Document, node: NodeId) -> i32 {
+    doc.element(node)
+        .and_then(|e| e.attr("tabindex"))
+        .and_then(|text| text.trim().parse::<i32>().ok())
+        .unwrap_or(0)
 }
 
 /// Vrai si `node` peut recevoir le focus.
@@ -88,6 +101,9 @@ pub(super) fn focus_target(doc: &Document, node: NodeId) -> Option<NodeId> {
 
 /// Valeur d'un champ de texte, pour savoir à la perte du focus si elle a changé.
 fn text_value(doc: &Document, node: NodeId) -> Option<String> {
+    if is_text_area(doc, node) {
+        return Some(doc.text_content(node));
+    }
     is_text_input(doc, node)
         .then(|| doc.element(node)?.attr("value").map(str::to_owned))
         .flatten()
@@ -198,9 +214,55 @@ fn is_shortcut(input: &crate::KeyInput<'_>) -> bool {
     input.meta || (input.ctrl != input.alt)
 }
 
-/// Champ de texte d'une ligne en cours d'édition : sa valeur, le curseur et
-/// l'autre bout de la sélection, sur des frontières de caractères.
+/// Début de la ligne de `value` où se trouve la position `at`.
+fn line_start(value: &str, at: usize) -> usize {
+    value
+        .get(..at)
+        .and_then(|head| head.rfind('\n'))
+        .map_or(0, |newline| newline + 1)
+}
+
+/// Fin de la ligne de `value` où se trouve la position `at` (avant son
+/// saut de ligne).
+fn line_end(value: &str, at: usize) -> usize {
+    value
+        .get(at..)
+        .and_then(|tail| tail.find('\n'))
+        .map_or(value.len(), |newline| at + newline)
+}
+
+/// Position à la même colonne (en caractères) que `at`, sur la ligne
+/// d'au-dessus ou d'en dessous ; le début ou la fin du texte s'il n'y en a
+/// pas.
+fn vertical(value: &str, at: usize, up: bool) -> usize {
+    let start = line_start(value, at);
+    let column = value.get(start..at).map_or(0, |head| head.chars().count());
+    let (from, to) = if up {
+        let Some(previous_end) = start.checked_sub(1) else {
+            return 0;
+        };
+        (line_start(value, previous_end), previous_end)
+    } else {
+        let end = line_end(value, at);
+        if end >= value.len() {
+            return value.len();
+        }
+        (end + 1, line_end(value, end + 1))
+    };
+    let line = value.get(from..to).unwrap_or_default();
+    from + line
+        .char_indices()
+        .nth(column)
+        .map_or(line.len(), |(index, _)| index)
+}
+
+/// Champ de texte en cours d'édition (d'une ligne, ou zone de texte) : sa
+/// valeur, le curseur et l'autre bout de la sélection, sur des frontières
+/// de caractères.
 struct Field {
+    /// Zone de texte : la valeur est le contenu de l'élément, et peut
+    /// compter plusieurs lignes.
+    multiline: bool,
     value: String,
     caret: usize,
     anchor: usize,
@@ -215,7 +277,12 @@ struct Field {
 impl Field {
     fn read(doc: &Document, node: NodeId) -> Option<Self> {
         let element = doc.element(node)?;
-        let value = element.attr("value").unwrap_or("").to_owned();
+        let multiline = element.is_html("textarea");
+        let value = if multiline {
+            doc.text_content(node)
+        } else {
+            element.attr("value").unwrap_or("").to_owned()
+        };
         let clamp = |at: usize| {
             let mut at = at.min(value.len());
             while !value.is_char_boundary(at) {
@@ -225,6 +292,7 @@ impl Field {
         };
         let (caret, anchor) = (clamp(doc.caret()), clamp(doc.selection_anchor()));
         Some(Self {
+            multiline,
             caret,
             anchor,
             locked: element.has_attr("readonly") || element.has_attr("disabled"),
@@ -281,23 +349,28 @@ impl Field {
     /// Écrit la valeur (si `changed`), le curseur et la sélection dans le
     /// document, et prévient les scripts d'une valeur changée.
     fn commit(self, vm: &mut Vm, node: NodeId, changed: bool) {
+        if changed && self.multiline {
+            // Le contenu de la zone de texte est récrit par les interfaces
+            // HTML, qui préviennent aussi les scripts (`input`).
+            element_hook(vm, "wrote", node, &[Value::string(&self.value)]);
+        }
         let Some(h) = host(vm) else {
             return;
         };
-        if changed {
+        if changed && !self.multiline {
             h.doc.set_attr(node, "value", &self.value);
         }
         h.doc
             .set_field_selection(Some(node), self.anchor, self.caret);
         h.dirty = true;
-        if changed {
+        if changed && !self.multiline {
             dispatch_composed(vm, node, "input", true);
         }
     }
 }
 
-/// Frappe dans le champ de texte `node`. Renvoie `true` si la touche a été
-/// prise en charge.
+/// Frappe dans le champ de texte ou la zone de texte `node`. Renvoie `true`
+/// si la touche a été prise en charge.
 ///
 /// Maj avec une touche de déplacement étend la sélection ; Ctrl A
 /// sélectionne tout, Ctrl C copie, Ctrl X coupe (voir `Host::copied`).
@@ -330,6 +403,9 @@ fn edit_input(vm: &mut Vm, node: NodeId, input: &crate::KeyInput<'_>) -> bool {
         "ArrowLeft" | "ArrowRight" | "Home" | "End" => {
             let left = input.key == "ArrowLeft";
             field.caret = match input.key {
+                // Dans une zone de texte : le début et la fin de la ligne.
+                "Home" if field.multiline => line_start(&field.value, caret),
+                "End" if field.multiline => line_end(&field.value, caret),
                 "Home" => 0,
                 "End" => field.value.len(),
                 // Sans Maj, une flèche referme la sélection sur son bord.
@@ -344,6 +420,13 @@ fn edit_input(vm: &mut Vm, node: NodeId, input: &crate::KeyInput<'_>) -> bool {
                 _ => next,
             };
             extends = input.shift;
+        }
+        "ArrowUp" | "ArrowDown" if field.multiline => {
+            field.caret = vertical(&field.value, caret, input.key == "ArrowUp");
+            extends = input.shift;
+        }
+        "Enter" if field.multiline && !field.locked && !shortcut => {
+            changed = field.replace_selection("\n");
         }
         "Backspace" | "Delete" if !field.locked => {
             if !selected {
@@ -413,21 +496,32 @@ pub(super) fn paste(vm: &mut Vm, text: &str) {
         let line: String = text.chars().filter(|c| !c.is_control()).collect();
         let changed = field.replace_selection(&line);
         field.commit(vm, node, changed);
-    } else if h.doc.element(node).is_some_and(|e| e.is_html("textarea")) {
-        element_hook(vm, "pasted", node, &[Value::string(text)]);
-        if let Some(h) = host(vm) {
-            h.dirty = true;
-        }
+    } else if is_text_area(&h.doc, node) {
+        let Some(mut field) = Field::read(&h.doc, node) else {
+            return;
+        };
+        // Les fins de ligne du presse-papiers deviennent des sauts de ligne.
+        let lines = text.replace("\r\n", "\n").replace('\r', "\n");
+        let changed = field.replace_selection(&lines);
+        field.commit(vm, node, changed);
     }
 }
 
-/// Élément focalisable suivant (ou précédent) dans l'ordre du document, en
-/// bouclant.
+/// Élément focalisable suivant (ou précédent) dans l'ordre de tabulation,
+/// en bouclant : d'abord les éléments de `tabindex` positif, par valeur
+/// croissante, puis les autres dans l'ordre du document. Un `tabindex`
+/// négatif retire l'élément de cet ordre (il reste focalisable au clic et
+/// par script).
 fn next_focusable(doc: &Document, from: Option<NodeId>, backward: bool) -> Option<NodeId> {
-    let all: Vec<NodeId> = doc
+    let mut all: Vec<NodeId> = doc
         .descendants(doc.root())
-        .filter(|node| focusable(doc, *node))
+        .filter(|node| focusable(doc, *node) && tab_index(doc, *node) >= 0)
         .collect();
+    // Tri stable : à rang égal, l'ordre du document.
+    all.sort_by_key(|node| match tab_index(doc, *node) {
+        0 => (1, 0),
+        positive => (0, positive),
+    });
     if all.is_empty() {
         return None;
     }
@@ -439,6 +533,35 @@ fn next_focusable(doc: &Document, from: Option<NodeId>, backward: bool) -> Optio
         (None, true) => all.len() - 1,
     };
     all.get(index).copied()
+}
+
+/// À la fin du chargement : si rien n'a le focus, le premier élément
+/// `autofocus` qui peut le prendre le reçoit.
+pub(super) fn autofocus(vm: &mut Vm) {
+    let Some(h) = host(vm) else {
+        return;
+    };
+    if h.doc.focus().is_some() {
+        return;
+    }
+    let doc = &h.doc;
+    // Un élément d'une boîte de dialogue ou d'un popover reçoit le focus quand
+    // ceux-ci s'affichent, pas au chargement ; un élément masqué, jamais.
+    let set_aside = |node: NodeId| {
+        std::iter::once(node).chain(doc.ancestors(node)).any(|n| {
+            doc.element(n).is_some_and(|e| {
+                e.is_html("dialog") || e.has_attr("popover") || e.has_attr("hidden")
+            })
+        })
+    };
+    let wanted = doc.descendants(doc.root()).find(|node| {
+        doc.element(*node).is_some_and(|e| e.has_attr("autofocus"))
+            && focusable(doc, *node)
+            && !set_aside(*node)
+    });
+    if wanted.is_some() {
+        move_focus(vm, wanted);
+    }
 }
 
 /// Action par défaut d'une touche enfoncée, quand aucun script ne l'a
@@ -475,10 +598,15 @@ pub(super) fn default_key(vm: &mut Vm, input: &crate::KeyInput<'_>) {
             edit_input(vm, node, input);
         }
     } else if name == "select" {
-        // Les flèches changent l'option choisie, sans dérouler la liste.
+        // Entrée et Espace déroulent ou referment la liste ; les flèches
+        // changent l'option choisie, liste déroulée ou non.
         let step = match input.key {
             "ArrowDown" | "ArrowRight" => 1.0,
             "ArrowUp" | "ArrowLeft" => -1.0,
+            "Enter" | " " => {
+                element_hook(vm, "toggled", node, &[]);
+                return;
+            }
             _ => return,
         };
         element_hook(vm, "stepped", node, &[Value::Number(step)]);
@@ -486,12 +614,7 @@ pub(super) fn default_key(vm: &mut Vm, input: &crate::KeyInput<'_>) {
             h.dirty = true;
         }
     } else if name == "textarea" {
-        if !is_shortcut(input) {
-            element_hook(vm, "typed", node, &[Value::string(input.key)]);
-            if let Some(h) = host(vm) {
-                h.dirty = true;
-            }
-        }
+        edit_input(vm, node, input);
     } else if activates {
         super::activate(vm, node, None);
     }

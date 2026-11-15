@@ -2,7 +2,8 @@
 // JavaScript. Le script rend une fabrique qui reçoit :
 //   registerInterface(balise, prototype) -> prototype des éléments de cette balise ;
 //   parseUrl, changeUrl, locationHref, navigate -> voir le prélude ;
-//   setElementState(élément, nom, actif) -> pose l'état `modal` ou `popover-open`.
+//   setElementState(élément, nom, actif) -> pose l'état `modal`, `popover-open` ou
+//                                           `select-open` (liste déroulée).
 // Elle rend les fonctions d'activation que le moteur appelle autour d'un clic.
 //
 // LIMITES CONNUES : l'état d'un contrôle (valeur, case cochée, option
@@ -255,6 +256,59 @@
   for (const [name, descriptor] of Object.entries(htmlMembers)) {
     define(global.HTMLElement.prototype, name, descriptor);
   }
+  // ---- Listes déroulantes ------------------------------------------------------------------
+  // Une liste à choix unique se déroule au clic : ses options s'affichent
+  // au-dessus de la page, un clic sur l'une la choisit. LIMITES : une
+  // liste `multiple` ou de taille supérieure à 1 ne se déroule pas ; la
+  // liste déroulée ne défile pas si elle dépasse la fenêtre.
+  const openSelects = new Set();
+  const isDropdown = (select) => !select.hasAttribute("multiple")
+    && !(Number(select.getAttribute("size")) > 1) && !select.matches(":disabled");
+  const closeSelect = (select) => {
+    if (!openSelects.delete(select)) return;
+    setElementState(select, "select-open", false);
+  };
+  const openSelect = (select) => {
+    if (!isDropdown(select) || openSelects.has(select)) return;
+    for (const other of [...openSelects]) closeSelect(other);
+    openSelects.add(select);
+    setElementState(select, "select-open", true);
+  };
+  const toggleSelect = (select) => {
+    if (openSelects.has(select)) closeSelect(select);
+    else openSelect(select);
+  };
+  // L'option `option` devient celle que la liste `select` a choisie.
+  const pickOption = (select, option) => {
+    if (option.hasAttribute("disabled") || isSelected(option)) return;
+    for (const other of optionsOf(select)) other.removeAttribute("selected");
+    option.setAttribute("selected", "");
+    if (!select.isConnected) return;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  global.addEventListener("click", (event) => {
+    const target = event.target;
+    const inside = target !== null && typeof target.closest === "function";
+    const option = inside ? target.closest("option") : null;
+    const select = inside ? target.closest("select") : null;
+    // Un clic ailleurs referme les listes déroulées.
+    for (const other of [...openSelects]) {
+      if (other !== select) closeSelect(other);
+    }
+    if (select === null || event.defaultPrevented || !isDropdown(select)) return;
+    if (option !== null && openSelects.has(select)) {
+      pickOption(select, option);
+      closeSelect(select);
+    } else {
+      toggleSelect(select);
+    }
+  });
+  // La liste se referme quand elle perd le focus.
+  global.addEventListener("focusout", (event) => {
+    if (openSelects.has(event.target)) closeSelect(event.target);
+  });
+
   // Bouton `popovertarget` : son clic affiche ou masque le popover visé ;
   // tout autre clic ferme les popovers automatiques qu'il ne touche pas.
   global.addEventListener("click", (event) => {
@@ -279,6 +333,11 @@
   // Échap ferme le popover automatique du dessus, sinon la boîte modale du dessus.
   global.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
+    // Une liste déroulée se referme d'abord.
+    if (openSelects.size > 0) {
+      for (const select of [...openSelects]) closeSelect(select);
+      return;
+    }
     const popover = openPopovers.slice().reverse().find((element) => popoverKind(element) === "auto");
     if (popover !== undefined) {
       hidePopover(popover, false);
@@ -1154,6 +1213,11 @@
       if (submitter !== undefined) submitter.click();
       else form.requestSubmit();
     },
+    // Entrée ou Espace sur une liste déroulante : elle se déroule ou se
+    // referme.
+    toggled(control) {
+      toggleSelect(control);
+    },
     // Flèche sur une liste déroulante : l'option voisine devient la choisie.
     stepped(control, step) {
       if (control.hasAttribute("disabled")) return;
@@ -1165,24 +1229,10 @@
       options[next].setAttribute("selected", "");
       changed(control);
     },
-    // Frappe dans une zone de texte : en fin de texte.
-    typed(control, key) {
-      if (control.hasAttribute("readonly") || control.hasAttribute("disabled")) return;
-      const text = control.textContent;
-      let next = text;
-      if (key === "Backspace") next = Array.from(text).slice(0, -1).join("");
-      else if (key === "Enter") next = text + "\n";
-      else if (Array.from(key).length === 1) next = text + key;
-      if (next === text) return;
-      control.textContent = next;
-      control.dispatchEvent(new Event("input", { bubbles: true }));
-    },
-    // Texte collé dans une zone de texte : en fin de texte.
-    pasted(control, pasted) {
-      if (control.hasAttribute("readonly") || control.hasAttribute("disabled")) return;
-      const added = String(pasted).replace(/\r\n?/g, "\n");
-      if (added === "") return;
-      control.textContent += added;
+    // Le moteur a édité une zone de texte (frappe, collage) : son contenu
+    // devient `value`.
+    wrote(control, value) {
+      control.textContent = value;
       control.dispatchEvent(new Event("input", { bubbles: true }));
     },
     // Avant `click` : une case ou un bouton radio change d'état tout de

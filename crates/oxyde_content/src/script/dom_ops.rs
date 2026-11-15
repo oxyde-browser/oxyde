@@ -78,6 +78,7 @@ pub(super) fn set_element_state(vm: &mut Vm, _this: &Value, args: &[Value]) -> J
     let flag = match &*name {
         "modal" => oxyde_dom::STATE_MODAL,
         "popover-open" => oxyde_dom::STATE_POPOVER_OPEN,
+        "select-open" => oxyde_dom::STATE_SELECT_OPEN,
         _ => 0,
     };
     if let (Some(node), Some(h)) = (node, host(vm))

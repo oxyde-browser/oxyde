@@ -383,7 +383,14 @@ mod tests {
         assert!(matches!(receiver.recv(), Err(ChannelError::Closed)));
         assert!(receiver.is_closed());
         assert!(matches!(receiver.try_recv(), Err(ChannelError::Closed)));
-        assert_eq!(woken.load(std::sync::atomic::Ordering::SeqCst), 3);
+        // Le réveil qui annonce la fin part du fil lecteur, juste après que
+        // la fin est devenue visible : il peut arriver un instant plus tard.
+        let woken_count = || woken.load(std::sync::atomic::Ordering::SeqCst);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while woken_count() < 3 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(woken_count(), 3);
     }
 
     #[test]

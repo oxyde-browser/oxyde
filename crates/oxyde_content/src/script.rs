@@ -31,7 +31,7 @@ mod documents;
 mod dom_ops;
 mod events;
 mod focus;
-pub(crate) use focus::is_text_input;
+pub(crate) use focus::{is_text_area, is_text_input};
 mod frames;
 mod geometry;
 mod lists;
@@ -3116,6 +3116,11 @@ impl ScriptEngine {
     /// Texte copié ou coupé dans un champ depuis le dernier appel.
     pub(crate) fn take_copied(&mut self) -> Option<String> {
         host(&mut self.vm).and_then(|h| h.copied.take())
+    }
+
+    /// Donne le focus au premier élément `autofocus`, si rien ne l'a.
+    pub(crate) fn autofocus(&mut self, doc: &mut Document) {
+        self.run(doc, focus::autofocus);
     }
 
     /// Colle `text` dans le champ qui a le focus.
