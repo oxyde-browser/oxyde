@@ -1156,8 +1156,8 @@ struct PreciseSum {
 impl PreciseSum {
     /// 2^1023.
     const HALF_RANGE: f64 = f64::from_bits(0x7FE0_0000_0000_0000);
-    /// Moitié de l'écart entre les deux plus grands nombres finis : 2^969.
-    const HALF_MAX_ULP: f64 = f64::from_bits(0x7C80_0000_0000_0000);
+    /// Écart entre les deux plus grands nombres finis : 2^970.
+    const MAX_ULP: f64 = f64::from_bits(0x7C90_0000_0000_0000);
 
     fn add(&mut self, mut x: f64) {
         let mut used = 0;
@@ -1211,7 +1211,7 @@ impl PreciseSum {
                     .last()
                     .is_some_and(|rest| (*rest < 0.0) == (hi > 0.0) && *rest != 0.0);
                 return if hi.abs() == Self::HALF_RANGE
-                    && lo == -hi.signum() * Self::HALF_MAX_ULP
+                    && lo == -hi.signum() * Self::MAX_ULP
                     && pulls_back
                 {
                     hi.signum() * f64::MAX
