@@ -2538,6 +2538,13 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("socketClose", 3, sockets::socket_close)),
     ];
     vm.call(&websocket, &Value::Undefined, &helpers)?;
+    // `EventSource`, par le même canal.
+    let event_source = vm.eval_script(include_str!("script/eventsource.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("socketOpen", 3, sockets::socket_open)),
+        Value::Object(vm.new_function("socketClose", 3, sockets::socket_close)),
+    ];
+    vm.call(&event_source, &Value::Undefined, &helpers)?;
     // `Worker` : son script se lit par le `fetch` du standard.
     let workers = vm.eval_script(include_str!("script/workers.js"))?;
     let create = Value::Object(vm.new_function("createWorker", 4, workers::create_worker));

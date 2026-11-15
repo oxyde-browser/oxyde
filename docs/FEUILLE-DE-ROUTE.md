@@ -883,7 +883,20 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       (`--screenshot`) et le lanceur WPT n'ouvrent pas de connexion ; la chaîne
       complète entre processus n'a pas de test de bout en bout (chaque maillon a les
       siens, contre un serveur local) et n'a pas été essayée sur un vrai site.
-- [ ] `EventSource` (demande des réponses HTTP lues au fil de l'eau).
+- [x] `EventSource` : `oxyde_net` sait lire une réponse au fil de l'eau
+      (`Client::stream` : en-tête, morceaux du corps décompressés à mesure, fin ou
+      échec, abandon possible d'un flux muet). La classe `EventSource` des pages
+      découpe le flux (champs `data`, `event`, `id`, `retry`, commentaires, fins de
+      ligne CR, LF et CR LF, caractères coupés entre deux morceaux), se reconnecte
+      après une coupure avec `Last-Event-ID`, et renonce si la réponse n'est pas un
+      flux d'événements (code autre que 200, type autre que `text/event-stream`, autre
+      origine non autorisée). Elle passe par le canal des connexions `WebSocket`.
+      Limites : `withCredentials` est sans effet ; le délai de reconnexion ne s'allonge
+      pas après des échecs répétés ; chaque flux occupe un fil du service réseau ;
+      seuls `gzip` et `deflate` sont décompressés au fil de l'eau ; `fetch` ne lit
+      toujours pas ses réponses au fil de l'eau (`Response.body` reste `null`) ; comme
+      pour `WebSocket`, pas de test de bout en bout entre processus ni d'essai sur un
+      vrai site.
 - [ ] Liste des suffixes publics (frontière des sites, cookies).
 - [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
       isolés), tableaux denses, objet de type `document.all`.

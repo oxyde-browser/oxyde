@@ -44,20 +44,31 @@ pub fn dom_coverage_report() -> String {
     script::dom_coverage_report()
 }
 
-/// Ordre qu'un script donne à une connexion `WebSocket`, à exécuter par
-/// l'embarqueur (voir [`Page::take_socket_commands`]).
+/// Ordre qu'un script donne à une connexion `WebSocket` ou à un flux
+/// `EventSource`, à exécuter par l'embarqueur (voir
+/// [`Page::take_socket_commands`]).
+///
+/// Un flux `EventSource` passe par les mêmes ordres : son adresse est en
+/// `http` ou `https`. L'embarqueur annonce alors [`SocketEvent::Open`] si
+/// la réponse est un flux d'événements (code 200, type
+/// `text/event-stream`), chaque morceau du corps par
+/// [`SocketEvent::Binary`], et la fin par [`SocketEvent::Close`] : code
+/// 1000 (flux fini) ou 1006 (coupure) si la page peut se reconnecter, tout
+/// autre code pour un refus définitif.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SocketCommand {
     /// Ouvrir la connexion `id`.
     Open {
         /// Identifiant à rendre à [`Page::socket_event`].
         id: u64,
-        /// Adresse, en `ws` ou `wss`.
+        /// Adresse, en `ws` ou `wss` ; en `http` ou `https` pour un flux
+        /// d'événements.
         url: Url,
         /// Adresse du document qui ouvre la connexion (en-tête `Origin`,
         /// choix des cookies).
         document: Url,
-        /// Sous-protocoles proposés au serveur.
+        /// Sous-protocoles proposés au serveur ; pour un flux d'événements,
+        /// le dernier identifiant d'événement reçu, s'il y en a un.
         protocols: Vec<String>,
     },
     /// Envoyer un message texte.
@@ -6209,6 +6220,86 @@ mod tests {
             }
             let _ = p.tick(Instant::now() + Duration::from_secs(round));
         }
+    }
+
+    #[test]
+    fn event_sources_parse_their_stream_and_reconnect() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const show = () => document.body.setAttribute('data-out', out.join(' '));
+               const es = new EventSource('/flux');
+               out.push(es.url, es.readyState);
+               es.onopen = () => { out.push('open:' + es.readyState); show(); };
+               es.onmessage = (e) => { out.push('msg:' + JSON.stringify(e.data) + ':' + e.lastEventId); show(); };
+               es.addEventListener('tic', (e) => { out.push('tic:' + e.data + ':' + e.origin); show(); });
+               es.onerror = () => { out.push('error:' + es.readyState); show(); };
+               const refused = new EventSource('/refus');
+               refused.onerror = () => { out.push('refus:' + refused.readyState); show(); };
+               show();
+             </script>",
+        );
+        p.run_scripts();
+        let commands = p.take_socket_commands();
+        let opened: Vec<(u64, String, Vec<String>)> = commands
+            .iter()
+            .map(|command| match command {
+                SocketCommand::Open {
+                    id, url, protocols, ..
+                } => (*id, url.to_string(), protocols.clone()),
+                other => panic!("ouverture attendue : {other:?}"),
+            })
+            .collect();
+        assert_eq!(opened.len(), 2);
+        assert_eq!(opened[0].1, "https://exemple.test/flux");
+        assert!(opened[0].2.is_empty());
+        let (flux, refus) = (opened[0].0, opened[1].0);
+        let open = || SocketEvent::Open {
+            protocol: String::new(),
+        };
+        let close = |code: u16| SocketEvent::Close {
+            code,
+            reason: String::new(),
+            clean: code == 1000,
+        };
+        let _ = p.socket_event(flux, open());
+        // Commentaire, événement sur deux lignes de données, caractère et fin
+        // de ligne coupés entre deux morceaux.
+        let first = ": bonjour\n\ndata: un\ndata:deux\nid: 7\n\nevent: tic\ndata: \u{e9}"
+            .as_bytes()
+            .to_vec();
+        let (start, end) = first.split_at(first.len() - 1);
+        let _ = p.socket_event(flux, SocketEvent::Binary(start.to_vec()));
+        let mut rest = end.to_vec();
+        rest.extend_from_slice(b"t\xC3\xA9\r");
+        let _ = p.socket_event(flux, SocketEvent::Binary(rest));
+        let _ = p.socket_event(
+            flux,
+            SocketEvent::Binary(b"\n\r\nretry: 50\ndata: sans fin".to_vec()),
+        );
+        // Le flux se coupe : l'événement inachevé est perdu, la page se
+        // reconnecte après le délai donné par le serveur.
+        let _ = p.socket_event(flux, close(1006));
+        let _ = p.socket_event(refus, close(404));
+        assert!(p.take_socket_commands().is_empty());
+        let _ = p.tick(Instant::now() + Duration::from_secs(1));
+        let again = p.take_socket_commands();
+        let [SocketCommand::Open { id, protocols, .. }] = again.as_slice() else {
+            panic!("reconnexion attendue : {again:?}");
+        };
+        assert_eq!(protocols, &["7".to_owned()]);
+        let second = *id;
+        let _ = p.socket_event(second, open());
+        let _ = p.socket_event(second, SocketEvent::Binary(b"data: revenu\n\n".to_vec()));
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "https://exemple.test/flux 0 open:1 msg:\"un\\ndeux\":7 \
+                 tic:\u{e9}t\u{e9}:https://exemple.test error:0 refus:2 open:1 msg:\"revenu\":7"
+            )
+        );
     }
 
     #[test]

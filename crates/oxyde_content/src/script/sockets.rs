@@ -1,4 +1,5 @@
-//! `WebSocket` : ce que le moteur fournit à `websocket.js`.
+//! `WebSocket` et `EventSource` : ce que le moteur fournit à `websocket.js`
+//! et à `eventsource.js`.
 //!
 //! Le moteur n'ouvre aucune connexion : il range les demandes des scripts
 //! ([`crate::SocketCommand`]) pour l'embarqueur, qui lui rend ce qui arrive
@@ -42,7 +43,9 @@ fn socket_id(vm: &mut Vm, value: &Value) -> JsResult<u64> {
 
 /// `socketOpen(adresse, protocoles, rappel)` : demande l'ouverture d'une
 /// connexion vers `adresse` (`ws:` ou `wss:`), en proposant les
-/// sous-protocoles de `protocoles` (séparés par des virgules). `rappel(nature,
+/// sous-protocoles de `protocoles` (séparés par des virgules) ; ou, pour une
+/// adresse `http(s)`, d'un flux d'événements, `protocoles` étant alors le
+/// dernier identifiant d'événement reçu. `rappel(nature,
 /// a, b, c)` sera appelé pour chaque événement. Rend l'identifiant de la
 /// connexion, ou `null` si l'adresse est invalide ou si la page a déjà trop
 /// de connexions.
@@ -53,6 +56,7 @@ pub(super) fn socket_open(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResul
     let Ok(url) = Url::parse(&address) else {
         return Ok(Value::Null);
     };
+    let stream = matches!(url.scheme(), "http" | "https");
     let Some(h) = host(vm) else {
         return Ok(Value::Null);
     };
@@ -65,12 +69,21 @@ pub(super) fn socket_open(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResul
         id,
         url,
         document: h.url.clone(),
-        protocols: protocols
-            .split(',')
-            .map(str::trim)
-            .filter(|protocol| !protocol.is_empty())
-            .map(str::to_owned)
-            .collect(),
+        // Pour un flux d'événements (adresse `http(s)`), le texte est le
+        // dernier identifiant d'événement reçu, pris tel quel.
+        protocols: if stream {
+            Some(protocols.to_string())
+                .filter(|last| !last.is_empty())
+                .into_iter()
+                .collect()
+        } else {
+            protocols
+                .split(',')
+                .map(str::trim)
+                .filter(|protocol| !protocol.is_empty())
+                .map(str::to_owned)
+                .collect()
+        },
     });
     // Le rappel tient l'objet `WebSocket` en vie tant que la connexion dure.
     vm.add_root(callback);
