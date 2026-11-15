@@ -115,6 +115,15 @@ fn registrable(host: &str) -> &str {
     host.get(skipped..).unwrap_or(host)
 }
 
+/// Site de `url` : le domaine enregistrable de son hôte ; son schéma pour
+/// une adresse sans hôte.
+pub(crate) fn site_of(url: &Url) -> String {
+    match host_of(url) {
+        Some(host) => registrable(&host).to_owned(),
+        None => format!("{}:", url.scheme()),
+    }
+}
+
 /// Vrai si `a` et `b` sont du même site (même domaine enregistrable).
 #[must_use]
 pub fn same_site(a: &Url, b: &Url) -> bool {

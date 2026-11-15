@@ -19,6 +19,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+mod cache;
 pub mod cookies;
 pub mod stream;
 pub mod websocket;
@@ -217,7 +218,32 @@ pub struct Client {
     /// plusieurs requêtes à la fois, ce qui épargne à chaque ressource
     /// d'une page une poignée de main TCP et TLS.
     connections: std::sync::Mutex<std::collections::HashMap<(String, u16), Http2Sender>>,
+    /// Réponses gardées pour être resservies (cache HTTP).
+    cache: std::sync::Mutex<cache::Cache>,
+    /// Connexions HTTP/1.1 au repos, par hôte : la suivante vers le même
+    /// hôte en reprend une au lieu d'en ouvrir une autre.
+    idle: std::sync::Mutex<std::collections::HashMap<Http1Key, Vec<Idle>>>,
 }
+
+/// Extrémité d'émission d'une connexion HTTP/1.1 : une requête à la fois.
+type Http1Sender = hyper::client::conn::http1::SendRequest<Full<Bytes>>;
+
+/// Hôte, port et chiffrement d'une connexion HTTP/1.1.
+type Http1Key = (String, u16, bool);
+
+/// Connexion HTTP/1.1 au repos, et depuis quand.
+struct Idle {
+    sender: Http1Sender,
+    since: std::time::Instant,
+}
+
+/// Nombre maximal de connexions HTTP/1.1 gardées au repos par hôte (la
+/// limite de connexions par hôte des navigateurs), et en tout.
+const MAX_IDLE_PER_HOST: usize = 6;
+const MAX_IDLE: usize = 64;
+/// Durée au-delà de laquelle une connexion au repos n'est plus reprise :
+/// les serveurs ferment d'eux-mêmes une connexion muette.
+const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Extrémité d'émission d'une connexion HTTP/2.
 type Http2Sender = hyper::client::conn::http2::SendRequest<Full<Bytes>>;
@@ -261,6 +287,8 @@ impl Client {
             tls_http1: TlsConnector::from(Arc::new(http1)),
             jar: std::sync::Mutex::new(CookieJar::new()),
             connections: std::sync::Mutex::new(std::collections::HashMap::new()),
+            cache: std::sync::Mutex::new(cache::Cache::default()),
+            idle: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
     }
 
@@ -281,6 +309,15 @@ impl Client {
         self.jar
             .lock()
             .is_ok_and(|mut jar| jar.store(url, text, Access::Script, false))
+    }
+
+    /// Oublie les réponses gardées en cache pour les documents du site de
+    /// `document` : à appeler quand l'utilisateur recharge la page, pour
+    /// que ses ressources soient redemandées aux serveurs.
+    pub fn forget_cached(&self, document: &Url) {
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.forget_site(document);
+        }
     }
 
     /// Récupère `url` par une requête GET émise par le document `initiator`
@@ -318,7 +355,7 @@ impl Client {
         self.runtime.block_on(async {
             let mut current = request.clone();
             for _ in 0..=MAX_REDIRECTS {
-                let step = tokio::time::timeout(REQUEST_TIMEOUT, self.send_once(&current))
+                let step = tokio::time::timeout(REQUEST_TIMEOUT, self.send_cached(&current))
                     .await
                     .map_err(|_| NetError::Timeout)??;
                 match step {
@@ -380,6 +417,44 @@ impl Client {
         }
     }
 
+    /// Connexion HTTP/1.1 au repos vers `key`, encore utilisable, s'il y en
+    /// a une ; la plus récemment servie d'abord.
+    fn take_idle(&self, key: &Http1Key) -> Option<Http1Sender> {
+        let mut idle = self.idle.lock().ok()?;
+        let parked = idle.get_mut(key)?;
+        while let Some(candidate) = parked.pop() {
+            if !candidate.sender.is_closed() && candidate.since.elapsed() < IDLE_TIMEOUT {
+                return Some(candidate.sender);
+            }
+        }
+        None
+    }
+
+    /// Met au repos la connexion HTTP/1.1 `sender`, dont la réponse a été
+    /// lue en entier.
+    fn park(&self, key: Http1Key, sender: Http1Sender) {
+        if sender.is_closed() {
+            return;
+        }
+        if let Ok(mut idle) = self.idle.lock() {
+            // Ménage : connexions fermées ou trop vieilles.
+            for parked in idle.values_mut() {
+                parked.retain(|c| !c.sender.is_closed() && c.since.elapsed() < IDLE_TIMEOUT);
+            }
+            idle.retain(|_, parked| !parked.is_empty());
+            if idle.values().map(Vec::len).sum::<usize>() >= MAX_IDLE {
+                idle.clear();
+            }
+            let parked = idle.entry(key).or_default();
+            if parked.len() < MAX_IDLE_PER_HOST {
+                parked.push(Idle {
+                    sender,
+                    since: std::time::Instant::now(),
+                });
+            }
+        }
+    }
+
     /// Oublie la connexion vers `key` : elle ne sert plus.
     fn forget(&self, key: &(String, u16)) {
         if let Ok(mut connections) = self.connections.lock() {
@@ -387,11 +462,53 @@ impl Client {
         }
     }
 
+    /// Répond à `request` depuis le cache si une réponse gardée est encore
+    /// fraîche ; sinon l'envoie, en la revalidant si une réponse périmée
+    /// peut l'être, et garde la réponse reçue si son serveur le permet.
+    async fn send_cached(&self, request: &HttpRequest) -> Result<Step, NetError> {
+        let lookup = self
+            .cache
+            .lock()
+            .map_or(cache::Lookup::Miss, |mut cache| cache.lookup(request));
+        let validators = match lookup {
+            cache::Lookup::Fresh(response) => return Ok(Step::Done(response)),
+            cache::Lookup::Stale(validators) => validators,
+            cache::Lookup::Miss => Vec::new(),
+        };
+        let step = if validators.is_empty() {
+            self.send_once(request).await?
+        } else {
+            let mut conditional = request.clone();
+            conditional.headers.extend(validators);
+            match self.send_once(&conditional).await? {
+                Step::Done(response) if response.status == 304 => {
+                    let kept = self
+                        .cache
+                        .lock()
+                        .ok()
+                        .and_then(|mut cache| cache.refresh(request, &response));
+                    match kept {
+                        Some(kept) => return Ok(Step::Done(kept)),
+                        // Évincée entre-temps : la ressource est redemandée.
+                        None => self.send_once(request).await?,
+                    }
+                }
+                other => other,
+            }
+        };
+        if let Step::Done(response) = &step
+            && let Ok(mut cache) = self.cache.lock()
+        {
+            cache.store(request, response);
+        }
+        Ok(step)
+    }
+
     /// Envoie `request` et lit sa réponse en entier.
     async fn send_once(&self, request: &HttpRequest) -> Result<Step, NetError> {
-        let (head, mut stream) = match self.send_head(request).await? {
+        let (head, mut stream, reusable) = match self.send_head(request).await? {
             HeadStep::Redirect(next, status) => return Ok(Step::Redirect(next, status)),
-            HeadStep::Final(head, stream) => (head, stream),
+            HeadStep::Final(head, stream, reusable) => (head, stream, reusable),
         };
         let mut body = Vec::new();
         while let Some(frame) = stream.frame().await {
@@ -401,6 +518,10 @@ impl Client {
                 }
                 body.extend_from_slice(chunk);
             }
+        }
+        // Corps lu en entier : la connexion peut resservir.
+        if let Some((key, sender)) = reusable {
+            self.park(key, sender);
         }
         let body = match &head.encoding {
             Some(encoding) if !body.is_empty() => decode_body(body, encoding)?,
@@ -525,6 +646,20 @@ impl Client {
                 }
             }
         }
+        // À défaut, une connexion HTTP/1.1 au repos vers cet hôte. Seules
+        // les requêtes sans effet de bord en reprennent une : si le serveur
+        // l'a fermée entre-temps, elles repartent sans risque sur une neuve.
+        let http1_key: Http1Key = (host.clone(), port, secure);
+        let mut reusable: Option<Http1Sender> = None;
+        if response.is_none()
+            && matches!(request.method.as_str(), "GET" | "HEAD")
+            && let Some(mut sender) = self.take_idle(&http1_key)
+            && sender.ready().await.is_ok()
+            && let Ok(answer) = sender.send_request(build(&path, true)?).await
+        {
+            response = Some(answer);
+            reusable = Some(sender);
+        }
         let response = match response {
             Some(response) => response,
             None => {
@@ -560,13 +695,17 @@ impl Client {
                         let (mut sender, connection) =
                             hyper::client::conn::http1::handshake(io).await?;
                         tokio::spawn(connection);
-                        sender.send_request(build(&path, true)?).await?
+                        let answer = sender.send_request(build(&path, true)?).await?;
+                        reusable = Some(sender);
+                        answer
                     }
                 } else {
                     let (mut sender, connection) =
                         hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await?;
                     tokio::spawn(connection);
-                    sender.send_request(build(&path, true)?).await?
+                    let answer = sender.send_request(build(&path, true)?).await?;
+                    reusable = Some(sender);
+                    answer
                 }
             }
         };
@@ -625,6 +764,18 @@ impl Client {
                 Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
             })
             .collect();
+        // Le serveur annonce qu'il ferme : la connexion ne resservira pas.
+        let closing = response
+            .headers()
+            .get(header::CONNECTION)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| {
+                v.split(',')
+                    .any(|token| token.trim().eq_ignore_ascii_case("close"))
+            });
+        let reusable = reusable
+            .filter(|_| !closing)
+            .map(|sender| (http1_key, sender));
         Ok(HeadStep::Final(
             Head {
                 status: status.as_u16(),
@@ -633,6 +784,7 @@ impl Client {
                 headers,
             },
             response.into_body(),
+            reusable,
         ))
     }
 }
@@ -647,8 +799,9 @@ struct Head {
 }
 
 enum HeadStep {
-    /// Réponse finale : son en-tête, et son corps à lire.
-    Final(Head, hyper::body::Incoming),
+    /// Réponse finale : son en-tête, son corps à lire et, en HTTP/1.1, la
+    /// connexion à remettre au repos une fois le corps lu en entier.
+    Final(Head, hyper::body::Incoming, Option<(Http1Key, Http1Sender)>),
     /// Adresse suivante et code d'état de la redirection.
     Redirect(Url, StatusCode),
 }
@@ -715,6 +868,112 @@ mod tests {
             }
         });
         port
+    }
+
+    /// Serveur qui garde ses connexions ouvertes : chaque connexion sert
+    /// autant de requêtes qu'on lui en envoie. Rend le port et le compteur de
+    /// connexions acceptées.
+    fn serve_keep_alive(
+        respond: fn(&str) -> String,
+    ) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("écoute locale");
+        let port = listener.local_addr().expect("adresse locale").port();
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counter = std::sync::Arc::clone(&accepted);
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::thread::spawn(move || {
+                    let mut pending = Vec::new();
+                    let mut buffer = [0u8; 4096];
+                    loop {
+                        // Une requête finit à sa ligne vide.
+                        while let Some(end) = pending.windows(4).position(|w| w == b"\r\n\r\n") {
+                            let request: Vec<u8> = pending.drain(..end + 4).collect();
+                            let text = String::from_utf8_lossy(&request).into_owned();
+                            if stream.write_all(respond(&text).as_bytes()).is_err() {
+                                return;
+                            }
+                        }
+                        match stream.read(&mut buffer) {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => pending.extend_from_slice(&buffer[..n]),
+                        }
+                    }
+                });
+            }
+        });
+        (port, accepted)
+    }
+
+    #[test]
+    fn http1_connections_are_reused() {
+        let (port, accepted) = serve_keep_alive(|request| {
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{path}",
+                path.len()
+            )
+        });
+        let client = Client::new().expect("client");
+        for path in ["/un", "/deux", "/trois"] {
+            let url = Url::parse(&format!("http://127.0.0.1:{port}{path}")).expect("url");
+            let response = client.get(&url).expect("réponse");
+            assert_eq!(response.body, path.as_bytes());
+        }
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 1);
+        // Un `POST` ne reprend pas une connexion au repos.
+        let url = Url::parse(&format!("http://127.0.0.1:{port}/envoi")).expect("url");
+        let post = HttpRequest {
+            method: "POST".to_owned(),
+            body: b"x".to_vec(),
+            ..HttpRequest::get(&url)
+        };
+        assert_eq!(client.send(&post).expect("réponse").status, 200);
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn responses_are_cached_and_revalidated() {
+        static HITS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let (port, _) = serve_keep_alive(|request| {
+            HITS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let path = request.split_whitespace().nth(1).unwrap_or("/");
+            let conditional = request
+                .to_ascii_lowercase()
+                .contains("if-none-match: \"v1\"");
+            match (path, conditional) {
+                ("/frais", _) => "HTTP/1.1 200 OK\r\nCache-Control: max-age=3600\r\n\
+                                  Content-Length: 5\r\n\r\nfrais"
+                    .to_owned(),
+                ("/valide", true) => "HTTP/1.1 304 Not Modified\r\nETag: \"v1\"\r\n\r\n".to_owned(),
+                ("/valide", false) => "HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\n\
+                                       ETag: \"v1\"\r\nContent-Length: 6\r\n\r\nvalide"
+                    .to_owned(),
+                _ => "HTTP/1.1 200 OK\r\nCache-Control: no-store\r\nContent-Length: 3\r\n\r\nnon"
+                    .to_owned(),
+            }
+        });
+        let hits = || HITS.load(std::sync::atomic::Ordering::SeqCst);
+        let client = Client::new().expect("client");
+        let get = |path: &str| {
+            let url = Url::parse(&format!("http://127.0.0.1:{port}{path}")).expect("url");
+            client.get(&url).expect("réponse")
+        };
+        // Fraîche : la seconde lecture ne touche pas le serveur.
+        assert_eq!(get("/frais").body, b"frais");
+        assert_eq!(get("/frais").body, b"frais");
+        assert_eq!(hits(), 1);
+        // À revalider : le serveur est interrogé, le corps gardé resservi.
+        assert_eq!(get("/valide").body, b"valide");
+        let again = get("/valide");
+        assert_eq!((again.status, again.body.as_slice()), (200, &b"valide"[..]));
+        assert_eq!(hits(), 3);
+        // `no-store` : jamais gardée.
+        assert_eq!(get("/jamais").body, b"non");
+        assert_eq!(get("/jamais").body, b"non");
+        assert_eq!(hits(), 5);
     }
 
     #[test]

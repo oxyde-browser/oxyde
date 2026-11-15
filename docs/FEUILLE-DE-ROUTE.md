@@ -532,7 +532,20 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [ ] Styles : le calcul reste complet à chaque lecture qui suit une écriture (pas de
       recalcul limité aux éléments touchés) ; un script qui alterne écritures et lectures de
       `getComputedStyle` le paie à chaque tour.
-- [ ] Réseau : pas de réutilisation des connexions HTTP/1.1, pas de cache HTTP.
+- [x] Réseau : les connexions HTTP/1.1 sont réutilisées (une connexion au repos ressert
+      pour la requête `GET` ou `HEAD` suivante vers le même hôte ; six au repos par hôte,
+      trente secondes au plus) ; cache HTTP en mémoire (réponses `200` aux `GET` que leur
+      serveur permet de garder : `max-age`, `Expires`, fraîcheur estimée d'après
+      `Last-Modified`, `no-store`, `no-cache`, `Vary`, `Age` ; revalidation par
+      `If-None-Match` et `If-Modified-Since`, un `304` ressert le corps gardé), cloisonné
+      par site du document demandeur. « Actualiser » oublie ce qui est gardé pour le
+      site de la page.
+      Limites : rien sur disque (le cache se vide avec le processus réseau) ; 64 Mio
+      en tout, 8 Mio par réponse ; ni redirections ni réponses partielles gardées ; pas
+      de `stale-while-revalidate` ; « Actualiser » recharge tout le site au lieu de
+      revalider ; un `POST` n'invalide pas la réponse gardée pour la même adresse ; le
+      site d'un hôte est estimé sans la liste des suffixes publics ; le gain de temps
+      n'a pas été mesuré sur de vrais sites.
 - [ ] Moteur JavaScript, ce qui reste avant le JIT du jalon 8 : concaténation de chaînes
       (quadratique), coût des appels (allocation des arguments), formes d'objets et cache
       d'accès aux propriétés, compilateur moins naïf. Objectif : l'ordre de grandeur de
