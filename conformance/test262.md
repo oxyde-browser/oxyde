@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 48312 réussis sur 48795 (99.0 %).**
+**Total : 48348 réussis sur 48795 (99.1 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -22,7 +22,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/AsyncGeneratorPrototype` | 48 | 45 | 93.8 % |
 | `built-ins/AsyncIteratorPrototype` | 13 | 13 | 100.0 % |
 | `built-ins/Atomics` | 389 | 389 | 100.0 % |
-| `built-ins/BigInt` | 77 | 76 | 98.7 % |
+| `built-ins/BigInt` | 77 | 77 | 100.0 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
 | `built-ins/DataView` | 560 | 560 | 100.0 % |
 | `built-ins/Date` | 610 | 610 | 100.0 % |
@@ -34,7 +34,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/GeneratorPrototype` | 61 | 61 | 100.0 % |
 | `built-ins/Infinity` | 6 | 6 | 100.0 % |
 | `built-ins/Iterator` | 684 | 681 | 99.6 % |
-| `built-ins/JSON` | 166 | 161 | 97.0 % |
+| `built-ins/JSON` | 166 | 163 | 98.2 % |
 | `built-ins/Map` | 204 | 204 | 100.0 % |
 | `built-ins/MapIteratorPrototype` | 11 | 11 | 100.0 % |
 | `built-ins/Math` | 327 | 327 | 100.0 % |
@@ -51,10 +51,10 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/SetIteratorPrototype` | 11 | 11 | 100.0 % |
 | `built-ins/ShadowRealm` | 64 | 64 | 100.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
-| `built-ins/String` | 1223 | 1217 | 99.5 % |
+| `built-ins/String` | 1223 | 1218 | 99.6 % |
 | `built-ins/StringIteratorPrototype` | 7 | 6 | 85.7 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
-| `built-ins/Symbol` | 98 | 97 | 99.0 % |
+| `built-ins/Symbol` | 98 | 98 | 100.0 % |
 | `built-ins/Temporal` | 4614 | 4614 | 100.0 % |
 | `built-ins/ThrowTypeError` | 14 | 14 | 100.0 % |
 | `built-ins/TypedArray` | 1453 | 1453 | 100.0 % |
@@ -81,9 +81,9 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/computed-property-names` | 48 | 48 | 100.0 % |
 | `language/destructuring` | 19 | 18 | 94.7 % |
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
-| `language/eval-code` | 347 | 342 | 98.6 % |
+| `language/eval-code` | 347 | 343 | 98.8 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 11059 | 99.1 % |
+| `language/expressions` | 11156 | 11072 | 99.2 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 42 | 100.0 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9326 | 99.2 % |
+| `language/statements` | 9399 | 9343 | 99.4 % |
 | `language/types` | 113 | 113 | 100.0 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

@@ -78,15 +78,11 @@ impl Vm {
 
     /// `OrdinaryToPrimitive` : `toString` puis `valueOf`, ou l'inverse.
     pub(crate) fn ordinary_to_primitive(&mut self, value: &Value, prefer_string: bool) -> JsResult {
-        let Value::Object(id) = value else {
+        if value.as_object().is_none() {
             return Ok(value.clone());
-        };
-        // Enveloppes : la valeur primitive est directement disponible.
-        if let Kind::Primitive(inner) = &self.heap.get(*id).kind
-            && !prefer_string
-        {
-            return Ok(inner.clone());
         }
+        // Une enveloppe (`new Number(1)`) passe par `valueOf` et `toString`
+        // comme tout objet : le script peut les avoir redéfinies.
         let order = if prefer_string {
             ["toString", "valueOf"]
         } else {
