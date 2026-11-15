@@ -1,6 +1,8 @@
 //! Messages échangés entre le processus navigateur et un processus de rendu.
 
-use oxyde_content::{FetchRequest, FetchResponse, FormPost, MouseInput, Navigation};
+use oxyde_content::{
+    FetchRequest, FetchResponse, FormPost, MouseInput, Navigation, SocketCommand, SocketEvent,
+};
 use oxyde_ipc::{Bytes, ipc_enum, ipc_struct};
 use oxyde_paint::wire::WireList;
 
@@ -50,6 +52,131 @@ ipc_enum!(NetworkReply {
     2 => Cookies(text),
     3 => Done,
 });
+
+/// Ordre qu'une page donne à une connexion WebSocket ; le navigateur
+/// l'exécute, le processus de rendu n'ouvrant aucune connexion.
+#[derive(Debug)]
+pub(crate) enum SocketOrder {
+    Open {
+        id: u64,
+        url: String,
+        document: String,
+        protocols: Vec<String>,
+    },
+    Text {
+        id: u64,
+        text: String,
+    },
+    Binary {
+        id: u64,
+        bytes: Bytes,
+    },
+    Close {
+        id: u64,
+        code: Option<u16>,
+        reason: String,
+    },
+    /// La page n'écoute plus la connexion `id` : la couper.
+    Drop {
+        id: u64,
+    },
+}
+ipc_enum!(SocketOrder {
+    0 => Open { id, url, document, protocols },
+    1 => Text { id, text },
+    2 => Binary { id, bytes },
+    3 => Close { id, code, reason },
+    4 => Drop { id },
+});
+
+impl From<SocketCommand> for SocketOrder {
+    fn from(command: SocketCommand) -> Self {
+        match command {
+            SocketCommand::Open {
+                id,
+                url,
+                document,
+                protocols,
+            } => Self::Open {
+                id,
+                url: url.to_string(),
+                document: document.to_string(),
+                protocols,
+            },
+            SocketCommand::Text { id, text } => Self::Text { id, text },
+            SocketCommand::Binary { id, bytes } => Self::Binary {
+                id,
+                bytes: Bytes(bytes),
+            },
+            SocketCommand::Close { id, code, reason } => Self::Close { id, code, reason },
+        }
+    }
+}
+
+/// Ce qui arrive à une connexion WebSocket d'une page.
+#[derive(Debug)]
+pub(crate) enum SocketNews {
+    Open {
+        protocol: String,
+    },
+    Text {
+        text: String,
+    },
+    Binary {
+        bytes: Bytes,
+    },
+    Close {
+        code: u16,
+        reason: String,
+        clean: bool,
+    },
+}
+ipc_enum!(SocketNews {
+    0 => Open { protocol },
+    1 => Text { text },
+    2 => Binary { bytes },
+    3 => Close { code, reason, clean },
+});
+
+impl From<SocketEvent> for SocketNews {
+    fn from(event: SocketEvent) -> Self {
+        match event {
+            SocketEvent::Open { protocol } => Self::Open { protocol },
+            SocketEvent::Text(text) => Self::Text { text },
+            SocketEvent::Binary(bytes) => Self::Binary {
+                bytes: Bytes(bytes),
+            },
+            SocketEvent::Close {
+                code,
+                reason,
+                clean,
+            } => Self::Close {
+                code,
+                reason,
+                clean,
+            },
+        }
+    }
+}
+
+impl From<SocketNews> for SocketEvent {
+    fn from(news: SocketNews) -> Self {
+        match news {
+            SocketNews::Open { protocol } => Self::Open { protocol },
+            SocketNews::Text { text } => Self::Text(text),
+            SocketNews::Binary { bytes } => Self::Binary(bytes.0),
+            SocketNews::Close {
+                code,
+                reason,
+                clean,
+            } => Self::Close {
+                code,
+                reason,
+                clean,
+            },
+        }
+    }
+}
 
 /// Touche transmise à la page.
 #[derive(Debug)]
@@ -223,6 +350,8 @@ impl EditAction {
 /// Du navigateur vers le processus de rendu.
 #[derive(Debug)]
 pub(crate) enum ToRenderer {
+    /// Nouvelle de la connexion WebSocket `id` de la page.
+    Socket { id: u64, news: SocketNews },
     /// Charger `url` dans une fenêtre de `width` × `height`.
     Load {
         url: String,
@@ -299,6 +428,7 @@ ipc_enum!(ToRenderer {
     13 => Edit { action },
     14 => Mouse { kind, x, y, button, detail, modifiers },
     15 => Wheel { x, y, dx, dy, modifiers, scroll },
+    16 => Socket { id, news },
 });
 
 /// Image de la page, prête à composer.
@@ -330,6 +460,8 @@ ipc_struct!(Frame {
 /// Du processus de rendu vers le navigateur.
 #[derive(Debug)]
 pub(crate) enum FromRenderer {
+    /// Ordre donné à une connexion WebSocket.
+    Socket(SocketOrder),
     /// Requête réseau ; la réponse porte le même `id`.
     Network { id: u64, request: NetworkRequest },
     /// Le chargement demandé est terminé : adresse finale, et l'erreur s'il
@@ -370,4 +502,5 @@ ipc_enum!(FromRenderer {
     6 => Found { count, current },
     7 => Copied { text },
     8 => Context { link, selection, editable, prevented },
+    9 => Socket(order),
 });

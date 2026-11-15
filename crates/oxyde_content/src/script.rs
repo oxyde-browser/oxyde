@@ -39,6 +39,7 @@ mod modules;
 mod mutation;
 mod range;
 mod scripts;
+mod sockets;
 mod storage;
 mod tokens;
 mod traversal;
@@ -154,6 +155,10 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// Connexions WebSocket en cours : le rappel du script, par identifiant.
+    sockets: HashMap<u64, Value>,
+    /// Ordres WebSocket à exécuter par l'embarqueur.
+    socket_commands: Vec<crate::SocketCommand>,
     /// Nombre de workers créés par la page.
     workers: usize,
     /// Contenu et type des adresses `blob:` vivantes.
@@ -2297,6 +2302,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            sockets: HashMap::new(),
+            socket_commands: Vec::new(),
             workers: 0,
             blob_urls: HashMap::new(),
             base_cache: None,
@@ -2523,6 +2530,14 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let xhr = vm.call(&factory, &Value::Undefined, std::slice::from_ref(&fetch))?;
     vm.define_hidden(global, "XMLHttpRequest", xhr);
     vm.define_hidden(global, "fetch", fetch);
+    // `WebSocket`.
+    let websocket = vm.eval_script(include_str!("script/websocket.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("socketOpen", 3, sockets::socket_open)),
+        Value::Object(vm.new_function("socketSend", 3, sockets::socket_send)),
+        Value::Object(vm.new_function("socketClose", 3, sockets::socket_close)),
+    ];
+    vm.call(&websocket, &Value::Undefined, &helpers)?;
     // `Worker` : son script se lit par le `fetch` du standard.
     let workers = vm.eval_script(include_str!("script/workers.js"))?;
     let create = Value::Object(vm.new_function("createWorker", 4, workers::create_worker));
@@ -2980,6 +2995,23 @@ impl ScriptEngine {
         host(&mut self.vm)
             .map(|h| std::mem::take(&mut h.fetch_queue))
             .unwrap_or_default()
+    }
+
+    /// Ordres WebSocket émis par les scripts depuis le dernier appel.
+    pub(crate) fn take_socket_commands(&mut self) -> Vec<crate::SocketCommand> {
+        host(&mut self.vm)
+            .map(|h| std::mem::take(&mut h.socket_commands))
+            .unwrap_or_default()
+    }
+
+    /// Vrai si la connexion WebSocket `id` est en cours dans cette page.
+    pub(crate) fn has_socket(&mut self, id: u64) -> bool {
+        sockets::known(&mut self.vm, id)
+    }
+
+    /// Remet aux scripts l'événement `event` de la connexion WebSocket `id`.
+    pub(crate) fn socket_event(&mut self, doc: &mut Document, id: u64, event: crate::SocketEvent) {
+        self.run(doc, |vm| sockets::deliver(vm, id, event));
     }
 
     /// Conclut la requête `fetch` d'identifiant `id` et exécute la suite du

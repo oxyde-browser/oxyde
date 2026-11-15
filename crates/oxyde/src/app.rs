@@ -45,6 +45,12 @@ pub(crate) enum UserEvent {
     /// Un processus de rendu a quelque chose à dire : la boucle se réveille
     /// et le lit avant de se rendormir.
     Renderer,
+    /// Nouvelle de la connexion WebSocket `id` d'un onglet servi sur place.
+    Socket {
+        tab: u64,
+        id: u64,
+        event: oxyde_content::SocketEvent,
+    },
     /// Réponse à une requête `fetch` d'un script.
     Fetched {
         tab: u64,
@@ -65,6 +71,8 @@ struct App {
     text: TextContext,
     browser: Browser,
     proxy: EventLoopProxy<UserEvent>,
+    /// Connexions WebSocket des onglets servis sur place.
+    sockets: loader::PageSockets,
     /// Vrai si les pages du web vont chacune dans un processus de rendu.
     multi_process: bool,
     window: Option<Arc<Window>>,
@@ -368,6 +376,21 @@ impl App {
                 tab,
                 loaded,
                 push_history: false,
+            });
+        }
+    }
+
+    /// Exécute les ordres que les scripts viennent de donner à leurs
+    /// connexions WebSocket ; chaque nouvelle revient par un événement
+    /// `Socket`.
+    fn run_socket_commands(&mut self) {
+        for (tab, command) in self.browser.take_socket_commands() {
+            let proxy = self.proxy.clone();
+            self.sockets.apply(command, move |id| {
+                Box::new(move |event| {
+                    // La boucle d'événements peut s'être arrêtée entre-temps.
+                    let _ = proxy.send_event(UserEvent::Socket { tab, id, event });
+                })
             });
         }
     }
@@ -716,6 +739,7 @@ impl ApplicationHandler<UserEvent> for App {
             self.request_redraw();
         }
         self.spawn_fetches();
+        self.run_socket_commands();
         // Texte copié dans une page (Ctrl C).
         if let Some(text) = self.browser.take_copied() {
             set_clipboard(text);
@@ -752,6 +776,21 @@ impl ApplicationHandler<UserEvent> for App {
             // Rien à faire ici : `about_to_wait` lit les messages des
             // processus de rendu avant que la boucle ne se rendorme.
             UserEvent::Renderer => {}
+            UserEvent::Socket { tab, id, event } => {
+                let last = matches!(event, oxyde_content::SocketEvent::Close { .. });
+                match self.browser.socket_event(tab, id, event) {
+                    Some(redraw) => {
+                        if last {
+                            self.sockets.forget(id);
+                        }
+                        if redraw {
+                            self.request_redraw();
+                        }
+                    }
+                    // Onglet fermé ou page quittée : la connexion est coupée.
+                    None => self.sockets.forget(id),
+                }
+            }
             UserEvent::Fetched { tab, id, result } => {
                 if self.browser.complete_fetch(tab, id, *result) {
                     if let Some(window) = &self.window {
@@ -931,6 +970,7 @@ pub(crate) fn run(browser: Browser, multi_process: bool, profile: Option<Profile
         text: TextContext::new(),
         browser,
         proxy: event_loop.create_proxy(),
+        sockets: loader::PageSockets::default(),
         window: None,
         surface: None,
         accessibility: None,

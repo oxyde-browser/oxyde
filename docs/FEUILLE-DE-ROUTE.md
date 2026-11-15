@@ -869,7 +869,21 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       ne libère pas le royaume (32 workers au plus par page) ; un `Blob` cloné est le
       même objet ; une adresse `blob:` ne se lit pas par `<img src>` ; les tests WPT
       `.worker.js` ne sont pas exécutés par le lanceur.
-- [ ] `WebSocket` et `EventSource`.
+- [x] `WebSocket` : client RFC 6455 dans `oxyde_net` (poignée de main HTTP/1.1 sur TCP ou
+      TLS, trames, masquage, fragments, ping et pong, fermeture dans les règles, cookies
+      du site, sous-protocoles) ; classe `WebSocket` des pages (`send` de texte, de
+      tampons et de `Blob`, `binaryType`, `close`, événements `open`, `message`, `error`,
+      `close`), aussi dans les cadres et les workers. Les connexions sont ouvertes par
+      le service réseau : la page donne ses ordres (`Page::take_socket_commands`), le
+      processus de rendu les passe au navigateur, qui vérifie qu'ils viennent bien du
+      site affiché, puis au processus réseau ; les nouvelles reviennent par le même
+      chemin. Une page quittée perd ses connexions.
+      Limites : aucune extension (pas de compression `permessage-deflate`) ; pas de
+      WebSocket sur HTTP/2 ; `bufferedAmount` vaut toujours 0 ; les captures d'écran
+      (`--screenshot`) et le lanceur WPT n'ouvrent pas de connexion ; la chaîne
+      complète entre processus n'a pas de test de bout en bout (chaque maillon a les
+      siens, contre un serveur local) et n'a pas été essayée sur un vrai site.
+- [ ] `EventSource` (demande des réponses HTTP lues au fil de l'eau).
 - [ ] Liste des suffixes publics (frontière des sites, cookies).
 - [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
       isolés), tableaux denses, objet de type `document.all`.
