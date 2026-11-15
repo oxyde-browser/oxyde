@@ -918,8 +918,15 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       invalide) ; liste de transfert et `ports`.
       Limites : seulement entre fenêtres qui vivent dans le même processus de rendu ;
       pas de `window.open` ; vérifié par un essai page ↔ cadre `srcdoc`.
-- [ ] Vus à la mesure des sites et encore absents : ombres du canevas, chargement des
-      ressources en parallèle.
+- [x] Ombres du canevas (`shadowColor`, `shadowBlur`, `shadowOffsetX`, `shadowOffsetY`) pour
+      les remplissages, les traits, le texte et les images : la forme est retracée,
+      décalée, sur un calque plus large que la surface (une forme hors du canevas y porte
+      quand même son ombre), sa silhouette est floutée et teinte, puis fondue avant la
+      forme, avec la même opacité, la même fusion et la même découpe.
+      Limites : le flou gaussien est approché par trois moyennes glissantes ; écart type
+      plafonné à 100 pixels ; `currentColor` n'est pas lu sur l'élément. Les essais WPT à base d'images
+      ne peuvent pas passer : le dossier `images/` de WPT n'est pas dans le dépôt local.
+- [ ] Vu à la mesure des sites et encore absent : chargement des ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,
       `importScripts`, `name`, `WorkerGlobalScope`, plus `fetch`, minuteurs, `URL`…), les

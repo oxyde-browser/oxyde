@@ -11,13 +11,15 @@
 //! - une peinture : `c r g b a` (couleur), `l x0 y0 x1 y1 …arrêts`
 //!   (dégradé linéaire), `r x0 y0 r0 x1 y1 r1 …arrêts` (dégradé radial), `p
 //!   nature source` (motif), un arrêt étant `position r g b a` ;
-//! - un état : `alpha fusion découpe a b c d e f` (transformation courante).
+//! - un état : `alpha fusion découpe a b c d e f` (transformation courante),
+//!   suivi, s'il y a une ombre, de `r g b a flou dx dy`.
 //!
 //! Le texte est mis en forme par `parley` (une ligne), le contour de ses
 //! glyphes lu par `skrifa`, puis rempli ou tracé comme un tracé ordinaire.
 //!
 //! LIMITES CONNUES : le texte se dessine par ses contours, sans ajustement à
-//! la grille ni glyphes en couleur (émoji) ; ni ombres ni filtres ; un
+//! la grille ni glyphes en couleur (émoji) ; pas de filtres ; le flou d'une
+//! ombre est approché par trois moyennes glissantes ; un
 //! dégradé radial dont le cercle de départ a un rayon non
 //! nul est approché ; pas de dégradé conique ; un motif se répète toujours
 //! dans les deux sens ; les couleurs sont en sRGB 8 bits prémultiplié (une
@@ -123,12 +125,38 @@ struct State {
     whole_surface: bool,
     clip: usize,
     transform: Transform,
+    shadow: Option<Shadow>,
 }
+
+/// Ombre portée par ce qui se dessine.
+#[derive(Clone, Copy)]
+struct Shadow {
+    color: Color,
+    /// Écart type du flou, en pixels.
+    sigma: f32,
+    /// Décalage, en pixels de la surface (la transformation n'y joue pas).
+    dx: f32,
+    dy: f32,
+}
+
+/// Écart type maximal d'un flou d'ombre.
+const MAX_SIGMA: f32 = 100.0;
 
 fn parse_state(text: &str) -> Option<State> {
     let values = numbers(text)?;
-    let [alpha, blend, clip, a, b, c, d, e, f] = values.as_slice() else {
+    let [alpha, blend, clip, a, b, c, d, e, f, rest @ ..] = values.as_slice() else {
         return None;
+    };
+    let shadow = match rest {
+        [] => None,
+        [r, g, b, a, blur, dx, dy] => Some(Shadow {
+            color: color(&[*r, *g, *b, *a])?,
+            // `shadowBlur` vaut deux écarts types.
+            sigma: (blur / 2.0).clamp(0.0, MAX_SIGMA),
+            dx: *dx,
+            dy: *dy,
+        }),
+        _ => return None,
     };
     #[expect(
         clippy::cast_possible_truncation,
@@ -173,6 +201,7 @@ fn parse_state(text: &str) -> Option<State> {
         whole_surface,
         clip,
         transform: Transform::from_row(*a, *b, *c, *d, *e, *f),
+        shadow,
     })
 }
 
@@ -370,8 +399,140 @@ pub(super) fn resize(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     Ok(Value::Bool(true))
 }
 
+/// Moyenne glissante de rayon `radius` sur les lignes (ou les colonnes) du
+/// plan `plane` de `width` × `height` valeurs.
+fn box_blur(plane: &[u8], width: usize, height: usize, radius: usize, vertical: bool) -> Vec<u8> {
+    let (lines, length) = if vertical {
+        (width, height)
+    } else {
+        (height, width)
+    };
+    let at = |line: usize, k: usize| {
+        if vertical {
+            k * width + line
+        } else {
+            line * width + k
+        }
+    };
+    let window = u32::try_from(2 * radius + 1).unwrap_or(u32::MAX);
+    let mut out = vec![0u8; plane.len()];
+    for line in 0..lines {
+        // Somme des valeurs de la fenêtre centrée sur `k` ; hors du plan,
+        // tout est transparent.
+        let mut sum: u32 = (0..=radius.min(length.saturating_sub(1)))
+            .map(|k| u32::from(plane.get(at(line, k)).copied().unwrap_or(0)))
+            .sum();
+        for k in 0..length {
+            if let Some(slot) = out.get_mut(at(line, k)) {
+                *slot = u8::try_from(sum / window).unwrap_or(u8::MAX);
+            }
+            let entering = k + radius + 1;
+            if entering < length {
+                sum += u32::from(plane.get(at(line, entering)).copied().unwrap_or(0));
+            }
+            if let Some(leaving) = k.checked_sub(radius) {
+                sum -= u32::from(plane.get(at(line, leaving)).copied().unwrap_or(0));
+            }
+        }
+    }
+    out
+}
+
+/// Ombre d'une forme, pour une surface de `width` × `height` pixels : `trace`
+/// dessine la forme, déplacée de ce qu'on lui donne, sur un calque plus large
+/// que la surface (une forme hors de la surface porte quand même son ombre) ;
+/// sa silhouette est floutée puis teinte. Rend le calque et sa marge.
+fn cast_shadow(
+    width: u32,
+    height: u32,
+    shadow: &Shadow,
+    trace: impl FnOnce(&mut Pixmap, Transform),
+) -> Option<(Pixmap, i32)> {
+    // Trois moyennes glissantes approchent un flou gaussien d'écart type
+    // `sigma` : leur largeur idéale est √(12σ²/3 + 1).
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "rayon borné par MAX_SIGMA"
+    )]
+    let radius = (((4.0 * shadow.sigma * shadow.sigma + 1.0).sqrt() - 1.0) / 2.0).round() as usize;
+    // Le flou porte à trois rayons.
+    let margin = u32::try_from(3 * radius).ok()?;
+    let mut layer = Pixmap::new(
+        width.checked_add(2 * margin)?,
+        height.checked_add(2 * margin)?,
+    )?;
+    #[expect(clippy::cast_precision_loss, reason = "marge bornée par MAX_SIGMA")]
+    let shift = Transform::from_translate(shadow.dx + margin as f32, shadow.dy + margin as f32);
+    if !shift.is_finite() {
+        return None;
+    }
+    trace(&mut layer, shift);
+    let (w, h) = (layer.width() as usize, layer.height() as usize);
+    let mut alpha: Vec<u8> = layer
+        .data()
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|p| p[3])
+        .collect();
+    if radius > 0 {
+        for _ in 0..3 {
+            alpha = box_blur(&alpha, w, h, radius, false);
+            alpha = box_blur(&alpha, w, h, radius, true);
+        }
+    }
+    let tint = shadow.color.premultiply().to_color_u8();
+    for (pixel, coverage) in layer
+        .data_mut()
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(alpha)
+    {
+        let scale =
+            |c: u8| u8::try_from((u16::from(c) * u16::from(coverage) + 127) / 255).unwrap_or(255);
+        *pixel = [
+            scale(tint.red()),
+            scale(tint.green()),
+            scale(tint.blue()),
+            scale(tint.alpha()),
+        ];
+    }
+    Some((layer, i32::try_from(margin).ok()?))
+}
+
+/// Fond le calque `layer` dans `target`, précédé de son ombre `cast` s'il y
+/// en a une.
+fn composite(
+    target: &mut Pixmap,
+    layer: &Pixmap,
+    cast: Option<&(Pixmap, i32)>,
+    state: &State,
+    opacity: f32,
+    clip: Option<&Mask>,
+) {
+    let paint = PixmapPaint {
+        opacity,
+        blend_mode: state.blend,
+        quality: FilterQuality::Nearest,
+    };
+    if let Some((cast, margin)) = cast {
+        target.draw_pixmap(
+            -margin,
+            -margin,
+            cast.as_ref(),
+            &paint,
+            Transform::identity(),
+            clip,
+        );
+    }
+    target.draw_pixmap(0, 0, layer.as_ref(), &paint, Transform::identity(), clip);
+}
+
 /// Dessine sur la surface `id` : `shape` trace la forme sur le canevas qu'on
-/// lui donne, avec la peinture et la découpe qu'on lui donne. Quand la
+/// lui donne, avec la peinture et la découpe qu'on lui donne, déplacée de la
+/// transformation qu'on lui donne. Quand la
 /// fusion touche toute la surface, ou qu'une opacité s'applique à une
 /// peinture qui n'est pas une couleur, la forme est tracée sur un calque,
 /// fondu ensuite dans la surface.
@@ -380,7 +541,7 @@ fn draw(
     id: u32,
     state: &State,
     paint_text: &str,
-    shape: impl Fn(&mut Pixmap, &Paint<'_>, Option<&Mask>),
+    shape: impl Fn(&mut Pixmap, &Paint<'_>, Option<&Mask>, Transform),
 ) {
     // Source d'un motif : copiée avant d'emprunter la surface.
     let source = paint_text
@@ -409,7 +570,7 @@ fn draw(
         return;
     }
     let solid = matches!(shader, Shader::SolidColor(_));
-    let layered = state.whole_surface || (state.alpha < 1.0 && !solid);
+    let layered = state.whole_surface || state.shadow.is_some() || (state.alpha < 1.0 && !solid);
     let mut paint = Paint {
         shader,
         anti_alias: true,
@@ -419,17 +580,18 @@ fn draw(
         let Some(mut layer) = Pixmap::new(surface.pixmap.width(), surface.pixmap.height()) else {
             return;
         };
-        shape(&mut layer, &paint, None);
-        surface.pixmap.draw_pixmap(
-            0,
-            0,
-            layer.as_ref(),
-            &PixmapPaint {
-                opacity: state.alpha,
-                blend_mode: state.blend,
-                quality: FilterQuality::Nearest,
-            },
-            Transform::identity(),
+        shape(&mut layer, &paint, None, Transform::identity());
+        let cast = state.shadow.as_ref().and_then(|shadow| {
+            cast_shadow(layer.width(), layer.height(), shadow, |wide, shift| {
+                shape(wide, &paint, None, shift);
+            })
+        });
+        composite(
+            &mut surface.pixmap,
+            &layer,
+            cast.as_ref(),
+            state,
+            state.alpha,
             clip,
         );
     } else {
@@ -437,7 +599,7 @@ fn draw(
             color.apply_opacity(state.alpha);
         }
         paint.blend_mode = state.blend;
-        shape(&mut surface.pixmap, &paint, clip);
+        shape(&mut surface.pixmap, &paint, clip, Transform::identity());
     }
     surface.dirty = true;
     h.dirty = true;
@@ -457,8 +619,8 @@ pub(super) fn fill(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let (Some(path), Some(state)) = (parse_path(&path), parse_state(&state)) else {
         return Ok(Value::Undefined);
     };
-    draw(vm, id, &state, &paint, |pixmap, paint, clip| {
-        pixmap.fill_path(&path, paint, rule, Transform::identity(), clip);
+    draw(vm, id, &state, &paint, |pixmap, paint, clip, shift| {
+        pixmap.fill_path(&path, paint, rule, shift, clip);
     });
     Ok(Value::Undefined)
 }
@@ -513,8 +675,8 @@ pub(super) fn stroke(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         return Ok(Value::Undefined);
     };
     let transform = state.transform;
-    draw(vm, id, &state, &paint, |pixmap, paint, clip| {
-        pixmap.stroke_path(&local, paint, &stroke, transform, clip);
+    draw(vm, id, &state, &paint, |pixmap, paint, clip, shift| {
+        pixmap.stroke_path(&local, paint, &stroke, transform.post_concat(shift), clip);
     });
     Ok(Value::Undefined)
 }
@@ -633,23 +795,25 @@ pub(super) fn image(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         anti_alias: true,
         ..Paint::default()
     };
-    if state.whole_surface {
+    if state.whole_surface || state.shadow.is_some() {
         if let Some(mut layer) = Pixmap::new(surface.pixmap.width(), surface.pixmap.height()) {
             let plain = Paint {
                 blend_mode: BlendMode::SourceOver,
                 ..paint.clone()
             };
             layer.fill_rect(target, &plain, transform, None);
-            surface.pixmap.draw_pixmap(
-                0,
-                0,
-                layer.as_ref(),
-                &PixmapPaint {
-                    opacity: 1.0,
-                    blend_mode: state.blend,
-                    quality: FilterQuality::Nearest,
-                },
-                Transform::identity(),
+            let cast = state.shadow.as_ref().and_then(|shadow| {
+                cast_shadow(layer.width(), layer.height(), shadow, |wide, shift| {
+                    wide.fill_rect(target, &plain, transform.post_concat(shift), None);
+                })
+            });
+            // L'opacité est déjà dans la peinture de l'image.
+            composite(
+                &mut surface.pixmap,
+                &layer,
+                cast.as_ref(),
+                &state,
+                1.0,
                 clip,
             );
         }
@@ -1202,12 +1366,18 @@ pub(super) fn text(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
                 StrokeDash::new(dashes.to_vec(), *offset)
             },
         };
-        draw(vm, id, &state, &paint, |pixmap, paint, clip| {
-            pixmap.stroke_path(&local, paint, &stroke, transform, clip);
+        draw(vm, id, &state, &paint, |pixmap, paint, clip, shift| {
+            pixmap.stroke_path(&local, paint, &stroke, transform.post_concat(shift), clip);
         });
     } else {
-        draw(vm, id, &state, &paint, |pixmap, paint, clip| {
-            pixmap.fill_path(&local, paint, FillRule::Winding, transform, clip);
+        draw(vm, id, &state, &paint, |pixmap, paint, clip, shift| {
+            pixmap.fill_path(
+                &local,
+                paint,
+                FillRule::Winding,
+                transform.post_concat(shift),
+                clip,
+            );
         });
     }
     Ok(Value::Undefined)
@@ -1255,6 +1425,18 @@ mod tests {
         assert!(state.whole_surface && state.clip == 2);
         assert_eq!(state.transform, Transform::from_translate(10.0, 20.0));
         assert!(parse_state("1 99 0 1 0 0 1 0 0").is_none());
+        assert!(state.shadow.is_none());
+        let shadowed = parse_state("1 0 0 1 0 0 1 0 0 0 0 0 0.5 8 3 -2").expect("état");
+        let shadow = shadowed.shadow.expect("ombre");
+        assert_eq!((shadow.sigma, shadow.dx, shadow.dy), (4.0, 3.0, -2.0));
+        assert!(parse_state("1 0 0 1 0 0 1 0 0 0 0 0").is_none());
+        // Le flou étale sans créer ni perdre de matière au centre.
+        let mut plane = vec![0u8; 25];
+        plane[12] = 250;
+        let blurred = box_blur(&box_blur(&plane, 5, 5, 1, false), 5, 5, 1, true);
+        assert_eq!(blurred[12], 27);
+        assert_eq!(blurred[6], 27);
+        assert_eq!(blurred[0], 0);
         assert!(matches!(
             parse_shader("c 255 0 0 1", Transform::identity(), None),
             Some(Shader::SolidColor(_))

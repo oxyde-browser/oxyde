@@ -6590,6 +6590,69 @@ mod tests {
     }
 
     #[test]
+    fn canvas_shadows_are_cast_blurred_and_offset() {
+        let mut p = page(
+            "<body><canvas id=c width=60 height=40></canvas><script>
+               const out = [];
+               const ctx = document.getElementById('c').getContext('2d');
+               const at = (x, y) => [...ctx.getImageData(x, y, 1, 1).data].join(',');
+               // Ombre nette, décalée : le rouge du carré, le bleu de son ombre.
+               ctx.shadowColor = 'blue';
+               ctx.shadowOffsetX = 20;
+               ctx.shadowOffsetY = 10;
+               ctx.fillStyle = 'red';
+               ctx.fillRect(5, 5, 10, 10);
+               out.push(at(10, 10), at(30, 20), at(50, 35));
+               // Le carré passe devant son ombre ; le décalage ignore la transformation.
+               ctx.clearRect(0, 0, 60, 40);
+               ctx.shadowOffsetX = 2;
+               ctx.shadowOffsetY = 2;
+               ctx.save();
+               ctx.scale(2, 2);
+               ctx.fillRect(5, 5, 5, 5);
+               ctx.restore();
+               out.push(at(15, 15), at(21, 21), at(25, 25));
+               // Ombre floue : elle s'étale et s'estompe autour du carré.
+               ctx.clearRect(0, 0, 60, 40);
+               ctx.shadowOffsetX = 0;
+               ctx.shadowOffsetY = 0;
+               ctx.shadowBlur = 8;
+               ctx.fillRect(25, 15, 10, 10);
+               const near = ctx.getImageData(22, 20, 1, 1).data;
+               const far = ctx.getImageData(19, 20, 1, 1).data;
+               out.push(near[2] > 250 && near[0] === 0 && near[3] > far[3] && far[3] > 0, at(2, 2));
+               // Sans couleur d'ombre, ou sans flou ni décalage : pas d'ombre.
+               ctx.clearRect(0, 0, 60, 40);
+               ctx.shadowBlur = 0;
+               ctx.fillRect(5, 5, 10, 10);
+               out.push(at(17, 10));
+               ctx.shadowOffsetX = 10;
+               ctx.shadowColor = 'transparent';
+               ctx.fillRect(5, 25, 10, 10);
+               out.push(at(22, 30), ctx.shadowColor);
+               // Une forme hors de la surface y porte quand même son ombre.
+               ctx.clearRect(0, 0, 60, 40);
+               ctx.shadowColor = 'blue';
+               ctx.shadowOffsetX = 0;
+               ctx.shadowOffsetY = 40;
+               ctx.fillRect(0, -40, 10, 10);
+               out.push(at(5, 5), at(5, 15));
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "255,0,0,255 0,0,255,255 0,0,0,0 255,0,0,255 0,0,255,255 0,0,0,0 true 0,0,0,0 \
+                 0,0,0,0 0,0,0,0 rgba(0, 0, 0, 0) 0,0,255,255 0,0,0,0"
+            )
+        );
+    }
+
+    #[test]
     fn canvas_text_is_measured_and_drawn() {
         let mut p = page(
             "<body><canvas id=c width=200 height=60></canvas><script>
