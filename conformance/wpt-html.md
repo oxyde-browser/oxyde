@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 46293 / 123638 (37,4 %)** — fichiers entièrement réussis : 863 / 7308 (11,8 %).
+**Sous-tests réussis : 48221 / 123964 (38,9 %)** — fichiers entièrement réussis : 2262 / 7308 (31,0 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -69,76 +69,76 @@ est le plus honnête des deux.
 | `html/browsers/windows/browsing-context-names` | 0 / 18 | 0 / 21 (0,0 %) |
 | `html/browsers/windows/consume-user-activation` | 0 / 2 | 0 / 3 (0,0 %) |
 | `html/browsers/windows/nested-browsing-contexts` | 1 / 8 | 4 / 42 (9,5 %) |
-| `html/canvas` | 0 / 4 | 0 / 18 (0,0 %) |
-| `html/canvas/element` | 0 / 5 | 0 / 15 (0,0 %) |
-| `html/canvas/element/canvas-context` | 1 / 11 | 1 / 11 (9,1 %) |
-| `html/canvas/element/canvas-host` | 26 / 52 | 26 / 66 (39,4 %) |
-| `html/canvas/element/color-type` | 0 / 4 | 0 / 4 (0,0 %) |
-| `html/canvas/element/compositing` | 0 / 98 | 0 / 98 (0,0 %) |
-| `html/canvas/element/conformance-requirements` | 0 / 4 | 0 / 4 (0,0 %) |
-| `html/canvas/element/drawing-images-to-the-canvas` | 3 / 37 | 3 / 37 (8,1 %) |
-| `html/canvas/element/drawing-rectangles-to-the-canvas` | 0 / 32 | 0 / 32 (0,0 %) |
-| `html/canvas/element/fill-and-stroke-styles` | 5 / 257 | 5 / 258 (1,9 %) |
+| `html/canvas` | 3 / 4 | 11 / 18 (61,1 %) |
+| `html/canvas/element` | 3 / 5 | 3 / 15 (20,0 %) |
+| `html/canvas/element/canvas-context` | 10 / 11 | 10 / 11 (90,9 %) |
+| `html/canvas/element/canvas-host` | 36 / 52 | 50 / 66 (75,8 %) |
+| `html/canvas/element/color-type` | 2 / 4 | 2 / 4 (50,0 %) |
+| `html/canvas/element/compositing` | 59 / 98 | 59 / 98 (60,2 %) |
+| `html/canvas/element/conformance-requirements` | 3 / 4 | 3 / 4 (75,0 %) |
+| `html/canvas/element/drawing-images-to-the-canvas` | 13 / 37 | 13 / 37 (35,1 %) |
+| `html/canvas/element/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
+| `html/canvas/element/fill-and-stroke-styles` | 163 / 257 | 163 / 257 (63,4 %) |
 | `html/canvas/element/filters` | 1 / 12 | 1 / 12 (8,3 %) |
-| `html/canvas/element/global-hdr-headroom` | 0 / 3 | 0 / 10 (0,0 %) |
-| `html/canvas/element/layers` | 0 / 20 | 0 / 25 (0,0 %) |
-| `html/canvas/element/line-styles` | 0 / 33 | 0 / 33 (0,0 %) |
-| `html/canvas/element/manual/context-attributes` | 0 / 2 | 0 / 17 (0,0 %) |
+| `html/canvas/element/global-hdr-headroom` | 3 / 3 | 10 / 10 (100,0 %) |
+| `html/canvas/element/layers` | 4 / 20 | 4 / 25 (16,0 %) |
+| `html/canvas/element/line-styles` | 32 / 33 | 32 / 33 (97,0 %) |
+| `html/canvas/element/manual/context-attributes` | 1 / 2 | 5 / 17 (29,4 %) |
 | `html/canvas/element/manual/draw-element-image` | 1 / 52 | 6 / 134 (4,5 %) |
 | `html/canvas/element/manual/draw-element-image/hit-test` | 0 / 15 | 0 / 52 (0,0 %) |
 | `html/canvas/element/manual/draw-element-image/privacy` | 0 / 46 | 0 / 40 (0,0 %) |
 | `html/canvas/element/manual/draw-element-image/privacy/pseudos` | 0 / 22 | 0 / 22 (0,0 %) |
 | `html/canvas/element/manual/draw-element-image/privacy/svg` | 0 / 19 | 0 / 19 (0,0 %) |
 | `html/canvas/element/manual/draw-element-image/privacy/visited-link` | 0 / 12 | 0 / 12 (0,0 %) |
-| `html/canvas/element/manual/drawing-images-to-the-canvas` | 0 / 5 | 0 / 6 (0,0 %) |
-| `html/canvas/element/manual/drawing-paths-to-the-canvas` | 0 / 6 | 0 / 6 (0,0 %) |
+| `html/canvas/element/manual/drawing-images-to-the-canvas` | 0 / 5 | 221 / 284 (77,8 %) |
+| `html/canvas/element/manual/drawing-paths-to-the-canvas` | 1 / 6 | 1 / 6 (16,7 %) |
 | `html/canvas/element/manual/fill-and-stroke-styles` | 0 / 6 | 0 / 6 (0,0 %) |
-| `html/canvas/element/manual/filters` | 0 / 7 | 0 / 18 (0,0 %) |
+| `html/canvas/element/manual/filters` | 0 / 7 | 1 / 18 (5,6 %) |
 | `html/canvas/element/manual/filters/tentative/idl-conversions` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/canvas/element/manual/image-smoothing` | 0 / 1 | 0 / 9 (0,0 %) |
-| `html/canvas/element/manual/imagebitmap` | 0 / 20 | 0 / 281 (0,0 %) |
-| `html/canvas/element/manual/line-styles` | 0 / 1 | 0 / 2 (0,0 %) |
+| `html/canvas/element/manual/image-smoothing` | 0 / 1 | 6 / 9 (66,7 %) |
+| `html/canvas/element/manual/imagebitmap` | 2 / 20 | 29 / 281 (10,3 %) |
+| `html/canvas/element/manual/line-styles` | 1 / 1 | 2 / 2 (100,0 %) |
 | `html/canvas/element/manual/shadows` | 0 / 2 | 0 / 4 (0,0 %) |
-| `html/canvas/element/manual/the-canvas-state` | 0 / 2 | 0 / 4 (0,0 %) |
+| `html/canvas/element/manual/the-canvas-state` | 2 / 2 | 4 / 4 (100,0 %) |
 | `html/canvas/element/manual/transformations` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/canvas/element/manual/wide-gamut-canvas` | 0 / 14 | 0 / 1535 (0,0 %) |
-| `html/canvas/element/path-objects` | 1 / 210 | 1 / 210 (0,5 %) |
-| `html/canvas/element/pixel-manipulation` | 7 / 71 | 7 / 71 (9,9 %) |
-| `html/canvas/element/reset` | 0 / 29 | 0 / 29 (0,0 %) |
-| `html/canvas/element/shadows` | 0 / 59 | 0 / 59 (0,0 %) |
-| `html/canvas/element/text` | 0 / 125 | 0 / 285 (0,0 %) |
-| `html/canvas/element/the-canvas-state` | 0 / 23 | 0 / 68 (0,0 %) |
-| `html/canvas/element/transformations` | 0 / 22 | 0 / 22 (0,0 %) |
+| `html/canvas/element/manual/wide-gamut-canvas` | 0 / 14 | 78 / 1535 (5,1 %) |
+| `html/canvas/element/path-objects` | 181 / 210 | 181 / 210 (86,2 %) |
+| `html/canvas/element/pixel-manipulation` | 62 / 71 | 62 / 71 (87,3 %) |
+| `html/canvas/element/reset` | 23 / 29 | 23 / 29 (79,3 %) |
+| `html/canvas/element/shadows` | 23 / 59 | 23 / 59 (39,0 %) |
+| `html/canvas/element/text` | 25 / 125 | 25 / 285 (8,8 %) |
+| `html/canvas/element/the-canvas-state` | 23 / 23 | 68 / 68 (100,0 %) |
+| `html/canvas/element/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
 | `html/canvas/element/video` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/canvas/element/wide-gamut-canvas` | 0 / 8 | 0 / 26 (0,0 %) |
-| `html/canvas/offscreen` | 0 / 3 | 0 / 3 (0,0 %) |
-| `html/canvas/offscreen/canvas-context` | 0 / 15 | 0 / 15 (0,0 %) |
-| `html/canvas/offscreen/canvas-host` | 0 / 35 | 0 / 46 (0,0 %) |
-| `html/canvas/offscreen/color-type` | 0 / 4 | 0 / 4 (0,0 %) |
-| `html/canvas/offscreen/compositing` | 0 / 98 | 0 / 98 (0,0 %) |
-| `html/canvas/offscreen/conformance-requirements` | 0 / 2 | 0 / 2 (0,0 %) |
-| `html/canvas/offscreen/drawing-images-to-the-canvas` | 0 / 28 | 0 / 28 (0,0 %) |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas` | 0 / 32 | 0 / 32 (0,0 %) |
-| `html/canvas/offscreen/fill-and-stroke-styles` | 0 / 247 | 0 / 247 (0,0 %) |
-| `html/canvas/offscreen/filters` | 0 / 12 | 0 / 12 (0,0 %) |
-| `html/canvas/offscreen/layers` | 0 / 20 | 0 / 25 (0,0 %) |
-| `html/canvas/offscreen/line-styles` | 0 / 33 | 0 / 33 (0,0 %) |
-| `html/canvas/offscreen/manual/context-attributes` | 0 / 1 | 0 / 0 (—) |
-| `html/canvas/offscreen/manual/convert-to-blob` | 0 / 2 | 0 / 24 (0,0 %) |
+| `html/canvas/offscreen` | 1 / 3 | 1 / 3 (33,3 %) |
+| `html/canvas/offscreen/canvas-context` | 10 / 15 | 10 / 15 (66,7 %) |
+| `html/canvas/offscreen/canvas-host` | 32 / 35 | 43 / 46 (93,5 %) |
+| `html/canvas/offscreen/color-type` | 2 / 4 | 2 / 4 (50,0 %) |
+| `html/canvas/offscreen/compositing` | 59 / 98 | 59 / 98 (60,2 %) |
+| `html/canvas/offscreen/conformance-requirements` | 1 / 2 | 1 / 2 (50,0 %) |
+| `html/canvas/offscreen/drawing-images-to-the-canvas` | 7 / 28 | 7 / 28 (25,0 %) |
+| `html/canvas/offscreen/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
+| `html/canvas/offscreen/fill-and-stroke-styles` | 165 / 247 | 165 / 247 (66,8 %) |
+| `html/canvas/offscreen/filters` | 1 / 12 | 1 / 12 (8,3 %) |
+| `html/canvas/offscreen/layers` | 4 / 20 | 4 / 25 (16,0 %) |
+| `html/canvas/offscreen/line-styles` | 32 / 33 | 32 / 33 (97,0 %) |
+| `html/canvas/offscreen/manual/context-attributes` | 0 / 1 | 4 / 16 (25,0 %) |
+| `html/canvas/offscreen/manual/convert-to-blob` | 0 / 2 | 4 / 24 (16,7 %) |
 | `html/canvas/offscreen/manual/draw-element-image` | 0 / 5 | 0 / 6 (0,0 %) |
-| `html/canvas/offscreen/manual/draw-generic-family` | 0 / 2 | 0 / 10 (0,0 %) |
-| `html/canvas/offscreen/manual/filter` | 0 / 2 | 0 / 0 (—) |
-| `html/canvas/offscreen/manual/image-smoothing` | 0 / 1 | 0 / 9 (0,0 %) |
-| `html/canvas/offscreen/manual/the-offscreen-canvas` | 0 / 13 | 0 / 60 (0,0 %) |
-| `html/canvas/offscreen/manual/transformations` | 0 / 1 | 0 / 0 (—) |
-| `html/canvas/offscreen/manual/wide-gamut-canvas` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/canvas/offscreen/path-objects` | 0 / 211 | 0 / 211 (0,0 %) |
-| `html/canvas/offscreen/pixel-manipulation` | 0 / 59 | 0 / 59 (0,0 %) |
-| `html/canvas/offscreen/reset` | 0 / 29 | 0 / 29 (0,0 %) |
-| `html/canvas/offscreen/shadows` | 0 / 56 | 0 / 56 (0,0 %) |
-| `html/canvas/offscreen/text` | 0 / 119 | 0 / 277 (0,0 %) |
-| `html/canvas/offscreen/the-canvas-state` | 0 / 20 | 0 / 56 (0,0 %) |
-| `html/canvas/offscreen/transformations` | 0 / 22 | 0 / 22 (0,0 %) |
+| `html/canvas/offscreen/manual/draw-generic-family` | 2 / 2 | 10 / 10 (100,0 %) |
+| `html/canvas/offscreen/manual/filter` | 1 / 2 | 1 / 2 (50,0 %) |
+| `html/canvas/offscreen/manual/image-smoothing` | 0 / 1 | 6 / 9 (66,7 %) |
+| `html/canvas/offscreen/manual/the-offscreen-canvas` | 0 / 13 | 11 / 60 (18,3 %) |
+| `html/canvas/offscreen/manual/transformations` | 0 / 1 | 0 / 1 (0,0 %) |
+| `html/canvas/offscreen/manual/wide-gamut-canvas` | 1 / 1 | 1 / 1 (100,0 %) |
+| `html/canvas/offscreen/path-objects` | 181 / 211 | 181 / 211 (85,8 %) |
+| `html/canvas/offscreen/pixel-manipulation` | 55 / 59 | 55 / 59 (93,2 %) |
+| `html/canvas/offscreen/reset` | 23 / 29 | 23 / 29 (79,3 %) |
+| `html/canvas/offscreen/shadows` | 19 / 56 | 19 / 56 (33,9 %) |
+| `html/canvas/offscreen/text` | 25 / 119 | 25 / 277 (9,0 %) |
+| `html/canvas/offscreen/the-canvas-state` | 20 / 20 | 56 / 56 (100,0 %) |
+| `html/canvas/offscreen/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
 | `html/canvas/offscreen/wide-gamut-canvas` | 0 / 3 | 0 / 8 (0,0 %) |
 | `html/capability-delegation` | 0 / 7 | 0 / 17 (0,0 %) |
 | `html/cross-origin-embedder-policy` | 1 / 53 | 57 / 406 (14,0 %) |
@@ -165,18 +165,18 @@ est le plus honnête des deux.
 | `html/dom/partial-updates/tentative/fragment` | 2 / 14 | 2 / 23 (8,7 %) |
 | `html/dom/render-blocking` | 10 / 69 | 30 / 122 (24,6 %) |
 | `html/editing/activation` | 0 / 3 | 0 / 6 (0,0 %) |
-| `html/editing/dnd` | 1 / 3 | 1 / 1 (100,0 %) |
-| `html/editing/dnd/canvas` | 0 / 5 | 0 / 3 (0,0 %) |
+| `html/editing/dnd` | 1 / 3 | 1 / 3 (33,3 %) |
+| `html/editing/dnd/canvas` | 0 / 5 | 0 / 5 (0,0 %) |
 | `html/editing/dnd/datastore` | 0 / 11 | 0 / 47 (0,0 %) |
 | `html/editing/dnd/dom` | 0 / 3 | 15 / 55 (27,3 %) |
-| `html/editing/dnd/drop` | 0 / 8 | 0 / 16 (0,0 %) |
+| `html/editing/dnd/drop` | 0 / 8 | 0 / 19 (0,0 %) |
 | `html/editing/dnd/events` | 0 / 2 | 0 / 2 (0,0 %) |
 | `html/editing/dnd/images` | 6 / 21 | 6 / 19 (31,6 %) |
 | `html/editing/dnd/interactiveelements` | 12 / 24 | 26 / 48 (54,2 %) |
-| `html/editing/dnd/layoutshift` | 0 / 1 | 0 / 0 (—) |
+| `html/editing/dnd/layoutshift` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/editing/dnd/platform` | 0 / 5 | 0 / 7 (0,0 %) |
-| `html/editing/dnd/reload` | 0 / 8 | 0 / 7 (0,0 %) |
-| `html/editing/dnd/remove` | 0 / 8 | 0 / 7 (0,0 %) |
+| `html/editing/dnd/reload` | 0 / 8 | 0 / 8 (0,0 %) |
+| `html/editing/dnd/remove` | 0 / 8 | 0 / 8 (0,0 %) |
 | `html/editing/dnd/synthetic` | 0 / 1 | 15 / 16 (93,8 %) |
 | `html/editing/dnd/target-origin` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/editing/dnd/the-draggable-attribute` | 0 / 2 | 151 / 303 (49,8 %) |
@@ -193,7 +193,7 @@ est le plus honnête des deux.
 | `html/infrastructure/common-dom-interfaces/collections` | 0 / 7 | 19 / 104 (18,3 %) |
 | `html/infrastructure/conformance-requirements/extensibility` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/infrastructure/fetching-resources` | 0 / 1 | 0 / 2 (0,0 %) |
-| `html/infrastructure/safe-passing-of-structured-data` | 2 / 11 | 150 / 248 (60,5 %) |
+| `html/infrastructure/safe-passing-of-structured-data` | 2 / 11 | 152 / 248 (61,3 %) |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 1 / 21 | 8 / 55 (14,5 %) |
 | `html/infrastructure/terminology/plugins` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/infrastructure/urls/base-url` | 1 / 11 | 2 / 17 (11,8 %) |
@@ -295,7 +295,7 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/media-elements/user-interface` | 0 / 2 | 28 / 57 (49,1 %) |
 | `html/semantics/embedded-content/the-area-element` | 2 / 7 | 34 / 79 (43,0 %) |
 | `html/semantics/embedded-content/the-audio-element` | 2 / 14 | 7 / 24 (29,2 %) |
-| `html/semantics/embedded-content/the-canvas-element` | 13 / 70 | 34 / 129 (26,4 %) |
+| `html/semantics/embedded-content/the-canvas-element` | 34 / 70 | 81 / 149 (54,4 %) |
 | `html/semantics/embedded-content/the-embed-element` | 3 / 16 | 5 / 27 (18,5 %) |
 | `html/semantics/embedded-content/the-frame-element` | 0 / 2 | 0 / 3 (0,0 %) |
 | `html/semantics/embedded-content/the-iframe-element` | 20 / 147 | 46 / 215 (21,4 %) |
@@ -439,7 +439,7 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/document-write` | 16 / 88 | 18 / 96 (18,8 %) |
 | `html/webappapis/dynamic-markup-insertion/document-writeln` | 0 / 3 | 1 / 5 (20,0 %) |
 | `html/webappapis/dynamic-markup-insertion/html-unsafe-methods` | 0 / 13 | 10 / 95 (10,5 %) |
-| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream` | 13 / 53 | 59 / 175 (33,7 %) |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream` | 13 / 53 | 61 / 175 (34,9 %) |
 | `html/webappapis/dynamic-markup-insertion/the-innerhtml-property` | 0 / 2 | 3 / 16 (18,8 %) |
 | `html/webappapis/dynamic-markup-insertion/the-outerhtml-property` | 2 / 2 | 2 / 2 (100,0 %) |
 | `html/webappapis/events` | 1 / 2 | 1 / 2 (50,0 %) |
@@ -451,7 +451,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/processing-model-2` | 6 / 36 | 11 / 55 (20,0 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 0 / 3 (0,0 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue` | 1 / 4 | 14 / 31 (45,2 %) |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 1 / 14 | 73 / 103 (70,9 %) |
+| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 2 / 14 | 79 / 103 (76,7 %) |
 | `html/webappapis/structured-clone` | 0 / 2 | 94 / 156 (60,3 %) |
 | `html/webappapis/system-state-and-capabilities/the-navigator-object` | 8 / 19 | 34 / 310 (11,0 %) |
 | `html/webappapis/the-windoworworkerglobalscope-mixin` | 0 / 1 | 2 / 6 (33,3 %) |
@@ -1167,34 +1167,11 @@ est le plus honnête des deux.
 | `html/browsers/windows/opener-string.window.js` | 0 / 1 | harnais : Test named 'Setting popup.opener to a string' specified 1 'cleanup' function, and 1 failed. |
 | `html/browsers/windows/targeting-cross-origin-nested-browsing-contexts.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/targeting-with-embedded-null-in-target.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/canvas-css-random.html` | 0 / 1 |  |
-| `html/canvas/color.window.js` | 0 / 15 |  |
-| `html/canvas/element/2d.conformance.requirements.basics.html` | 0 / 1 |  |
-| `html/canvas/element/2d.conformance.requirements.delete.html` | 0 / 1 |  |
-| `html/canvas/element/2d.conformance.requirements.drawings.html` | 0 / 1 |  |
+| `html/canvas/color.window.js` | 8 / 15 |  |
 | `html/canvas/element/2d.conformance.requirements.missingargs.html` | 0 / 1 |  |
-| `html/canvas/element/2d.text-root-font-relative-units.html` | 0 / 11 | harnais : Test named 'font: rem resolves against the root element, not the canvas element' specified 1 'cleanup' function, and 1 f |
-| `html/canvas/element/canvas-context/2d.canvas.context.exists.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.extraargs.cache.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.extraargs.create.html` | 0 / 1 |  |
+| `html/canvas/element/2d.text-root-font-relative-units.html` | 0 / 11 |  |
 | `html/canvas/element/canvas-context/2d.canvas.context.invalid.args.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.prototype.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.shared.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.type.exists.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.type.extend.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.type.prototype.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-context/2d.canvas.context.type.replace.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.color.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.2dstate.html` | 0 / 15 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.clip.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.different.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.gradient.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.path.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.pattern.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.same.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.initial.reset.transform.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.readonly.html` | 0 / 1 |  |
-| `html/canvas/element/canvas-host/2d.canvas.host.reference.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.size.attributes.parse.decimal.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.size.attributes.parse.em.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.size.attributes.parse.exp.html` | 0 / 1 |  |
@@ -1210,9 +1187,7 @@ est le plus honnête des deux.
 | `html/canvas/element/canvas-host/2d.canvas.host.size.attributes.setAttribute.percent.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.size.attributes.setAttribute.trailingjunk.html` | 0 / 1 |  |
 | `html/canvas/element/canvas-host/2d.canvas.host.size.invalid.attributes.idl.html` | 0 / 1 |  |
-| `html/canvas/element/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.html` | 0 / 1 |  |
 | `html/canvas/element/color-type/2d.color.type.u8p3.to.u8srgb.to.u8p3.html` | 0 / 1 |  |
-| `html/canvas/element/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.html` | 0 / 1 |  |
 | `html/canvas/element/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.canvas.clear.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.canvas.copy.html` | 0 / 1 |  |
@@ -1226,27 +1201,8 @@ est le plus honnête des deux.
 | `html/canvas/element/compositing/2d.composite.canvas.source-out.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.canvas.source-over.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.canvas.xor.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.clear.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.copy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.destination-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.destination-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.destination-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.lighter.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.source-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.source-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.source-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.source-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.clip.xor.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.canvas.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.canvascopy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.canvaspattern.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.default.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.fill.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.globalAlpha.image.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.globalAlpha.imagepattern.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.globalAlpha.range.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.image.clear.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.image.copy.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.image.destination-atop.html` | 0 / 1 |  |
@@ -1259,62 +1215,19 @@ est le plus honnête des deux.
 | `html/canvas/element/compositing/2d.composite.image.source-out.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.image.source-over.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.image.xor.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.casesensitive.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.operation.clear.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.darker.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.default.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.get.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.highlight.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.nullsuffix.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.operation.unrecognised.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.solid.clear.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.copy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.destination-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.destination-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.destination-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.lighter.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.source-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.source-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.source-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.source-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.solid.xor.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.transparent.clear.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.copy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.destination-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.destination-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.destination-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.lighter.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.source-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.source-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.source-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.source-over.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.transparent.xor.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.fill.copy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.fill.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.fill.destination-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.fill.source-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.fill.source-out.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.image.copy.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.image.destination-atop.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.image.destination-in.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.image.source-in.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.image.source-out.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.nocontext.copy.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.nocontext.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.nocontext.destination-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.nocontext.source-in.html` | 0 / 1 |  |
-| `html/canvas/element/compositing/2d.composite.uncovered.nocontext.source-out.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.pattern.copy.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.pattern.destination-atop.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.pattern.destination-in.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.pattern.source-in.html` | 0 / 1 |  |
 | `html/canvas/element/compositing/2d.composite.uncovered.pattern.source-out.html` | 0 / 1 |  |
-| `html/canvas/element/conformance-requirements/2d.conformance.requirements.basics.html` | 0 / 1 |  |
-| `html/canvas/element/conformance-requirements/2d.conformance.requirements.delete.html` | 0 / 1 |  |
-| `html/canvas/element/conformance-requirements/2d.conformance.requirements.drawings.html` | 0 / 1 |  |
 | `html/canvas/element/conformance-requirements/2d.conformance.requirements.missingargs.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.3arg.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.5arg.html` | 0 / 1 |  |
@@ -1325,17 +1238,10 @@ est le plus honnête des deux.
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.9arg.sourcesize.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.animated.gif.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.broken.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.canvas.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.clip.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.composite.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.detachedcanvas.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.floatsource.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.incomplete.emptysrc.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.incomplete.immediate.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.incomplete.nosrc.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.incomplete.reload.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.incomplete.removedsrc.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.negativedest.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.negativedir.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.negativesource.html` | 0 / 1 |  |
@@ -1343,115 +1249,25 @@ est le plus honnête des deux.
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.nonfinite.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.nowrap.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.path.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.self.1.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.self.2.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.svg.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.transform.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerocanvas.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerosource.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.basic.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.clip.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.globalalpha.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.negative.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.path.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.transform.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.clearRect.zero.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.basic.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.clip.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.negative.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.path.html` | 0 / 1 |  |
+| `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.transform.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.zero.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.basic.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.clip.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.globalalpha.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.negative.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.path.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.transform.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.5.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.CSSHSL.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.CSSRGB.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.colorObject.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.colorObject.transparency.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.colormix.currentcolor.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.colormix.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.default.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.get.halftransparent.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.get.semitransparent.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.get.solid.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.get.transparent.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.invalidstring.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.invalidtype.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-8.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-9.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-8.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-9.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-6.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.current.basic.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.current.changed.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.current.removed.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hex3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hex4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hex6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hex8.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-negative-saturation.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsla-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsla-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-alpha-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-alpha-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-negative-saturation.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.html4.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-4.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-7.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-3.html` | 0 / 1 |  |
@@ -1460,64 +1276,20 @@ est le plus honnête des deux.
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-4.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-7.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex7.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex8.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-6.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-5.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-4.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-num.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgb-percent.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-percent.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-4.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.svg-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.svg-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.system.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.transparent-1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.parse.transparent-2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.relativecolor.currentcolor.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.relativecolor.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.html` | 0 / 1 |  |
@@ -1525,85 +1297,40 @@ est le plus honnête des deux.
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.empty.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.color.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.coloralpha.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.multiple.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.outside.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.overlap.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.overlap2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.solid.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.vertical.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.linear.transform.1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.linear.transform.2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.linear.transform.3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.compare.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.crosscanvas.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.current.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.invalidcolor.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.return.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.type.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.update.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.behind.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.beside.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.bottom.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.cylinder.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.front.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.shape1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.shape2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.top.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.equal.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.inside1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.inside2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.inside3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.negative.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.outside1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.outside2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.outside3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.touch1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.touch2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.touch3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.transform.1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.transform.2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.transform.3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.relativecolor.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.animated.gif.html` | 0 / 2 | harnais : Uncaught TypeError: impossible de lire la propriété « createPattern » de null |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.basic.canvas.html` | 0 / 1 |  |
+| `html/canvas/element/fill-and-stroke-styles/2d.pattern.animated.gif.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.basic.image.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.basic.nocontext.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.basic.type.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.basic.zerocanvas.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.crosscanvas.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.broken.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.incomplete.emptysrc.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.incomplete.immediate.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.incomplete.nosrc.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.incomplete.reload.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.incomplete.removedsrc.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.nonexistent-but-loading.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.nonexistent.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.nosrc.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.zeroheight.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.image.zerowidth.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.canvas1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.canvas2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.image1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.image2.html` | 0 / 1 |  |
+| `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.image1.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/canvas/element/fill-and-stroke-styles/2d.pattern.modify.image2.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.basic.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.coord1.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.coord2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.coord3.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.outside.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.norepeat.outside_arc.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.orientation.canvas.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.orientation.image.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeat.basic.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeat.coord1.html` | 0 / 1 |  |
@@ -1611,28 +1338,16 @@ est le plus honnête des deux.
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeat.coord3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeat.outside.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeatx.basic.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeatx.coord1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeatx.outside.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeaty.basic.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeaty.coord1.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.paint.repeaty.outside.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.case.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.empty.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.null.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.nullsuffix.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.undefined.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.unrecognised.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.repeat.unrecognisednull.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.svgimage.nonexistent.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.svgimage.zeroheight.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.svgimage.zerowidth.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.transform.identity.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.pattern.transform.infinity.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.pattern.transform.invalid.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.strokeStyle.colorObject.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.strokeStyle.colorObject.transparency.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.strokeStyle.colormix.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.strokeStyle.default.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.strokeStyle.relativecolor.html` | 0 / 1 |  |
 | `html/canvas/element/filters/2d.filter.canvasFilterObject.blur.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/filters/2d.filter.canvasFilterObject.colorMatrix.tentative.html` | 0 / 1 |  |
@@ -1645,9 +1360,6 @@ est le plus honnête des deux.
 | `html/canvas/element/filters/2d.filter.layers.dropShadow.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/filters/2d.filter.layers.turbulence.inputTypes.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/filters/2d.filter.value.html` | 0 / 1 |  |
-| `html/canvas/element/global-hdr-headroom/attribute.html` | 0 / 1 |  |
-| `html/canvas/element/global-hdr-headroom/clli-mdcv-png.html` | 0 / 4 |  |
-| `html/canvas/element/global-hdr-headroom/iso21496-1-jpg.html` | 0 / 5 |  |
 | `html/canvas/element/layers/2d.layer.beginLayer-options.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/layers/2d.layer.ctm.getTransform.html` | 0 / 1 |  |
 | `html/canvas/element/layers/2d.layer.exceptions-are-no-op.tentative.html` | 0 / 1 |  |
@@ -1663,46 +1375,9 @@ est le plus honnête des deux.
 | `html/canvas/element/layers/2d.layer.valid-calls.beginLayer-endLayer.html` | 0 / 1 |  |
 | `html/canvas/element/layers/2d.layer.valid-calls.beginLayer-save.html` | 0 / 1 |  |
 | `html/canvas/element/layers/2d.layer.valid-calls.beginLayer.html` | 0 / 1 |  |
-| `html/canvas/element/layers/2d.layer.valid-calls.restore.html` | 0 / 1 |  |
 | `html/canvas/element/layers/2d.layer.valid-calls.save-beginLayer.html` | 0 / 1 |  |
-| `html/canvas/element/layers/2d.layer.valid-calls.save.html` | 0 / 1 |  |
-| `html/canvas/element/layers/2d.layer.valid-calls.save_reset_restore.html` | 0 / 1 |  |
-| `html/canvas/element/layers/2d.layer.valid-calls.save_restore.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.butt.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.closed.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.open.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.round.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.square.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cap.valid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.cross.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.defaults.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.fill.noop.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.invalid.strokestyle.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.bevel.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.closed.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.miter.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.open.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.parallel.html` | 0 / 1 |  |
 | `html/canvas/element/line-styles/2d.line.join.round.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.join.valid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.acute.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.exceeded.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.lineedge.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.obtuse.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.rightangle.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.valid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.miter.within.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.union.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.width.basic.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.width.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.width.scaledefault.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.width.transformed.html` | 0 / 1 |  |
-| `html/canvas/element/line-styles/2d.line.width.valid.html` | 0 / 1 |  |
-| `html/canvas/element/manual/context-attributes/canvas-with-padding.html` | 0 / 1 |  |
-| `html/canvas/element/manual/context-attributes/getContextAttributes.html` | 0 / 16 |  |
+| `html/canvas/element/manual/context-attributes/getContextAttributes.html` | 4 / 16 |  |
 | `html/canvas/element/manual/draw-element-image/animated-gif-pinned-to-element-image.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/manual/draw-element-image/animated-gif.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/manual/draw-element-image/backdrop-filter-bounds-expansion.tentative.html` | 0 / 1 |  |
@@ -1868,12 +1543,11 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/draw-element-image/triple-nested-content-drawable-canvas.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/manual/draw-element-image/update-element-geometry-get-bounding-client-rect.tentative.html` | 0 / 8 | harnais : Test named 'updateElementGeometry and clearElementGeometry throw InvalidStateError for ineligible ElementImage' specifie |
 | `html/canvas/element/manual/draw-element-image/video.tentative.html` | 0 / 1 |  |
-| `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_canvas.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_canvas.html` | 150 / 151 |  |
 | `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_crossorigin.sub.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_html_image.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_html_image.html` | 71 / 127 |  |
 | `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_svg_image_1.html` | 0 / 1 |  |
 | `html/canvas/element/manual/drawing-images-to-the-canvas/drawimage_svg_image_with_foreign_object_does_not_taint.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/drawing-paths-to-the-canvas/canvas_complexshapes_ispointInpath_001.htm` | 0 / 1 |  |
 | `html/canvas/element/manual/drawing-paths-to-the-canvas/drawFocusIfNeeded_001.html` | 0 / 1 |  |
 | `html/canvas/element/manual/drawing-paths-to-the-canvas/drawFocusIfNeeded_002.html` | 0 / 1 |  |
 | `html/canvas/element/manual/drawing-paths-to-the-canvas/drawFocusIfNeeded_003.html` | 0 / 1 |  |
@@ -1889,394 +1563,112 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/filters/svg-diffuse-filter-visited-color-taints.html` | 0 / 1 |  |
 | `html/canvas/element/manual/filters/svg-drop-shadow-filter-visited-color-taints.html` | 0 / 1 |  |
 | `html/canvas/element/manual/filters/svg-filter-feImage-cross-origin-taint.https.sub.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/filters/svg-filter-visited-link-color-taints.html` | 0 / 11 |  |
+| `html/canvas/element/manual/filters/svg-filter-visited-link-color-taints.html` | 1 / 11 |  |
 | `html/canvas/element/manual/filters/svg-flood-filter-visited-color-taints.html` | 0 / 1 |  |
 | `html/canvas/element/manual/filters/svg-specular-filter-visited-color-taints.html` | 0 / 1 |  |
 | `html/canvas/element/manual/filters/tentative/idl-conversions/canvas-filter-sequence-conversion.html` | 0 / 1 |  |
-| `html/canvas/element/manual/image-smoothing/imagesmoothing.html` | 0 / 9 |  |
+| `html/canvas/element/manual/image-smoothing/imagesmoothing.html` | 6 / 9 |  |
 | `html/canvas/element/manual/imagebitmap/canvas-ImageBitmap-close.html` | 0 / 1 |  |
 | `html/canvas/element/manual/imagebitmap/canvas-createImageBitmap-resize.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/canvas-createImageBitmap-video-resize.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html` | 0 / 1 |  |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-bounds.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage-closed.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage.html` | 0 / 55 | harnais : délai du harnais dépassé |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-drawImage.html` | 5 / 55 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-exif-orientation_none.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-flipY.html` | 0 / 22 | harnais : délai du harnais dépassé |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-flipY.html` | 2 / 22 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-in-worker-transfer.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-invalid-args.html` | 0 / 93 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-origin.sub.html` | 0 / 27 |  |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-premultiplyAlpha.html` | 0 / 12 |  |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-invalid-args.html` | 7 / 93 | harnais : délai du harnais dépassé |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-origin.sub.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-resolves-in-task.any.js` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-serializable.html` | 0 / 12 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/imagebitmap/createImageBitmap-sizeOverflow.html` | 0 / 7 |  |
+| `html/canvas/element/manual/imagebitmap/createImageBitmap-sizeOverflow.html` | 2 / 7 |  |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-transfer.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/imagebitmap-replication-exif-orientation.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/line-styles/setLineDash.html` | 0 / 2 |  |
 | `html/canvas/element/manual/shadows/canvas_shadows_001.htm` | 0 / 1 |  |
 | `html/canvas/element/manual/shadows/shadowBlur_gaussian_tolerance.1.html` | 0 / 3 |  |
-| `html/canvas/element/manual/the-canvas-state/2d.state.saverestore.imageSmoothingEnabled.html` | 0 / 3 |  |
-| `html/canvas/element/manual/the-canvas-state/2d.zero.size.canvas.html` | 0 / 1 |  |
 | `html/canvas/element/manual/transformations/2d.transformation.getTransform.html` | 0 / 1 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/ImageData-fidelity.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-color-space-settings.html` | 0 / 25 |  |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-Blob.html` | 0 / 416 | harnais : Unhandled rejection: fetch : trop de requêtes en cours |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-color-space-settings.html` | 4 / 25 |  |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-Blob.html` | 64 / 416 | harnais : Unhandled rejection: fetch : trop de requêtes en cours |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-ImageBitmap.html` | 0 / 208 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-ImageData.html` | 0 / 16 |  |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-canvas.html` | 0 / 16 |  |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-ImageData.html` | 4 / 16 |  |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-canvas.html` | 4 / 16 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-cloned.html` | 0 / 208 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-image.html` | 0 / 208 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-video.html` | 0 / 32 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-video.html` | 0 / 32 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage.https.html` | 0 / 240 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-pattern-canvas.html` | 0 / 8 |  |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-pattern-canvas.html` | 2 / 8 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-pattern-image.html` | 0 / 104 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/encode-hdr.html` | 0 / 18 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.5.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.angle.6.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.default.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.empty.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.end.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.negative.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.nonempty.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.nonfinite.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.arc.scale.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.scale.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.selfintersect.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.selfintersect.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.shape.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.shape.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.shape.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.shape.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.shape.5.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.5.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.twopie.6.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.zero.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.zero.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arc.zeroradius.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.coincide.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.coincide.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.collinear.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.collinear.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.collinear.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.ensuresubpath.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.negative.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.scale.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.shape.curve1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.shape.curve2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.shape.end.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.shape.start.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.transformation.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.zero.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.arcTo.zero.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.beginPath.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.scaled.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.bezierCurveTo.shape.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.basic.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.basic.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.empty.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.intersect.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.unaffected.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.winding.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.winding.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.winding.evenodd.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.clip.winding.evenodd.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.closePath.empty.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.closePath.newline.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.closePath.nextpoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.closed.arc.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.ellipse.basics.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.closed.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.closed.unaffected.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.overlap.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.add.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.evenodd.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.evenodd.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.subtract.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.subtract.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.fill.winding.subtract.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.initial.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.arc.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.basic.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.basic.2.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInPath.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.bezier.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.bigarc.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInPath.edge.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.empty.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInPath.nobitmap.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.nobitmap.path2d.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.nobitmap.transform.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.nobitmap.winding.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.outside.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.subpath.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.transform.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.transform.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.transform.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.transform.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.unclosed.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInPath.winding.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInStroke.nobitmap.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInStroke.nobitmap.path2d.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInStroke.nobitmap.transform.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.isPointInStroke.scaleddashes.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.isPointInpath.multi.path.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.lineTo.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.lineTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.lineTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.lineTo.nextpoint.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.lineTo.nonfinite.details.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.lineTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.moveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.moveTo.multiple.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.moveTo.newsubpath.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.moveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.open.arc.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.scaled.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.quadraticCurveTo.shape.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.closed.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.end.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.end.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.negative.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.newsubpath.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.selfintersect.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.winding.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.5.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.rect.zero.6.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.1.radius.dompoint.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.1.radius.dompoint.single.argument.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.1.radius.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.1.radius.dompointinit.single.argument.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.1.radius.double.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.1.radius.double.single.argument.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.2.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.2.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.2.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.2.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.2.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.2.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.3.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.3.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.3.radii.3.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.3.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.3.radii.3.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.4.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.4.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.4.radii.3.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.3.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.3.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.4.radii.4.dompoint.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.4.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.4.radii.4.double.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.badinput.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.closed.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.end.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.end.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.end.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.end.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.negative.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.newsubpath.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.radius.intersecting.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.radius.intersecting.2.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.radius.negative.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.radius.noargument.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.radius.none.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.radius.toomany.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.selfintersect.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.roundrect.winding.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.5.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.roundrect.zero.6.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.empty.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.overlap.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.stroke.prune.arc.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.stroke.prune.closed.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.prune.corner.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.stroke.prune.curve.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.stroke.prune.line.html` | 0 / 1 |  |
 | `html/canvas/element/path-objects/2d.path.stroke.prune.rect.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.scale1.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.scale2.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.skew.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.unaffected.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.stroke.union.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.transformation.basic.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.transformation.changing.html` | 0 / 1 |  |
-| `html/canvas/element/path-objects/2d.path.transformation.multiple.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create1.basic.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create1.initial.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.create1.this.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create1.type.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.basic.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.double.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.initial.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.large.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.negative.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.round.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.create2.this.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.type.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.create2.zero.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.unorm8.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.basic.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.clamp.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.double.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.length.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.nonpremul.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.order.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.order.cols.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.order.rgb.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.order.rows.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.range.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.rounding.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.source.negative.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.source.outside.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.source.size.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.type.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.unaffected.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.get.zero.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.clamp.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.array.bounds.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.array.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.basics.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.pixelFormat.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.size.bounds.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.ctor.size.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.nan.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.object.properties.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.readonly.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.round.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.set.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.string.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.object.undefined.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.basic.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.put.basic.rgba.float16.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.clip.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.created.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.cross.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.dirty.negative.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.dirty.outside.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.dirty.rect1.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.dirty.rect2.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.dirty.zero.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.modified.html` | 0 / 1 |  |
 | `html/canvas/element/pixel-manipulation/2d.imageData.put.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.path.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.unaffected.html` | 0 / 1 |  |
-| `html/canvas/element/pixel-manipulation/2d.imageData.put.unchanged.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.basic.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.direction.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.fill_style.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.filter.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.font.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.font_kerning.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.font_stretch.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.font_variant_caps.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.global_alpha.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.global_composite_operation.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.image_smoothing_enabled.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.image_smoothing_quality.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.letter_spacing.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.line_cap.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.line_dash.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.line_dash_offset.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.line_join.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.line_width.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.miter_limit.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.shadow_blur.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.shadow_color.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.shadow_offset_x.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.shadow_offset_y.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.stroke_style.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.text_align.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.text_baseline.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.text_rendering.html` | 0 / 1 |  |
-| `html/canvas/element/reset/2d.reset.state.transformation_matrix.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.word_spacing.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.alpha.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.alpha.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.alpha.3.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.alpha.4.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.alpha.5.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowBlur.initial.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowBlur.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowBlur.valid.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.current.basic.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.current.changed.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.current.removed.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.initial.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.valid.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowOffset.initial.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowOffset.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.attributes.shadowOffset.valid.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.canvas.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.canvas.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.canvas.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.canvas.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.clip.1.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.clip.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.clip.3.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.composite.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.composite.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.composite.3.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.enable.blur.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.enable.off.1.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.enable.off.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.enable.x.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.enable.y.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.gradient.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.gradient.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.gradient.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.gradient.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.basic.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.scale.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.image.section.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.image.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.offset.negativeX.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.offset.negativeY.html` | 0 / 1 |  |
@@ -2285,25 +1677,12 @@ est le plus honnête des deux.
 | `html/canvas/element/shadows/2d.shadow.outside.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.pattern.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.pattern.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.pattern.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.pattern.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.stroke.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.cap.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.stroke.cap.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.join.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.stroke.join.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.join.3.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.transform.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.transform.2.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.align.default.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.align.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.align.valid.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.baseline.default.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.baseline.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.baseline.valid.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.direction.default.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.direction.invalid.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.direction.valid.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.center.complex-shaping.html` | 0 / 2 |  |
 | `html/canvas/element/text/2d.text.draw.align.center.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.end.ltr.html` | 0 / 1 |  |
@@ -2318,13 +1697,7 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.draw.baseline.ideographic.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.baseline.middle.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.baseline.top.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.maxWidth.NaN.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.fill.maxWidth.bound.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.maxWidth.fontface.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.maxWidth.negative.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.maxWidth.small.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.maxWidth.zero.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.fill.unaffected.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.fontface.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.fontface.notinpage.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.fontface.repeat.html` | 0 / 1 |  |
@@ -2334,7 +1707,6 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.draw.space.collapse.other.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.space.collapse.space.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.space.collapse.start.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.stroke.unaffected.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.absolute.spacing.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.font-relative.spacing.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.fontKerning.html` | 0 / 1 |  |
@@ -2345,15 +1717,11 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.drawing.style.letterSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.letterSpacing.measure.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.measure.direction.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.drawing.style.measure.rtl.text.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.measure.textAlign.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.nonfinite.spacing.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.drawing.style.reset.TextRendering.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.drawing.style.reset.fontKerning.none.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.textRendering.settings.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.wordSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.wordSpacing.measure.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.font.default.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.parse.basic.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.parse.complex.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.parse.complex2.html` | 0 / 1 |  |
@@ -2361,13 +1729,10 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.font.parse.invalid.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.parse.size.percentage.default.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.parse.size.percentage.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.font.parse.system.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.font.parse.tiny.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.relative_size.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.font.weight.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.fontVariantCaps2.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.lang.default.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.lang.valid.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.actualBoundingBox.combining-mark-offset.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.actualBoundingBox.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.actualBoundingBox.small-font.html` | 0 / 1 |  |
@@ -2399,10 +1764,8 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.measure.text-clusters-position.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.text-clusters-split.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.width.basic.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.measure.width.empty.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.width.nullCharacter.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.measure.width.space.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.setFont.mathFont.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.shape.actualBoundingBox-exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.shape.actualBoundingBox-full-text.tentative.html` | 0 / 4 |  |
 | `html/canvas/element/text/2d.text.shape.actualBoundingBox.tentative.html` | 0 / 6 |  |
@@ -2420,118 +1783,26 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.shape.strokeGlyphRun-range.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.variationSelectors.html` | 0 / 1 |  |
 | `html/canvas/element/text/parent-style-relative-units.html` | 0 / 2 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.bitmap.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.clip.2.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.clip.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.fillStyle.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.font.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.globalAlpha.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.globalCompositeOperation.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.lineCap.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.lineJoin.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.lineWidth.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.miterLimit.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.path.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.shadowBlur.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.shadowColor.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.shadowOffsetX.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.shadowOffsetY.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.stack.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.stackdepth.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.strokeStyle.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.textAlign.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.textBaseline.html` | 0 / 4 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.transformation.html` | 0 / 1 |  |
-| `html/canvas/element/the-canvas-state/2d.state.saverestore.underflow.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.order.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.direction.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.radians.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.wrap.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.wrapnegative.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.rotate.zero.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.basic.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.large.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.multiple.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.negative.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.scale.zero.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.setTransform.multiple.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.setTransform.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.setTransform.skewed.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.transform.identity.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.transform.multiply.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.transform.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.transform.skewed.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.translate.basic.html` | 0 / 1 |  |
-| `html/canvas/element/transformations/2d.transformation.translate.nonfinite.html` | 0 / 1 |  |
 | `html/canvas/element/video/2d.video.invalid.html` | 0 / 1 | harnais : Unhandled rejection: lecture non prise en charge |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.getImageData.convert.html` | 0 / 4 |  |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.p3.fillText.html` | 0 / 2 | harnais : Unhandled rejection: le chargement d'une police par script n'est pas pris en charge |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.p3.fillText.shadow.html` | 0 / 2 | harnais : Unhandled rejection: le chargement d'une police par script n'est pas pris en charge |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.p3.strokeText.html` | 0 / 2 | harnais : Unhandled rejection: le chargement d'une police par script n'est pas pris en charge |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.toBlob.convert.html` | 0 / 4 |  |
-| `html/canvas/element/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.jpeg.linear.float.html` | 0 / 4 |  |
-| `html/canvas/element/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html` | 0 / 4 |  |
-| `html/canvas/element/wide-gamut-canvas/2d.color.space.toDataURL.convert.html` | 0 / 4 |  |
-| `html/canvas/historical.any.js` | 0 / 1 |  |
-| `html/canvas/historical.window.js` | 0 / 1 |  |
-| `html/canvas/offscreen/2d.conformance.requirements.basics.html` | 0 / 1 |  |
+| `html/canvas/element/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.jpeg.linear.float.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `html/canvas/element/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `html/canvas/element/wide-gamut-canvas/2d.color.space.toDataURL.convert.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/2d.conformance.requirements.missingargs.html` | 0 / 1 |  |
 | `html/canvas/offscreen/OffscreenCanvas-ctx-font-sibling-index-invalid.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-context/2d.canvas.context.arguments.missing.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-context/2d.canvas.context.casesensitive.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-context/2d.canvas.context.emptystring.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.exists.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.extraargs.cache.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.extraargs.create.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-context/2d.canvas.context.invalid.args.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.prototype.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.shared.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.type.exists.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.type.extend.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.type.prototype.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.type.replace.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-context/2d.canvas.context.unique.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-context/2d.getContext.options.any.js` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.color.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.2dstate.html` | 0 / 12 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.different.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.gradient.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.path.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.pattern.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.same.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.initial.reset.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.readonly.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.reference.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.idl.set.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.decimal.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.em.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.exp.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.hex.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.junk.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.minus.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.octal.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.onlyspace.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.percent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.plus.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.space.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.trailingjunk.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.whitespace.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.parse.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.reflect.setidl.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.attributes.reflect.setidlzero.html` | 0 / 1 |  |
 | `html/canvas/offscreen/canvas-host/2d.canvas.host.size.invalid.attributes.idl.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.size.large.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.type.delete.html` | 0 / 1 |  |
-| `html/canvas/offscreen/canvas-host/2d.canvas.host.type.name.html` | 0 / 1 |  |
-| `html/canvas/offscreen/color-type/2d.color.type.u8p3.to.f16srgb.to.u8p3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/color-type/2d.color.type.u8p3.to.u8srgb.to.u8p3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.f16p3.to.u8srgb.html` | 0 / 1 |  |
 | `html/canvas/offscreen/color-type/2d.color.type.u8srgb.to.u8p3.to.u8srgb.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.canvas.clear.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.canvas.copy.html` | 0 / 1 |  |
@@ -2545,27 +1816,8 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/compositing/2d.composite.canvas.source-out.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.canvas.source-over.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.canvas.xor.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.clear.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.copy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.destination-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.destination-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.destination-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.lighter.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.source-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.source-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.source-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.source-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.clip.xor.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvas.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvascopy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.canvaspattern.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.fill.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.globalAlpha.image.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.globalAlpha.imagepattern.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.globalAlpha.range.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.image.clear.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.image.copy.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.image.destination-atop.html` | 0 / 1 |  |
@@ -2578,60 +1830,19 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/compositing/2d.composite.image.source-out.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.image.source-over.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.image.xor.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.casesensitive.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.operation.clear.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.darker.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.get.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.highlight.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.nullsuffix.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.operation.unrecognised.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.solid.clear.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.copy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.destination-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.destination-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.destination-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.lighter.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.source-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.source-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.source-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.source-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.solid.xor.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.transparent.clear.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.copy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.destination-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.destination-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.destination-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.lighter.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.source-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.source-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.source-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.source-over.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.transparent.xor.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.fill.copy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.fill.destination-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.fill.source-out.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.image.copy.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-atop.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.image.destination-in.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-in.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.image.source-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.copy.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-atop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.destination-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-in.html` | 0 / 1 |  |
-| `html/canvas/offscreen/compositing/2d.composite.uncovered.nocontext.source-out.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.copy.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-atop.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.destination-in.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-in.html` | 0 / 1 |  |
 | `html/canvas/offscreen/compositing/2d.composite.uncovered.pattern.source-out.html` | 0 / 1 |  |
-| `html/canvas/offscreen/conformance-requirements/2d.conformance.requirements.basics.html` | 0 / 1 |  |
 | `html/canvas/offscreen/conformance-requirements/2d.conformance.requirements.missingargs.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.3arg.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.5arg.html` | 0 / 1 |  |
@@ -2641,8 +1852,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.9arg.sourcepos.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.9arg.sourcesize.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.broken.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.canvas.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.clip.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.composite.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.floatsource.html` | 0 / 1 |  |
@@ -2651,122 +1860,21 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.negativesource.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.nonfinite.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.nowrap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.null.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.path.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.self.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.self.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.svg.html` | 0 / 1 |  |
+| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.svg.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.wrongtype.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerocanvas.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerosource.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalalpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.globalcomposite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.path.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.clearRect.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.path.html` | 0 / 1 |  |
+| `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalalpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.globalcomposite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.path.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.zero.5.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.CSSHSL.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.CSSRGB.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.get.halftransparent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.get.semitransparent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.get.solid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.get.transparent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.invalidstring.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.invalidtype.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-7.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-8.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsl-9.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-7.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-8.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-hsla-9.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgb-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.css-color-4-rgba-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hex3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hex4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hex6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hex8.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsl-clamp-negative-saturation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-alpha-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-alpha-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.hsla-clamp-negative-saturation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.html4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsl-7.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-hsla-3.html` | 0 / 1 |  |
@@ -2775,137 +1883,47 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgb-7.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.css-color-4-rgba-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex7.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hex8.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-5.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsl-6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.hsla-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.name-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.em-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.em-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.em-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.em-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.random-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.random-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.random-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.no-context.random-4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgb-3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.invalid.rgba-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-clamp-5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-eof.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-num.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgb-percent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-clamp-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-eof.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-num-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-percent.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.rgba-solid-4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.svg-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.svg-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.system.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.parse.transparent-2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.relativecolor.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.toStringFunctionCallback.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.color.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.coloralpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.multiple.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.outside.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.overlap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.overlap2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.solid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.vertical.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillText.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeText.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.transform.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.transform.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.linear.transform.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.compare.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.crosscanvas.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidcolor.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.return.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.type.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.update.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.behind.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.beside.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.bottom.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.cylinder.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.front.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.shape1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.shape2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.top.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.equal.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.outside1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.outside2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.outside3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.touch1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.touch2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.touch3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.transform.3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.relativecolor.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.canvas.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.image.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.nocontext.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.type.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.basic.zerocanvas.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.crosscanvas.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.image.null.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.image.string.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.image.undefined.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.modify.canvas1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.modify.canvas2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.norepeat.basic.html` | 0 / 1 |  |
@@ -2914,7 +1932,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.norepeat.coord3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.norepeat.outside.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.norepeat.outside_arc.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.orientation.canvas.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.orientation.image.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.repeat.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.repeat.coord1.html` | 0 / 1 |  |
@@ -2927,18 +1944,10 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.repeaty.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.repeaty.coord1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.paint.repeaty.outside.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.case.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.null.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.nullsuffix.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.undefined.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.unrecognised.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.repeat.unrecognisednull.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.identity.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.infinity.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.pattern.transform.invalid.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.colormix.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.default.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.strokeStyle.relativecolor.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.canvasFilterObject.blur.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.canvasFilterObject.colorMatrix.tentative.html` | 0 / 1 |  |
@@ -2946,7 +1955,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShadow.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.canvasFilterObject.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.canvasFilterObject.turbulence.inputTypes.tentative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/filters/2d.filter.layers.blur.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.layers.colorMatrix.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.layers.convolveMatrix.exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/filters/2d.filter.layers.dropShadow.exceptions.tentative.html` | 0 / 1 |  |
@@ -2967,403 +1975,88 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/layers/2d.layer.valid-calls.beginLayer-endLayer.html` | 0 / 1 |  |
 | `html/canvas/offscreen/layers/2d.layer.valid-calls.beginLayer-save.html` | 0 / 1 |  |
 | `html/canvas/offscreen/layers/2d.layer.valid-calls.beginLayer.html` | 0 / 1 |  |
-| `html/canvas/offscreen/layers/2d.layer.valid-calls.restore.html` | 0 / 1 |  |
 | `html/canvas/offscreen/layers/2d.layer.valid-calls.save-beginLayer.html` | 0 / 1 |  |
-| `html/canvas/offscreen/layers/2d.layer.valid-calls.save.html` | 0 / 1 |  |
-| `html/canvas/offscreen/layers/2d.layer.valid-calls.save_reset_restore.html` | 0 / 1 |  |
-| `html/canvas/offscreen/layers/2d.layer.valid-calls.save_restore.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.butt.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.closed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.open.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.round.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.square.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cap.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.cross.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.defaults.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.fill.noop.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.invalid.strokestyle.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.bevel.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.closed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.miter.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.open.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.parallel.html` | 0 / 1 |  |
 | `html/canvas/offscreen/line-styles/2d.line.join.round.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.join.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.acute.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.exceeded.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.lineedge.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.obtuse.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.rightangle.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.miter.within.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.union.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.width.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.width.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.width.scaledefault.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.width.transformed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/line-styles/2d.line.width.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/manual/context-attributes/getContextAttributes.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.w.html` | 0 / 16 | harnais : délai du harnais dépassé |
+| `html/canvas/offscreen/manual/context-attributes/getContextAttributes.html` | 4 / 16 |  |
+| `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.html` | 2 / 8 | harnais : délai du harnais dépassé |
+| `html/canvas/offscreen/manual/convert-to-blob/offscreencanvas.convert.to.blob.w.html` | 2 / 16 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/draw-element-image/animated-gif-worker.tentative.html` | 0 / 2 | harnais : Uncaught TypeError: .transferControlToOffscreen n'est pas une fonction (c'est undefined) |
 | `html/canvas/offscreen/manual/draw-element-image/canvas-transform-update-worker.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage-worker.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage.tentative.html` | 0 / 2 |  |
 | `html/canvas/offscreen/manual/draw-element-image/video-worker.tentative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.html` | 0 / 5 |  |
-| `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.w.html` | 0 / 5 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/filter/offscreencanvas.filter.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/image-smoothing/image.smoothing.html` | 0 / 9 |  |
-| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.html` | 0 / 3 |  |
-| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.getcontext.html` | 0 / 8 |  |
+| `html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html` | 0 / 1 |  |
+| `html/canvas/offscreen/manual/image-smoothing/image.smoothing.html` | 6 / 9 |  |
+| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.html` | 2 / 3 |  |
+| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.getcontext.html` | 3 / 8 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.placeholder.size.html` | 0 / 4 |  |
-| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.resize.html` | 0 / 10 |  |
+| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.resize.html` | 4 / 10 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.lowlatency.nocrash.html` | 0 / 1 |  |
-| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.html` | 0 / 6 |  |
+| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.html` | 1 / 6 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.nocrash.html` | 0 / 1 |  |
-| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.w.html` | 0 / 8 |  |
+| `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfer.to.imagebitmap.w.html` | 1 / 8 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfercontrol.to.offscreen.html` | 0 / 3 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transfercontrol.to.offscreen.w.html` | 0 / 4 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.html` | 0 / 5 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.sw.https.window.js` | 0 / 1 | harnais : TypeError: impossible de lire la propriété « getRegistrations » de undefined (valeur de .serviceWorker) |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.transferrable.w.html` | 0 / 6 |  |
-| `html/canvas/offscreen/manual/transformations/2d.transformation.getTransform.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/manual/wide-gamut-canvas/2d.color.space.p3.convertToBlobp3.canvas.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.angle.6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.end.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.nonempty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.nonfinite.html` | 0 / 1 |  |
+| `html/canvas/offscreen/manual/transformations/2d.transformation.getTransform.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.arc.scale.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.scale.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.selfintersect.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.selfintersect.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.shape.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.shape.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.shape.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.shape.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.shape.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.twopie.6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.zero.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.zero.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arc.zeroradius.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.coincide.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.coincide.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.collinear.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.collinear.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.collinear.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.ensuresubpath.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.scale.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.shape.curve1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.shape.curve2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.shape.end.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.shape.start.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.transformation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.zero.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.arcTo.zero.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.beginPath.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.scaled.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.bezierCurveTo.shape.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.basic.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.basic.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.intersect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.unaffected.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.winding.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.winding.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.winding.evenodd.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.clip.winding.evenodd.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.closePath.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.closePath.newline.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.closePath.nextpoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.closed.arc.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.ellipse.basics.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.closed.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.closed.unaffected.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.overlap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.add.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.evenodd.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.evenodd.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.subtract.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.subtract.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.fill.winding.subtract.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.arc.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.basic.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.basic.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInPath.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.bezier.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.bigarc.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInPath.edge.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.empty.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.path2d.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.transform.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.nobitmap.winding.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.outside.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.subpath.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.transform.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.transform.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.transform.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.transform.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.unclosed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInPath.winding.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInStroke.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.path2d.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInStroke.nobitmap.transform.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.isPointInStroke.scaleddashes.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInpath.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.isPointInpath.multi.path.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.lineTo.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.lineTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.lineTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.lineTo.nextpoint.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.lineTo.nonfinite.details.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.lineTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.moveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.moveTo.multiple.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.moveTo.newsubpath.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.moveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.open.arc.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.ensuresubpath.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.ensuresubpath.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.scaled.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.quadraticCurveTo.shape.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.closed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.end.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.end.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.newsubpath.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.selfintersect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.winding.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.rect.zero.6.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.dompoint.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.dompoint.single.argument.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.dompointinit.single.argument.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.double.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.1.radius.double.single.argument.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.2.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.3.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.3.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.3.radii.3.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.1.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.1.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.1.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.2.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.2.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.2.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.3.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.3.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.3.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.4.dompoint.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.4.dompointinit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.4.radii.4.double.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.badinput.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.closed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.end.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.end.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.end.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.end.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.newsubpath.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.intersecting.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.intersecting.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.noargument.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.none.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.radius.toomany.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.selfintersect.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.roundrect.winding.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.roundrect.zero.6.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.empty.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.overlap.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.stroke.prune.arc.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.stroke.prune.closed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.prune.corner.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.stroke.prune.curve.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.stroke.prune.line.html` | 0 / 1 |  |
 | `html/canvas/offscreen/path-objects/2d.path.stroke.prune.rect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.scale1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.scale2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.skew.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.unaffected.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.stroke.union.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.transformation.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.transformation.changing.html` | 0 / 1 |  |
-| `html/canvas/offscreen/path-objects/2d.path.transformation.multiple.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create1.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create1.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create1.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.double.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.large.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.round.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.create2.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.p3.rgba.unorm8.html` | 0 / 1 |  |
 | `html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.float16.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.createImageBitmap.srgb.rgba.unorm8.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.clamp.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.double.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.large.crash.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.length.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.nonpremul.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.order.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.order.cols.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.order.rgb.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.order.rows.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.range.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.rounding.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.outside.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.source.size.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.unaffected.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.get.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.clamp.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.nan.html` | 0 / 1 |  |
 | `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.properties.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.readonly.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.round.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.set.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.string.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.object.undefined.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.basic.rgba.float16.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.created.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.cross.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.outside.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.rect2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.dirty.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.modified.html` | 0 / 1 |  |
 | `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.null.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.path.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unaffected.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.unchanged.html` | 0 / 1 |  |
-| `html/canvas/offscreen/pixel-manipulation/2d.imageData.put.wrongtype.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.direction.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.fill_style.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.filter.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.font.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.font_kerning.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.font_stretch.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.font_variant_caps.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.global_alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.global_composite_operation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.image_smoothing_enabled.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.image_smoothing_quality.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.letter_spacing.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.line_cap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.line_dash.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.line_dash_offset.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.line_join.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.line_width.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.miter_limit.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.shadow_blur.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.shadow_color.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.shadow_offset_x.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.shadow_offset_y.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.stroke_style.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.text_align.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.text_baseline.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.text_rendering.html` | 0 / 1 |  |
-| `html/canvas/offscreen/reset/2d.reset.state.transformation_matrix.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.word_spacing.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.alpha.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.alpha.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.alpha.3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.alpha.4.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.alpha.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowBlur.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowColor.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.initial.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.attributes.shadowOffset.valid.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.canvas.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.clip.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.clip.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.clip.3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.composite.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.composite.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.composite.3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.enable.blur.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.enable.off.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.enable.off.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.enable.x.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.enable.y.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.gradient.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.alpha.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.basic.html` | 0 / 1 |  |
@@ -3381,22 +2074,10 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.stroke.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.cap.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.join.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.join.3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.transform.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.transform.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.align.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.align.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.align.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.baseline.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.baseline.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.baseline.valid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.direction.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.direction.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.direction.valid.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.center.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.end.ltr.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.end.rtl.html` | 0 / 1 |  |
@@ -3410,13 +2091,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.draw.baseline.ideographic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.baseline.middle.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.baseline.top.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.NaN.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.bound.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.fontface.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.small.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.maxWidth.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.fill.unaffected.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.fontface.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.fontface.notinpage.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.fontface.repeat.html` | 0 / 1 |  |
@@ -3426,7 +2101,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.draw.space.collapse.other.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.space.collapse.space.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.space.collapse.start.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.draw.stroke.unaffected.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.absolute.spacing.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.font-relative.spacing.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.fontKerning.html` | 0 / 1 |  |
@@ -3437,27 +2111,20 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.drawing.style.letterSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.letterSpacing.measure.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.drawing.style.measure.rtl.text.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.nonfinite.spacing.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.drawing.style.reset.TextRendering.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.drawing.style.reset.fontKerning.none.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.textRendering.settings.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.wordSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.wordSpacing.measure.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.font.default.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.parse.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.parse.complex.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.parse.complex2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.parse.family.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.parse.invalid.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.font.parse.system.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.font.parse.tiny.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.relative_size.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.font.weight.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.fontVariantCaps2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.lang.default.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.lang.valid.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.small-font.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.actualBoundingBox.whitespace.html` | 0 / 1 |  |
@@ -3488,10 +2155,8 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.measure.text-clusters-position.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.text-clusters-split.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.width.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.measure.width.empty.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.width.nullCharacter.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.measure.width.space.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.setFont.mathFont.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.shape.actualBoundingBox-full-text.tentative.html` | 0 / 4 |  |
 | `html/canvas/offscreen/text/2d.text.shape.actualBoundingBox.tentative.html` | 0 / 6 |  |
@@ -3507,51 +2172,9 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.shape.selection-rects-exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.shape.selection-rects.tentative.html` | 0 / 24 |  |
 | `html/canvas/offscreen/text/2d.text.shape.strokeGlyphRun-range.tentative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.bitmap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.clip.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.clip.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.fillStyle.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalAlpha.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.globalCompositeOperation.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineCap.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineJoin.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.lineWidth.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.miterLimit.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.path.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowBlur.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowColor.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetX.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.shadowOffsetY.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.stack.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.stackdepth.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.strokeStyle.html` | 0 / 4 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.transformation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/the-canvas-state/2d.state.saverestore.underflow.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.order.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.direction.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.radians.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.wrap.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.wrapnegative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.rotate.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.large.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.multiple.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.negative.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.scale.zero.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.setTransform.multiple.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.setTransform.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.setTransform.skewed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.transform.identity.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.transform.multiply.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.transform.nonfinite.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.transform.skewed.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.translate.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/transformations/2d.transformation.translate.nonfinite.html` | 0 / 1 |  |
 | `html/canvas/offscreen/wide-gamut-canvas/2d.color.space.getImageData.convert.html` | 0 / 4 |  |
-| `html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.jpeg.linear.float.html` | 0 / 2 |  |
-| `html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html` | 0 / 2 |  |
+| `html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.jpeg.linear.float.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `html/canvas/offscreen/wide-gamut-canvas/2d.color.space.toBlob.toDataURL.png.linear.float.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/capability-delegation/delegate-fullscreen-request-popup-cross-origin.https.sub.tentative.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/capability-delegation/delegate-fullscreen-request-popup-same-origin.https.tentative.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/capability-delegation/delegate-fullscreen-request-subframe-cross-origin.https.sub.tentative.html` | 0 / 3 | harnais : délai du harnais dépassé |
@@ -3964,9 +2587,9 @@ est le plus honnête des deux.
 | `html/editing/activation/click-bail-on-disabled.html` | 0 / 4 |  |
 | `html/editing/activation/click.html` | 0 / 1 |  |
 | `html/editing/activation/click_checkbox.html` | 0 / 1 |  |
-| `html/editing/dnd/canvas/001.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/editing/dnd/canvas/002.html` | 0 / 1 | harnais : Uncaught TypeError: impossible d'écrire la propriété « fillStyle » de null |
-| `html/editing/dnd/canvas/003.html` | 0 / 0 | harnais : Uncaught TypeError: impossible d'écrire la propriété « fillStyle » de null |
+| `html/editing/dnd/canvas/001.html` | 0 / 1 |  |
+| `html/editing/dnd/canvas/002.html` | 0 / 1 |  |
+| `html/editing/dnd/canvas/003.html` | 0 / 1 |  |
 | `html/editing/dnd/canvas/005.html` | 0 / 1 |  |
 | `html/editing/dnd/canvas/007.html` | 0 / 1 |  |
 | `html/editing/dnd/datastore/datatransfer-constructor-001.html` | 0 / 1 |  |
@@ -3988,7 +2611,7 @@ est le plus honnête des deux.
 | `html/editing/dnd/drop/003.xhtml` | 0 / 3 |  |
 | `html/editing/dnd/drop/004.xhtml` | 0 / 3 |  |
 | `html/editing/dnd/drop/005.xhtml` | 0 / 3 |  |
-| `html/editing/dnd/drop/006.xhtml` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/editing/dnd/drop/006.xhtml` | 0 / 3 |  |
 | `html/editing/dnd/drop/029.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/drop/030.html` | 0 / 1 |  |
 | `html/editing/dnd/events/dragenter-dragleave-related-target.html` | 0 / 1 |  |
@@ -4020,15 +2643,15 @@ est le plus honnête des deux.
 | `html/editing/dnd/interactiveelements/input_reset_inside_draggable_element.html` | 0 / 2 |  |
 | `html/editing/dnd/interactiveelements/input_submit_inside_draggable_element.html` | 0 / 2 |  |
 | `html/editing/dnd/interactiveelements/select_inside_draggable_element.html` | 1 / 2 | harnais : délai du harnais dépassé |
-| `html/editing/dnd/js-file-fallback-text-only.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/editing/dnd/js-file-image-drag.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/editing/dnd/layoutshift/001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/editing/dnd/js-file-fallback-text-only.html` | 0 / 1 |  |
+| `html/editing/dnd/js-file-image-drag.html` | 0 / 1 |  |
+| `html/editing/dnd/layoutshift/001.html` | 0 / 1 |  |
 | `html/editing/dnd/platform/mousedown-drag-select-input-display-change.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/platform/mousedown-move-inner-when-dragging-1.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/platform/mousedown-move-inner-when-dragging-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/platform/pointerdown-add-display-none.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/platform/pointerdown-add-overflow-hidden.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/editing/dnd/reload/001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/editing/dnd/reload/001.html` | 0 / 1 |  |
 | `html/editing/dnd/reload/002.html` | 0 / 1 |  |
 | `html/editing/dnd/reload/003.html` | 0 / 1 |  |
 | `html/editing/dnd/reload/004.html` | 0 / 1 |  |
@@ -4036,7 +2659,7 @@ est le plus honnête des deux.
 | `html/editing/dnd/reload/006.html` | 0 / 1 |  |
 | `html/editing/dnd/reload/007.html` | 0 / 1 |  |
 | `html/editing/dnd/reload/008.html` | 0 / 1 |  |
-| `html/editing/dnd/remove/001.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/editing/dnd/remove/001.html` | 0 / 1 |  |
 | `html/editing/dnd/remove/002.html` | 0 / 1 |  |
 | `html/editing/dnd/remove/003.html` | 0 / 1 |  |
 | `html/editing/dnd/remove/004.html` | 0 / 1 |  |
@@ -4109,7 +2732,7 @@ est le plus honnête des deux.
 | `html/infrastructure/safe-passing-of-structured-data/structured-cloning-error-stack-optional.sub.window.js` | 16 / 20 |  |
 | `html/infrastructure/safe-passing-of-structured-data/structuredclone_0.html` | 31 / 43 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-audiodata.html` | 0 / 1 |  |
-| `html/infrastructure/safe-passing-of-structured-data/transfer-errors.window.js` | 2 / 17 |  |
+| `html/infrastructure/safe-passing-of-structured-data/transfer-errors.window.js` | 4 / 17 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-mediasourcehandle.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-videoframe.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/window-postmessage.window.js` | 89 / 152 |  |
@@ -4890,8 +3513,7 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-canvas-element/canvas-descendants-focusability-005.html` | 6 / 11 |  |
 | `html/semantics/embedded-content/the-canvas-element/canvas-descendants-focusability-006.html` | 1 / 2 |  |
 | `html/semantics/embedded-content/the-canvas-element/context.arguments.missing.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/imagedata.html` | 0 / 7 |  |
-| `html/semantics/embedded-content/the-canvas-element/security.dataURI.html` | 0 / 1 |  |
+| `html/semantics/embedded-content/the-canvas-element/security.dataURI.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-canvas-element/security.drawImage.canvas.cross.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-canvas-element/security.drawImage.canvas.redirect.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-canvas-element/security.drawImage.image.cross.html` | 0 / 1 |  |
@@ -4917,29 +3539,9 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-canvas-element/security.resize.redirect.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-canvas-element/toBlob-cross-realm-callback-report-exception.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-canvas-element/toBlob.jpeg.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toBlob.null.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toBlob.png.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.arguments.1.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.arguments.2.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.arguments.3.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.bogustype.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.default.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.alpha.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.primarycolours.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.quality.basic.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.quality.notnumber.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.quality.outsiderange.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpg.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.lowercase.ascii.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.lowercase.unicode.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.nocontext.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.png.complexcolours.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.png.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.png.primarycolours.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.unrecognised.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.zeroheight.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.zerosize.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/the-canvas-element/toDataURL.zerowidth.html` | 0 / 1 |  |
+| `html/semantics/embedded-content/the-canvas-element/toDataURL.jpeg.primarycolours.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/embedded-content/the-canvas-element/toDataURL.png.complexcolours.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/embedded-content/the-canvas-element/toDataURL.png.primarycolours.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-embed-element/document-getters-return-null-for-cross-origin.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/the-embed-element/embed-allowed-schemas.sub.window.js` | 0 / 5 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-embed-element/embed-change-src-2.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -5097,7 +3699,7 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/the-img-element/below-viewport-image-loading-lazy-load-event.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/current-pixel-density/basic.html` | 3 / 14 |  |
 | `html/semantics/embedded-content/the-img-element/current-pixel-density/error.html` | 0 / 7 |  |
-| `html/semantics/embedded-content/the-img-element/currentSrc-blob-cache.html` | 0 / 1 |  |
+| `html/semantics/embedded-content/the-img-element/currentSrc-blob-cache.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/data-url.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/decode/image-decode-iframe.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/the-img-element/decode/image-decode-image-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6788,7 +5390,7 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/readiness.window.js` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/reload.window.js` | 0 / 1 | harnais : Test named 'Reloading a document.open()'d page should reload the URL of the entry realm's responsible document' specifie |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/remove-initial-about-blankness.window.js` | 1 / 2 |  |
-| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/tasks.window.js` | 6 / 10 |  |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/tasks.window.js` | 8 / 10 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/type-argument-plaintext.window.js` | 0 / 8 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/type-argument.window.js` | 0 / 8 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/url-entry-document-sync-call.window.js` | 0 / 3 |  |
@@ -6871,8 +5473,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-many-promises.dedicatedworker.html` | 4 / 6 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-many-promises.html` | 4 / 6 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events-onerror.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.dedicatedworker.html` | 33 / 36 |  |
-| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.html` | 30 / 43 | harnais : délai du harnais dépassé |
+| `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.html` | 33 / 43 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.serviceworker.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-rejection-events.sharedworker.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections/promise-resolution-order.html` | 0 / 1 |  |
