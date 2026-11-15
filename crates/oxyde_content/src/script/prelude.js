@@ -871,13 +871,12 @@
           throw new DOMException("cet objet ne peut pas être transféré", "DataCloneError");
         }
         if (brand === "ArrayBuffer") {
-          if (item.detached) {
-            throw new DOMException("ce tampon est déjà détaché", "DataCloneError");
-          }
-          // Le contenu passe à la copie ; le tampon d'origine est détaché
-          // une fois le clonage réussi.
-          seen.set(item, copyBuffer(item));
-          transferred.push(item);
+          // La copie reçoit le contenu une fois le message cloné : c'est
+          // alors seulement qu'un tampon détaché (avant, ou par un accesseur
+          // du message) fait échouer le transfert.
+          const target = new ArrayBuffer(item.detached ? 0 : item.byteLength);
+          seen.set(item, target);
+          transferred.push([item, target]);
         } else {
           // Un port vit dans la machine de la page : il change de mains
           // tel quel.
@@ -886,7 +885,15 @@
       }
     }
     const copy = cloneValue(value, seen);
-    for (const buffer of transferred) ArrayBuffer.prototype.transfer.call(buffer);
+    for (const [buffer, target] of transferred) {
+      if (buffer.detached || buffer.byteLength !== target.byteLength) {
+        throw new DOMException("ce tampon est détaché", "DataCloneError");
+      }
+    }
+    for (const [buffer, target] of transferred) {
+      new Uint8Array(target).set(new Uint8Array(buffer));
+      ArrayBuffer.prototype.transfer.call(buffer);
+    }
     return copy;
   });
 
