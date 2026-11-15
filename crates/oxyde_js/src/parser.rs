@@ -165,6 +165,10 @@ struct Parser {
     cover_init: Option<usize>,
     /// Positions des `(` dont la lecture en fonction fléchée a échoué.
     arrow_misses: std::collections::HashSet<usize>,
+    /// Début du jeton qui suit la dernière parenthèse fermante d'un
+    /// littéral objet ou tableau entre parenthèses : `({}) = 1` n'est pas
+    /// un motif d'affectation.
+    paren_literal: Option<usize>,
 }
 
 /// Nom de la liaison locale qui porte la valeur de `export default <expression>`.
@@ -354,6 +358,7 @@ impl Parser {
             private_scopes: Vec::new(),
             cover_init: None,
             arrow_misses: std::collections::HashSet::new(),
+            paren_literal: None,
             prev_end: 0,
             rest_comma: None,
             fn_start: None,
@@ -840,6 +845,9 @@ impl Parser {
 
     /// Refuse `eval` et `arguments` comme cibles d'affectation en mode strict.
     fn check_assignable(&self, name: &str) -> PResult<()> {
+        if name == "import.meta" {
+            return self.error("« import.meta » n'est pas une cible d'affectation");
+        }
         if self.strict && (name == "eval" || name == "arguments") {
             return self.error(format!(
                 "« {name} » ne peut pas être affecté en mode strict"
@@ -1503,6 +1511,9 @@ impl Parser {
                     ForInit::Expr(expr) => {
                         // `for ({ a = 1 } of xs)` : l'objet est bien un motif.
                         if matches!(expr, Expr::Object(_) | Expr::Array(_)) {
+                            if self.paren_literal == Some(self.tok.start) {
+                                return self.error("cible d'affectation invalide");
+                            }
                             self.cover_init = None;
                             if let Some(position) = self.rest_comma.take() {
                                 return Err(self.lexer.error_at(
@@ -1511,7 +1522,11 @@ impl Parser {
                                 ));
                             }
                         }
-                        ForTarget::Pattern(self.to_pattern(expr)?)
+                        if self.is_call_target(&expr) {
+                            ForTarget::Pattern(Pattern::Expr(Expr::InvalidTarget(Box::new(expr))))
+                        } else {
+                            ForTarget::Pattern(self.to_pattern(expr)?)
+                        }
                     }
                 };
                 let object = if of {
@@ -1572,11 +1587,21 @@ impl Parser {
             Some(self.expression()?)
         };
         self.expect_punct(")")?;
+        let body = self.substatement(false)?;
+        if let Some(ForInit::Decl(kind, decls)) = &init
+            && *kind != VarKind::Var
+        {
+            let mut names = Vec::new();
+            for (pattern, _) in decls {
+                crate::compiler::pattern_names(pattern, &mut names);
+            }
+            self.check_loop_names(&names, &body)?;
+        }
         Ok(Stmt::For {
             init,
             test,
             update,
-            body: Box::new(self.substatement(false)?),
+            body: Box::new(body),
         })
     }
 
@@ -2129,6 +2154,9 @@ impl Parser {
                     break;
                 }
                 let is_plain_ident = matches!(&self.tok.tok, Tok::Ident(_));
+                if matches!(self.tok.tok, Tok::Private(_)) {
+                    return self.error("nom privé interdit dans un motif");
+                }
                 let key = self.property_key()?;
                 let pattern = if self.eat_punct(":")? {
                     self.binding_pattern()?
@@ -2490,6 +2518,9 @@ impl Parser {
             return Ok(left);
         };
         if op == AssignOp::Assign && matches!(left, Expr::Object(_) | Expr::Array(_)) {
+            if self.paren_literal == Some(self.tok.start) {
+                return self.error("cible d'affectation invalide");
+            }
             self.cover_init = None;
             if let Some(position) = self.rest_comma {
                 return Err(self
@@ -2499,6 +2530,13 @@ impl Parser {
         }
         self.rest_comma = None;
         self.cover_init = outer_cover.or(self.cover_init);
+        if self.is_call_target(&left) && !matches!(op, AssignOp::Logical(_)) {
+            // La valeur est lue, jamais évaluée.
+            self.advance()?;
+            self.assignment()?;
+            self.rest_comma = outer_rest;
+            return Ok(Expr::InvalidTarget(Box::new(left)));
+        }
         let target = match (op, left) {
             (AssignOp::Assign, left) => self.to_pattern(left)?,
             (_, Expr::Ident(name)) => {
@@ -2561,7 +2599,15 @@ impl Parser {
     }
 
     fn binary(&mut self, min_prec: u8) -> PResult<Expr> {
+        self.binary_bare(min_prec).map(|(expr, _)| expr)
+    }
+
+    /// Expression binaire, et l'opérateur logique à sa tête quand il n'est
+    /// pas entre parenthèses : `??` ne se mêle ni à `||` ni à `&&` sans
+    /// parenthèses.
+    fn binary_bare(&mut self, min_prec: u8) -> PResult<(Expr, Option<LogicalOp>)> {
         let mut left = self.unary()?;
+        let mut bare = None;
         while let Some((prec, op)) = self.current_operator() {
             if prec < min_prec {
                 break;
@@ -2573,7 +2619,24 @@ impl Parser {
             } else {
                 prec + 1
             };
-            let right = self.binary(next_min)?;
+            let (right, right_bare) = self.binary_bare(next_min)?;
+            // Un nom privé seul ne se lit qu'à gauche de `in`.
+            if matches!(right, Expr::PrivateName(_))
+                || (matches!(left, Expr::PrivateName(_)) && op != Ok(BinaryOp::In))
+            {
+                return self.error("nom privé inattendu");
+            }
+            if let Err(logical) = op {
+                let nullish = logical == LogicalOp::Nullish;
+                let clashes = |side: Option<LogicalOp>| {
+                    side.is_some_and(|other| (other == LogicalOp::Nullish) != nullish)
+                };
+                if clashes(bare) || clashes(right_bare) {
+                    return self
+                        .error("« ?? » ne se mêle pas à « || » ni à « && » sans parenthèses");
+                }
+            }
+            bare = op.err();
             left = match op {
                 Ok(op) => Expr::Binary {
                     op,
@@ -2587,7 +2650,7 @@ impl Parser {
                 },
             };
         }
-        Ok(left)
+        Ok((left, bare))
     }
 
     fn unary(&mut self) -> PResult<Expr> {
@@ -2655,7 +2718,23 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Annexe B : hors mode strict, un appel pris pour cible d'affectation
+    /// n'est une erreur qu'à l'exécution.
+    fn is_call_target(&self, target: &Expr) -> bool {
+        !self.strict
+            && matches!(
+                target,
+                Expr::Call {
+                    optional: false,
+                    ..
+                }
+            )
+    }
+
     fn update(&self, increment: bool, prefix: bool, target: Expr) -> PResult<Expr> {
+        if self.is_call_target(&target) {
+            return Ok(Expr::InvalidTarget(Box::new(target)));
+        }
         if !matches!(
             target,
             Expr::Ident(_)
@@ -2929,6 +3008,9 @@ impl Parser {
                 let expr = self.expression();
                 self.no_in = saved_no_in;
                 self.expect_punct(")")?;
+                if matches!(expr, Ok(Expr::Object(_) | Expr::Array(_))) {
+                    self.paren_literal = Some(self.tok.start);
+                }
                 expr
             }
             Tok::Punct("[") => {
@@ -3120,6 +3202,9 @@ impl Parser {
         };
         if let Some(is_getter) = accessor {
             self.advance()?;
+            if matches!(self.tok.tok, Tok::Private(_)) {
+                return self.error("nom privé interdit dans un littéral objet");
+            }
             let key = self.property_key()?;
             self.fn_start = Some(start);
             let name = Self::accessor_name(&key, accessor);
@@ -3227,7 +3312,7 @@ mod tests {
     #[test]
     fn expressions_parse() {
         parse(
-            "a = b ? c : d ? e : f; x = y ?? z || w && v | u ^ t & s == r < q << p + o * n ** m ** l;
+            "a = b ? c : d ? e : f; x = y ?? z; x = z || w && v | u ^ t & s == r < q << p + o * n ** m ** l;
              f(a, ...b)(c)[d].e?.f?.[g]?.(h); new A.B(c).d; new A; new new A()();
              (a, b) => a + b; x => ({ y: x }); () => {}; ({ a, b = 1, ...c }) => a; ([a, [b]]) => b;
              `a${b}c${`d${e}`}`; /re[/]+/gi.test(s); a / b / c; x = /=/;
@@ -3317,6 +3402,16 @@ mod tests {
             "{",
             "1 = 2",
             "a++ = 1",
+            "a ?? b || c",
+            "a && b ?? c",
+            "({}) = 1",
+            "([a]) = 1",
+            "for (let x;;) { var x; }",
+            "class C { #x; m() { #x in #x in this; } }",
+            "x = { get #m() {} }",
+            "class C { #x; m() { const { #x: y } = this; } }",
+            "'use strict'; f() = 1",
+            "f() &&= 1",
             "for (;;",
             "if (a",
             "x = {a:}",

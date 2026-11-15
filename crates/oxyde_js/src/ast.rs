@@ -198,6 +198,9 @@ pub(crate) enum Expr {
     },
     /// `await expr` (dans une fonction async seulement).
     Await(Box<Expr>),
+    /// Appel pris pour cible d'affectation hors mode strict (annexe B,
+    /// `f() = 1`) : l'appel est évalué, puis `ReferenceError` est levée.
+    InvalidTarget(Box<Expr>),
     /// Nom privé (`#x`) : vaut la clé du membre privé, liée dans le corps de
     /// la classe qui le déclare. N'apparaît que comme index (`obj.#x`) ou à
     /// gauche de `in`.

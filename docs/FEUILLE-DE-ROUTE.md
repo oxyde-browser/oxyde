@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 139 tests de test262 sur 48 795 (98,7 %)** ; il en reste 656.
+- `oxyde_js` réussit **48 206 tests de test262 sur 48 795 (98,8 %)** ; il en reste 589.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -982,8 +982,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `brotli-decompressor`, tout en Rust), y compris lues au fil de l'eau ; `br` est
       annoncé dans `Accept-Encoding`.
       Limites : pas de Zstandard ; vérifié sur un vecteur d'essai, pas sur un vrai site.
-- [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
-      isolés), tableaux denses, objet de type `document.all`.
+- [x] test262, premier lot de causes (67 tests, 48 139 → 48 206) : erreurs précoces (`??` mêlé
+      à `||` ou `&&` sans parenthèses, littéral entre parenthèses pris pour motif, `import.meta`
+      pris pour cible, noms de tête d'un `for (let …;;)` redéclarés en `var`, noms privés en
+      clé d'objet ou de motif ou hors de `#x in objet`), annexe B (`f() = 1` n'est une erreur
+      qu'à l'exécution, hors mode strict), `%ThrowTypeError%` (accesseur `callee` des objets
+      `arguments` non liés), `Math.sumPrecise`, `Math.hypot` et `Math.min`/`max` (tous les
+      arguments convertis).
+- [ ] Les 589 tests de test262 restants : tables Unicode des propriétés d'expressions
+      rationnelles (94), chaînes UTF-16 (substituts isolés), tableaux denses, objet de type
+      `document.all`, `import()` et modules (phases `defer` et `source`, octets), accesseurs
+      automatiques (`accessor`), et une longue traîne de cas isolés.
 
 Terminé quand 40 des 50 sites s'affichent correctement et que 25 permettent leur action
 principale.

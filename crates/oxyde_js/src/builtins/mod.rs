@@ -1072,6 +1072,15 @@ fn install_function(vm: &mut Vm) {
     };
     // `caller` et `arguments` : un même accesseur, en lecture et en écriture.
     let thrower = vm.new_function("", 0, restricted_property);
+    // `%ThrowTypeError%` est gelé.
+    let frozen = vm.heap.get_mut(thrower);
+    frozen.extensible = false;
+    for name in ["length", "name"] {
+        if let Some(property) = frozen.props.get_mut(name) {
+            property.configurable = false;
+        }
+    }
+    vm.intrinsics.throw_type_error = thrower;
     for name in ["caller", "arguments"] {
         vm.heap.get_mut(proto).props.insert(
             Arc::from(name),

@@ -1091,8 +1091,12 @@ fn math_min_max(vm: &mut Vm, args: &[Value], want_max: bool) -> JsResult {
     } else {
         f64::INFINITY
     };
+    // Chaque argument est converti, même après un `NaN`.
+    let mut numbers = Vec::with_capacity(args.len());
     for value in args {
-        let n = vm.to_number(value)?;
+        numbers.push(vm.to_number(value)?);
+    }
+    for n in numbers {
         if n.is_nan() {
             return Ok(Value::Number(f64::NAN));
         }
@@ -1119,11 +1123,169 @@ fn math_max(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 
 fn math_hypot(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
     let mut sum = 0.0;
+    // Un infini l'emporte sur un `NaN`.
+    let mut infinite = false;
     for value in args {
         let n = vm.to_number(value)?;
+        infinite |= n.is_infinite();
         sum += n * n;
     }
-    Ok(Value::Number(sum.sqrt()))
+    Ok(Value::Number(if infinite {
+        f64::INFINITY
+    } else {
+        sum.sqrt()
+    }))
+}
+
+/// Somme exacte de `x` et `y` : la somme arrondie et l'erreur d'arrondi.
+/// `x` doit être au moins aussi grand que `y` en valeur absolue.
+fn two_sum(x: f64, y: f64) -> (f64, f64) {
+    let hi = x + y;
+    (hi, y - (hi - x))
+}
+
+/// Somme exacte de nombres finis, arrondie une seule fois (Shewchuk) : les
+/// `partials` sont des termes qui ne se recouvrent pas, du plus petit au
+/// plus grand ; `overflow` compte les dépassements, en unités de 2^1024.
+#[derive(Default)]
+struct PreciseSum {
+    partials: Vec<f64>,
+    overflow: f64,
+}
+
+impl PreciseSum {
+    /// 2^1023.
+    const HALF_RANGE: f64 = f64::from_bits(0x7FE0_0000_0000_0000);
+    /// Écart entre les deux plus grands nombres finis : 2^970.
+    const MAX_ULP: f64 = f64::from_bits(0x7C90_0000_0000_0000);
+
+    fn add(&mut self, mut x: f64) {
+        let mut used = 0;
+        for at in 0..self.partials.len() {
+            let Some(mut y) = self.partials.get(at).copied() else {
+                break;
+            };
+            if x.abs() < y.abs() {
+                std::mem::swap(&mut x, &mut y);
+            }
+            let (mut hi, mut lo) = two_sum(x, y);
+            if hi.is_infinite() {
+                // Dépassement : 2^1024 est retiré et compté à part.
+                let sign = hi.signum();
+                self.overflow += sign;
+                x = (x - sign * Self::HALF_RANGE) - sign * Self::HALF_RANGE;
+                if x.abs() < y.abs() {
+                    std::mem::swap(&mut x, &mut y);
+                }
+                (hi, lo) = two_sum(x, y);
+            }
+            if lo != 0.0 {
+                if let Some(slot) = self.partials.get_mut(used) {
+                    *slot = lo;
+                }
+                used += 1;
+            }
+            x = hi;
+        }
+        self.partials.truncate(used);
+        if x != 0.0 {
+            self.partials.push(x);
+        }
+    }
+
+    fn total(mut self) -> f64 {
+        let (mut hi, mut lo) = (0.0, 0.0);
+        if self.overflow != 0.0 {
+            let next = self.partials.pop().unwrap_or(0.0);
+            // Deux dépassements, ou un dépassement que le reste n'efface pas.
+            if self.overflow.abs() > 1.0 || (self.overflow > 0.0) == (next > 0.0) && next != 0.0 {
+                return self.overflow * f64::INFINITY;
+            }
+            (hi, lo) = two_sum(self.overflow * Self::HALF_RANGE, next / 2.0);
+            lo *= 2.0;
+            if (2.0 * hi).is_infinite() {
+                // Juste au bord : le plus grand nombre fini si le reste tire
+                // en deçà de la moitié de l'écart, l'infini sinon.
+                let pulls_back = self
+                    .partials
+                    .last()
+                    .is_some_and(|rest| (*rest < 0.0) == (hi > 0.0) && *rest != 0.0);
+                return if hi.abs() == Self::HALF_RANGE
+                    && lo == -hi.signum() * Self::MAX_ULP
+                    && pulls_back
+                {
+                    hi.signum() * f64::MAX
+                } else {
+                    hi * f64::INFINITY
+                };
+            }
+            if lo != 0.0 {
+                self.partials.push(lo);
+                lo = 0.0;
+            }
+            hi *= 2.0;
+        }
+        while let Some(y) = self.partials.pop() {
+            (hi, lo) = two_sum(hi, y);
+            if lo != 0.0 {
+                break;
+            }
+        }
+        // Arrondi au plus proche pair : un reste de même signe que l'erreur
+        // peut faire pencher une égalité.
+        if let Some(rest) = self.partials.last()
+            && ((lo < 0.0 && *rest < 0.0) || (lo > 0.0 && *rest > 0.0))
+        {
+            let y = lo * 2.0;
+            let x = hi + y;
+            if y == x - hi {
+                hi = x;
+            }
+        }
+        hi
+    }
+}
+
+/// `Math.sumPrecise(itérable)` : somme exacte des nombres de l'itérable.
+fn math_sum_precise(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let source = arg(args, 0);
+    if source.is_nullish() {
+        return Err(vm.type_error("Math.sumPrecise : un itérable est attendu"));
+    }
+    let iterator = vm.iterator_for(&source)?;
+    let mut sum = PreciseSum::default();
+    // Sans terme, ou avec des −0 seulement, la somme vaut −0.
+    let mut minus_zero = true;
+    let (mut plus_infinity, mut minus_infinity, mut nan) = (false, false, false);
+    while let Some(value) = vm.iterator_next(&iterator)? {
+        let Value::Number(n) = value else {
+            vm.iterator_close(&iterator, true)?;
+            return Err(vm.type_error("Math.sumPrecise : chaque valeur doit être un nombre"));
+        };
+        if n.is_nan() {
+            nan = true;
+        } else if n == f64::INFINITY {
+            plus_infinity = true;
+        } else if n == f64::NEG_INFINITY {
+            minus_infinity = true;
+        } else if n != 0.0 {
+            minus_zero = false;
+            sum.add(n);
+        } else if n.is_sign_positive() {
+            minus_zero = false;
+        }
+    }
+    Ok(Value::Number(if nan || (plus_infinity && minus_infinity) {
+        f64::NAN
+    } else if plus_infinity {
+        f64::INFINITY
+    } else if minus_infinity {
+        f64::NEG_INFINITY
+    } else if minus_zero {
+        -0.0
+    } else {
+        sum.total()
+    }))
 }
 
 fn math_random(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
@@ -1253,6 +1415,7 @@ pub(super) fn install(vm: &mut Vm) {
         ("min", 2, math_min),
         ("max", 2, math_max),
         ("hypot", 2, math_hypot),
+        ("sumPrecise", 1, math_sum_precise),
         ("random", 0, math_random),
         ("sin", 1, math_sin),
         ("cos", 1, math_cos),

@@ -650,6 +650,10 @@ pub(crate) struct FunctionProto {
     /// Les éléments de `arguments` sont liés aux paramètres : fonction non
     /// stricte dont les paramètres sont de simples identifiants distincts.
     pub(crate) mapped_arguments: bool,
+    /// Vrai si l'objet `arguments` de la fonction porte `callee` (fonction
+    /// non stricte aux paramètres simples) ; sinon y lire `callee` lève
+    /// `TypeError`.
+    pub(crate) arguments_callee: bool,
 }
 
 impl FunctionProto {
