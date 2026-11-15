@@ -6498,6 +6498,73 @@ mod tests {
     }
 
     #[test]
+    fn subtle_crypto_hashes_signs_encrypts_and_derives() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const hex = (buffer) => [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
+               const text = (s) => new TextEncoder().encode(s);
+               const bytes = (h) => new Uint8Array(h.match(/../g).map((x) => parseInt(x, 16)));
+               const name = (e) => e.name;
+               (async () => {
+                 const s = crypto.subtle;
+                 out.push(hex(await s.digest('sha-256', text('abc'))).slice(0, 16));
+                 out.push(hex(await s.digest({ name: 'SHA-1' }, text('abc'))).slice(0, 8));
+                 // HMAC : RFC 4231, cas 2.
+                 const mac = await s.importKey('raw', text('Jefe'), { name: 'HMAC', hash: 'SHA-256' }, true, ['sign', 'verify']);
+                 const signature = await s.sign('HMAC', mac, text('what do ya want for nothing?'));
+                 out.push(hex(signature).slice(0, 16), mac.type, mac.algorithm.length, mac.usages.join('+'));
+                 out.push(await s.verify('HMAC', mac, signature, text('what do ya want for nothing?')));
+                 out.push(await s.verify('HMAC', mac, signature, text('autre chose')));
+                 const jwk = await s.exportKey('jwk', mac);
+                 out.push(jwk.kty + ':' + jwk.k + ':' + jwk.alg);
+                 // AES-GCM : aller et retour, altération, clé engendrée.
+                 const aes = await s.importKey('raw', new Uint8Array(16), 'AES-GCM', false, ['encrypt', 'decrypt']);
+                 const iv = new Uint8Array(12);
+                 const sealed = await s.encrypt({ name: 'AES-GCM', iv }, aes, new Uint8Array(16));
+                 out.push(hex(sealed).slice(0, 16), sealed.byteLength);
+                 out.push(hex(await s.decrypt({ name: 'AES-GCM', iv }, aes, sealed)).length);
+                 const altered = new Uint8Array(sealed); altered[0] ^= 1;
+                 out.push(await s.decrypt({ name: 'AES-GCM', iv }, aes, altered).catch(name));
+                 out.push(await s.exportKey('raw', aes).catch(name));
+                 const fresh = await s.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+                 out.push((await s.exportKey('raw', fresh)).byteLength);
+                 out.push(await s.decrypt({ name: 'AES-GCM', iv }, fresh, sealed).catch(name));
+                 // PBKDF2 (vecteur courant, HMAC-SHA-256, une itération) et HKDF (RFC 5869, cas 1).
+                 const password = await s.importKey('raw', text('password'), 'PBKDF2', false, ['deriveBits', 'deriveKey']);
+                 const stretched = await s.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: text('salt'), iterations: 1 }, password, 256);
+                 out.push(hex(stretched).slice(0, 16));
+                 const ikm = await s.importKey('raw', bytes('0b'.repeat(22)), 'HKDF', false, ['deriveBits']);
+                 const okm = await s.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: bytes('000102030405060708090a0b0c'), info: bytes('f0f1f2f3f4f5f6f7f8f9') }, ikm, 336);
+                 out.push(hex(okm).slice(0, 16), hex(okm).slice(-8));
+                 const derived = await s.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: text('salt'), iterations: 2 }, password, { name: 'AES-GCM', length: 128 }, true, ['encrypt']);
+                 out.push(derived.algorithm.name + derived.algorithm.length);
+                 // Refus.
+                 out.push(await s.digest('MD5', text('x')).catch(name));
+                 out.push(await s.generateKey({ name: 'RSA-OAEP' }, true, ['encrypt']).catch(name));
+                 out.push(await s.importKey('raw', text('k'), { name: 'HMAC', hash: 'SHA-256' }, true, []).catch(name));
+                 out.push(await s.sign('HMAC', aes, text('x')).catch(name));
+                 out.push(crypto.subtle instanceof SubtleCrypto, mac instanceof CryptoKey);
+               })().catch((e) => out.push('échec ' + e)).finally(() => {
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "ba7816bf8f01cfea a9993e36 5bdcc146bf60754e secret 32 sign+verify true false \
+                 oct:SmVmZQ:HS256 0388dace60b6a392 32 32 OperationError InvalidAccessError 32 \
+                 InvalidAccessError 120fb6cffcf8b32c 3cb25f25faacd57a 87185865 AES-GCM128 \
+                 NotSupportedError NotSupportedError SyntaxError InvalidAccessError true true"
+            )
+        );
+    }
+
+    #[test]
     fn event_sources_parse_their_stream_and_reconnect() {
         let mut p = page(
             "<body><script>
