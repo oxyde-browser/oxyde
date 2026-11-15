@@ -89,30 +89,14 @@ fn is_ip(host: &str) -> bool {
     host.contains(':') || host.parse::<std::net::Ipv4Addr>().is_ok()
 }
 
-/// Domaine enregistrable approché d'un hôte : ses deux derniers libellés,
-/// ou trois quand l'avant-dernier est un libellé générique sous un domaine
-/// national (`exemple.co.uk`). Une adresse IP est son propre site.
+/// Domaine enregistrable d'un hôte, d'après la liste des suffixes publics
+/// (`exemple.co.uk` pour `www.exemple.co.uk`). Une adresse IP est son propre
+/// site.
 fn registrable(host: &str) -> &str {
     if is_ip(host) {
         return host;
     }
-    let labels: Vec<&str> = host.split('.').collect();
-    let count = labels.len();
-    if count <= 2 {
-        return host;
-    }
-    const GENERIC: &[&str] = &[
-        "co", "com", "org", "net", "ac", "gov", "edu", "or", "ne", "go", "gouv", "asso", "nom",
-        "sch", "ltd", "plc", "me", "mil", "gob", "nic",
-    ];
-    let national = labels[count - 1].len() == 2;
-    let keep = if national && GENERIC.contains(&labels[count - 2]) {
-        3
-    } else {
-        2
-    };
-    let skipped: usize = labels[..count - keep].iter().map(|l| l.len() + 1).sum();
-    host.get(skipped..).unwrap_or(host)
+    crate::suffixes::registrable_domain(host)
 }
 
 /// Site de `url` : le domaine enregistrable de son hôte ; son schéma pour
@@ -461,6 +445,18 @@ mod tests {
         assert!(!jar.store(&page, "a=1; Domain=co.uk", Access::Http, false));
         assert!(!jar.store(&page, "a=1; Domain=uk", Access::Http, false));
         assert!(jar.store(&page, "a=1; Domain=exemple.co.uk", Access::Http, false));
+        // Suffixes publics de la section privée de la liste : un site hébergé
+        // sous `github.io` ne pose pas de cookie pour tous les autres.
+        let hosted = Url::parse("https://moi.github.io/").expect("url");
+        assert!(!jar.store(&hosted, "a=1; Domain=github.io", Access::Http, false));
+        assert!(!same_site(
+            &hosted,
+            &Url::parse("https://autre.github.io/").expect("url")
+        ));
+        assert!(same_site(
+            &Url::parse("https://a.exemple.com.au/").expect("url"),
+            &Url::parse("https://b.exemple.com.au/").expect("url")
+        ));
         assert!(jar.is_empty() || jar.len() == 1);
     }
 

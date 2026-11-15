@@ -544,7 +544,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       en tout, 8 Mio par réponse ; ni redirections ni réponses partielles gardées ; pas
       de `stale-while-revalidate` ; « Actualiser » recharge tout le site au lieu de
       revalider ; un `POST` n'invalide pas la réponse gardée pour la même adresse ; le
-      site d'un hôte est estimé sans la liste des suffixes publics ; le gain de temps
+      le gain de temps
       n'a pas été mesuré sur de vrais sites.
 - [ ] Moteur JavaScript, ce qui reste avant le JIT du jalon 8 : concaténation de chaînes
       (quadratique), coût des appels (allocation des arguments), formes d'objets et cache
@@ -912,8 +912,8 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       PNG seulement en sortie ; couleurs en sRGB 8 bits. Non essayé à la main dans la
       fenêtre.
 - [ ] Vus à la mesure des sites et encore absents : ombres du canevas,
-      `postMessage` entre fenêtres (la source n'est pas connue), Brotli (demande un
-      crate à télécharger), chargement des ressources en parallèle.
+      `postMessage` entre fenêtres (la source n'est pas connue), chargement des
+      ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,
       `importScripts`, `name`, `WorkerGlobalScope`, plus `fetch`, minuteurs, `URL`…), les
@@ -959,7 +959,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       toujours pas ses réponses au fil de l'eau (`Response.body` reste `null`) ; comme
       pour `WebSocket`, pas de test de bout en bout entre processus ni d'essai sur un
       vrai site.
-- [ ] Liste des suffixes publics (frontière des sites, cookies).
+- [x] Liste des suffixes publics (publicsuffix.org, version du 14 novembre 2026, sections
+      ICANN et privée, embarquée dans `oxyde_net`) : elle fixe le domaine enregistrable
+      d'un hôte, donc la frontière des sites (cookies `SameSite`, cloisonnement du cache
+      HTTP, verrou de site des processus de rendu) et les domaines pour lesquels un
+      cookie se refuse (`co.uk`, `github.io`…). Règles à joker et exceptions comprises.
+      Limite : la liste est celle du jour de la compilation, sans mise à jour en service.
+- [x] Brotli : les réponses `Content-Encoding: br` sont décompressées (crate
+      `brotli-decompressor`, tout en Rust), y compris lues au fil de l'eau ; `br` est
+      annoncé dans `Accept-Encoding`.
+      Limites : pas de Zstandard ; vérifié sur un vecteur d'essai, pas sur un vrai site.
 - [ ] Les 656 tests de test262 restants, par leurs causes de fond : chaînes UTF-16 (substituts
       isolés), tableaux denses, objet de type `document.all`.
 
