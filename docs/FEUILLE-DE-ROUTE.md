@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 312 tests de test262 sur 48 795 (99,0 %)** ; il en reste 483.
+- `oxyde_js` réussit **48 348 tests de test262 sur 48 795 (99,1 %)** ; il en reste 447.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -1008,8 +1008,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       l'appel) ; `Object.fromEntries` ferme l'itérateur sur une erreur.
       Limite : au-delà de 4096 retraits entre deux pas d'un même parcours, celui-ci peut
       sauter ou revoir des entrées.
-- [ ] Les 483 tests de test262 restants : tables Unicode des propriétés d'expressions
-      rationnelles (94), chaînes UTF-16 (substituts isolés), tableaux denses, objet de type
+- [x] test262, quatrième lot (36 tests, 48 312 → 48 348) : un objet enveloppe
+      (`new Number(1)`) est converti par son `valueOf`, même redéfini — défaut réel ; un
+      paramètre nommé `arguments` prend la place de l'objet ; un `finally` qui se termine
+      normalement ne change pas la valeur d'achèvement ; un `var` évalué par `eval` ne
+      redéclare pas un `let` de la fonction appelante ; `eval(...liste)` reste direct ;
+      `await` redevient un identifiant dans les fonctions d'un bloc `static`.
+- [ ] Les 447 tests de test262 restants : tables Unicode des propriétés d'expressions
+      rationnelles (94 : les tables de la crate `icu_properties` 2.4 sont plus récentes
+      que la révision de test262 du dépôt, en Unicode 17 — à régler en mettant à jour
+      test262, ce qui demande un téléchargement), chaînes UTF-16 (substituts isolés), tableaux denses, objet de type
       `document.all`, `import()` et modules (phases `defer` et `source`, octets), accesseurs
       automatiques (`accessor`), et une longue traîne de cas isolés.
 

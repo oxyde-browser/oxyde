@@ -619,6 +619,10 @@ pub(crate) struct EvalSite {
     /// fonction : noms qui y sont liés (paramètres, `arguments`), que le
     /// code évalué ne peut pas déclarer.
     pub(crate) params: Vec<JsStr>,
+    /// Liaisons lexicales (`let`, `const`, classe) de la fonction
+    /// appelante visibles à l'appel, hors paramètre simple d'un `catch` :
+    /// un `var` du code évalué ne peut pas les redéclarer.
+    pub(crate) lexical: Vec<JsStr>,
 }
 
 /// Morceaux d'un gabarit étiqueté : interprétés, puis bruts.

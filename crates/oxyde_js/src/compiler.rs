@@ -84,6 +84,9 @@ struct Binding {
     /// l'ordre du source, n'ont plus besoin de vérifier la zone morte.
     initialized: bool,
     captured: bool,
+    /// Paramètre simple d'un `catch` : un `var` de même nom reste permis
+    /// (annexe B.3.4).
+    catch_param: bool,
 }
 
 struct Scope {
@@ -410,6 +413,20 @@ pub(crate) fn compile_direct_eval(
             return error(&format!(
                 "« {name} » ne peut pas être déclaré par eval dans des paramètres"
             ));
+        }
+    }
+    if !strict && !site.lexical.is_empty() {
+        // Un `var` du code évalué remonte jusqu'à la fonction appelante : il
+        // ne peut pas y croiser une liaison lexicale.
+        let mut vars = Vec::new();
+        var_names(body, &mut vars);
+        for stmt in body {
+            if let Stmt::Function(func) = stmt {
+                vars.extend(func.name.clone());
+            }
+        }
+        if let Some(name) = vars.iter().find(|name| site.lexical.contains(name)) {
+            return error(&format!("« {name} » est déjà déclaré"));
         }
     }
     // Au premier niveau d'un script, hors mode strict, les `var` du code
@@ -895,6 +912,7 @@ impl Compiler {
                 kind,
                 initialized,
                 captured: false,
+                catch_param: false,
             });
         }
     }
@@ -1559,7 +1577,18 @@ impl Compiler {
             }
             None => None,
         };
-        if kind != FunctionKind::Arrow {
+        // Un paramètre nommé `arguments` prend la place de l'objet.
+        let mut param_names = Vec::new();
+        for pattern in func
+            .params
+            .iter()
+            .map(|param| &param.pattern)
+            .chain(func.rest.as_ref())
+        {
+            pattern_names(pattern, &mut param_names);
+        }
+        let shadowed = param_names.iter().any(|name| &**name == "arguments");
+        if kind != FunctionKind::Arrow && !shadowed {
             let reg = self.alloc()?;
             self.f().arguments_reg = Some(reg);
             self.declare_at(&Arc::from("arguments"), BindKind::Var, true, reg);
@@ -1578,6 +1607,7 @@ impl Compiler {
                     kind: BindKind::FnName,
                     initialized: true,
                     captured: false,
+                    catch_param: false,
                 });
             }
         }
@@ -1603,6 +1633,7 @@ impl Compiler {
                         kind: BindKind::Var,
                         initialized: true,
                         captured: false,
+                        catch_param: false,
                     },
                 );
             }
@@ -2241,7 +2272,7 @@ impl Compiler {
                     // Le bloc `finally` est recopié sur ce chemin de sortie ; pendant sa
                     // compilation, lui-même et les zones internes ne sont plus actifs.
                     let saved = self.f().exits.split_off(index);
-                    let result = self.statements(&body);
+                    let result = self.finalizer(&body);
                     self.f().exits.extend(saved);
                     result?;
                 }
@@ -2970,6 +3001,24 @@ impl Compiler {
         Ok(())
     }
 
+    /// Compile un bloc `finally`. Dans un script, il part d'une valeur
+    /// d'achèvement vide et, s'il se termine normalement, rend celle
+    /// qu'avait le chemin qui l'a atteint ; s'il sort par `break` ou
+    /// `continue`, c'est la sienne qui reste.
+    fn finalizer(&mut self, body: &[Stmt]) -> CResult<()> {
+        if !self.f().is_script {
+            return self.statements(body);
+        }
+        let mark = self.mark();
+        let saved = self.alloc()?;
+        self.emit(Op::Move { dst: saved, src: 0 });
+        self.emit(Op::LoadUndefined { dst: 0 });
+        self.statements(body)?;
+        self.emit(Op::Move { dst: 0, src: saved });
+        self.free_to(mark);
+        Ok(())
+    }
+
     fn try_statement(
         &mut self,
         block: &[Stmt],
@@ -3014,6 +3063,15 @@ impl Compiler {
                 if let Some(param) = param {
                     pattern_names(param, &mut caught);
                     self.declare_pattern(param, BindKind::Let)?;
+                    if matches!(param, Pattern::Ident(_))
+                        && let Some(binding) = self
+                            .f()
+                            .scopes
+                            .last_mut()
+                            .and_then(|scope| scope.bindings.last_mut())
+                    {
+                        binding.catch_param = true;
+                    }
                     self.assign_pattern(param, exception, true)?;
                 }
                 // `catch (e) { function e() {} }` reste permis (annexe B).
@@ -3045,7 +3103,7 @@ impl Compiler {
                 self.emit(Op::Throw { src: exception });
                 self.patch(after_try);
                 if let Some(finalizer) = &finalizer {
-                    self.statements(finalizer)?;
+                    self.finalizer(finalizer)?;
                 }
                 return Ok(());
             }
@@ -3053,7 +3111,7 @@ impl Compiler {
         self.patch(after_try);
         if let Some(finalizer) = &finalizer {
             self.f().exits.pop();
-            self.statements(finalizer)?;
+            self.finalizer(finalizer)?;
             if let Some(guard) = rethrow {
                 let to_end = self.emit(Op::Jump { target: 0 });
                 self.patch(guard);
@@ -3472,6 +3530,16 @@ impl Compiler {
                 .find(|f| f.kind != FunctionKind::Arrow)
                 .is_some_and(|f| f.field_init),
             params: self.f().in_params.clone(),
+            lexical: self
+                .f()
+                .scopes
+                .iter()
+                .flat_map(|scope| &scope.bindings)
+                .filter(|binding| {
+                    matches!(binding.kind, BindKind::Let | BindKind::Const) && !binding.catch_param
+                })
+                .map(|binding| Arc::clone(&binding.name))
+                .collect(),
         };
         let index = u16::try_from(self.f().eval_sites.len()).unwrap_or(u16::MAX);
         self.f().eval_sites.push(Arc::new(site));
@@ -4082,6 +4150,26 @@ impl Compiler {
                         first,
                         argc,
                     }),
+                    // `eval(...arguments)` reste un `eval` direct : seul le
+                    // premier argument, une fois la liste étalée, compte.
+                    Err(array) if direct_eval => {
+                        let site = self.eval_site()?;
+                        let first = self.alloc()?;
+                        let index = self.number(0.0);
+                        self.emit(Op::LoadConst { dst: first, index });
+                        self.emit(Op::GetElem {
+                            dst: first,
+                            obj: array,
+                            key: first,
+                        });
+                        self.emit(Op::DirectEval {
+                            dst,
+                            callee: func,
+                            first,
+                            argc: 1,
+                            site,
+                        })
+                    }
                     Err(array) => self.emit(Op::CallSpread {
                         dst,
                         callee: func,

@@ -816,10 +816,13 @@ impl Parser {
         if self.is_punct("(") {
             return Ok(None);
         }
-        let saved = (self.in_async, self.in_generator);
-        (self.in_async, self.in_generator) = (is_async, is_generator);
+        // Le nom d'une expression de fonction se lit dans le contexte de la
+        // fonction elle-même : `await` y est permis jusque dans un bloc
+        // `static`.
+        let saved = (self.in_async, self.in_generator, self.in_static_block);
+        (self.in_async, self.in_generator, self.in_static_block) = (is_async, is_generator, false);
         let name = self.binding_ident();
-        (self.in_async, self.in_generator) = saved;
+        (self.in_async, self.in_generator, self.in_static_block) = saved;
         name.map(Some)
     }
 
@@ -2300,6 +2303,9 @@ impl Parser {
         self.in_generator = false;
         self.in_params = false;
         self.no_return = false;
+        // Dans le corps, `await` redevient un identifiant ordinaire, même au
+        // sein d'un bloc `static`.
+        self.in_static_block = false;
         let block = self.is_punct("{");
         let body = if block {
             self.function_body().and_then(|(body, directive)| {

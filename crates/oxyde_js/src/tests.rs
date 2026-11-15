@@ -3427,6 +3427,31 @@ fn super_references_follow_the_standard_order() {
 }
 
 #[test]
+fn wrappers_completions_and_eval_follow_the_standard() {
+    assert_eq!(
+        eval(
+            "var out = [];
+             // Une enveloppe passe par son `valueOf`, même redéfini.
+             var n = new Number(42); n.valueOf = function () { return 2; };
+             out.push(+n, n + 1, JSON.stringify([n]));
+             // Un paramètre nommé `arguments` prend la place de l'objet.
+             out.push((function (arguments) { return arguments; })(7));
+             // Un `finally` qui se termine normalement ne change pas la valeur d'achèvement.
+             out.push(eval('1; try { 3; } finally { 5; }'), eval('1; do { try { 3; } finally { 5; break; } } while (false);'));
+             // Un `var` évalué ne redéclare pas un `let` de la fonction, sauf le paramètre d'un `catch`.
+             out.push((function () { let x; try { eval('var x;'); return 'permis'; } catch (e) { return e.name; } })());
+             out.push((function () { try { throw 1; } catch (e) { eval('var e = 2;'); return e; } })());
+             // `eval(...liste)` reste direct.
+             out.push((function () { var local = 'vu'; return eval(...['local']); })());
+             // `await` reste un identifiant dans une fonction fléchée d'un bloc `static`.
+             class C { static { out.push((() => { var await = 'nom'; return await; })()); } }
+             out.join()"
+        ),
+        "2,3,[2],7,3,5,SyntaxError,2,vu,nom"
+    );
+}
+
+#[test]
 fn string_slices_and_searches_use_utf16_positions() {
     assert_eq!(
         eval(
