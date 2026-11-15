@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod cookies;
+pub mod stream;
 pub mod websocket;
 
 use bytes::Bytes;
@@ -30,6 +31,7 @@ use hyper::{Method, Request, StatusCode};
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::pki_types::ServerName;
 use rustls::{ClientConfig, RootCertStore};
+pub use stream::StreamEvent;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 pub use url::Url;
@@ -385,7 +387,37 @@ impl Client {
         }
     }
 
+    /// Envoie `request` et lit sa réponse en entier.
     async fn send_once(&self, request: &HttpRequest) -> Result<Step, NetError> {
+        let (head, mut stream) = match self.send_head(request).await? {
+            HeadStep::Redirect(next, status) => return Ok(Step::Redirect(next, status)),
+            HeadStep::Final(head, stream) => (head, stream),
+        };
+        let mut body = Vec::new();
+        while let Some(frame) = stream.frame().await {
+            if let Some(chunk) = frame?.data_ref() {
+                if body.len().saturating_add(chunk.len()) > MAX_BODY_BYTES {
+                    return Err(NetError::BodyTooLarge);
+                }
+                body.extend_from_slice(chunk);
+            }
+        }
+        let body = match &head.encoding {
+            Some(encoding) if !body.is_empty() => decode_body(body, encoding)?,
+            _ => body,
+        };
+        Ok(Step::Done(Response {
+            url: request.url.clone(),
+            status: head.status,
+            content_type: head.content_type,
+            headers: head.headers,
+            body,
+        }))
+    }
+
+    /// Envoie `request` et rend l'en-tête de la réponse, son corps restant
+    /// à lire.
+    async fn send_head(&self, request: &HttpRequest) -> Result<HeadStep, NetError> {
         let url = &request.url;
         let method = Method::from_bytes(request.method.as_bytes())
             .map_err(|e| NetError::InvalidRequest(e.to_string()))?;
@@ -566,7 +598,7 @@ impl Client {
             if !matches!(next.scheme(), "http" | "https") {
                 return Err(NetError::UnsupportedScheme(next.scheme().to_owned()));
             }
-            return Ok(Step::Redirect(next, status));
+            return Ok(HeadStep::Redirect(next, status));
         }
 
         let content_type = response
@@ -593,28 +625,32 @@ impl Client {
                 Some((name.as_str().to_owned(), value.to_str().ok()?.to_owned()))
             })
             .collect();
-        let mut body = Vec::new();
-        let mut stream = response.into_body();
-        while let Some(frame) = stream.frame().await {
-            if let Some(chunk) = frame?.data_ref() {
-                if body.len().saturating_add(chunk.len()) > MAX_BODY_BYTES {
-                    return Err(NetError::BodyTooLarge);
-                }
-                body.extend_from_slice(chunk);
-            }
-        }
-        let body = match encoding {
-            Some(encoding) if !body.is_empty() => decode_body(body, &encoding)?,
-            _ => body,
-        };
-        Ok(Step::Done(Response {
-            url: url.clone(),
-            status: status.as_u16(),
-            content_type,
-            headers,
-            body,
-        }))
+        Ok(HeadStep::Final(
+            Head {
+                status: status.as_u16(),
+                content_type,
+                encoding,
+                headers,
+            },
+            response.into_body(),
+        ))
     }
+}
+
+/// En-tête d'une réponse finale.
+struct Head {
+    status: u16,
+    content_type: Option<String>,
+    /// Valeur de `Content-Encoding`, si le corps est compressé.
+    encoding: Option<String>,
+    headers: Vec<(String, String)>,
+}
+
+enum HeadStep {
+    /// Réponse finale : son en-tête, et son corps à lire.
+    Final(Head, hyper::body::Incoming),
+    /// Adresse suivante et code d'état de la redirection.
+    Redirect(Url, StatusCode),
 }
 
 enum Step {

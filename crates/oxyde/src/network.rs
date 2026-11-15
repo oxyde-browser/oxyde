@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError, mpsc};
 
 use oxyde_ipc::{Bytes, ChannelError, Receiver, Sender, connect_to_parent, ipc_enum, ipc_struct};
-use oxyde_net::{Client, HttpRequest, NetError, SocketEvent, SocketHandle};
+use oxyde_net::{Client, HttpRequest, NetError, SocketEvent, SocketHandle, StreamEvent};
 use url::Url;
 
 /// Nature d'un échec réseau, pour le choix de la page d'erreur.
@@ -294,6 +294,123 @@ fn served_sockets() -> &'static Mutex<HashMap<u64, SocketHandle>> {
     SERVED.get_or_init(Mutex::default)
 }
 
+/// Flux d'événements (`EventSource`) lus par ce processus : de quoi les
+/// abandonner, par identifiant.
+fn served_streams() -> &'static Mutex<HashMap<u64, Arc<AtomicBool>>> {
+    static STREAMS: OnceLock<Mutex<HashMap<u64, Arc<AtomicBool>>>> = OnceLock::new();
+    STREAMS.get_or_init(Mutex::default)
+}
+
+/// Abandonne le flux d'événements `socket`, s'il est lu ici ; vrai s'il
+/// l'était.
+fn cancel_stream(socket: u64) -> bool {
+    let cancelled = served_streams()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&socket);
+    match cancelled {
+        Some(flag) => {
+            flag.store(true, Ordering::Relaxed);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Lit, sur un fil dédié, le flux d'événements `url` pour le document
+/// `document`, et l'annonce comme une connexion : ouverture si la réponse
+/// est bien un flux d'événements, morceaux, puis fermeture (voir
+/// [`oxyde_content::SocketCommand`] pour le sens des codes).
+fn serve_stream(socket: u64, url: Url, document: Url, last_event_id: Option<String>) {
+    let cancelled = Arc::new(AtomicBool::new(false));
+    served_streams()
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(socket, Arc::clone(&cancelled));
+    let close = |code: u16, clean: bool| SocketEvent::Close {
+        code,
+        reason: String::new(),
+        clean,
+    };
+    let spawned = std::thread::Builder::new()
+        .name("oxyde-flux".to_owned())
+        .spawn(move || {
+            let Ok(client) = client() else {
+                cancel_stream(socket);
+                return announce(socket, close(1006, false));
+            };
+            let cross_origin = url.origin() != document.origin();
+            let origin = document.origin().ascii_serialization();
+            let mut headers = vec![
+                ("accept".to_owned(), "text/event-stream".to_owned()),
+                ("cache-control".to_owned(), "no-cache".to_owned()),
+            ];
+            if let Some(last) = last_event_id {
+                headers.push(("last-event-id".to_owned(), last));
+            }
+            if cross_origin {
+                headers.push(("origin".to_owned(), origin.clone()));
+            }
+            let request = HttpRequest {
+                headers,
+                initiator: Some(document),
+                ..HttpRequest::get(&url)
+            };
+            let flag = Arc::clone(&cancelled);
+            client.stream(&request, &cancelled, &mut |event| match event {
+                StreamEvent::Head {
+                    status, headers, ..
+                } => {
+                    let header = |wanted: &str| {
+                        headers
+                            .iter()
+                            .find(|(name, _)| name.eq_ignore_ascii_case(wanted))
+                            .map(|(_, value)| value.as_str())
+                    };
+                    let event_stream = header("content-type").is_some_and(|kind| {
+                        kind.split(';')
+                            .next()
+                            .unwrap_or_default()
+                            .trim()
+                            .eq_ignore_ascii_case("text/event-stream")
+                    });
+                    // Une autre origine doit autoriser la lecture.
+                    let allowed = !cross_origin
+                        || header("access-control-allow-origin")
+                            .is_some_and(|value| value == "*" || value == origin);
+                    if status == 200 && event_stream && allowed {
+                        announce(
+                            socket,
+                            SocketEvent::Open {
+                                protocol: String::new(),
+                            },
+                        );
+                    } else {
+                        // Refus définitif : le code d'état s'il dit
+                        // pourquoi, sinon une faute de protocole.
+                        flag.store(true, Ordering::Relaxed);
+                        cancel_stream(socket);
+                        let code = if status == 200 { 1002 } else { status };
+                        announce(socket, close(code, false));
+                    }
+                }
+                StreamEvent::Chunk(bytes) => announce(socket, SocketEvent::Binary(bytes)),
+                StreamEvent::End => {
+                    cancel_stream(socket);
+                    announce(socket, close(1000, true));
+                }
+                StreamEvent::Failed(_) => {
+                    cancel_stream(socket);
+                    announce(socket, close(1006, false));
+                }
+            });
+        });
+    if spawned.is_err() {
+        cancel_stream(socket);
+        announce(socket, close(1006, false));
+    }
+}
+
 /// Dans le processus réseau : de quoi envoyer au navigateur les nouvelles
 /// des connexions WebSocket. Absent quand le réseau est servi sur place.
 static NEWS_TO_BROWSER: OnceLock<Sender<FromNetwork>> = OnceLock::new();
@@ -339,6 +456,10 @@ fn serve_socket(socket: u64, url: &str, document: &str, protocols: &[String]) {
     else {
         return failed();
     };
+    if matches!(url.scheme(), "http" | "https") {
+        // Un flux d'événements, annoncé comme une connexion.
+        return serve_stream(socket, url, document, protocols.first().cloned());
+    }
     if !matches!(url.scheme(), "ws" | "wss") {
         return failed();
     }
@@ -388,10 +509,23 @@ fn serve_here(call: Call) -> Answer {
             code,
             reason,
         } => {
-            with_socket(socket, |handle| handle.close(code, reason));
+            if cancel_stream(socket) {
+                // Un flux abandonné se tait : sa fermeture est annoncée ici.
+                announce(
+                    socket,
+                    SocketEvent::Close {
+                        code: 1000,
+                        reason: String::new(),
+                        clean: true,
+                    },
+                );
+            } else {
+                with_socket(socket, |handle| handle.close(code, reason));
+            }
             Answer::Done
         }
         Call::SocketDrop { socket } => {
+            cancel_stream(socket);
             // Lâcher la poignée coupe la connexion.
             let dropped = served_sockets()
                 .lock()
@@ -900,6 +1034,83 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn event_streams_are_announced_like_sockets() {
+        use std::io::{Read, Write};
+        // Sert une réponse par connexion : un flux, puis une page ordinaire.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("écoute");
+        let port = listener.local_addr().expect("adresse").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.expect("connexion");
+                let mut request = Vec::new();
+                let mut byte = [0u8; 1];
+                while !request.ends_with(b"\r\n\r\n") {
+                    stream.read_exact(&mut byte).expect("requête");
+                    request.push(byte[0]);
+                }
+                let text = String::from_utf8_lossy(&request).into_owned();
+                if text.starts_with("GET /flux ") {
+                    assert!(text.contains("last-event-id: 7\r\n"), "{text}");
+                    assert!(text.contains("accept: text/event-stream\r\n"), "{text}");
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\n\
+                              Content-Length: 10\r\nConnection: close\r\n\r\ndata: un\n\n",
+                        )
+                        .expect("flux");
+                } else {
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\
+                              Content-Length: 2\r\nConnection: close\r\n\r\nok",
+                        )
+                        .expect("page");
+                }
+            }
+        });
+        let document = Url::parse(&format!("http://127.0.0.1:{port}/page")).expect("url");
+        let listen = |path: &str, last: &[String]| {
+            let (sender, events) = mpsc::channel();
+            let url = Url::parse(&format!("http://127.0.0.1:{port}{path}")).expect("url");
+            let socket = open_socket(&url, &document, last, move |event| {
+                let _ = sender.send(event);
+            });
+            (socket, events)
+        };
+        let next = |events: &mpsc::Receiver<SocketEvent>| {
+            events
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("événement")
+        };
+        let (_flux, events) = listen("/flux", &["7".to_owned()]);
+        assert_eq!(
+            next(&events),
+            SocketEvent::Open {
+                protocol: String::new()
+            }
+        );
+        assert_eq!(next(&events), SocketEvent::Binary(b"data: un\n\n".to_vec()));
+        assert_eq!(
+            next(&events),
+            SocketEvent::Close {
+                code: 1000,
+                reason: String::new(),
+                clean: true
+            }
+        );
+        // Une réponse qui n'est pas un flux d'événements : refus définitif.
+        let (_page, events) = listen("/page", &[]);
+        assert_eq!(
+            next(&events),
+            SocketEvent::Close {
+                code: 1002,
+                reason: String::new(),
+                clean: false
+            }
+        );
     }
 
     #[test]
