@@ -23,7 +23,8 @@
 // LIMITES CONNUES : le texte se dessine sur une ligne, de gauche à droite
 // (`direction` est retenu sans effet), sans `letterSpacing`, `wordSpacing`
 // ni `fontKerning` ; les lignes de base `hanging` et `ideographic` valent
-// `top` et `bottom` ; pas d'ombres ni de filtres ;
+// `top` et `bottom` ; pas de filtres ; les ombres sont approchées (flou par
+// moyennes glissantes) ;
 // `isPointInStroke` rend toujours faux ; pas de dégradé conique ; un motif se
 // répète toujours dans les deux sens ; `drawImage` ne prend ni vidéo ni
 // image SVG ; seul le contexte `2d` existe (ni WebGL, ni `bitmaprenderer`) ;
@@ -697,7 +698,7 @@
     m: IDENTITY, fill: "#000000", stroke: "#000000", alpha: 1, operation: 0, lineWidth: 1, cap: 0, join: 0,
     miter: 10, dash: [], dashOffset: 0, clip: 0, font: "10px sans-serif", textAlign: "start",
     textBaseline: "alphabetic", direction: "inherit", smoothing: true, smoothingQuality: "low",
-    shadowColor: "rgba(0, 0, 0, 0)", shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, filter: "none",
+    shadowColor: "rgba(0, 0, 0, 0)", shadowRgba: [0, 0, 0, 0], shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0, filter: "none",
   });
   // Surface de chaque canevas : sa taille, créée à la demande.
   const surfaces = new WeakMap();
@@ -736,7 +737,14 @@
     }
     #stateText(operation = this.#state.operation, alpha = this.#state.alpha) {
       const s = this.#state;
-      return alpha + " " + operation + " " + s.clip + " " + s.m.join(" ");
+      const base = alpha + " " + operation + " " + s.clip + " " + s.m.join(" ");
+      // Une ombre n'existe que si sa couleur n'est pas transparente et
+      // qu'elle est floue ou décalée ; `clearRect` n'en porte pas.
+      const shadowed = operation !== CLEAR && s.shadowRgba[3] > 0
+        && (s.shadowBlur > 0 || s.shadowOffsetX !== 0 || s.shadowOffsetY !== 0);
+      return shadowed
+        ? base + " " + s.shadowRgba.join(" ") + " " + s.shadowBlur + " " + s.shadowOffsetX + " " + s.shadowOffsetY
+        : base;
     }
 
     // -- État
@@ -864,7 +872,9 @@
     get shadowColor() { return this.#state.shadowColor; }
     set shadowColor(value) {
       const parsed = colorOf(value);
-      if (parsed !== null) this.#state.shadowColor = serializeColor(parsed);
+      if (parsed === null) return;
+      this.#state.shadowColor = serializeColor(parsed);
+      this.#state.shadowRgba = parsed;
     }
     get shadowBlur() { return this.#state.shadowBlur; }
     set shadowBlur(value) {

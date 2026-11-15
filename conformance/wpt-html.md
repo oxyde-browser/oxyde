@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 48239 / 123969 (38,9 %)** — fichiers entièrement réussis : 2275 / 7308 (31,1 %).
+**Sous-tests réussis : 48527 / 123969 (39,1 %)** — fichiers entièrement réussis : 2391 / 7308 (32,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,7 +13,7 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `html/anonymous-iframe` | 0 / 18 | 0 / 24 (0,0 %) |
+| `html/anonymous-iframe` | 1 / 18 | 1 / 24 (4,2 %) |
 | `html/browsers/browsing-the-web/back-forward-cache` | 0 / 12 | 0 / 17 (0,0 %) |
 | `html/browsers/browsing-the-web/back-forward-cache/broadcastchannel` | 0 / 3 | 0 / 3 (0,0 %) |
 | `html/browsers/browsing-the-web/back-forward-cache/eligibility` | 0 / 8 | 0 / 16 (0,0 %) |
@@ -55,7 +55,7 @@ est le plus honnête des deux.
 | `html/browsers/origin/origin-keyed-agent-clusters/getter-special-cases` | 0 / 15 | 0 / 16 (0,0 %) |
 | `html/browsers/origin/origin-keyed-agent-clusters/iframe-navigation` | 0 / 8 | 0 / 64 (0,0 %) |
 | `html/browsers/origin/origin-keyed-agent-clusters/popups` | 0 / 10 | 0 / 38 (0,0 %) |
-| `html/browsers/origin/relaxing-the-same-origin-restriction` | 1 / 5 | 4 / 27 (14,8 %) |
+| `html/browsers/origin/relaxing-the-same-origin-restriction` | 2 / 5 | 7 / 27 (25,9 %) |
 | `html/browsers/sandboxing` | 4 / 20 | 5 / 33 (15,2 %) |
 | `html/browsers/the-window-object` | 6 / 33 | 81 / 416 (19,5 %) |
 | `html/browsers/the-window-object/accessing-other-browsing-contexts` | 1 / 5 | 7 / 15 (46,7 %) |
@@ -68,7 +68,7 @@ est le plus honnête des deux.
 | `html/browsers/windows/auxiliary-browsing-contexts` | 0 / 10 | 0 / 19 (0,0 %) |
 | `html/browsers/windows/browsing-context-names` | 0 / 18 | 0 / 21 (0,0 %) |
 | `html/browsers/windows/consume-user-activation` | 0 / 2 | 0 / 3 (0,0 %) |
-| `html/browsers/windows/nested-browsing-contexts` | 1 / 8 | 4 / 42 (9,5 %) |
+| `html/browsers/windows/nested-browsing-contexts` | 1 / 8 | 6 / 42 (14,3 %) |
 | `html/canvas` | 3 / 4 | 11 / 18 (61,1 %) |
 | `html/canvas/element` | 3 / 5 | 3 / 15 (20,0 %) |
 | `html/canvas/element/canvas-context` | 10 / 11 | 10 / 11 (90,9 %) |
@@ -77,7 +77,7 @@ est le plus honnête des deux.
 | `html/canvas/element/compositing` | 59 / 98 | 59 / 98 (60,2 %) |
 | `html/canvas/element/conformance-requirements` | 3 / 4 | 3 / 4 (75,0 %) |
 | `html/canvas/element/drawing-images-to-the-canvas` | 13 / 37 | 13 / 37 (35,1 %) |
-| `html/canvas/element/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
+| `html/canvas/element/drawing-rectangles-to-the-canvas` | 32 / 32 | 32 / 32 (100,0 %) |
 | `html/canvas/element/fill-and-stroke-styles` | 168 / 257 | 168 / 257 (65,4 %) |
 | `html/canvas/element/filters` | 1 / 12 | 1 / 12 (8,3 %) |
 | `html/canvas/element/global-hdr-headroom` | 3 / 3 | 10 / 10 (100,0 %) |
@@ -98,14 +98,14 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/image-smoothing` | 0 / 1 | 6 / 9 (66,7 %) |
 | `html/canvas/element/manual/imagebitmap` | 2 / 20 | 29 / 281 (10,3 %) |
 | `html/canvas/element/manual/line-styles` | 1 / 1 | 2 / 2 (100,0 %) |
-| `html/canvas/element/manual/shadows` | 0 / 2 | 0 / 4 (0,0 %) |
+| `html/canvas/element/manual/shadows` | 1 / 2 | 3 / 4 (75,0 %) |
 | `html/canvas/element/manual/the-canvas-state` | 2 / 2 | 4 / 4 (100,0 %) |
 | `html/canvas/element/manual/transformations` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/canvas/element/manual/wide-gamut-canvas` | 0 / 14 | 78 / 1535 (5,1 %) |
 | `html/canvas/element/path-objects` | 181 / 210 | 181 / 210 (86,2 %) |
 | `html/canvas/element/pixel-manipulation` | 62 / 71 | 62 / 71 (87,3 %) |
 | `html/canvas/element/reset` | 23 / 29 | 23 / 29 (79,3 %) |
-| `html/canvas/element/shadows` | 23 / 59 | 23 / 59 (39,0 %) |
+| `html/canvas/element/shadows` | 51 / 59 | 51 / 59 (86,4 %) |
 | `html/canvas/element/text` | 27 / 125 | 28 / 285 (9,8 %) |
 | `html/canvas/element/the-canvas-state` | 23 / 23 | 68 / 68 (100,0 %) |
 | `html/canvas/element/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
@@ -118,7 +118,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/compositing` | 59 / 98 | 59 / 98 (60,2 %) |
 | `html/canvas/offscreen/conformance-requirements` | 1 / 2 | 1 / 2 (50,0 %) |
 | `html/canvas/offscreen/drawing-images-to-the-canvas` | 7 / 28 | 7 / 28 (25,0 %) |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
+| `html/canvas/offscreen/drawing-rectangles-to-the-canvas` | 32 / 32 | 32 / 32 (100,0 %) |
 | `html/canvas/offscreen/fill-and-stroke-styles` | 170 / 247 | 170 / 247 (68,8 %) |
 | `html/canvas/offscreen/filters` | 1 / 12 | 1 / 12 (8,3 %) |
 | `html/canvas/offscreen/layers` | 4 / 20 | 4 / 25 (16,0 %) |
@@ -135,7 +135,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/path-objects` | 181 / 211 | 181 / 211 (85,8 %) |
 | `html/canvas/offscreen/pixel-manipulation` | 55 / 59 | 55 / 59 (93,2 %) |
 | `html/canvas/offscreen/reset` | 23 / 29 | 23 / 29 (79,3 %) |
-| `html/canvas/offscreen/shadows` | 19 / 56 | 19 / 56 (33,9 %) |
+| `html/canvas/offscreen/shadows` | 46 / 56 | 46 / 56 (82,1 %) |
 | `html/canvas/offscreen/text` | 26 / 119 | 26 / 277 (9,4 %) |
 | `html/canvas/offscreen/the-canvas-state` | 20 / 20 | 56 / 56 (100,0 %) |
 | `html/canvas/offscreen/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
@@ -193,8 +193,8 @@ est le plus honnête des deux.
 | `html/infrastructure/common-dom-interfaces/collections` | 0 / 7 | 19 / 104 (18,3 %) |
 | `html/infrastructure/conformance-requirements/extensibility` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/infrastructure/fetching-resources` | 0 / 1 | 0 / 2 (0,0 %) |
-| `html/infrastructure/safe-passing-of-structured-data` | 2 / 11 | 152 / 248 (61,3 %) |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 1 / 21 | 8 / 55 (14,5 %) |
+| `html/infrastructure/safe-passing-of-structured-data` | 2 / 11 | 162 / 248 (65,3 %) |
+| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 2 / 21 | 9 / 55 (16,4 %) |
 | `html/infrastructure/terminology/plugins` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/infrastructure/urls/base-url` | 1 / 11 | 2 / 17 (11,8 %) |
 | `html/infrastructure/urls/dynamic-changes-to-base-urls` | 0 / 2 | 15 / 39 (38,5 %) |
@@ -273,7 +273,7 @@ est le plus honnête des deux.
 | `html/semantics/edits/the-ins-element` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/embedded-content/bfcache` | 0 / 6 | 0 / 0 (—) |
 | `html/semantics/embedded-content/image-maps/image-map-processing-model` | 1 / 3 | 2 / 177 (1,1 %) |
-| `html/semantics/embedded-content/media-elements` | 3 / 62 | 145 / 302 (48,0 %) |
+| `html/semantics/embedded-content/media-elements` | 4 / 62 | 146 / 302 (48,3 %) |
 | `html/semantics/embedded-content/media-elements/error-codes` | 0 / 1 | 0 / 6 (0,0 %) |
 | `html/semantics/embedded-content/media-elements/interfaces/HTMLElement/HTMLMediaElement` | 0 / 3 | 3 / 23 (13,0 %) |
 | `html/semantics/embedded-content/media-elements/interfaces/HTMLElement/HTMLTrackElement` | 0 / 7 | 9 / 63 (14,3 %) |
@@ -384,7 +384,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks` | 1 / 2 | 3 / 4 (75,0 %) |
 | `html/semantics/scripting-1/the-script-element/module/import-meta` | 0 / 3 | 3 / 13 (23,1 %) |
 | `html/semantics/scripting-1/the-script-element/module/top-level-await` | 0 / 1 | 0 / 2 (0,0 %) |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents` | 0 / 52 | 52 / 260 (20,0 %) |
+| `html/semantics/scripting-1/the-script-element/moving-between-documents` | 52 / 52 | 260 / 260 (100,0 %) |
 | `html/semantics/scripting-1/the-script-element/moving-between-documents/ordering` | 0 / 4 | 2 / 6 (33,3 %) |
 | `html/semantics/scripting-1/the-script-element/text-module` | 1 / 15 | 13 / 155 (8,4 %) |
 | `html/semantics/scripting-1/the-template-element` | 0 / 1 | 267 / 403 (66,3 %) |
@@ -475,7 +475,6 @@ est le plus honnête des deux.
 | `html/anonymous-iframe/local-storage-initial-empty-document.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/local-storage.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/requestStorageAccess.tentative.https.window.js` | 0 / 0 | harnais : Error: assert_implements: requestStorageAccess is not supported. undefined |
-| `html/anonymous-iframe/require-corp-embed-anonymous-iframe.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/serviceworker-partitioning.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/session-storage.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/sharedworker-partitioning.tentative.https.window.js` | 0 / 1 |  |
@@ -909,7 +908,7 @@ est le plus honnête des deux.
 | `html/browsers/origin/api/origin-from-global.any.js` | 0 / 1 |  |
 | `html/browsers/origin/api/origin-from-hyperlinkelementutils.window.js` | 0 / 129 |  |
 | `html/browsers/origin/api/origin-from-location.window.js` | 0 / 2 |  |
-| `html/browsers/origin/api/origin-from-messageevent-opaque.window.js` | 0 / 3 | harnais : délai du harnais dépassé |
+| `html/browsers/origin/api/origin-from-messageevent-opaque.window.js` | 0 / 3 |  |
 | `html/browsers/origin/api/origin-from-messageevent.window.js` | 0 / 6 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/api/origin-from-origin.any.js` | 0 / 25 |  |
 | `html/browsers/origin/api/origin-from-string.any.js` | 0 / 27 |  |
@@ -963,7 +962,7 @@ est le plus honnête des deux.
 | `html/browsers/origin/origin-keyed-agent-clusters/about-blank-popup.https.sub.html` | 0 / 1 | harnais : TypeError: impossible de lire la propriété « document » de null (valeur de popup) |
 | `html/browsers/origin/origin-keyed-agent-clusters/about-blank.https.sub.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/origin-keyed-agent-clusters/data-frame-child.https.sub.html` | 0 / 1 |  |
-| `html/browsers/origin/origin-keyed-agent-clusters/document-domain.sub.https.html` | 1 / 3 | harnais : délai du harnais dépassé |
+| `html/browsers/origin/origin-keyed-agent-clusters/document-domain.sub.https.html` | 1 / 3 |  |
 | `html/browsers/origin/origin-keyed-agent-clusters/getter-special-cases/cross-origin-isolated.sub.https.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/origin-keyed-agent-clusters/getter-special-cases/csp-sandbox-no.https.html` | 0 / 1 |  |
 | `html/browsers/origin/origin-keyed-agent-clusters/getter-special-cases/csp-sandbox-yes.https.html` | 0 / 1 |  |
@@ -1007,11 +1006,10 @@ est le plus honnête des deux.
 | `html/browsers/origin/origin-of-data-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_access_details.sub.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_setter.html` | 0 / 3 | harnais : délai du harnais dépassé |
-| `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_setter_srcdoc.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/sandboxed-document_domain.html` | 0 / 5 |  |
 | `html/browsers/sandboxing/popup-from-initial-empty-sandboxed-document.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/sandboxing/sandbox-allow-same-origin.html` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected 0 but got 1', stack: 'Error' } |
-| `html/browsers/sandboxing/sandbox-disallow-forms.html` | 0 / 3 | harnais : délai du harnais dépassé |
+| `html/browsers/sandboxing/sandbox-disallow-forms.html` | 0 / 3 |  |
 | `html/browsers/sandboxing/sandbox-disallow-popups.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/sandboxing/sandbox-disallow-same-origin.html` | 0 / 1 |  |
 | `html/browsers/sandboxing/sandbox-disallow-scripts-via-unsandboxed-popup.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -1158,7 +1156,7 @@ est le plus honnête des deux.
 | `html/browsers/windows/nested-browsing-contexts/frameElement-siblings.sub.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/nested-browsing-contexts/frameElement.sub.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/nested-browsing-contexts/iframe-referrer.html` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected "https://web-platform.test/html/browsers/windows/nested-browsing-contexts/i |
-| `html/browsers/windows/nested-browsing-contexts/name-attribute.window.js` | 0 / 24 |  |
+| `html/browsers/windows/nested-browsing-contexts/name-attribute.window.js` | 2 / 24 | harnais : délai du harnais dépassé |
 | `html/browsers/windows/nested-browsing-contexts/window-parent-null.html` | 0 / 2 |  |
 | `html/browsers/windows/nested-browsing-contexts/window-top-null.html` | 0 / 2 |  |
 | `html/browsers/windows/nested-browsing-contexts/window-top.html` | 1 / 3 | harnais : délai du harnais dépassé |
@@ -1253,8 +1251,6 @@ est le plus honnête des deux.
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.transform.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerosource.html` | 0 / 1 |  |
 | `html/canvas/element/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/element/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.CSSHSL.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.CSSRGB.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.fillStyle.colorObject.html` | 0 / 1 |  |
@@ -1580,8 +1576,7 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-sizeOverflow.html` | 2 / 7 |  |
 | `html/canvas/element/manual/imagebitmap/createImageBitmap-transfer.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/imagebitmap/imagebitmap-replication-exif-orientation.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `html/canvas/element/manual/shadows/canvas_shadows_001.htm` | 0 / 1 |  |
-| `html/canvas/element/manual/shadows/shadowBlur_gaussian_tolerance.1.html` | 0 / 3 |  |
+| `html/canvas/element/manual/shadows/shadowBlur_gaussian_tolerance.1.html` | 2 / 3 |  |
 | `html/canvas/element/manual/transformations/2d.transformation.getTransform.html` | 0 / 1 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/ImageData-fidelity.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-color-space-settings.html` | 4 / 25 |  |
@@ -1641,42 +1636,14 @@ est le plus honnête des deux.
 | `html/canvas/element/reset/2d.reset.state.letter_spacing.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.text_rendering.html` | 0 / 1 |  |
 | `html/canvas/element/reset/2d.reset.state.word_spacing.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.alpha.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.alpha.3.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.alpha.4.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.alpha.5.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.current.basic.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.attributes.shadowColor.current.changed.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.canvas.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.canvas.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.canvas.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.clip.1.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.clip.3.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.composite.1.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.composite.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.enable.blur.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.enable.x.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.enable.y.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.gradient.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.gradient.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.gradient.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.alpha.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.basic.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.scale.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.image.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.offset.negativeX.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.offset.negativeY.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.offset.positiveX.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.offset.positiveY.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.outside.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.pattern.alpha.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.pattern.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.pattern.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.basic.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.cap.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.stroke.join.2.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.transform.1.html` | 0 / 1 |  |
-| `html/canvas/element/shadows/2d.shadow.transform.2.html` | 0 / 1 |  |
+| `html/canvas/element/shadows/2d.shadow.pattern.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.center.complex-shaping.html` | 1 / 2 |  |
 | `html/canvas/element/text/2d.text.draw.align.center.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.end.ltr.html` | 0 / 1 |  |
@@ -1857,8 +1824,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.transform.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerosource.html` | 0 / 1 |  |
 | `html/canvas/offscreen/drawing-images-to-the-canvas/2d.drawImage.zerosource.image.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.fillRect.shadow.html` | 0 / 1 |  |
-| `html/canvas/offscreen/drawing-rectangles-to-the-canvas/2d.strokeRect.shadow.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.CSSHSL.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.CSSRGB.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.fillStyle.colormix.html` | 0 / 1 |  |
@@ -2029,43 +1994,16 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/reset/2d.reset.state.letter_spacing.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.text_rendering.html` | 0 / 1 |  |
 | `html/canvas/offscreen/reset/2d.reset.state.word_spacing.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.alpha.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.alpha.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.alpha.4.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.alpha.5.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.canvas.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.canvas.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.canvas.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.clip.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.clip.3.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.composite.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.composite.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.enable.blur.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.enable.x.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.enable.y.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.gradient.alpha.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.gradient.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.gradient.transparent.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.alpha.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.scale.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.section.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.image.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.offset.negativeX.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.offset.negativeY.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.offset.positiveX.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.offset.positiveY.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.outside.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.alpha.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.basic.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.1.html` | 0 / 1 |  |
 | `html/canvas/offscreen/shadows/2d.shadow.pattern.transparent.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.basic.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.cap.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.stroke.join.2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.transform.1.html` | 0 / 1 |  |
-| `html/canvas/offscreen/shadows/2d.shadow.transform.2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.center.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.end.ltr.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.draw.align.end.rtl.html` | 0 / 1 |  |
@@ -2703,7 +2641,6 @@ est le plus honnête des deux.
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-sharedworker-success.https.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-worker-success.https.html` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/no-coop-coep.https.any.js` | 0 / 3 |  |
-| `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/no-transferring.https.html` | 2 / 3 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/serialization-via-idb.any.js` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/serialization-via-notifications-api.any.js` | 0 / 2 |  |
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/window-domain-failure.https.sub.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -2719,10 +2656,10 @@ est le plus honnête des deux.
 | `html/infrastructure/safe-passing-of-structured-data/structured-cloning-error-stack-optional.sub.window.js` | 16 / 20 |  |
 | `html/infrastructure/safe-passing-of-structured-data/structuredclone_0.html` | 31 / 43 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-audiodata.html` | 0 / 1 |  |
-| `html/infrastructure/safe-passing-of-structured-data/transfer-errors.window.js` | 4 / 17 |  |
+| `html/infrastructure/safe-passing-of-structured-data/transfer-errors.window.js` | 9 / 17 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-mediasourcehandle.html` | 0 / 1 |  |
 | `html/infrastructure/safe-passing-of-structured-data/transfer-videoframe.html` | 0 / 1 |  |
-| `html/infrastructure/safe-passing-of-structured-data/window-postmessage.window.js` | 89 / 152 |  |
+| `html/infrastructure/safe-passing-of-structured-data/window-postmessage.window.js` | 94 / 152 |  |
 | `html/infrastructure/terminology/plugins/text-plain.html` | 0 / 1 |  |
 | `html/infrastructure/urls/base-url/base-url-detached-document-blank.https.window.js` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected "https://example.com/" but got "https://web-platform.test/html/infrastructu |
 | `html/infrastructure/urls/base-url/base-url-detached-document-srcdoc.https.window.js` | 0 / 2 | harnais : Uncaught { message: 'assert_equals: expected "https://example.com/" but got "https://web-platform.test/html/infrastructu |
@@ -2742,7 +2679,7 @@ est le plus honnête des deux.
 | `html/infrastructure/urls/resolving-urls/query-encoding/utf-8.html` | 35 / 95 | harnais : délai du harnais dépassé |
 | `html/infrastructure/urls/resolving-urls/query-encoding/windows-1251.html` | 35 / 95 | harnais : délai du harnais dépassé |
 | `html/infrastructure/urls/resolving-urls/query-encoding/windows-1252.html` | 35 / 95 | harnais : délai du harnais dépassé |
-| `html/infrastructure/urls/terminology-0/document-base-url-changes-about-srcdoc.https.window.js` | 0 / 2 | harnais : délai du harnais dépassé |
+| `html/infrastructure/urls/terminology-0/document-base-url-changes-about-srcdoc.https.window.js` | 0 / 2 |  |
 | `html/infrastructure/urls/terminology-0/document-base-url.html` | 3 / 6 |  |
 | `html/infrastructure/urls/terminology-0/multiple-base.sub.html` | 0 / 1 |  |
 | `html/infrastructure/urls/terminology-0/nontraditional-about-srcdoc.html` | 0 / 3 | harnais : délai du harnais dépassé |
@@ -3297,12 +3234,11 @@ est le plus honnête des deux.
 | `html/semantics/embedded-content/media-elements/media-playback-while-not-visible-permission-policy/cant-play-if-hidden.tentative.sub.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/media-elements/media-playback-while-not-visible-permission-policy/cant-play-when-created-hidden.tentative.sub.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/media-elements/media-playback-while-not-visible-permission-policy/pause-when-hidden.tentative.sub.html` | 0 / 1 |  |
-| `html/semantics/embedded-content/media-elements/media-playback-while-not-visible-permission-policy/viewport.tentative.sub.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/embedded-content/media-elements/media-playback-while-not-visible-permission-policy/viewport.tentative.sub.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/media-elements/media_fragment_seek.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/media-elements/mime-types/canPlayType.html` | 19 / 60 |  |
 | `html/semantics/embedded-content/media-elements/networkState_during_loadstart.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/media-elements/networkState_during_progress.html` | 2 / 4 | harnais : délai du harnais dépassé |
-| `html/semantics/embedded-content/media-elements/no-autoplay-audio-history-back-does-not-play.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/media-elements/offsets-into-the-media-resource/currentTime-move-within-document.html` | 0 / 2 | harnais : Unhandled rejection: lecture non prise en charge |
 | `html/semantics/embedded-content/media-elements/offsets-into-the-media-resource/currentTime.html` | 1 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/embedded-content/media-elements/paused_false_during_play.html` | 2 / 4 | harnais : délai du harnais dépassé |
@@ -4793,58 +4729,6 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/top-level-await/sibling-imports-not-blocked.any.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/type.html` | 3 / 6 |  |
 | `html/semantics/scripting-1/the-script-element/moving-between-documents-during-evaluation.html` | 0 / 1 |  |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-createHTMLDocument-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-parse-error-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/after-prepare-iframe-success-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-parse-error-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-parse-error-inline-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-empty-src-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-empty-src-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-createHTMLDocument-success-inline-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-parse-error-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-parse-error-inline-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-empty-src-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-empty-src-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/before-prepare-iframe-success-inline-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-createHTMLDocument-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-fetch-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-fetch-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-parse-error-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-parse-error-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-parse-error-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-success-external-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-success-external-module.html` | 1 / 5 | harnais : délai du harnais dépassé |
-| `html/semantics/scripting-1/the-script-element/moving-between-documents/move-back-iframe-success-inline-classic.html` | 1 / 5 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/moving-between-documents/ordering/delay-load-event-1.html` | 1 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/moving-between-documents/ordering/delay-load-event-2.html` | 1 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/moving-between-documents/ordering/in-order.html` | 0 / 1 | harnais : délai du harnais dépassé |
