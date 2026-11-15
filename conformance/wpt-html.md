@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 48527 / 123969 (39,1 %)** — fichiers entièrement réussis : 2391 / 7308 (32,7 %).
+**Sous-tests réussis : 53876 / 125100 (43,1 %)** — fichiers entièrement réussis : 2398 / 7308 (32,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -101,7 +101,7 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/shadows` | 1 / 2 | 3 / 4 (75,0 %) |
 | `html/canvas/element/manual/the-canvas-state` | 2 / 2 | 4 / 4 (100,0 %) |
 | `html/canvas/element/manual/transformations` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/canvas/element/manual/wide-gamut-canvas` | 0 / 14 | 78 / 1535 (5,1 %) |
+| `html/canvas/element/manual/wide-gamut-canvas` | 0 / 14 | 86 / 1327 (6,5 %) |
 | `html/canvas/element/path-objects` | 181 / 210 | 181 / 210 (86,2 %) |
 | `html/canvas/element/pixel-manipulation` | 62 / 71 | 62 / 71 (87,3 %) |
 | `html/canvas/element/reset` | 23 / 29 | 23 / 29 (79,3 %) |
@@ -153,7 +153,7 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/document-isolation-policy` | 0 / 46 | 9 / 253 (3,6 %) |
 | `html/dom` | 1 / 23 | 30309 / 51854 (58,5 %) |
-| `html/dom/documents/dom-tree-accessors` | 15 / 42 | 99 / 245 (40,4 %) |
+| `html/dom/documents/dom-tree-accessors` | 15 / 42 | 100 / 245 (40,8 %) |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 12 / 15 | 31 / 34 (91,2 %) |
 | `html/dom/documents/resource-metadata-management` | 6 / 11 | 13 / 23 (56,5 %) |
 | `html/dom/elements` | 0 / 1 | 17 / 141 (12,1 %) |
@@ -230,12 +230,12 @@ est le plus honnête des deux.
 | `html/rendering` | 0 / 3 | 974 / 1866 (52,2 %) |
 | `html/rendering/bidi-rendering` | 0 / 3 | 0 / 203 (0,0 %) |
 | `html/rendering/non-replaced-elements` | 0 / 2 | 15 / 25 (60,0 %) |
-| `html/rendering/non-replaced-elements/flow-content-0` | 2 / 8 | 2 / 14 (14,3 %) |
-| `html/rendering/non-replaced-elements/form-controls` | 1 / 3 | 1 / 13 (7,7 %) |
-| `html/rendering/non-replaced-elements/lists` | 0 / 4 | 0 / 4 (0,0 %) |
+| `html/rendering/non-replaced-elements/flow-content-0` | 3 / 8 | 22 / 34 (64,7 %) |
+| `html/rendering/non-replaced-elements/form-controls` | 2 / 3 | 412 / 424 (97,2 %) |
+| `html/rendering/non-replaced-elements/lists` | 2 / 4 | 4140 / 4144 (99,9 %) |
 | `html/rendering/non-replaced-elements/margin-collapsing-quirks` | 2 / 2 | 2 / 2 (100,0 %) |
 | `html/rendering/non-replaced-elements/phrasing-content-0/font-element-text-decoration-color` | 0 / 2 | 5 / 33 (15,2 %) |
-| `html/rendering/non-replaced-elements/sections-and-headings` | 0 / 1 | 0 / 0 (—) |
+| `html/rendering/non-replaced-elements/sections-and-headings` | 1 / 1 | 561 / 561 (100,0 %) |
 | `html/rendering/non-replaced-elements/tables` | 5 / 14 | 39 / 144 (27,1 %) |
 | `html/rendering/non-replaced-elements/the-fieldset-and-legend-elements` | 15 / 37 | 156 / 300 (52,0 %) |
 | `html/rendering/non-replaced-elements/the-frameset-and-frame-elements` | 0 / 3 | 0 / 3 (0,0 %) |
@@ -243,7 +243,7 @@ est le plus honnête des deux.
 | `html/rendering/non-replaced-elements/the-page` | 3 / 4 | 3 / 6 (50,0 %) |
 | `html/rendering/replaced-elements/attributes-for-embedded-content-and-images` | 5 / 18 | 50 / 127 (39,4 %) |
 | `html/rendering/replaced-elements/embedded-content` | 3 / 4 | 3 / 16 (18,8 %) |
-| `html/rendering/replaced-elements/images` | 1 / 4 | 1 / 3 (33,3 %) |
+| `html/rendering/replaced-elements/images` | 2 / 4 | 25 / 27 (92,6 %) |
 | `html/rendering/replaced-elements/svg-embedded-sizing` | 0 / 9 | 500 / 609 (82,1 %) |
 | `html/rendering/replaced-elements/svg-inline-sizing` | 0 / 1 | 144 / 648 (22,2 %) |
 | `html/rendering/replaced-elements/the-textarea-element` | 1 / 1 | 1 / 1 (100,0 %) |
@@ -252,7 +252,7 @@ est le plus honnête des deux.
 | `html/rendering/widgets` | 6 / 17 | 166 / 246 (67,5 %) |
 | `html/rendering/widgets/appearance` | 0 / 1 | 0 / 45 (0,0 %) |
 | `html/rendering/widgets/button-layout` | 0 / 5 | 91 / 216 (42,1 %) |
-| `html/rendering/widgets/the-select-element` | 0 / 1 | 0 / 0 (—) |
+| `html/rendering/widgets/the-select-element` | 1 / 1 | 184 / 184 (100,0 %) |
 | `html/scripting/the-script-element` | 1 / 3 | 1 / 4 (25,0 %) |
 | `html/select` | 0 / 1 | 1 / 5 (20,0 %) |
 | `html/semantics` | 0 / 2 | 317 / 442 (71,7 %) |
@@ -378,7 +378,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/import-attributes` | 2 / 5 | 4 / 7 (57,1 %) |
 | `html/semantics/scripting-1/the-script-element/json-module` | 1 / 18 | 9 / 159 (5,7 %) |
 | `html/semantics/scripting-1/the-script-element/microtasks` | 1 / 8 | 2 / 13 (15,4 %) |
-| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 4154 (1,4 %) |
+| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 153 (37,9 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import` | 8 / 32 | 17 / 154 (11,0 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha` | 0 / 3 | 0 / 0 (—) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks` | 1 / 2 | 3 / 4 (75,0 %) |
@@ -1580,7 +1580,7 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/transformations/2d.transformation.getTransform.html` | 0 / 1 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/ImageData-fidelity.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-color-space-settings.html` | 4 / 25 |  |
-| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-Blob.html` | 64 / 416 | harnais : Unhandled rejection: fetch : trop de requêtes en cours |
+| `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-Blob.html` | 72 / 208 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-ImageBitmap.html` | 0 / 208 | harnais : délai du harnais dépassé |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-ImageData.html` | 4 / 16 |  |
 | `html/canvas/element/manual/wide-gamut-canvas/canvas-display-p3-drawImage-ImageBitmap-canvas.html` | 4 / 16 |  |
@@ -2379,7 +2379,7 @@ est le plus honnête des deux.
 | `html/dom/documents/dom-tree-accessors/nameditem-img-name-removed.html` | 0 / 1 |  |
 | `html/dom/documents/dom-tree-accessors/nameditem-names.html` | 8 / 21 |  |
 | `html/dom/documents/dom-tree-accessors/nameditem-no-shadowing.tentative.html` | 7 / 8 |  |
-| `html/dom/documents/dom-tree-accessors/nameditem-setattribute-attr-mutation.html` | 2 / 4 |  |
+| `html/dom/documents/dom-tree-accessors/nameditem-setattribute-attr-mutation.html` | 3 / 4 |  |
 | `html/dom/documents/dom-tree-accessors/nameditem-supported-property-names-order.html` | 0 / 1 |  |
 | `html/dom/documents/dom-tree-accessors/nameditem-tree-order.html` | 0 / 1 |  |
 | `html/dom/documents/dom-tree-accessors/nameditem-tree-transitions.html` | 1 / 2 |  |
@@ -2888,21 +2888,16 @@ est le plus honnête des deux.
 | `html/rendering/dimension-attributes.html` | 913 / 1720 |  |
 | `html/rendering/non-replaced-elements/flow-content-0/dialog.html` | 0 / 6 |  |
 | `html/rendering/non-replaced-elements/flow-content-0/form-margin-quirk.html` | 0 / 1 |  |
-| `html/rendering/non-replaced-elements/flow-content-0/search-styles-iso-8859-8.html` | 0 / 1 |  |
-| `html/rendering/non-replaced-elements/flow-content-0/search-styles.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `html/rendering/non-replaced-elements/flow-content-0/search-styles-iso-8859-8.html` | 10 / 11 |  |
 | `html/rendering/non-replaced-elements/flow-content-0/slot-element-focusable.tentative.html` | 0 / 2 |  |
 | `html/rendering/non-replaced-elements/flow-content-0/slot-element-tabbable.tentative.html` | 0 / 2 |  |
 | `html/rendering/non-replaced-elements/form-controls/input-line-height-computed.html` | 0 / 12 |  |
-| `html/rendering/non-replaced-elements/form-controls/resets.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/rendering/non-replaced-elements/hidden-elements.html` | 15 / 20 |  |
 | `html/rendering/non-replaced-elements/input-type-hidden-important.html` | 0 / 5 |  |
 | `html/rendering/non-replaced-elements/lists/li-text-align.html` | 0 / 2 |  |
 | `html/rendering/non-replaced-elements/lists/lists-presentational-hints-ascii-case-insensitive.html` | 0 / 2 |  |
-| `html/rendering/non-replaced-elements/lists/lists-styles-quirks.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/rendering/non-replaced-elements/lists/lists-styles.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/rendering/non-replaced-elements/phrasing-content-0/font-element-text-decoration-color/font-face.html` | 1 / 5 |  |
 | `html/rendering/non-replaced-elements/phrasing-content-0/font-element-text-decoration-color/font-size.html` | 4 / 28 |  |
-| `html/rendering/non-replaced-elements/sections-and-headings/headings-styles.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/rendering/non-replaced-elements/tables/form-in-tables.html` | 0 / 10 |  |
 | `html/rendering/non-replaced-elements/tables/hidden-attr.html` | 4 / 10 |  |
 | `html/rendering/non-replaced-elements/tables/table-attribute-cellspacing-dynamic-within-display-none.html` | 0 / 1 |  |
@@ -2956,7 +2951,6 @@ est le plus honnête des deux.
 | `html/rendering/replaced-elements/embedded-content/iframe-frameborder.html` | 0 / 13 |  |
 | `html/rendering/replaced-elements/images/img-fallback-baseline-alignment.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/images/img-represents-image-size-before-partially-available.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/rendering/replaced-elements/images/img-sizes-auto.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-auto.html` | 200 / 201 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-fixed.html` | 200 / 201 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-percentage.html` | 100 / 201 | harnais : délai du harnais dépassé |
@@ -2993,7 +2987,6 @@ est le plus honnête des deux.
 | `html/rendering/widgets/text-control-client-width.html` | 0 / 2 |  |
 | `html/rendering/widgets/textarea-cols-rows.html` | 4 / 6 |  |
 | `html/rendering/widgets/textarea-scroll-restoration.html` | 0 / 2 |  |
-| `html/rendering/widgets/the-select-element/select-as-listbox-default-styles.tentative.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/scripting/the-script-element/attr-script-fetchpriority.html` | 0 / 2 |  |
 | `html/scripting/the-script-element/module-script-disabled-scripting.html` | 0 / 1 |  |
 | `html/select/options-length-too-large.html` | 1 / 5 |  |
@@ -4712,7 +4705,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer-base-url.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-cross-origin-referrerpolicy.sub.html` | 0 / 7 |  |
-| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 4001 | harnais : délai du harnais dépassé |
+| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrer-check.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrerpolicy.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/nested-imports.html` | 0 / 1 |  |

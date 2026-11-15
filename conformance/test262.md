@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 48348 réussis sur 48795 (99.1 %).**
+**Total : 48357 réussis sur 48795 (99.1 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -45,7 +45,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/Promise` | 732 | 732 | 100.0 % |
 | `built-ins/Proxy` | 311 | 310 | 99.7 % |
 | `built-ins/Reflect` | 153 | 153 | 100.0 % |
-| `built-ins/RegExp` | 1879 | 1764 | 93.9 % |
+| `built-ins/RegExp` | 1879 | 1773 | 94.4 % |
 | `built-ins/RegExpStringIteratorPrototype` | 17 | 17 | 100.0 % |
 | `built-ins/Set` | 383 | 383 | 100.0 % |
 | `built-ins/SetIteratorPrototype` | 11 | 11 | 100.0 % |

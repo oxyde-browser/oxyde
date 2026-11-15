@@ -346,12 +346,55 @@ impl Vm {
         Ok(self.ordinary_get_own(id, key))
     }
 
+    /// Vrai si `proto` est le prototype d'une classe écrite en script : sa
+    /// propriété `constructor` est un constructeur de classe. C'est ce qui
+    /// distingue un élément personnalisé d'un objet hôte auquel
+    /// l'environnement donne lui-même son interface.
+    pub(crate) fn is_class_prototype(&self, proto: Option<ObjId>) -> bool {
+        let Some(proto) = proto else {
+            return false;
+        };
+        let Some(Slot::Data(Value::Object(ctor))) = self
+            .heap
+            .get(proto)
+            .props
+            .get("constructor")
+            .map(|property| &property.slot)
+        else {
+            return false;
+        };
+        matches!(
+            &self.heap.get(*ctor).kind,
+            Kind::Closure(closure)
+                if matches!(closure.proto.kind, crate::bytecode::FunctionKind::ClassConstructor { .. })
+        )
+    }
+
     /// Vrai si l'objet hôte `id`, de classe `class`, porte une propriété
     /// ordinaire `name` qui passe avant celle que l'hôte sert.
+    ///
+    /// Pour un objet hôte dont un script a changé le prototype (un élément
+    /// personnalisé), une propriété de la chaîne de prototypes compte aussi :
+    /// l'accesseur `href` d'une classe de la page l'emporte sur l'attribut
+    /// `href` que l'hôte refléterait.
     pub(crate) fn host_shadowed(&self, id: ObjId, class: u32, name: &str) -> bool {
+        let object = self.heap.get(id);
+        if object.custom_proto {
+            let mut next = object.proto;
+            // Borne : une chaîne de prototypes de page est courte ; un cycle
+            // (impossible par construction) ne bouclerait pas.
+            for _ in 0..64 {
+                let Some(proto) = next else { break };
+                let proto = self.heap.get(proto);
+                if proto.props.contains_key(name) {
+                    return true;
+                }
+                next = proto.proto;
+            }
+        }
         self.host_hooks
             .is_some_and(|hooks| (hooks.own_first)(class))
-            && self.heap.get(id).props.contains_key(name)
+            && object.props.contains_key(name)
     }
 
     /// `[[GetOwnProperty]]` d'un objet qui n'est pas un `Proxy`.
@@ -1075,7 +1118,12 @@ impl Vm {
                 None => break,
             }
         }
-        self.heap.get_mut(id).proto = proto;
+        let custom = self.is_class_prototype(proto);
+        let object = self.heap.get_mut(id);
+        object.proto = proto;
+        if matches!(object.kind, Kind::Host { .. }) {
+            object.custom_proto = custom;
+        }
         Ok(true)
     }
 

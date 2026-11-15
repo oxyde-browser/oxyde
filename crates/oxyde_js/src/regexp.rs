@@ -398,9 +398,24 @@ impl Operand {
     }
 }
 
-/// Propriété de chaînes du mode `v` (`\p{Emoji_Keycap_Sequence}`…), donnée
-/// en extension. `Ok(None)` : `name` n'en est pas une.
-fn string_property(name: &str) -> PResult<Option<Operand>> {
+/// Séquences d'émojis à jointure recommandées, une par ligne.
+const ZWJ_SEQUENCES: &str = include_str!("emoji_zwj_sequences.txt");
+/// Régions des drapeaux recommandés : codes de deux lettres bout à bout.
+const FLAG_REGIONS: &str = include_str!("emoji_flag_regions.txt");
+
+/// Lignes utiles d'un fichier de données : ni vides ni commentaires.
+fn data_lines(text: &'static str) -> impl Iterator<Item = &'static str> {
+    text.lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+}
+
+/// Contenu d'une propriété de chaînes : intervalles de caractères seuls et
+/// chaînes de plusieurs caractères.
+type Listed = (Vec<(char, char)>, Vec<Vec<char>>);
+
+/// Contenu de la propriété de chaînes `name`, donné en extension. `None` :
+/// `name` n'en est pas une.
+fn string_property_content(name: &str) -> Option<Listed> {
     let scalar = |code: u32| char::from_u32(code).unwrap_or('\u{fffd}');
     let strings: Vec<Vec<char>> = match name {
         "Emoji_Keycap_Sequence" => "#*0123456789"
@@ -426,6 +441,22 @@ fn string_property(name: &str) -> PResult<Option<Operand>> {
             .flatten()
             .flat_map(|base| (0x1f3fb..=0x1f3ff).map(move |tone| vec![scalar(base), scalar(tone)]))
             .collect(),
+        "RGI_Emoji_Flag_Sequence" => {
+            // Chaque lettre devient son indicateur régional (U+1F1E6 pour A).
+            let letters: Vec<char> = data_lines(FLAG_REGIONS)
+                .flat_map(str::chars)
+                .map(|c| scalar(0x1f1e6 + u32::from(c).saturating_sub(u32::from('A'))))
+                .collect();
+            letters
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| pair.to_vec())
+                .collect()
+        }
+        "RGI_Emoji_ZWJ_Sequence" => data_lines(ZWJ_SEQUENCES)
+            .map(|line| line.chars().collect())
+            .collect(),
         "Basic_Emoji" => {
             let data = EmojiSetData::new::<BasicEmoji>().static_to_owned();
             let list = data.to_code_point_inversion_list_string_list();
@@ -435,16 +466,36 @@ fn string_property(name: &str) -> PResult<Option<Operand>> {
                 .map(|range| (scalar(*range.start()), scalar(*range.end())))
                 .collect();
             let strings = list.strings().iter().map(|s| s.chars().collect()).collect();
-            return Ok(Some(Operand::listed(ranges, strings, true)));
+            return Some((ranges, strings));
         }
-        "RGI_Emoji" | "RGI_Emoji_Flag_Sequence" | "RGI_Emoji_ZWJ_Sequence" => {
-            return Err(format!(
-                "propriété de chaînes « {name} » non prise en charge par Oxyde pour l'instant"
-            ));
+        // La réunion des six autres (UTS #51, ED-27).
+        "RGI_Emoji" => {
+            let mut ranges = Vec::new();
+            let mut strings = Vec::new();
+            for part in [
+                "Basic_Emoji",
+                "Emoji_Keycap_Sequence",
+                "RGI_Emoji_Modifier_Sequence",
+                "RGI_Emoji_Flag_Sequence",
+                "RGI_Emoji_Tag_Sequence",
+                "RGI_Emoji_ZWJ_Sequence",
+            ] {
+                let (part_ranges, part_strings) = string_property_content(part)?;
+                ranges.extend(part_ranges);
+                strings.extend(part_strings);
+            }
+            return Some((ranges, strings));
         }
-        _ => return Ok(None),
+        _ => return None,
     };
-    Ok(Some(Operand::listed(Vec::new(), strings, true)))
+    Some((Vec::new(), strings))
+}
+
+/// Propriété de chaînes du mode `v` (`\p{Emoji_Keycap_Sequence}`…). `None` :
+/// `name` n'en est pas une.
+fn string_property(name: &str) -> Option<Operand> {
+    let (ranges, strings) = string_property_content(name)?;
+    Some(Operand::listed(ranges, strings, true))
 }
 
 /// Forme canonique d'un caractère pour la comparaison insensible à la casse
@@ -1060,7 +1111,7 @@ impl Parser {
             's' | 'S' => Operand::builtin(Builtin::Space, c == 'S'),
             _ => {
                 let name = self.property_name()?;
-                if let Some(strings) = string_property(&name)? {
+                if let Some(strings) = string_property(&name) {
                     if c == 'P' {
                         return Err(format!("la propriété de chaînes « {name} » ne se nie pas"));
                     }

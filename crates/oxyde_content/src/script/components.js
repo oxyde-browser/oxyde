@@ -13,15 +13,17 @@
 //                                  est mal formé, le message de la faute (une chaîne).
 //
 // LIMITES CONNUES
-// - Éléments personnalisés : les rappels `connectedCallback`,
-//   `disconnectedCallback` et `attributeChangedCallback` partent à la fin de
-//   la tâche (par un observateur de mutations), pas au moment même du
-//   changement ; un élément créé par l'analyseur ou par `innerHTML` est mis à
+// - Éléments personnalisés : les rappels `connectedCallback` et
+//   `disconnectedCallback` partent à la fin de la tâche (par un observateur
+//   de mutations), pas au moment même du changement ;
+//   `attributeChangedCallback` part pendant `setAttribute`,
+//   `removeAttribute` et `toggleAttribute`, mais en fin de tâche pour un
+//   attribut changé autrement (`el.id = …`, `classList`, `dataset`) ; un élément créé par l'analyseur ou par `innerHTML` est mis à
 //   niveau à ce moment-là aussi ; pas d'éléments natifs personnalisés
 //   (`extends`, attribut `is`), pas de `adoptedCallback`, pas
 //   d'`ElementInternals`.
-// - Shadow DOM : pas de `adoptedStyleSheets` (les bibliothèques se replient
-//   sur des éléments `<style>`) ; l'arbre fantôme déclaratif
+// - Shadow DOM : `adoptedStyleSheets` est rendu par des éléments `<style>`
+//   ajoutés à l'arbre (voir plus bas) ; l'arbre fantôme déclaratif
 //   (`<template shadowrootmode>`) n'est pris qu'à l'analyse du document de
 //   la page (ni cadres, ni `setHTMLUnsafe`), sans ses options
 //   (`shadowrootdelegatesfocus`…) ; pas de `slot.assign()` ; `innerHTML`
@@ -343,6 +345,52 @@
       writable: true, enumerable: true, configurable: true,
     });
   }
+  // `attributeChangedCallback` part pendant l'appel qui change l'attribut
+  // (`setAttribute`, `removeAttribute`…), comme le veut le standard : des
+  // bibliothèques s'en remettent à cet ordre pour ne pas se répondre sans fin
+  // (elles lèvent un drapeau le temps de l'appel). L'observateur verra la même
+  // mutation en fin de tâche : `reacted` lui dit de la passer.
+  const reacted = new Map();
+  for (const [name, at] of [["setAttribute", 0], ["removeAttribute", 0], ["toggleAttribute", 0],
+    ["setAttributeNS", 1], ["removeAttributeNS", 1]]) {
+    const native = global.Element.prototype[name];
+    if (typeof native !== "function") continue;
+    define(global.Element.prototype, name, {
+      value: { [name]: function (...args) {
+        const definition = upgraded.has(this) ? definitionOf(this) : undefined;
+        if (definition === undefined || args.length <= at) return native.apply(this, args);
+        let attribute = String(args[at]);
+        attribute = at === 0 ? attribute.toLowerCase() : attribute.slice(attribute.indexOf(":") + 1);
+        if (!definition.observed.has(attribute)) return native.apply(this, args);
+        const before = this.getAttribute(attribute);
+        const result = native.apply(this, args);
+        const after = this.getAttribute(attribute);
+        if (before !== null || after !== null) {
+          if (observer !== null && this.isConnected) {
+            let counts = reacted.get(this);
+            if (counts === undefined) reacted.set(this, counts = new Map());
+            counts.set(attribute, (counts.get(attribute) ?? 0) + 1);
+          }
+          react(this, "attributeChangedCallback", [attribute, before, after, at === 1 ? args[0] ?? null : null]);
+        }
+        return result;
+      } }[name],
+      writable: true, enumerable: true, configurable: true,
+    });
+    define(global.Element.prototype[name], "length", { value: native.length, configurable: true });
+  }
+  // Vrai si la mutation de `name` sur `element` a déjà eu son rappel.
+  const alreadyReacted = (element, name) => {
+    const counts = reacted.get(element);
+    const count = counts?.get(name);
+    if (count === undefined) return false;
+    if (count > 1) counts.set(name, count - 1);
+    else {
+      counts.delete(name);
+      if (counts.size === 0) reacted.delete(element);
+    }
+    return true;
+  };
   // Racines fantômes connues : l'observateur les suit comme le document.
   const shadowRoots = [];
   const OBSERVED = { childList: true, subtree: true, attributes: true, attributeOldValue: true };
@@ -357,7 +405,8 @@
           for (const node of record.addedNodes) entered(node);
         } else if (record.type === "attributes" && upgraded.has(record.target)) {
           const definition = definitionOf(record.target);
-          if (definition !== undefined && definition.observed.has(record.attributeName)) {
+          if (definition !== undefined && definition.observed.has(record.attributeName)
+            && !alreadyReacted(record.target, record.attributeName)) {
             react(record.target, "attributeChangedCallback", [record.attributeName, record.oldValue,
               record.target.getAttribute(record.attributeName), record.attributeNamespace]);
           }
@@ -713,4 +762,177 @@
   documentMethod("close", function close() {
     reopened.delete(this);
   });
+
+  // `attributes` et les déclarations de style se parcourent par `for…of`
+  // comme toute collection indexée.
+  for (const name of ["NamedNodeMap", "CSSStyleDeclaration"]) {
+    const proto = global[name]?.prototype;
+    if (proto !== undefined && !(Symbol.iterator in proto)) {
+      define(proto, Symbol.iterator, {
+        value: Array.prototype[Symbol.iterator], writable: true, configurable: true,
+      });
+    }
+  }
+
+  // ---- Feuilles de style construites (CSSOM §6.1) et `adoptedStyleSheets` ------------------------------
+  // Une feuille construite garde son texte, découpé en règles de premier
+  // niveau. Adoptée par un document ou un arbre fantôme, elle y est rendue
+  // par un élément `<style data-oxyde-adopted>` ajouté en fin d'arbre, que le
+  // moteur de style traite comme tout autre.
+  // LIMITES : ces éléments `<style>` sont visibles de la page (`querySelector`,
+  // `childNodes`) ; `cssRules` ne donne que `cssText` et `type` ; ni
+  // `document.styleSheets` ni `sheet` d'un élément ; `media` est retenu sans effet.
+  const splitRules = (text) => {
+    const rules = [];
+    const keep = (from, to) => {
+      const rule = text.slice(from, to).trim();
+      if (rule !== "") rules.push(rule);
+    };
+    let depth = 0, start = 0, quote = null;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (quote !== null) {
+        if (c === "\\") i++;
+        else if (c === quote) quote = null;
+      } else if (c === '"' || c === "'") {
+        quote = c;
+      } else if (c === "/" && text[i + 1] === "*") {
+        const end = text.indexOf("*/", i + 2);
+        i = end < 0 ? text.length : end + 1;
+      } else if (c === "{") {
+        depth++;
+      } else if (c === "}") {
+        if (depth > 0 && --depth === 0) { keep(start, i + 1); start = i + 1; }
+      } else if (c === ";" && depth === 0) {
+        keep(start, i + 1); start = i + 1;
+      }
+    }
+    keep(start, text.length);
+    return rules;
+  };
+  class CSSRule {
+    #text;
+    constructor(key, text) {
+      if (key !== splitRules) throw new TypeError("constructeur illégal");
+      this.#text = text;
+    }
+    get cssText() { return this.#text; }
+    get type() { return this.#text.startsWith("@") ? 0 : 1; }
+  }
+  tag(CSSRule, "CSSRule");
+  expose("CSSRule", CSSRule);
+  // Éléments `<style>` qui rendent chaque feuille adoptée.
+  const rendered = new WeakMap();
+  class CSSStyleSheet {
+    #rules = []; #disabled; #media;
+    constructor(options = undefined) {
+      this.#disabled = Boolean(options?.disabled);
+      this.#media = String(options?.media ?? "");
+    }
+    get type() { return "text/css"; }
+    get href() { return null; }
+    get ownerNode() { return null; }
+    get parentStyleSheet() { return null; }
+    get title() { return null; }
+    get media() { return { mediaText: this.#media, length: this.#media === "" ? 0 : 1 }; }
+    get disabled() { return this.#disabled; }
+    set disabled(value) { this.#disabled = Boolean(value); this.#refresh(); }
+    get cssRules() { return Object.freeze(this.#rules.map((text) => new CSSRule(splitRules, text))); }
+    get rules() { return this.cssRules; }
+    get cssText() { return this.#disabled ? "" : this.#rules.join("\n"); }
+    #refresh() {
+      for (const element of rendered.get(this) ?? []) element.textContent = this.cssText;
+    }
+    replaceSync(text) {
+      // Les règles `@import` d'une feuille construite sont ignorées.
+      this.#rules = splitRules(String(text)).filter((rule) => !/^@import\b/i.test(rule));
+      this.#refresh();
+    }
+    replace(text) {
+      try {
+        this.replaceSync(text);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      return Promise.resolve(this);
+    }
+    insertRule(rule, index = 0) {
+      const at = Number(index) >>> 0;
+      if (at > this.#rules.length) throw new DOMException("insertRule : rang hors de la feuille", "IndexSizeError");
+      const parsed = splitRules(String(rule));
+      if (parsed.length !== 1) throw new DOMException("insertRule : une règle et une seule", "SyntaxError");
+      this.#rules.splice(at, 0, parsed[0]);
+      this.#refresh();
+      return at;
+    }
+    deleteRule(index) {
+      const at = Number(index) >>> 0;
+      if (at >= this.#rules.length) throw new DOMException("deleteRule : rang hors de la feuille", "IndexSizeError");
+      this.#rules.splice(at, 1);
+      this.#refresh();
+    }
+    addRule(selector = "undefined", style = "undefined", index = undefined) {
+      this.insertRule(`${selector} { ${style} }`, index === undefined ? this.#rules.length : index);
+      return -1;
+    }
+    removeRule(index = 0) { this.deleteRule(index); }
+  }
+  tag(CSSStyleSheet, "CSSStyleSheet");
+  expose("CSSStyleSheet", CSSStyleSheet);
+  expose("StyleSheet", CSSStyleSheet);
+
+  // Feuilles adoptées par arbre : la liste, et les éléments qui la rendent.
+  const adopted = new WeakMap();
+  function adopt(tree, sheets) {
+    const state = adopted.get(tree) ?? { sheets: [], elements: [] };
+    adopted.set(tree, state);
+    state.elements.forEach((element, i) => {
+      rendered.get(state.sheets[i])?.delete(element);
+      element.remove();
+    });
+    state.sheets = sheets;
+    const owner = tree.ownerDocument ?? tree;
+    const container = tree.nodeType === 9 ? (tree.head ?? tree.documentElement) : tree;
+    state.elements = container === null ? [] : sheets.map((sheet) => {
+      const element = rawCreateElement.call(owner, "style");
+      element.setAttribute("data-oxyde-adopted", "");
+      element.textContent = sheet.cssText;
+      container.appendChild(element);
+      if (!rendered.has(sheet)) rendered.set(sheet, new Set());
+      rendered.get(sheet).add(element);
+      return element;
+    });
+  }
+  const checkedSheets = (value) => {
+    const sheets = Array.from(value);
+    for (const sheet of sheets) {
+      if (!(sheet instanceof CSSStyleSheet)) throw new TypeError("adoptedStyleSheets : une CSSStyleSheet est attendue");
+    }
+    return sheets;
+  };
+  for (const owner of [global.Document.prototype, ShadowRoot.prototype]) {
+    define(owner, "adoptedStyleSheets", {
+      // Le tableau rendu est observé : `push`, `splice` ou une affectation par
+      // indice refont l'adoption.
+      get() {
+        const tree = this;
+        const sheets = (adopted.get(tree)?.sheets ?? []).slice();
+        const again = () => adopt(tree, checkedSheets(sheets));
+        return new Proxy(sheets, {
+          set(target, key, value) {
+            target[key] = value;
+            // `push` écrit l'élément puis `length` : une seule adoption suffit.
+            if (key !== "length" || value !== (adopted.get(tree)?.sheets.length ?? 0)) again();
+            return true;
+          },
+          deleteProperty(target, key) {
+            delete target[key];
+            return true;
+          },
+        });
+      },
+      set(value) { adopt(this, checkedSheets(value)); },
+      enumerable: true, configurable: true,
+    });
+  }
 })
