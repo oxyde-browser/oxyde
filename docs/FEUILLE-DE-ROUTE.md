@@ -823,8 +823,10 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [ ] Web Platform Tests `html/` : de 11,8 % vers 30 % des fichiers (cadres, `canvas`,
-      contenus embarqués, scripts).
+- [x] Web Platform Tests `html/` : 30 % des fichiers atteints (2 262 fichiers entièrement
+      réussis sur 7 308, soit 31,0 %), le canevas 2D en apportant 1 377 d'un coup.
+      Restent, par nombre de fichiers : le reste du canevas (texte, ombres, filtres,
+      calques), les contenus embarqués, les scripts, les formulaires, la navigation.
 - [x] Analyseur XML 1.0 avec espaces de noms (`oxyde_html::parse_xml`) : documents
       bien formés seulement (première faute signalée avec sa ligne et sa colonne),
       DOCTYPE et entités internes de son sous-ensemble, entités du HTML pour les
@@ -890,9 +892,25 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       sceau de 128 bits ; ni `wrapKey` ni `unwrapKey` ; exposé aussi hors d'un contexte
       sûr ; le dossier `WebCryptoAPI/` de Web Platform Tests n'est pas dans le dépôt
       local, donc rien n'est mesuré.
-- [ ] Vus à la mesure des sites et encore absents : canevas (`Path2D` existe sans rien
-      dessiner), `postMessage` entre fenêtres (la source n'est pas connue), Brotli
-      (demande un crate à télécharger), chargement des ressources en parallèle.
+- [x] Canevas 2D : `canvas.getContext('2d')` dessine, par `tiny-skia` (rasterizer en Rust,
+      déjà dans le fichier de verrouillage). Rectangles, tracés (lignes, courbes, arcs,
+      `arcTo`, ellipses, rectangles arrondis, `Path2D` et tracés SVG), remplissage et
+      contour (épaisseur, bouts, jonctions, tirets), découpe, transformations et pile
+      des états, couleurs CSS, dégradés linéaires et radiaux, motifs, opacité globale,
+      les vingt-six modes de fusion, `drawImage` (canevas, `<img>`, `ImageBitmap`),
+      `getImageData`, `putImageData`, `ImageData`, `isPointInPath`, `toDataURL`,
+      `toBlob` ; `OffscreenCanvas` et `createImageBitmap` (canevas, image, `ImageData`,
+      `Blob`). Le canevas s'affiche dans la page.
+      Limites : pas de texte dessiné (`fillText`, `strokeText` ; `measureText` estime) ;
+      pas d'ombres, de filtres ni de calques ; `isPointInStroke` rend faux ; pas de
+      dégradé conique ; un dégradé radial à cercle de départ non nul est approché ; un
+      motif se répète toujours dans les deux sens ; ni vidéo ni image SVG en source ;
+      ni WebGL ni `bitmaprenderer` ; un `OffscreenCanvas` ne passe pas à un worker ;
+      PNG seulement en sortie ; couleurs en sRGB 8 bits. Non essayé à la main dans la
+      fenêtre.
+- [ ] Vus à la mesure des sites et encore absents : texte et ombres du canevas,
+      `postMessage` entre fenêtres (la source n'est pas connue), Brotli (demande un
+      crate à télécharger), chargement des ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,
       `importScripts`, `name`, `WorkerGlobalScope`, plus `fetch`, minuteurs, `URL`…), les

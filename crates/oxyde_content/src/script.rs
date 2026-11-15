@@ -27,6 +27,7 @@ use url::Url;
 
 mod animations;
 mod attrs;
+mod canvas;
 mod crypto;
 mod documents;
 mod dom_ops;
@@ -156,6 +157,8 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// Surfaces de dessin des canevas, par index de leur nœud.
+    canvases: HashMap<u32, canvas::Surface>,
     /// Connexions WebSocket en cours : le rappel du script, par identifiant.
     sockets: HashMap<u64, Value>,
     /// Ordres WebSocket à exécuter par l'embarqueur.
@@ -2303,6 +2306,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            canvases: HashMap::new(),
             sockets: HashMap::new(),
             socket_commands: Vec::new(),
             workers: 0,
@@ -2557,6 +2561,23 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("socketClose", 3, sockets::socket_close)),
     ];
     vm.call(&event_source, &Value::Undefined, &helpers)?;
+    // Canevas 2D.
+    let canvas_script = vm.eval_script(include_str!("script/canvas.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("canvasId", 1, canvas::id_of)),
+        Value::Object(vm.new_function("canvasResize", 3, canvas::resize)),
+        Value::Object(vm.new_function("canvasFill", 5, canvas::fill)),
+        Value::Object(vm.new_function("canvasStroke", 5, canvas::stroke)),
+        Value::Object(vm.new_function("canvasClip", 4, canvas::clip)),
+        Value::Object(vm.new_function("canvasImage", 6, canvas::image)),
+        Value::Object(vm.new_function("canvasGetPixels", 5, canvas::get_pixels)),
+        Value::Object(vm.new_function("canvasPutPixels", 9, canvas::put_pixels)),
+        Value::Object(vm.new_function("canvasPng", 1, canvas::png)),
+        Value::Object(vm.new_function("canvasSourceSize", 2, canvas::source_size)),
+        Value::Object(vm.new_function("parseCssColor", 1, canvas::parse_css_color)),
+        Value::Object(vm.new_function("canvasDecode", 2, canvas::decode)),
+    ];
+    vm.call(&canvas_script, &Value::Undefined, &helpers)?;
     // `Worker` : son script se lit par le `fetch` du standard.
     let workers = vm.eval_script(include_str!("script/workers.js"))?;
     let create = Value::Object(vm.new_function("createWorker", 4, workers::create_worker));
@@ -3128,6 +3149,12 @@ impl ScriptEngine {
     /// Texte copié ou coupé dans un champ depuis le dernier appel.
     pub(crate) fn take_copied(&mut self) -> Option<String> {
         host(&mut self.vm).and_then(|h| h.copied.take())
+    }
+
+    /// Canevas redessinés depuis le dernier appel : index du nœud, largeur,
+    /// hauteur et pixels RGBA non prémultipliés.
+    pub(crate) fn take_canvas_frames(&mut self) -> Vec<(u32, u32, u32, Vec<u8>)> {
+        canvas::take_frames(&mut self.vm)
     }
 
     /// Donne le focus au premier élément `autofocus`, si rien ne l'a.

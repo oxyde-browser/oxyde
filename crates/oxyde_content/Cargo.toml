@@ -24,6 +24,8 @@ oxyde_compositor.workspace = true
 oxyde_paint.workspace = true
 oxyde_text.workspace = true
 sha2 = "0.11"
+# Dessin du canevas 2D sur le processeur (tout en Rust).
+tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd"] }
 url = "2"
 
 [lints]

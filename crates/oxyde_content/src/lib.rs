@@ -327,6 +327,9 @@ pub(crate) struct LayoutEnv {
     /// Tailles des images déjà reçues, par adresse : un `<img>` qu'un
     /// script vient d'insérer (ou de cloner) a sa taille sans attendre.
     known_sizes: HashMap<String, (f32, f32)>,
+    /// Images décodées de la page, par élément : un canevas peut les
+    /// dessiner (`drawImage`, `createPattern`).
+    pub(crate) pictures: HashMap<NodeId, Image>,
     fonts: Vec<FontSlot>,
     pub(crate) animations: std::sync::Arc<Animations>,
     pub(crate) scrolling: std::sync::Arc<Scrolling>,
@@ -828,6 +831,8 @@ struct Find {
 #[derive(Debug)]
 pub struct Page {
     url: Url,
+    /// Image de chaque canevas dessiné par un script, par élément.
+    canvas_images: HashMap<NodeId, Image>,
     /// Type MIME du document s'il est en XML ; `None` pour du HTML.
     xml: Option<&'static str>,
     /// Adresse de base de résolution des liens (`<base href>` ou l'adresse de la page).
@@ -1336,6 +1341,7 @@ impl Page {
             scripts,
             script_nodes,
             xml,
+            canvas_images: HashMap::new(),
             import_map: std::sync::Arc::new(import_map),
             modules: HashMap::new(),
             frames,
@@ -1879,6 +1885,11 @@ impl Page {
             base: self.base.clone(),
             sizes,
             known_sizes,
+            pictures: self
+                .images
+                .iter()
+                .filter_map(|(node, slot)| Some((*node, slot.image.clone()?)))
+                .collect(),
             fonts: self.fonts.clone(),
             animations: std::sync::Arc::clone(&self.animations),
             scrolling: std::sync::Arc::clone(&self.scrolling),
@@ -2682,8 +2693,26 @@ impl Page {
         register_fonts(&self.fonts, text);
         let sheets = usable_sheets(&self.sheets);
         (self.styles, _) = self.animations.styles(&self.doc, &sheets, viewport);
+        // Les canevas redessinés depuis la dernière peinture.
+        if let Some(engine) = self.engine.as_mut() {
+            for (index, width, height, rgba) in engine.take_canvas_frames() {
+                let Some(node) = self.doc.id_from_index(index as usize) else {
+                    continue;
+                };
+                match Image::from_rgba(width, height, rgba) {
+                    Some(image) => self.canvas_images.insert(node, image),
+                    None => self.canvas_images.remove(&node),
+                };
+            }
+        }
         let images = &self.images;
-        let image_of = |node: NodeId| images.get(&node).and_then(|slot| slot.image.clone());
+        let canvases = &self.canvas_images;
+        let image_of = |node: NodeId| {
+            images
+                .get(&node)
+                .and_then(|slot| slot.image.clone())
+                .or_else(|| canvases.get(&node).cloned())
+        };
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
         let intrinsic = |node: NodeId| {
             images
@@ -2978,6 +3007,18 @@ impl Page {
 mod tests {
     use super::*;
     use oxyde_paint::DisplayItem;
+
+    /// Élément d'identifiant `id` de la page.
+    fn doc_node(p: &Page, id: &str) -> NodeId {
+        p.document()
+            .descendants(p.document().root())
+            .find(|n| {
+                p.document()
+                    .element(*n)
+                    .is_some_and(|e| e.attr("id") == Some(id))
+            })
+            .expect("élément")
+    }
 
     fn page(html: &str) -> Page {
         Page::from_html(
@@ -6495,6 +6536,100 @@ mod tests {
             }
             let _ = p.tick(Instant::now() + Duration::from_secs(round));
         }
+    }
+
+    #[test]
+    fn a_canvas_draws_reads_back_and_shows_in_the_page() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'><canvas id=c width=40 height=20></canvas><script>
+               const out = [];
+               const c = document.getElementById('c');
+               const ctx = c.getContext('2d');
+               const at = (x, y, context = ctx) => [...context.getImageData(x, y, 1, 1).data].join(',');
+               out.push(ctx === c.getContext('2d'), c.getContext('webgl'), ctx.canvas === c);
+               out.push(at(5, 5));
+               ctx.fillStyle = 'red';
+               ctx.fillRect(0, 0, 20, 20);
+               out.push(ctx.fillStyle, at(5, 5), at(25, 5));
+               // Transformation, tracé, remplissage semi-transparent.
+               ctx.save();
+               ctx.translate(20, 0);
+               ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+               ctx.beginPath();
+               ctx.moveTo(0, 0); ctx.lineTo(20, 0); ctx.lineTo(20, 20); ctx.lineTo(0, 20);
+               ctx.fill();
+               ctx.restore();
+               out.push(ctx.fillStyle, at(30, 10));
+               // Découpe : seul le haut reçoit le vert.
+               ctx.save();
+               ctx.beginPath();
+               ctx.rect(0, 0, 40, 5);
+               ctx.clip();
+               ctx.fillStyle = '#0f0';
+               ctx.fillRect(0, 0, 40, 20);
+               ctx.restore();
+               out.push(at(5, 2), at(5, 10));
+               // Effacement, puis dégradé linéaire du noir au blanc.
+               ctx.clearRect(0, 10, 40, 10);
+               out.push(at(5, 15));
+               const gradient = ctx.createLinearGradient(0, 0, 40, 0);
+               gradient.addColorStop(0, '#000');
+               gradient.addColorStop(1, '#fff');
+               ctx.fillStyle = gradient;
+               ctx.fillRect(0, 10, 40, 10);
+               const [left] = ctx.getImageData(1, 15, 1, 1).data;
+               const [right] = ctx.getImageData(38, 15, 1, 1).data;
+               out.push(left < 30, right > 225);
+               // Contour, cercle, point dans le tracé.
+               ctx.beginPath();
+               ctx.arc(10, 10, 5, 0, 2 * Math.PI);
+               out.push(ctx.isPointInPath(10, 10), ctx.isPointInPath(30, 10));
+               // Écriture de pixels, canevas hors page, image copiée.
+               const pixels = ctx.createImageData(2, 1);
+               pixels.data.set([1, 2, 3, 255, 0, 0, 0, 0]);
+               ctx.putImageData(pixels, 0, 0);
+               out.push(at(0, 0), at(1, 0));
+               const off = new OffscreenCanvas(4, 4);
+               const octx = off.getContext('2d');
+               octx.fillStyle = 'yellow';
+               octx.fillRect(0, 0, 4, 4);
+               ctx.drawImage(off, 30, 0);
+               out.push(at(31, 1), octx instanceof OffscreenCanvasRenderingContext2D);
+               out.push(c.toDataURL().slice(0, 30), new Path2D('M0 0h10v10z') instanceof Path2D);
+               try { ctx.arc(0, 0, -1, 0, 1); } catch (e) { out.push(e.name); }
+               ctx.fillStyle = 'pas une couleur';
+               out.push(typeof ctx.fillStyle);
+               c.width = 40;
+               out.push(at(5, 2));
+               ctx.fillStyle = '#123456';
+               ctx.fillRect(0, 0, 40, 20);
+               createImageBitmap(c, 0, 0, 2, 2).then((bitmap) => {
+                 out.push(bitmap.width + 'x' + bitmap.height);
+                 document.body.setAttribute('data-out', out.join(' '));
+               });
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "true  true 0,0,0,0 #ff0000 255,0,0,255 0,0,0,0 #ff0000 0,0,255,128 \
+                 0,255,0,255 255,0,0,255 0,0,0,0 true true true false 1,2,3,255 0,0,0,0 \
+                 255,255,0,255 true data:image/png;base64,iVBORw0K true IndexSizeError object 0,0,0,0 2x2"
+            )
+        );
+        // Le canevas s'affiche dans la page : son image est peinte.
+        let before = p.display_list().items.len();
+        assert!(p.update(&mut text, VIEWPORT) || before > 0);
+        let canvas = doc_node(&p, "c");
+        assert!(
+            p.canvas_images
+                .get(&canvas)
+                .is_some_and(|image| image.width() == 40)
+        );
     }
 
     #[test]

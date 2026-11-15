@@ -13,7 +13,6 @@
 //                                  est mal formé, le message de la faute (une chaîne).
 //
 // LIMITES CONNUES
-// - `Path2D` enregistre ses commandes ; rien ne les dessine (pas de canevas).
 // - Éléments personnalisés : les rappels `connectedCallback`,
 //   `disconnectedCallback` et `attributeChangedCallback` partent à la fin de
 //   la tâche (par un observateur de mutations), pas au moment même du
@@ -137,31 +136,6 @@
       expose(name, Interface);
     }
   }
-  // Tracé enregistré, sans dessin : le canevas n'existe pas encore.
-  // LIMITE : `Path2D` garde ses commandes mais rien ne les dessine.
-  class Path2D {
-    #commands = [];
-    constructor(path) {
-      if (path instanceof Path2D) this.#commands = path.#commands.slice();
-      else if (typeof path === "string") this.#commands.push(["svg", path]);
-    }
-    addPath(path) {
-      if (!(path instanceof Path2D)) throw new TypeError("Path2D.addPath : un tracé est attendu");
-      this.#commands.push(...path.#commands);
-    }
-    static {
-      for (const name of ["closePath", "moveTo", "lineTo", "bezierCurveTo", "quadraticCurveTo", "arc",
-        "arcTo", "ellipse", "rect", "roundRect"]) {
-        define(Path2D.prototype, name, {
-          value: { [name](...args) { this.#commands.push([name, args]); } }[name],
-          writable: true, enumerable: true, configurable: true,
-        });
-      }
-    }
-  }
-  tag(Path2D, "Path2D");
-  expose("Path2D", Path2D);
-
   // ---- Élément sous un point ------------------------------------------------------------------------------
   // LIMITE : le dernier élément du document dont la boîte contient le point,
   // sans tenir compte de l'ordre d'empilement (`z-index`) ni de

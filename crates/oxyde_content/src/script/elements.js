@@ -578,7 +578,7 @@
   elementInterface("HTMLCanvasElement", ["canvas"], {
     width: integer("width", 300),
     height: integer("height", 150),
-    // LIMITE : pas encore de contexte de dessin.
+    // `getContext`, `toDataURL` et `toBlob` sont posés par `canvas.js`.
     getContext: method(function getContext() { return null; }),
   });
   const mediaMembers = {
