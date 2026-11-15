@@ -3369,6 +3369,64 @@ fn simple_instructions_keep_their_semantics() {
 }
 
 #[test]
+fn maps_and_sets_are_iterated_live() {
+    // Les entrées ajoutées pendant le parcours sont visitées, celles
+    // retirées ne le sont pas ; un retrait avant la position ne fait rien
+    // sauter.
+    assert_eq!(
+        eval(
+            "var out = [];
+             var s = new Set([1, 2, 3]);
+             for (var x of s) { out.push(x); if (x === 1) { s.delete(2); s.add(4); } }
+             var m = new Map([['a', 1], ['b', 2], ['c', 3]]);
+             for (var [k] of m) { out.push(k); if (k === 'b') { m.delete('a'); m.set('d', 4); } }
+             var t = new Set([1, 2]);
+             t.forEach(function (v) { out.push('f' + v); if (v < 4) t.add(v + 2); });
+             var it = new Set([1]).values(); it.next(); out.push(it.next().done);
+             var u = new Set([1, 2, 3]), seen = [];
+             for (var y of u) { seen.push(y); if (y === 2) { u.clear(); u.add(9); } }
+             out.push(seen.join('-'), Object.prototype.toString.call(new Map().keys()),
+                      Object.prototype.toString.call(new Set().values()), Set.prototype.keys === Set.prototype.values);
+             out.join()"
+        ),
+        "1,3,4,a,b,c,d,f1,f2,f3,f4,f5,true,1-2-9,[object Map Iterator],[object Set Iterator],true"
+    );
+}
+
+#[test]
+fn super_references_follow_the_standard_order() {
+    assert_eq!(
+        eval(
+            "var out = [];
+             // Sans prototype, `super.x` est une erreur de type.
+             var o = { m() { try { return super.x; } catch (e) { return e.name; } } };
+             Object.setPrototypeOf(o, null);
+             out.push(o.m());
+             // La base est lue avant que la clé ne soit convertie.
+             var p1 = { p: 'bon' }, p2 = { p: 'mauvais' };
+             var q = { __proto__: p1, m() { return super[key]; } };
+             var key = { toString() { Object.setPrototypeOf(q, p2); return 'p'; } };
+             out.push(q.m());
+             // `this` doit être lié avant `super[…]`.
+             class A {}
+             class B extends A { constructor() { try { super[super()]; } catch (e) { out.push(e.name); } } }
+             try { new B(); } catch (e) {}
+             // Le constructeur parent est lu au moment de l'appel.
+             class C extends Object { constructor() { try { super(); } catch (e) { out.push(e.name); } } }
+             Object.setPrototypeOf(C, parseInt);
+             try { new C(); } catch (e) {}
+             // Un appel pris pour cible n'échoue qu'à l'exécution, après l'appel.
+             var called = 0; function f() { called++; }
+             try { f() = 1; } catch (e) { out.push(e.name, called); }
+             out.push(Object.fromEntries(new Map([['a', 1]])).a, Math.sumPrecise([1e308, 1e308, -1e308]),
+                      Math.sumPrecise([0.1, 0.2, -0.3]) === 0.1 + 0.2 - 0.3);
+             out.join()"
+        ),
+        "TypeError,bon,ReferenceError,TypeError,ReferenceError,1,1,1e+308,false"
+    );
+}
+
+#[test]
 fn string_slices_and_searches_use_utf16_positions() {
     assert_eq!(
         eval(

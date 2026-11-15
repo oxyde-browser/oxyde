@@ -532,7 +532,7 @@ pub(crate) fn lexical_names(body: &[Stmt], out: &mut Vec<JsStr>) {
 enum TargetRef {
     Prop(Reg, u32),
     Elem(Reg, Reg),
-    Super(Reg),
+    Super(Reg, Reg),
 }
 
 /// Annexe B.3.3 : noms des fonctions déclarées dans un bloc qui, hors mode
@@ -3083,6 +3083,28 @@ impl Compiler {
         Ok(reg)
     }
 
+    /// Référence `super[clé]` : registres de la base et de la clé. `this`
+    /// est vérifié d'abord (il doit être lié), puis la clé est évaluée, la
+    /// base lue, et la clé convertie en dernier.
+    fn super_ref(&mut self, key: &PropKey) -> CResult<(Reg, Reg)> {
+        let base = self.alloc()?;
+        let reg = self.alloc()?;
+        self.emit(Op::LoadThis { dst: base });
+        match key {
+            PropKey::Name(name) => {
+                let index = self.string(name);
+                self.emit(Op::SuperBase { dst: base });
+                self.emit(Op::LoadConst { dst: reg, index });
+            }
+            PropKey::Computed(expr) => {
+                self.expr(expr, Some(reg))?;
+                self.emit(Op::SuperBase { dst: base });
+                self.emit(Op::ToPropertyKey { dst: reg, src: reg });
+            }
+        }
+        Ok((base, reg))
+    }
+
     /// Affecte la valeur de `src` aux cibles de `pattern`.
     fn assign_pattern(&mut self, pattern: &Pattern, src: Reg, init: bool) -> CResult<()> {
         let mark = self.mark();
@@ -3099,8 +3121,8 @@ impl Compiler {
                 self.emit(Op::SetElem { obj, key, src });
             }
             Pattern::Expr(Expr::SuperMember(key)) => {
-                let key = self.key_reg(key)?;
-                self.emit(Op::SetSuper { key, src });
+                let (base, key) = self.super_ref(key)?;
+                self.emit(Op::SetSuper { base, key, src });
             }
             Pattern::Expr(invalid @ Expr::InvalidTarget(_)) => {
                 self.expr(invalid, None)?;
@@ -3227,7 +3249,10 @@ impl Compiler {
                 let key = self.expr_to_temp(index)?;
                 Some(TargetRef::Elem(obj, key))
             }
-            Expr::SuperMember(key) => Some(TargetRef::Super(self.key_reg(key)?)),
+            Expr::SuperMember(key) => {
+                let (base, key) = self.super_ref(key)?;
+                Some(TargetRef::Super(base, key))
+            }
             _ => None,
         })
     }
@@ -3237,7 +3262,7 @@ impl Compiler {
         self.emit(match reference {
             TargetRef::Prop(obj, name) => Op::SetProp { obj, name, src },
             TargetRef::Elem(obj, key) => Op::SetElem { obj, key, src },
-            TargetRef::Super(key) => Op::SetSuper { key, src },
+            TargetRef::Super(base, key) => Op::SetSuper { base, key, src },
         });
     }
 
@@ -3346,8 +3371,12 @@ impl Compiler {
             }
             Expr::SuperMember(key) => {
                 self.emit(Op::LoadThis { dst: this });
-                let key = self.key_reg(key)?;
-                self.emit(Op::GetSuper { dst: func, key });
+                let (base, key) = self.super_ref(key)?;
+                self.emit(Op::GetSuper {
+                    dst: func,
+                    base,
+                    key,
+                });
             }
             // Dans un `with`, une fonction trouvée sur l'objet est appelée
             // avec cet objet pour `this`.
@@ -4122,8 +4151,8 @@ impl Compiler {
             Expr::SuperMember(key) => {
                 let dst = self.dst_or_alloc(dst)?;
                 let mark = self.mark();
-                let key = self.key_reg(key)?;
-                self.emit(Op::GetSuper { dst, key });
+                let (base, key) = self.super_ref(key)?;
+                self.emit(Op::GetSuper { dst, base, key });
                 self.free_to(mark);
                 Ok(dst)
             }
@@ -4404,15 +4433,23 @@ impl Compiler {
                 self.emit(Op::SetElem { obj, key, src: new });
             }
             Expr::SuperMember(key) => {
-                let key = self.key_reg(key)?;
-                self.emit(Op::GetSuper { dst: old, key });
+                let (base, key) = self.super_ref(key)?;
+                self.emit(Op::GetSuper {
+                    dst: old,
+                    base,
+                    key,
+                });
                 self.emit(Op::ToNumber { dst: old, src: old });
                 self.emit(Op::Step {
                     dst: new,
                     src: old,
                     increment,
                 });
-                self.emit(Op::SetSuper { key, src: new });
+                self.emit(Op::SetSuper {
+                    base,
+                    key,
+                    src: new,
+                });
             }
             _ => return error("cible d'incrémentation invalide"),
         }
@@ -4456,9 +4493,9 @@ impl Compiler {
                 self.emit(Op::Move { dst, src });
             }
             (AssignOp::Assign, Pattern::Expr(Expr::SuperMember(key))) => {
-                let key = self.key_reg(key)?;
+                let (base, key) = self.super_ref(key)?;
                 let src = self.expr_to_temp(value)?;
-                self.emit(Op::SetSuper { key, src });
+                self.emit(Op::SetSuper { base, key, src });
                 self.emit(Op::Move { dst, src });
             }
             (AssignOp::Assign, pattern) => {
@@ -4467,11 +4504,19 @@ impl Compiler {
                 self.emit(Op::Move { dst, src });
             }
             (_, Pattern::Expr(Expr::SuperMember(key))) => {
-                let key = self.key_reg(key)?;
+                let (base, key) = self.super_ref(key)?;
                 let current = self.alloc()?;
-                self.emit(Op::GetSuper { dst: current, key });
+                self.emit(Op::GetSuper {
+                    dst: current,
+                    base,
+                    key,
+                });
                 let skip = self.compound(op, current, value, None)?;
-                self.emit(Op::SetSuper { key, src: current });
+                self.emit(Op::SetSuper {
+                    base,
+                    key,
+                    src: current,
+                });
                 if let Some(skip) = skip {
                     self.patch(skip);
                 }

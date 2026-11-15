@@ -82,7 +82,11 @@ pub(crate) struct Intrinsics {
     pub(crate) symbol_proto: ObjId,
     /// `%IteratorPrototype%` : ancêtre de tous les itérateurs intégrés.
     /// Prototype des itérateurs internes (porte `next`).
+    /// `%ArrayIteratorPrototype%`, aussi celui des itérateurs internes.
     pub(crate) iterator_proto: ObjId,
+    pub(crate) map_iterator_proto: ObjId,
+    pub(crate) set_iterator_proto: ObjId,
+    pub(crate) string_iterator_proto: ObjId,
     /// `Iterator.prototype`, racine de tous les itérateurs.
     pub(crate) iterator_root: ObjId,
     pub(crate) iterator_helper_proto: ObjId,
@@ -368,6 +372,8 @@ pub struct Vm {
     interrupted: bool,
     /// État du générateur pseudo-aléatoire de `Math.random`.
     pub(crate) rng: u64,
+    /// Journaux des retraits des `Map` et des `Set` qu'on a parcourus.
+    pub(crate) removal_logs: std::collections::HashMap<ObjId, crate::heap::RemovalLog>,
     /// Messages de `console.*` en attente de lecture par l'hôte.
     pub(crate) console: Vec<crate::builtins::ConsoleMessage>,
     /// Royaumes de la machine, par numéro ; l'entrée du royaume courant est
@@ -398,6 +404,9 @@ fn fresh_realm_objects(heap: &mut Heap) -> (Intrinsics, ObjId, ObjId) {
         set_proto: proto(heap, Kind::Ordinary),
         symbol_proto: proto(heap, Kind::Ordinary),
         iterator_proto: proto(heap, Kind::Ordinary),
+        map_iterator_proto: proto(heap, Kind::Ordinary),
+        set_iterator_proto: proto(heap, Kind::Ordinary),
+        string_iterator_proto: proto(heap, Kind::Ordinary),
         iterator_root: proto(heap, Kind::Ordinary),
         iterator_helper_proto: proto(heap, Kind::Ordinary),
         wrap_iterator_proto: proto(heap, Kind::Ordinary),
@@ -458,6 +467,9 @@ impl RealmState {
             intr.set_proto,
             intr.symbol_proto,
             intr.iterator_proto,
+            intr.map_iterator_proto,
+            intr.set_iterator_proto,
+            intr.string_iterator_proto,
             intr.iterator_root,
             intr.iterator_helper_proto,
             intr.wrap_iterator_proto,
@@ -607,6 +619,7 @@ impl Vm {
             budget: None,
             interrupted: false,
             rng: seed(),
+            removal_logs: std::collections::HashMap::new(),
             console: Vec::new(),
             realms: vec![None],
             realm: 0,
@@ -860,6 +873,9 @@ impl Vm {
             intr.set_proto,
             intr.symbol_proto,
             intr.iterator_proto,
+            intr.map_iterator_proto,
+            intr.set_iterator_proto,
+            intr.string_iterator_proto,
             intr.iterator_root,
             intr.iterator_helper_proto,
             intr.wrap_iterator_proto,
@@ -3080,33 +3096,45 @@ impl Vm {
                     }
                     self.set_reg(dst, Value::Bool(deleted));
                 }
-                Op::GetSuper { dst, key } => {
+                Op::SuperBase { dst } => {
+                    let home =
+                        self.frames
+                            .last()
+                            .and_then(|f| match &self.heap.get(f.closure).kind {
+                                Kind::Closure(c) => c.home,
+                                _ => None,
+                            });
+                    let base = home
+                        .and_then(|h| self.heap.get(h).proto)
+                        .map_or(Value::Null, Value::Object);
+                    self.set_reg(dst, base);
+                }
+                Op::GetSuper { dst, base, key } => {
                     let key = self.to_key(&self.reg(key))?;
-                    let (home, this) = match self.frames.last() {
-                        Some(f) => match &self.heap.get(f.closure).kind {
-                            Kind::Closure(c) => (c.home, f.this.clone()),
-                            _ => (None, Value::Undefined),
-                        },
-                        None => (None, Value::Undefined),
+                    let this = self
+                        .frames
+                        .last()
+                        .map_or(Value::Undefined, |f| f.this.clone());
+                    let Some(parent) = self.reg(base).as_object() else {
+                        return Err(self.type_error(&format!(
+                            "« super » n'a pas de prototype où lire « {} »",
+                            key.describe()
+                        )));
                     };
-                    let parent = home.and_then(|h| self.heap.get(h).proto);
-                    let value = match parent {
-                        Some(parent) => self.get_key_with_receiver(parent, &key, &this)?,
-                        None => Value::Undefined,
-                    };
+                    let value = self.get_key_with_receiver(parent, &key, &this)?;
                     self.set_reg(dst, value);
                 }
-                Op::SetSuper { key, src } => {
+                Op::SetSuper { base, key, src } => {
                     let key = self.to_key(&self.reg(key))?;
                     let value = self.reg(src);
-                    let (home, this, strict) = match self.frames.last() {
+                    let (this, strict) = match self.frames.last() {
                         Some(f) => match &self.heap.get(f.closure).kind {
-                            Kind::Closure(c) => (c.home, f.this.clone(), c.proto.strict),
-                            _ => (None, Value::Undefined, true),
+                            Kind::Closure(c) => (f.this.clone(), c.proto.strict),
+                            _ => (Value::Undefined, true),
                         },
-                        None => (None, Value::Undefined, true),
+                        None => (Value::Undefined, true),
                     };
-                    let Some(parent) = home.and_then(|h| self.heap.get(h).proto) else {
+                    let Some(parent) = self.reg(base).as_object() else {
                         return Err(self.type_error("« super » n'a pas de prototype où écrire"));
                     };
                     if !self.set_with_receiver(parent, &key, value, &this)? && strict {
@@ -3568,10 +3596,20 @@ impl Vm {
                         Kind::Closure(c) => (c.parent, c.fields),
                         _ => (None, None),
                     };
-                    let Some(parent) = parent else {
+                    if parent.is_none() {
                         return Err(self.type_error("« super() » hors d'une classe dérivée"));
-                    };
-                    let instance = self.construct(&Value::Object(parent), &args, &new_target)?;
+                    }
+                    // Le constructeur parent est le prototype actuel de la
+                    // classe, lu au moment de l'appel.
+                    let parent = self
+                        .heap
+                        .get(closure)
+                        .proto
+                        .map_or(Value::Null, Value::Object);
+                    if !self.is_constructor(&parent) {
+                        return Err(self.type_error("la classe mère n'est pas un constructeur"));
+                    }
+                    let instance = self.construct(&parent, &args, &new_target)?;
                     // `this` n'est lié qu'une fois, après le retour du constructeur parent.
                     if self.frames.last().is_some_and(|f| f.this != Value::Hole) {
                         return Err(self.error("ReferenceError", "« super() » a déjà été appelé"));
@@ -3906,9 +3944,70 @@ impl Vm {
         self.run_nested(depth)
     }
 
+    /// Début d'un parcours de la `Map` ou du `Set` `target`.
+    pub(crate) fn collection_cursor(&mut self, target: ObjId) -> crate::heap::Cursor {
+        // Les journaux d'objets disparus (identifiant repris par autre
+        // chose qu'une collection) sont écartés de temps en temps.
+        if self.removal_logs.len() >= 1024 {
+            let heap = &self.heap;
+            self.removal_logs
+                .retain(|id, _| matches!(heap.get(*id).kind, Kind::Map(_) | Kind::Set(_)));
+        }
+        let log = self.removal_logs.entry(target).or_default();
+        crate::heap::Cursor {
+            index: 0,
+            seen: log.end(),
+        }
+    }
+
+    /// Entrée suivante (clé, valeur) d'un parcours de `target` ; pour un
+    /// `Set`, la valeur deux fois. Un parcours fini le reste.
+    pub(crate) fn collection_step(
+        &mut self,
+        target: ObjId,
+        cursor: &mut crate::heap::Cursor,
+    ) -> Option<(Value, Value)> {
+        if cursor.index == usize::MAX {
+            return None;
+        }
+        if let Some(log) = self.removal_logs.get(&target) {
+            log.catch_up(cursor);
+        }
+        let entry = match &self.heap.get(target).kind {
+            Kind::Map(map) => map.get_index(cursor.index).map(|(_, pair)| pair.clone()),
+            Kind::Set(set) => set
+                .get_index(cursor.index)
+                .map(|(_, value)| (value.clone(), value.clone())),
+            _ => None,
+        };
+        cursor.index = match entry {
+            Some(_) => cursor.index + 1,
+            None => usize::MAX,
+        };
+        entry
+    }
+
+    /// Note le retrait de l'entrée de rang `index` de `target`
+    /// ([`crate::heap::RemovalLog::CLEARED`] pour un `clear`), pour les
+    /// parcours en cours.
+    pub(crate) fn collection_removed(&mut self, target: ObjId, index: usize) {
+        if let Some(log) = self.removal_logs.get_mut(&target) {
+            log.record(index);
+        }
+    }
+
     pub(crate) fn new_iterator(&mut self, state: IterState) -> Value {
-        let proto = Some(self.intrinsics.iterator_proto);
-        Value::Object(self.heap.alloc(Object::new(proto, Kind::Iterator(state))))
+        let proto = match &state {
+            IterState::Collection { target, .. } => match self.heap.get(*target).kind {
+                Kind::Set(_) => self.intrinsics.set_iterator_proto,
+                _ => self.intrinsics.map_iterator_proto,
+            },
+            _ => self.intrinsics.iterator_proto,
+        };
+        Value::Object(
+            self.heap
+                .alloc(Object::new(Some(proto), Kind::Iterator(state))),
+        )
     }
 }
 

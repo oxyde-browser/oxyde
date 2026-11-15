@@ -232,17 +232,34 @@ fn object_entries(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
 }
 
 fn object_from_entries(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let source = arg(args, 0);
+    if source.is_nullish() {
+        return Err(vm.type_error("Object.fromEntries : un itérable est attendu"));
+    }
     let result = vm.new_object();
-    for entry in vm.iterate_to_vec(&arg(args, 0))? {
-        if entry.as_object().is_none() {
-            return Err(vm.type_error("Object.fromEntries : chaque entrée doit être un objet"));
+    // Chaque entrée est traitée dès qu'elle est lue ; une erreur ferme
+    // l'itérateur.
+    let iterator = vm.iterator_for(&source)?;
+    while let Some(entry) = vm.iterator_next(&iterator)? {
+        vm.tick(1)?;
+        if let Err(error) = from_entry(vm, result, &entry) {
+            vm.iterator_close(&iterator, true)?;
+            return Err(error);
         }
-        let key = vm.get(&entry, "0")?;
-        let value = vm.get(&entry, "1")?;
-        let key = vm.to_key(&key)?;
-        vm.create_data_property(result, &key, value)?;
     }
     Ok(Value::Object(result))
+}
+
+/// Ajoute à `result` la propriété que décrit l'entrée `[clé, valeur]`.
+fn from_entry(vm: &mut Vm, result: ObjId, entry: &Value) -> JsResult<()> {
+    if entry.as_object().is_none() {
+        return Err(vm.type_error("Object.fromEntries : chaque entrée doit être un objet"));
+    }
+    let key = vm.get(entry, "0")?;
+    let value = vm.get(entry, "1")?;
+    let key = vm.to_key(&key)?;
+    vm.create_data_property(result, &key, value)?;
+    Ok(())
 }
 
 fn object_assign(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {

@@ -139,7 +139,15 @@ pub(crate) enum IterState {
     Keys { keys: Vec<JsStr>, index: usize },
     /// Éléments d'un tableau, relus à chaque tour.
     Array { target: ObjId, index: usize },
-    /// Valeurs figées (chaînes, `Map`, `Set`, itérables convertis).
+    /// Entrées d'une `Map` ou d'un `Set`, relues à chaque tour : celles
+    /// ajoutées en cours de route sont visitées, celles retirées ne le
+    /// sont pas.
+    Collection {
+        target: ObjId,
+        cursor: Cursor,
+        kind: IndexedKind,
+    },
+    /// Valeurs figées (chaînes, itérables convertis).
     Values { values: Vec<Value>, index: usize },
     /// Objet respectant le protocole d'itération (`next()` → `{ value, done }`).
     /// `done` : épuisé, ou fermé ; plus aucun appel ne lui sera fait.
@@ -155,6 +163,63 @@ pub(crate) enum IterState {
         index: usize,
         kind: IndexedKind,
     },
+}
+
+/// Position d'un parcours de `Map` ou de `Set`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Cursor {
+    /// Rang de la prochaine entrée ; `usize::MAX` une fois le parcours fini.
+    pub(crate) index: usize,
+    /// Nombre de retraits du journal déjà pris en compte.
+    pub(crate) seen: usize,
+}
+
+/// Journal des retraits d'une `Map` ou d'un `Set` qu'on parcourt : un
+/// retrait décale les entrées qui le suivent, et chaque parcours en cours
+/// recule d'autant.
+///
+/// LIMITE CONNUE : le journal ne garde que les derniers retraits ; un
+/// parcours qui en laisse passer plus de [`RemovalLog::WINDOW`] entre deux
+/// pas peut sauter ou revoir des entrées.
+#[derive(Debug, Default)]
+pub(crate) struct RemovalLog {
+    /// Nombre de retraits oubliés, plus anciens que `removed`.
+    base: usize,
+    /// Rangs retirés, dans l'ordre ; [`RemovalLog::CLEARED`] pour un `clear`.
+    removed: Vec<usize>,
+}
+
+impl RemovalLog {
+    /// Marque d'un `clear` : toutes les entrées sont parties.
+    pub(crate) const CLEARED: usize = usize::MAX;
+    /// Nombre de retraits toujours gardés.
+    const WINDOW: usize = 4096;
+
+    pub(crate) fn record(&mut self, index: usize) {
+        if self.removed.len() >= 2 * Self::WINDOW {
+            self.removed.drain(..Self::WINDOW);
+            self.base += Self::WINDOW;
+        }
+        self.removed.push(index);
+    }
+
+    /// Nombre de retraits enregistrés depuis le début.
+    pub(crate) fn end(&self) -> usize {
+        self.base + self.removed.len()
+    }
+
+    /// Applique à `cursor` les retraits qu'il n'a pas encore vus.
+    pub(crate) fn catch_up(&self, cursor: &mut Cursor) {
+        let from = cursor.seen.saturating_sub(self.base);
+        for &removed in self.removed.get(from..).unwrap_or(&[]) {
+            if removed == Self::CLEARED {
+                cursor.index = 0;
+            } else if removed < cursor.index {
+                cursor.index -= 1;
+            }
+        }
+        cursor.seen = self.end();
+    }
 }
 
 /// Ce que rend un itérateur de tableau.
@@ -1207,7 +1272,9 @@ impl Heap {
                 }
                 Kind::Iterator(state) => match state {
                     IterState::Keys { .. } => {}
-                    IterState::Array { target, .. } => pending.push(*target),
+                    IterState::Array { target, .. } | IterState::Collection { target, .. } => {
+                        pending.push(*target);
+                    }
                     IterState::Values { values, .. } => {
                         values.iter().for_each(|v| push(v, &mut pending))
                     }

@@ -892,17 +892,15 @@ impl Vm {
                     target: *id,
                     index: 0,
                 },
-                Kind::Map(map) => {
-                    let pairs: Vec<(Value, Value)> = map.values().cloned().collect();
-                    let values = pairs
-                        .into_iter()
-                        .map(|(k, v)| self.new_array(vec![k, v]))
-                        .collect();
-                    IterState::Values { values, index: 0 }
-                }
-                Kind::Set(set) => IterState::Values {
-                    values: set.values().cloned().collect(),
-                    index: 0,
+                Kind::Map(_) => IterState::Collection {
+                    target: *id,
+                    cursor: self.collection_cursor(*id),
+                    kind: IndexedKind::Entries,
+                },
+                Kind::Set(_) => IterState::Collection {
+                    target: *id,
+                    cursor: self.collection_cursor(*id),
+                    kind: IndexedKind::Values,
                 },
                 Kind::Iterator(_) => return Ok(source.clone()),
                 _ => {
@@ -1031,6 +1029,24 @@ impl Vm {
                 let value = values.get(*index).cloned();
                 *index += 1;
                 Ok(value)
+            }
+            IterState::Collection {
+                target,
+                cursor,
+                kind,
+            } => {
+                let (target, mut position, kind) = (*target, *cursor, *kind);
+                let entry = self.collection_step(target, &mut position);
+                if let Kind::Iterator(IterState::Collection { cursor, .. }) =
+                    &mut self.heap.get_mut(id).kind
+                {
+                    *cursor = position;
+                }
+                Ok(entry.map(|(key, value)| match kind {
+                    IndexedKind::Keys => key,
+                    IndexedKind::Values => value,
+                    IndexedKind::Entries => self.new_array(vec![key, value]),
+                }))
             }
             IterState::Array { target, index } => {
                 let (target, i) = (*target, *index);
