@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier url`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 6608 / 8717 (75,8 %)** — fichiers entièrement réussis : 16 / 32 (50,0 %).
+**Sous-tests réussis : 7585 / 10043 (75,5 %)** — fichiers entièrement réussis : 16 / 34 (47,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,14 +13,16 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `url` | 16 / 32 | 6608 / 8717 (75,8 %) |
+| `url` | 16 / 34 | 7585 / 10043 (75,5 %) |
 
 ## Fichiers non entièrement réussis
 
 | Fichier | Sous-tests | Cause |
 |---|---:|---|
 | `url/IdnaTestV2.any.js` | 1919 / 2676 |  |
+| `url/a-element-origin-xhtml.xhtml` | 411 / 422 |  |
 | `url/a-element-origin.html` | 411 / 422 |  |
+| `url/a-element-xhtml.xhtml` | 566 / 904 |  |
 | `url/a-element.html` | 567 / 905 |  |
 | `url/data-uri-fragment.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `url/failure.html` | 417 / 1177 |  |

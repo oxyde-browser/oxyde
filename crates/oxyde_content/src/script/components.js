@@ -8,7 +8,9 @@
 //   assignedSlotOf(nœud)        -> l'emplacement où il est distribué, ou null ;
 //   assignedNodesOf(emplacement) -> tableau des nœuds qui y sont distribués ;
 //   deepFocused()               -> l'élément qui a le focus, fût-il dans un arbre fantôme ;
-//   shadowRootList()            -> [racine, ouverte, …] pour chaque arbre fantôme du document.
+//   shadowRootList()            -> [racine, ouverte, …] pour chaque arbre fantôme du document ;
+//   parseXmlDocument(texte, type) -> nouveau document XML de type `type`, ou, si `texte`
+//                                  est mal formé, le message de la faute (une chaîne).
 //
 // LIMITES CONNUES
 // - `Path2D` enregistre ses commandes ; rien ne les dessine (pas de canevas).
@@ -29,8 +31,8 @@
 //   la tâche ; `delegatesFocus` est retenu sans effet ; les rappels d'un
 //   élément personnalisé d'un arbre fantôme partent dans l'ordre des
 //   mutations, parfois avant ceux de son hôte.
-// - `DOMParser` : l'analyseur XML est réduit (pas de DTD, pas d'entités
-//   déclarées) ; un document XML mal formé rend un document `parsererror`.
+// - `DOMParser` : un document XML mal formé rend un document `parsererror`
+//   (à la manière de Firefox), sans le début du document fautif.
 // - `template.content` : le fragment appartient au document de la page.
 // - `document.write()` : le document est déjà analysé en entier quand les
 //   scripts s'exécutent ; pendant un script, le texte écrit est analysé à
@@ -41,7 +43,7 @@
 //   Hors d'un script (minuteur, événement), `write()` remplace le document,
 //   sans retirer ses écouteurs ni relancer `load`.
 (function (parseHtmlDocument, attachShadowRoot, shadowRootOf, shadowHostOf, assignedSlotOf,
-  assignedNodesOf, deepFocused, shadowRootList) {
+  assignedNodesOf, deepFocused, shadowRootList, parseXmlDocument) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -209,151 +211,30 @@
   });
 
   // ---- DOMParser ---------------------------------------------------------------------------------------------
-  const XMLNS = "http://www.w3.org/2000/xmlns/";
-  const XML = "http://www.w3.org/XML/1998/namespace";
-  const ENTITIES = { lt: "<", gt: ">", amp: "&", quot: "\"", apos: "'" };
-  const decode = (text) => text.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (whole, name) => {
-    if (name[0] === "#") {
-      const code = name[1] === "x" ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
-      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
-    }
-    if (!(name in ENTITIES)) throw new Error("entité inconnue : " + whole);
-    return ENTITIES[name];
-  });
-  function parseXml(source, doc) {
-    let at = 0;
-    const text = source.replace(/^﻿/, "");
-    const fail = (message) => { throw new Error(message + " (position " + at + ")"); };
-    // Pile des éléments ouverts, avec leurs déclarations d'espaces de noms.
-    const open = [{ node: doc, scope: { xml: XML, xmlns: XMLNS } }];
-    const top = () => open[open.length - 1];
-    const skip = (end, what) => {
-      const stop = text.indexOf(end, at);
-      if (stop < 0) fail(what + " non terminé");
-      const inner = text.slice(at, stop);
-      at = stop + end.length;
-      return inner;
-    };
-    const NAME = /[^\s<>\/=!?"'&]+/y;
-    const name = () => {
-      NAME.lastIndex = at;
-      const found = NAME.exec(text);
-      if (found === null) fail("nom attendu");
-      at = NAME.lastIndex;
-      return found[0];
-    };
-    const space = () => {
-      while (at < text.length && /\s/.test(text[at])) at++;
-    };
-    let rooted = false;
-    while (at < text.length) {
-      if (text.startsWith("<!--", at)) {
-        at += 4;
-        top().node.appendChild(doc.createComment(skip("-->", "commentaire")));
-      } else if (text.startsWith("<![CDATA[", at)) {
-        at += 9;
-        if (open.length === 1) fail("section CDATA hors de l'élément racine");
-        top().node.appendChild(doc.createCDATASection(skip("]]>", "section CDATA")));
-      } else if (text.startsWith("<?", at)) {
-        at += 2;
-        const target = name();
-        const data = skip("?>", "instruction de traitement").trim();
-        if (target.toLowerCase() !== "xml") {
-          top().node.appendChild(doc.createProcessingInstruction(target, data));
-        }
-      } else if (text.startsWith("<!", at)) {
-        // DOCTYPE : sauté, sous-ensemble interne compris.
-        let depth = 0;
-        for (; at < text.length; at++) {
-          if (text[at] === "[") depth++;
-          else if (text[at] === "]") depth--;
-          else if (text[at] === ">" && depth <= 0) break;
-        }
-        if (at >= text.length) fail("déclaration non terminée");
-        at++;
-      } else if (text.startsWith("</", at)) {
-        at += 2;
-        const closing = name();
-        space();
-        if (text[at] !== ">") fail("« > » attendu");
-        at++;
-        if (open.length === 1 || top().qualified !== closing) fail("balise fermante inattendue : " + closing);
-        open.pop();
-      } else if (text[at] === "<") {
-        at++;
-        if (open.length === 1 && rooted) fail("un seul élément racine est permis");
-        const qualified = name();
-        const attributes = [];
-        const scope = Object.create(top().scope);
-        for (;;) {
-          space();
-          if (text[at] === ">" || text.startsWith("/>", at)) break;
-          const key = name();
-          space();
-          if (text[at] !== "=") fail("« = » attendu après l'attribut " + key);
-          at++;
-          space();
-          const quote = text[at];
-          if (quote !== "\"" && quote !== "'") fail("valeur d'attribut entre guillemets attendue");
-          at++;
-          const value = decode(skip(quote, "valeur d'attribut"));
-          if (attributes.some(([other]) => other === key)) fail("attribut répété : " + key);
-          attributes.push([key, value]);
-          if (key === "xmlns") scope[""] = value;
-          else if (key.startsWith("xmlns:")) scope[key.slice(6)] = value;
-        }
-        const empty = text[at] === "/";
-        at += empty ? 2 : 1;
-        const prefix = qualified.includes(":") ? qualified.split(":")[0] : "";
-        const namespace = scope[prefix];
-        if (prefix !== "" && namespace === undefined) fail("préfixe non déclaré : " + prefix);
-        const element = doc.createElementNS(namespace === undefined || namespace === "" ? null : namespace, qualified);
-        for (const [key, value] of attributes) {
-          const colon = key.indexOf(":");
-          if (key === "xmlns" || key.startsWith("xmlns:")) element.setAttributeNS(XMLNS, key, value);
-          else if (colon < 0) element.setAttribute(key, value);
-          else {
-            const bound = scope[key.slice(0, colon)];
-            if (bound === undefined) fail("préfixe non déclaré : " + key.slice(0, colon));
-            element.setAttributeNS(bound, key, value);
-          }
-        }
-        top().node.appendChild(element);
-        rooted = true;
-        if (!empty) open.push({ node: element, scope, qualified });
-      } else {
-        const stop = text.indexOf("<", at);
-        const raw = text.slice(at, stop < 0 ? text.length : stop);
-        at = stop < 0 ? text.length : stop;
-        if (open.length === 1) {
-          if (raw.trim() !== "") fail("texte hors de l'élément racine");
-        } else {
-          top().node.appendChild(doc.createTextNode(decode(raw)));
-        }
-      }
-    }
-    if (open.length > 1) fail("élément non fermé : " + top().qualified);
-    if (!rooted) fail("aucun élément racine");
-  }
   const XML_TYPES = ["text/xml", "application/xml", "application/xhtml+xml", "image/svg+xml"];
+  const PARSER_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
+  // Document XML analysé depuis `source` ; un texte mal formé rend un document
+  // d'erreur, à la manière des autres navigateurs.
+  const parseXml = (source, type) => {
+    const doc = parseXmlDocument(source, type);
+    if (typeof doc !== "string") return doc;
+    const report = parseXmlDocument("<parsererror xmlns=\"" + PARSER_ERROR + "\"/>", type);
+    // Comme un élément créé par `createElementNS` : sans attribut `xmlns`.
+    report.documentElement.removeAttribute("xmlns");
+    report.documentElement.textContent = "Erreur d'analyse XML : " + doc;
+    return report;
+  };
   class DOMParser {
     parseFromString(text, type) {
+      if (arguments.length < 2) {
+        throw new TypeError("DOMParser.parseFromString : deux arguments sont requis");
+      }
       const source = String(text);
       if (type === "text/html") return parseHtmlDocument(source);
       if (!XML_TYPES.includes(type)) {
         throw new TypeError("DOMParser.parseFromString : type « " + type + " » non pris en charge");
       }
-      const doc = document.implementation.createDocument(null, null, null);
-      try {
-        parseXml(source, doc);
-      } catch (error) {
-        // Document d'erreur, à la manière des autres navigateurs.
-        doc.replaceChildren();
-        const report = doc.createElementNS("http://www.mozilla.org/newlayout/xml/parsererror.xml", "parsererror");
-        report.textContent = "Erreur d'analyse XML : " + error.message;
-        doc.appendChild(report);
-      }
-      return doc;
+      return parseXml(source, type);
     }
   }
   define(DOMParser.prototype, Symbol.toStringTag, { value: "DOMParser", configurable: true });

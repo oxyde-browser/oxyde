@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44772 / 50172 (89,2 %)** — fichiers entièrement réussis : 489 / 693 (70,6 %).
+**Sous-tests réussis : 46766 / 52248 (89,5 %)** — fichiers entièrement réussis : 533 / 736 (72,4 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -20,8 +20,8 @@ est le plus honnête des deux.
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 15 / 39 | 38 / 94 (40,4 %) |
 | `dom/lists` | 4 / 5 | 181 / 189 (95,8 %) |
-| `dom/nodes` | 215 / 265 | 11133 / 13078 (85,1 %) |
-| `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
+| `dom/nodes` | 257 / 308 | 13125 / 15154 (86,6 %) |
+| `dom/nodes/Document-contentType/contentType` | 6 / 16 | 6 / 16 (37,5 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
 | `dom/nodes/moveBefore` | 29 / 64 | 104 / 177 (58,8 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
@@ -109,18 +109,15 @@ est le plus honnête des deux.
 | `dom/nodes/Document-contentType/contentType/contenttype_mimeheader_03.html` | 0 / 1 |  |
 | `dom/nodes/Document-contentType/contentType/contenttype_png.html` | 0 / 1 |  |
 | `dom/nodes/Document-contentType/contentType/contenttype_txt.html` | 0 / 1 |  |
-| `dom/nodes/Document-contentType/contentType/contenttype_xml.html` | 0 / 1 |  |
-| `dom/nodes/Document-contentType/contentType/xhr_responseType_document.html` | 0 / 1 |  |
-| `dom/nodes/Document-createElement-namespace.html` | 18 / 51 |  |
-| `dom/nodes/Document-createElement.html` | 49 / 147 |  |
-| `dom/nodes/Document-createElementNS.html` | 205 / 596 |  |
+| `dom/nodes/Document-createElement-namespace.html` | 45 / 51 |  |
+| `dom/nodes/Document-createElementNS.html` | 375 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 261 / 279 |  |
-| `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 |  |
 | `dom/nodes/Element-matches.html` | 597 / 669 |  |
 | `dom/nodes/Element-webkitMatchesSelector.html` | 597 / 669 |  |
 | `dom/nodes/MutationObserver-cross-realm-callback-report-exception.html` | 0 / 1 |  |
 | `dom/nodes/MutationObserver-document.html` | 1 / 4 |  |
 | `dom/nodes/MutationObserver-transient-registered-observers.window.js` | 13 / 15 |  |
+| `dom/nodes/MutationObserver-xml-parser.xhtml` | 0 / 1 |  |
 | `dom/nodes/Node-appendChild-cereactions-vs-script.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode-document-allow-declarative-shadow-roots.window.js` | 0 / 1 |  |
 | `dom/nodes/Node-cloneNode.html` | 114 / 135 |  |
@@ -131,12 +128,14 @@ est le plus honnête des deux.
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-1.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-2.html` | 0 / 1 |  |
 | `dom/nodes/NodeList-static-length-getter-tampered-indexOf-3.html` | 0 / 1 |  |
+| `dom/nodes/ParentNode-querySelector-All-xht.xht` | 1597 / 1975 |  |
 | `dom/nodes/ParentNode-querySelector-All.html` | 1605 / 1975 |  |
 | `dom/nodes/ParentNode-querySelector-escapes.html` | 63 / 68 |  |
 | `dom/nodes/ParentNode-querySelector-hyphen-prefix.html` | 3 / 4 |  |
 | `dom/nodes/ParentNode-querySelector-namespace-tagname-attribute.html` | 6 / 8 |  |
 | `dom/nodes/ParentNode-querySelector-xml-capitalization.window.js` | 2 / 3 |  |
 | `dom/nodes/ParentNode-replaceChildren.html` | 28 / 31 |  |
+| `dom/nodes/ProcessingInstruction-escapes-1.xhtml` | 0 / 1 |  |
 | `dom/nodes/adoption.window.js` | 2 / 6 |  |
 | `dom/nodes/attach-shadow-realm-after-adoption.html` | 2 / 5 |  |
 | `dom/nodes/create-element-realm-after-adoption.html` | 2 / 5 |  |

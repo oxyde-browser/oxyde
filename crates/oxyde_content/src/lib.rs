@@ -534,15 +534,63 @@ struct FrameSlot {
     scripts: Vec<ScriptSlot>,
     /// Vrai une fois le document remis au cadre (ou abandonné).
     loaded: bool,
+    /// Type MIME du document s'il est en XML.
+    xml: Option<&'static str>,
 }
 
 impl FrameSlot {
-    /// Analyse `html` comme document du cadre et relève ses scripts.
-    fn fill(&mut self, html: &str) {
-        let document = oxyde_html::parse_document(html);
+    /// Analyse `source` comme document du cadre, HTML ou XML selon
+    /// `content_type`, et relève ses scripts.
+    fn fill(&mut self, source: &str, content_type: Option<&str>) {
+        let (document, xml) = parse_typed(source, content_type);
+        self.xml = xml;
         self.scripts = frame_scripts(&document, &self.url);
         self.document = Some(document);
         self.resolved = true;
+    }
+}
+
+/// Type MIME retenu pour un document XML servi comme `content_type`
+/// (`application/xhtml+xml`, `image/svg+xml`, `text/xml`, tout type en
+/// `+xml`…) ; `None` pour un document HTML.
+#[must_use]
+pub fn xml_content_type(content_type: &str) -> Option<&'static str> {
+    let essence = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    match essence.as_str() {
+        "application/xhtml+xml" => Some("application/xhtml+xml"),
+        "image/svg+xml" => Some("image/svg+xml"),
+        "text/xml" => Some("text/xml"),
+        "application/xml" => Some("application/xml"),
+        other if other.ends_with("+xml") => Some("application/xml"),
+        _ => None,
+    }
+}
+
+/// Analyse `source` en HTML, ou en XML si `content_type` est un type XML.
+/// Rend le document et, pour un document XML bien formé, son type MIME. Un
+/// document XML mal formé est remplacé par une page HTML qui dit la faute.
+fn parse_typed(source: &str, content_type: Option<&str>) -> (Document, Option<&'static str>) {
+    let Some(xml) = content_type.and_then(xml_content_type) else {
+        return (oxyde_html::parse_document(source), None);
+    };
+    match oxyde_html::parse_xml(source) {
+        Ok(document) => (document, Some(xml)),
+        Err(error) => {
+            let message = error.to_string().replace('&', "&amp;").replace('<', "&lt;");
+            let page = format!(
+                "<!DOCTYPE html><html><head><title>Erreur d'analyse XML</title></head>\
+                 <body><parsererror style=\"display:block;white-space:pre-wrap;\
+                 border:2px solid #c00;padding:1em;margin:1em;background:#fdd;color:#000\">\
+                 <h3>Ce document XML est mal formé.</h3><div>{message}</div>\
+                 </parsererror></body></html>"
+            );
+            (oxyde_html::parse_document(&page), None)
+        }
     }
 }
 
@@ -691,6 +739,8 @@ struct Find {
 #[derive(Debug)]
 pub struct Page {
     url: Url,
+    /// Type MIME du document s'il est en XML ; `None` pour du HTML.
+    xml: Option<&'static str>,
     /// Adresse de base de résolution des liens (`<base href>` ou l'adresse de la page).
     base: Url,
     doc: Document,
@@ -1081,9 +1131,21 @@ impl Page {
     /// Analyse `html` comme le document situé à `url`.
     #[must_use]
     pub fn from_html(url: Url, html: &str) -> Self {
-        let mut doc = oxyde_html::parse_document(html);
-        // `<template shadowrootmode>` : arbres fantômes posés par l'analyseur.
-        doc.adopt_declarative_shadow_roots();
+        Self::from_source(url, html, None)
+    }
+
+    /// Analyse `source` comme le document situé à `url`, servi avec le type
+    /// MIME `content_type` : en XML pour un type XML (voir
+    /// [`xml_content_type`]), en HTML sinon. Un document XML mal formé
+    /// laisse place à une page qui dit la faute.
+    #[must_use]
+    pub fn from_source(url: Url, source: &str, content_type: Option<&str>) -> Self {
+        let (mut doc, xml) = parse_typed(source, content_type);
+        // `<template shadowrootmode>` : arbres fantômes posés par l'analyseur
+        // HTML.
+        if xml.is_none() {
+            doc.adopt_declarative_shadow_roots();
+        }
         let base = doc
             .find_html_element(doc.root(), "base")
             .and_then(|n| doc.element(n)?.attr("href").and_then(|h| url.join(h).ok()))
@@ -1111,9 +1173,10 @@ impl Page {
                     document: None,
                     scripts: Vec::new(),
                     loaded: false,
+                    xml: None,
                 };
                 if let Some(srcdoc) = el.attr("srcdoc") {
-                    slot.fill(srcdoc);
+                    slot.fill(srcdoc, None);
                     frames.push(slot);
                 } else if let Some(target) = el
                     .attr("src")
@@ -1183,6 +1246,7 @@ impl Page {
             images,
             scripts,
             script_nodes,
+            xml,
             import_map: std::sync::Arc::new(import_map),
             modules: HashMap::new(),
             frames,
@@ -1349,6 +1413,7 @@ impl Page {
                     document: None,
                     scripts: Vec::new(),
                     loaded: false,
+                    xml: None,
                 });
             }
         }
@@ -1365,11 +1430,23 @@ impl Page {
     /// [`Page::pending_scripts`]. Renvoie `false` si `url` n'était pas
     /// attendue.
     pub fn set_frame(&mut self, url: &Url, html: Option<&str>) -> bool {
+        self.set_frame_typed(url, html, None)
+    }
+
+    /// Comme [`Page::set_frame`], pour un document servi avec le type MIME
+    /// `content_type` : un type XML est analysé en XML.
+    pub fn set_frame_typed(
+        &mut self,
+        url: &Url,
+        source: Option<&str>,
+        content_type: Option<&str>,
+    ) -> bool {
+        let html = source;
         let mut found = false;
         for frame in &mut self.frames {
             if frame.url == *url && !frame.resolved {
                 match html {
-                    Some(html) => frame.fill(html),
+                    Some(html) => frame.fill(html, content_type),
                     None => {
                         frame.resolved = true;
                         frame.loaded = true;
@@ -1404,7 +1481,14 @@ impl Page {
                 continue;
             };
             let sources = frame_sources(&frame.scripts);
-            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+            engine.load_frame(
+                &mut self.doc,
+                frame.element,
+                &frame.url,
+                document,
+                &sources,
+                frame.xml,
+            );
             frame.loaded = true;
             any = true;
         }
@@ -1535,7 +1619,7 @@ impl Page {
         let modules = std::mem::take(&mut self.modules);
         let scripts = std::mem::take(&mut self.scripts);
         let script_nodes = std::mem::take(&mut self.script_nodes);
-        let mut engine = Box::new(ScriptEngine::new(&self.url));
+        let mut engine = self.new_engine();
         engine.set_import_map(std::sync::Arc::clone(&self.import_map));
         // Les cadres relevés à l'analyse sont chargés ici, pas à la demande.
         let noted: Vec<(NodeId, String)> = self
@@ -1587,7 +1671,14 @@ impl Page {
                 continue;
             };
             let sources = frame_sources(&frame.scripts);
-            engine.load_frame(&mut self.doc, frame.element, &frame.url, document, &sources);
+            engine.load_frame(
+                &mut self.doc,
+                frame.element,
+                &frame.url,
+                document,
+                &sources,
+                frame.xml,
+            );
         }
         engine.dispatch(&mut self.doc, None, "load");
         engine.take_dirty();
@@ -1600,8 +1691,18 @@ impl Page {
     /// page qui n'a aucun script.
     fn ensure_engine(&mut self) {
         if self.engine.is_none() {
-            self.engine = Some(Box::new(ScriptEngine::new(&self.url)));
+            self.engine = Some(self.new_engine());
         }
+    }
+
+    /// Moteur de script neuf pour cette page, informé de la nature de son
+    /// document.
+    fn new_engine(&self) -> Box<ScriptEngine> {
+        let mut engine = Box::new(ScriptEngine::new(&self.url));
+        if let Some(xml) = self.xml {
+            engine.set_xml_document(self.doc.root(), xml);
+        }
+        engine
     }
 
     /// À appeler quand un script a pu modifier le DOM : les feuilles de style
@@ -3485,7 +3586,7 @@ mod tests {
         assert!(
             requests[0]
                 .headers
-                .contains(&("X-Jeton".to_owned(), "abc".to_owned()))
+                .contains(&("x-jeton".to_owned(), "abc".to_owned()))
         );
         assert!(p.complete_fetch(
             requests[0].id,
@@ -5977,6 +6078,108 @@ mod tests {
                 "windows-1252 café€ При h😀 TypeError RangeError shift_jis 日本 a日本 128 TypeError utf-8"
             )
         );
+    }
+
+    #[test]
+    fn xhr_parses_xml_responses() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const ask = (path, kind, done) => {
+                 const xhr = new XMLHttpRequest();
+                 xhr.open('GET', path);
+                 xhr.responseType = kind;
+                 xhr.onload = () => { done(xhr); document.body.setAttribute('data-out', out.join(' ')); };
+                 xhr.send();
+               };
+               ask('/a.xml', '', x => out.push('a', x.responseXML.documentElement.localName, typeof x.response));
+               ask('/b.xml', '', x => out.push('b', x.responseXML));
+               ask('/c.html', 'document', x => out.push('c', x.response.body.textContent, x.response === x.responseXML));
+               ask('/c.html', '', x => out.push('d', x.responseXML));
+               ask('/e.bin', 'arraybuffer', x => out.push('e', x.response.byteLength));
+             </script>",
+        );
+        p.run_scripts();
+        let mut requests = p.take_fetches();
+        requests.sort_by_key(|request| request.id);
+        for request in requests {
+            let (kind, body) = match request.url.path() {
+                "/a.xml" => ("application/xml", "<racine><fils/></racine>"),
+                "/b.xml" => ("text/xml", "<racine>"),
+                "/c.html" => ("text/html", "<p>salut"),
+                _ => ("application/octet-stream", "abc"),
+            };
+            let _ = p.complete_fetch(
+                request.id,
+                Ok(FetchResponse {
+                    url: request.url.clone(),
+                    status: 200,
+                    headers: vec![("content-type".to_owned(), kind.to_owned())],
+                    body: body.as_bytes().to_vec(),
+                }),
+            );
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("a racine string b  c salut true d  e 3")
+        );
+    }
+
+    #[test]
+    fn xml_pages_and_parsers() {
+        let url = Url::parse("https://exemple.test/dossier/page.xhtml").expect("url");
+        let source = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+            <!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.0 Strict//EN\" \
+            \"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd\">\n\
+            <html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>t</title></head>\
+            <body><p id=\"p\">a&nbsp;b</p><svg xmlns=\"http://www.w3.org/2000/svg\"><rect/></svg>\
+            <script><![CDATA[\n\
+              const out = [];\n\
+              out.push(document.contentType, document instanceof XMLDocument);\n\
+              out.push(document.defaultView === window);\n\
+              out.push(document.createElement('DIV').localName);\n\
+              out.push(document.getElementById('p').textContent.length);\n\
+              out.push(document.querySelector('rect').namespaceURI);\n\
+              const parser = new DOMParser();\n\
+              const doc = parser.parseFromString(\n\
+                '<!DOCTYPE a [<!ENTITY e \"<b x=\\'1\\'>gras</b>\">]><a xmlns:p=\"urn:p\"><p:c/>&e;</a>',\n\
+                'application/xml');\n\
+              out.push(doc.contentType, doc.doctype.name, doc.documentElement.childNodes.length);\n\
+              out.push(doc.documentElement.firstChild.namespaceURI);\n\
+              out.push(doc.querySelector('b').getAttribute('x'));\n\
+              const bad = parser.parseFromString('<a><b></a>', 'text/xml');\n\
+              out.push(bad.documentElement.localName, bad.contentType);\n\
+              const svg = parser.parseFromString('<svg xmlns=\"http://www.w3.org/2000/svg\"/>', 'image/svg+xml');\n\
+              out.push(svg.documentElement.namespaceURI === 'http://www.w3.org/2000/svg');\n\
+              document.body.setAttribute('data-out', out.join(' '));\n\
+            ]]></script></body></html>";
+        let mut p = Page::from_source(url.clone(), source, Some("application/xhtml+xml"));
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "application/xhtml+xml true true DIV 3 http://www.w3.org/2000/svg \
+                 application/xml a 2 urn:p 1 parsererror text/xml true"
+            )
+        );
+        // Un document mal formé laisse place à une page qui dit la faute.
+        let broken = Page::from_source(url, "<html><p></html>", Some("application/xhtml+xml"));
+        let doc = broken.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert!(doc.text_content(body).contains("ligne 1"));
+        assert_eq!(
+            xml_content_type("image/svg+xml; charset=utf-8"),
+            Some("image/svg+xml")
+        );
+        assert_eq!(
+            xml_content_type("application/atom+xml"),
+            Some("application/xml")
+        );
+        assert_eq!(xml_content_type("text/html"), None);
     }
 
     #[test]

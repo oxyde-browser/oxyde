@@ -981,7 +981,8 @@ fn get_node_property(vm: &mut Vm, data: u64, key: &str) -> Option<JsResult> {
         "defaultView" if is_document => {
             // Un document créé par un script (`createHTMLDocument`,
             // `new Document()`, `DOMParser`) n'a pas de fenêtre.
-            let scripted = u32::try_from(data).is_ok_and(|index| h.kinds.contains_key(&index));
+            let scripted = u32::try_from(data)
+                .is_ok_and(|index| h.kinds.get(&index).is_some_and(|kind| !kind.windowed));
             return Some(Ok(if scripted {
                 Value::Null
             } else {
@@ -2486,6 +2487,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("assignedNodesOf", 1, dom_ops::assigned_nodes_of)),
         Value::Object(vm.new_function("deepFocused", 0, focus::deep_focused_element)),
         Value::Object(vm.new_function("shadowRootList", 0, dom_ops::shadow_root_list)),
+        Value::Object(vm.new_function("parseXmlDocument", 2, documents::parse_xml_document)),
     ];
     vm.call(&components, &Value::Undefined, &helpers)?;
     // Parcours de l'arbre et sélection.
@@ -2496,20 +2498,17 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("iterSet", 3, traversal::iter_set)),
     ];
     vm.call(&traversal, &Value::Undefined, &helpers)?;
-    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
-    // qui reçoit le `fetch` d'origine.
-    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
     let original_fetch = vm.get(&window, "fetch")?;
-    let xhr = vm.call(
-        &factory,
-        &Value::Undefined,
-        std::slice::from_ref(&original_fetch),
-    )?;
-    vm.define_hidden(global, "XMLHttpRequest", xhr);
     // `Blob`, `Request`, `Response` et le `fetch` du standard, bâti sur
     // celui du moteur.
     let factory = vm.eval_script(include_str!("script/fetch.js"))?;
     let fetch = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
+    // qui reçoit le `fetch` du moteur ; une page qui remplace
+    // `window.fetch` ne change pas son comportement.
+    let factory = vm.eval_script(include_str!("script/xhr.js"))?;
+    let xhr = vm.call(&factory, &Value::Undefined, std::slice::from_ref(&fetch))?;
+    vm.define_hidden(global, "XMLHttpRequest", xhr);
     vm.define_hidden(global, "fetch", fetch);
     Ok(())
 }
@@ -2559,8 +2558,18 @@ impl ScriptEngine {
         url: &Url,
         source: &Document,
         scripts: &[String],
+        xml: Option<&'static str>,
     ) {
-        self.run(doc, |vm| frames::load(vm, element, url, source, scripts));
+        self.run(doc, |vm| {
+            frames::load(vm, element, url, source, scripts, xml)
+        });
+    }
+
+    /// Note que le document de la page est un document XML de type MIME
+    /// `content_type` (`contentType`, `createElement` sans mise en
+    /// minuscules…).
+    pub(crate) fn set_xml_document(&mut self, document: NodeId, content_type: &'static str) {
+        documents::set_windowed_kind(&mut self.vm, document, Some(content_type));
     }
 
     /// Signale les cadres que l'embarqueur charge lui-même avec la page :

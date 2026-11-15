@@ -792,9 +792,28 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [ ] Web Platform Tests `html/` : de 11,4 % vers 30 % des fichiers (cadres, `canvas`,
+- [ ] Web Platform Tests `html/` : de 11,6 % vers 30 % des fichiers (cadres, `canvas`,
       contenus embarqués, scripts).
-- [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
+- [x] Analyseur XML 1.0 avec espaces de noms (`oxyde_html::parse_xml`) : documents
+      bien formés seulement (première faute signalée avec sa ligne et sa colonne),
+      DOCTYPE et entités internes de son sous-ensemble, entités du HTML pour les
+      DOCTYPE XHTML, développement des entités borné. Il sert `DOMParser` (à la place
+      de l'analyseur réduit écrit en JavaScript), `XMLHttpRequest.responseXML` et
+      `responseType` `document`, `arraybuffer` et `blob`, et les pages et cadres
+      servis en XML (`.xhtml`, `.svg`, `.xml`) : leur document est un `XMLDocument`
+      dont `contentType` dit le type, et `createElement` n'y met pas les noms en
+      minuscules. Un document mal formé laisse place à une page qui dit la faute.
+      L'import d'un nœud d'un document dans un autre traduit ses espaces de noms.
+      Le lanceur WPT exécute aussi les tests `.xhtml`, `.xht` et `.svg` : `dom/` passe de
+      489 fichiers sur 693 à 533 sur 736 (72,4 %), `html/` de 826 sur 7 254 à 847 sur
+      7 308 (11,6 %).
+      Limites : aucune ressource externe (DTD, entité externe) ; valeurs par défaut
+      des `<!ATTLIST>` ignorées ; pas de validation ; le navigateur reconnaît un
+      document XML à l'extension de son adresse, pas à son en-tête `Content-Type`
+      (qui n'arrive pas jusqu'au processus de rendu) ; une page mal formée n'affiche
+      pas le début du document ; l'affichage d'un document SVG ou XML sans
+      élément HTML n'a pas été vérifié ; `XMLHttpRequest` envoie ses noms
+      d'en-têtes en minuscules.
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par
       défaut avec contenu de repli, `assignedSlot`, `assignedNodes`, `assignedElements`,
@@ -824,7 +843,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] `Intl` réduit (français et anglais : nombres, dates, pluriels, listes, durées relatives,
       comparaison, découpage), `String.prototype.normalize`, modules chargés à la demande
       (`import()`, module inséré par script), cartes d'import (table `imports`).
-- [x] `DOMParser` (HTML ; XML par un analyseur réduit), `template.content`, éléments
+- [x] `DOMParser` (HTML et XML), `template.content`, éléments
       personnalisés (`customElements`, classes qui étendent `HTMLElement` ; rappels à la fin de
       la tâche), flux (`ReadableStream`, `WritableStream`, `TransformStream`),
       `document.elementFromPoint`, interfaces `Window`, `Navigator`, `SVGElement`… ; les

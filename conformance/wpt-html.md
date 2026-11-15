@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 42830 / 118006 (36,3 %)** — fichiers entièrement réussis : 826 / 7254 (11,4 %).
+**Sous-tests réussis : 46098 / 123280 (37,4 %)** — fichiers entièrement réussis : 847 / 7308 (11,6 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -23,7 +23,7 @@ est le plus honnête des deux.
 | `html/browsers/browsing-the-web/history-traversal/pageswap` | 0 / 13 | 2 / 14 (14,3 %) |
 | `html/browsers/browsing-the-web/history-traversal/persisted-user-state-restoration` | 0 / 6 | 2 / 9 (22,2 %) |
 | `html/browsers/browsing-the-web/history-traversal/srcdoc` | 0 / 2 | 0 / 4 (0,0 %) |
-| `html/browsers/browsing-the-web/navigating-across-documents` | 6 / 64 | 16 / 142 (11,3 %) |
+| `html/browsers/browsing-the-web/navigating-across-documents` | 6 / 65 | 16 / 143 (11,2 %) |
 | `html/browsers/browsing-the-web/navigating-across-documents/initial-empty-document` | 1 / 16 | 13 / 71 (18,3 %) |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-abort` | 0 / 2 | 0 / 2 (0,0 %) |
 | `html/browsers/browsing-the-web/navigating-across-documents/multiple-globals` | 0 / 4 | 0 / 4 (0,0 %) |
@@ -55,7 +55,7 @@ est le plus honnête des deux.
 | `html/browsers/origin/origin-keyed-agent-clusters/getter-special-cases` | 0 / 15 | 0 / 16 (0,0 %) |
 | `html/browsers/origin/origin-keyed-agent-clusters/iframe-navigation` | 0 / 8 | 0 / 64 (0,0 %) |
 | `html/browsers/origin/origin-keyed-agent-clusters/popups` | 0 / 10 | 0 / 38 (0,0 %) |
-| `html/browsers/origin/relaxing-the-same-origin-restriction` | 0 / 5 | 3 / 27 (11,1 %) |
+| `html/browsers/origin/relaxing-the-same-origin-restriction` | 1 / 5 | 4 / 27 (14,8 %) |
 | `html/browsers/sandboxing` | 4 / 20 | 5 / 33 (15,2 %) |
 | `html/browsers/the-window-object` | 6 / 33 | 81 / 416 (19,5 %) |
 | `html/browsers/the-window-object/accessing-other-browsing-contexts` | 1 / 5 | 7 / 15 (46,7 %) |
@@ -144,8 +144,8 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy` | 1 / 53 | 54 / 390 (13,8 %) |
 | `html/cross-origin-embedder-policy/credentialless` | 0 / 22 | 6 / 38 (15,8 %) |
 | `html/cross-origin-embedder-policy/multi-globals` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/cross-origin-opener-policy` | 0 / 55 | 6 / 266 (2,3 %) |
-| `html/cross-origin-opener-policy/historical` | 0 / 10 | 0 / 4 (0,0 %) |
+| `html/cross-origin-opener-policy` | 0 / 55 | 6 / 449 (1,3 %) |
+| `html/cross-origin-opener-policy/historical` | 0 / 10 | 0 / 76 (0,0 %) |
 | `html/cross-origin-opener-policy/reporting/access-reporting` | 0 / 32 | 0 / 72 (0,0 %) |
 | `html/cross-origin-opener-policy/reporting/document-reporting` | 0 / 4 | 0 / 6 (0,0 %) |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting` | 0 / 15 | 0 / 5 (0,0 %) |
@@ -153,12 +153,12 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/document-isolation-policy` | 0 / 46 | 9 / 253 (3,6 %) |
 | `html/dom` | 1 / 23 | 30306 / 51854 (58,4 %) |
-| `html/dom/documents/dom-tree-accessors` | 13 / 40 | 94 / 240 (39,2 %) |
-| `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 7 / 9 | 25 / 27 (92,6 %) |
-| `html/dom/documents/resource-metadata-management` | 3 / 8 | 10 / 20 (50,0 %) |
+| `html/dom/documents/dom-tree-accessors` | 15 / 42 | 99 / 245 (40,4 %) |
+| `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 12 / 15 | 31 / 34 (91,2 %) |
+| `html/dom/documents/resource-metadata-management` | 6 / 11 | 13 / 23 (56,5 %) |
 | `html/dom/elements` | 0 / 1 | 17 / 141 (12,1 %) |
 | `html/dom/elements/elements-in-the-dom` | 1 / 2 | 8 / 9 (88,9 %) |
-| `html/dom/elements/global-attributes` | 23 / 47 | 157 / 253 (62,1 %) |
+| `html/dom/elements/global-attributes` | 23 / 47 | 158 / 253 (62,5 %) |
 | `html/dom/elements/images` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/dom/elements/the-innertext-and-outertext-properties` | 2 / 8 | 253 / 537 (47,1 %) |
 | `html/dom/partial-updates/tentative` | 0 / 2 | 0 / 2 (0,0 %) |
@@ -169,9 +169,9 @@ est le plus honnête des deux.
 | `html/editing/dnd/canvas` | 0 / 5 | 0 / 3 (0,0 %) |
 | `html/editing/dnd/datastore` | 0 / 11 | 0 / 47 (0,0 %) |
 | `html/editing/dnd/dom` | 0 / 3 | 15 / 55 (27,3 %) |
-| `html/editing/dnd/drop` | 0 / 2 | 0 / 1 (0,0 %) |
+| `html/editing/dnd/drop` | 0 / 8 | 0 / 16 (0,0 %) |
 | `html/editing/dnd/events` | 0 / 2 | 0 / 2 (0,0 %) |
-| `html/editing/dnd/images` | 5 / 16 | 5 / 14 (35,7 %) |
+| `html/editing/dnd/images` | 6 / 21 | 6 / 19 (31,6 %) |
 | `html/editing/dnd/interactiveelements` | 12 / 24 | 26 / 48 (54,2 %) |
 | `html/editing/dnd/layoutshift` | 0 / 1 | 0 / 0 (—) |
 | `html/editing/dnd/platform` | 0 / 5 | 0 / 7 (0,0 %) |
@@ -184,7 +184,7 @@ est le plus honnête des deux.
 | `html/editing/editing-0/autocapitalization` | 0 / 1 | 0 / 8 (0,0 %) |
 | `html/editing/editing-0/autocorrection` | 0 / 1 | 1 / 9 (11,1 %) |
 | `html/editing/editing-0/contenteditable` | 1 / 4 | 3 / 36 (8,3 %) |
-| `html/editing/editing-0/making-entire-documents-editable-the-designmode-idl-attribute` | 0 / 2 | 1 / 5 (20,0 %) |
+| `html/editing/editing-0/making-entire-documents-editable-the-designmode-idl-attribute` | 0 / 3 | 1 / 8 (12,5 %) |
 | `html/editing/editing-0/spelling-and-grammar-checking` | 0 / 2 | 1 / 4 (25,0 %) |
 | `html/editing/editing-0/writing-suggestions` | 0 / 1 | 6 / 80 (7,5 %) |
 | `html/editing/focus/focus-management` | 3 / 6 | 4 / 8 (50,0 %) |
@@ -197,7 +197,7 @@ est le plus honnête des deux.
 | `html/infrastructure/safe-passing-of-structured-data/shared-array-buffers` | 0 / 21 | 1 / 48 (2,1 %) |
 | `html/infrastructure/terminology/plugins` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/infrastructure/urls/base-url` | 1 / 11 | 2 / 17 (11,8 %) |
-| `html/infrastructure/urls/dynamic-changes-to-base-urls` | 0 / 1 | 0 / 19 (0,0 %) |
+| `html/infrastructure/urls/dynamic-changes-to-base-urls` | 0 / 2 | 15 / 39 (38,5 %) |
 | `html/infrastructure/urls/resolving-urls/query-encoding` | 1 / 7 | 120 / 323 (37,2 %) |
 | `html/infrastructure/urls/terminology-0` | 1 / 5 | 5 / 14 (35,7 %) |
 | `html/interaction/focus` | 6 / 13 | 31 / 82 (37,8 %) |
@@ -236,7 +236,7 @@ est le plus honnête des deux.
 | `html/rendering/non-replaced-elements/margin-collapsing-quirks` | 2 / 2 | 2 / 2 (100,0 %) |
 | `html/rendering/non-replaced-elements/phrasing-content-0/font-element-text-decoration-color` | 0 / 2 | 5 / 33 (15,2 %) |
 | `html/rendering/non-replaced-elements/sections-and-headings` | 0 / 1 | 0 / 0 (—) |
-| `html/rendering/non-replaced-elements/tables` | 4 / 13 | 34 / 139 (24,5 %) |
+| `html/rendering/non-replaced-elements/tables` | 5 / 14 | 39 / 144 (27,1 %) |
 | `html/rendering/non-replaced-elements/the-fieldset-and-legend-elements` | 15 / 37 | 156 / 300 (52,0 %) |
 | `html/rendering/non-replaced-elements/the-frameset-and-frame-elements` | 0 / 3 | 0 / 3 (0,0 %) |
 | `html/rendering/non-replaced-elements/the-hr-element-0` | 1 / 2 | 18 / 20 (90,0 %) |
@@ -266,9 +266,9 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-meta-element/color-scheme` | 0 / 11 | 1 / 24 (4,2 %) |
 | `html/semantics/document-metadata/the-meta-element/pragma-directives` | 1 / 5 | 1 / 5 (20,0 %) |
 | `html/semantics/document-metadata/the-meta-element/pragma-directives/attr-meta-http-equiv-refresh` | 1 / 6 | 1 / 138 (0,7 %) |
-| `html/semantics/document-metadata/the-style-element` | 2 / 20 | 7 / 34 (20,6 %) |
+| `html/semantics/document-metadata/the-style-element` | 2 / 22 | 9 / 40 (22,5 %) |
 | `html/semantics/document-metadata/the-style-element/tentative` | 0 / 11 | 1 / 24 (4,2 %) |
-| `html/semantics/document-metadata/the-title-element` | 1 / 3 | 1 / 13 (7,7 %) |
+| `html/semantics/document-metadata/the-title-element` | 1 / 5 | 1 / 25 (4,0 %) |
 | `html/semantics/edits/the-del-element` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/edits/the-ins-element` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/embedded-content/bfcache` | 0 / 6 | 0 / 0 (—) |
@@ -318,12 +318,12 @@ est le plus honnête des deux.
 | `html/semantics/forms/form-submission-0` | 5 / 39 | 45 / 412 (10,9 %) |
 | `html/semantics/forms/form-submission-target` | 0 / 8 | 0 / 35 (0,0 %) |
 | `html/semantics/forms/resetting-a-form` | 0 / 4 | 0 / 15 (0,0 %) |
-| `html/semantics/forms/textfieldselection` | 0 / 15 | 98 / 539 (18,2 %) |
+| `html/semantics/forms/textfieldselection` | 0 / 16 | 98 / 540 (18,1 %) |
 | `html/semantics/forms/the-button-element` | 9 / 24 | 32 / 115 (27,8 %) |
 | `html/semantics/forms/the-datalist-element` | 0 / 2 | 1 / 3 (33,3 %) |
-| `html/semantics/forms/the-fieldset-element` | 1 / 10 | 11 / 26 (42,3 %) |
+| `html/semantics/forms/the-fieldset-element` | 1 / 11 | 11 / 27 (40,7 %) |
 | `html/semantics/forms/the-form-element` | 5 / 21 | 23 / 130 (17,7 %) |
-| `html/semantics/forms/the-input-element` | 27 / 129 | 554 / 1985 (27,9 %) |
+| `html/semantics/forms/the-input-element` | 28 / 130 | 555 / 1986 (27,9 %) |
 | `html/semantics/forms/the-label-element` | 2 / 14 | 106 / 169 (62,7 %) |
 | `html/semantics/forms/the-legend-element` | 0 / 2 | 0 / 5 (0,0 %) |
 | `html/semantics/forms/the-meter-element` | 0 / 2 | 0 / 62 (0,0 %) |
@@ -336,7 +336,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select-listbox` | 0 / 6 | 0 / 25 (0,0 %) |
 | `html/semantics/forms/the-select-element/customizable-select-multiple-popup` | 0 / 5 | 0 / 6 (0,0 %) |
 | `html/semantics/forms/the-select-element/filterable-select` | 0 / 3 | 0 / 13 (0,0 %) |
-| `html/semantics/forms/the-textarea-element` | 4 / 14 | 19 / 42 (45,2 %) |
+| `html/semantics/forms/the-textarea-element` | 5 / 15 | 20 / 43 (46,5 %) |
 | `html/semantics/grouping-content/the-dd-element` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/semantics/grouping-content/the-div-element` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/semantics/grouping-content/the-dl-element` | 1 / 1 | 1 / 1 (100,0 %) |
@@ -370,15 +370,15 @@ est le plus honnête des deux.
 | `html/semantics/permission-element/usermedia/legacy-mode` | 0 / 1 | 0 / 4 (0,0 %) |
 | `html/semantics/popovers` | 18 / 89 | 1176 / 3900 (30,2 %) |
 | `html/semantics/scripting-1/the-noscript-element` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/semantics/scripting-1/the-script-element` | 17 / 56 | 225 / 595 (37,8 %) |
+| `html/semantics/scripting-1/the-script-element` | 19 / 62 | 430 / 1499 (28,7 %) |
 | `html/semantics/scripting-1/the-script-element/css-module` | 0 / 18 | 2 / 41 (4,9 %) |
-| `html/semantics/scripting-1/the-script-element/execution-timing` | 61 / 153 | 72 / 164 (43,9 %) |
+| `html/semantics/scripting-1/the-script-element/execution-timing` | 63 / 157 | 74 / 168 (44,0 %) |
 | `html/semantics/scripting-1/the-script-element/fetch-src` | 0 / 6 | 1 / 7 (14,3 %) |
 | `html/semantics/scripting-1/the-script-element/fetch-src/alpha` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/semantics/scripting-1/the-script-element/import-attributes` | 2 / 5 | 4 / 7 (57,1 %) |
 | `html/semantics/scripting-1/the-script-element/json-module` | 1 / 18 | 9 / 159 (5,7 %) |
 | `html/semantics/scripting-1/the-script-element/microtasks` | 1 / 8 | 1 / 11 (9,1 %) |
-| `html/semantics/scripting-1/the-script-element/module` | 18 / 73 | 57 / 152 (37,5 %) |
+| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 4154 (1,4 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import` | 8 / 32 | 15 / 154 (9,7 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha` | 0 / 3 | 0 / 0 (—) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks` | 1 / 2 | 3 / 4 (75,0 %) |
@@ -388,7 +388,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/moving-between-documents/ordering` | 0 / 4 | 2 / 6 (33,3 %) |
 | `html/semantics/scripting-1/the-script-element/text-module` | 1 / 15 | 13 / 155 (8,4 %) |
 | `html/semantics/scripting-1/the-template-element` | 0 / 1 | 267 / 403 (66,3 %) |
-| `html/semantics/scripting-1/the-template-element/additions-to-parsing-xhtml-documents` | 0 / 2 | 2 / 9 (22,2 %) |
+| `html/semantics/scripting-1/the-template-element/additions-to-parsing-xhtml-documents` | 1 / 3 | 3 / 10 (30,0 %) |
 | `html/semantics/scripting-1/the-template-element/additions-to-serializing-xhtml-documents` | 0 / 1 | 0 / 3 (0,0 %) |
 | `html/semantics/scripting-1/the-template-element/additions-to-the-steps-to-clone-a-node` | 2 / 2 | 8 / 8 (100,0 %) |
 | `html/semantics/scripting-1/the-template-element/definitions` | 2 / 4 | 13 / 18 (72,2 %) |
@@ -412,9 +412,9 @@ est le plus honnête des deux.
 | `html/semantics/text-level-semantics/the-a-element` | 4 / 7 | 22 / 26 (84,6 %) |
 | `html/semantics/text-level-semantics/the-time-element` | 0 / 1 | 4 / 8 (50,0 %) |
 | `html/semantics/the-button-element/command-and-commandfor` | 2 / 26 | 212 / 482 (44,0 %) |
-| `html/syntax/charset` | 1 / 12 | 3 / 39 (7,7 %) |
+| `html/syntax/charset` | 1 / 12 | 4 / 39 (10,3 %) |
 | `html/syntax/parsing` | 16 / 47 | 508 / 2416 (21,0 %) |
-| `html/syntax/parsing-html-fragments` | 10 / 13 | 12 / 25 (48,0 %) |
+| `html/syntax/parsing-html-fragments` | 10 / 14 | 12 / 27 (44,4 %) |
 | `html/syntax/parsing-xml-fragments` | 0 / 1 | 0 / 5 (0,0 %) |
 | `html/syntax/parsing/template/additions-to-foster-parenting` | 2 / 2 | 4 / 4 (100,0 %) |
 | `html/syntax/parsing/template/additions-to-the-in-body-insertion-mode` | 6 / 8 | 37 / 42 (88,1 %) |
@@ -431,25 +431,25 @@ est le plus honnête des deux.
 | `html/syntax/speculative-parsing/generated/document-write` | 0 / 63 | 0 / 63 (0,0 %) |
 | `html/syntax/speculative-parsing/generated/page-load` | 0 / 63 | 0 / 63 (0,0 %) |
 | `html/syntax/xmldecl` | 0 / 3 | 7 / 88 (8,0 %) |
-| `html/the-xhtml-syntax/parsing-xhtml-documents` | 0 / 12 | 440 / 25606 (1,7 %) |
+| `html/the-xhtml-syntax/parsing-xhtml-documents` | 0 / 13 | 3454 / 25607 (13,5 %) |
 | `html/user-activation` | 1 / 21 | 5 / 31 (16,1 %) |
 | `html/webappapis/animation-frames` | 7 / 12 | 7 / 16 (43,8 %) |
 | `html/webappapis/atob` | 0 / 1 | 285 / 286 (99,7 %) |
-| `html/webappapis/dynamic-markup-insertion/closing-the-input-stream` | 0 / 2 | 0 / 2 (0,0 %) |
-| `html/webappapis/dynamic-markup-insertion/document-write` | 16 / 87 | 18 / 95 (18,9 %) |
-| `html/webappapis/dynamic-markup-insertion/document-writeln` | 0 / 2 | 1 / 4 (25,0 %) |
+| `html/webappapis/dynamic-markup-insertion/closing-the-input-stream` | 0 / 3 | 0 / 3 (0,0 %) |
+| `html/webappapis/dynamic-markup-insertion/document-write` | 16 / 88 | 18 / 96 (18,8 %) |
+| `html/webappapis/dynamic-markup-insertion/document-writeln` | 0 / 3 | 1 / 5 (20,0 %) |
 | `html/webappapis/dynamic-markup-insertion/html-unsafe-methods` | 0 / 13 | 10 / 95 (10,5 %) |
-| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream` | 13 / 52 | 57 / 174 (32,8 %) |
-| `html/webappapis/dynamic-markup-insertion/the-innerhtml-property` | 0 / 1 | 1 / 2 (50,0 %) |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream` | 13 / 53 | 59 / 175 (33,7 %) |
+| `html/webappapis/dynamic-markup-insertion/the-innerhtml-property` | 0 / 2 | 3 / 16 (18,8 %) |
 | `html/webappapis/dynamic-markup-insertion/the-outerhtml-property` | 2 / 2 | 2 / 2 (100,0 %) |
 | `html/webappapis/events` | 1 / 2 | 1 / 2 (50,0 %) |
 | `html/webappapis/microtask-queuing` | 3 / 4 | 8 / 9 (88,9 %) |
 | `html/webappapis/scripting` | 0 / 2 | 2 / 6 (33,3 %) |
-| `html/webappapis/scripting/event-loops` | 3 / 7 | 4 / 8 (50,0 %) |
+| `html/webappapis/scripting/event-loops` | 3 / 8 | 4 / 9 (44,4 %) |
 | `html/webappapis/scripting/events` | 6 / 35 | 43 / 109 (39,4 %) |
 | `html/webappapis/scripting/events/event-handler-processing-algorithm-error` | 8 / 12 | 20 / 24 (83,3 %) |
 | `html/webappapis/scripting/processing-model-2` | 6 / 36 | 11 / 55 (20,0 %) |
-| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 1 / 3 (33,3 %) |
+| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 0 / 3 (0,0 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue` | 1 / 4 | 14 / 31 (45,2 %) |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 1 / 14 | 36 / 61 (59,0 %) |
 | `html/webappapis/structured-clone` | 0 / 2 | 63 / 156 (40,4 %) |
@@ -609,6 +609,7 @@ est le plus honnête des deux.
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-abort/javascript-url-abort-return-value-string.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-abort/javascript-url-abort-return-value-undefined.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-global-scope.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-load-as-html.xhtml` | 0 / 1 | harnais : Test named 'javascript: URL navigation to a string must create a HTML document using the correct properties' specified 1 |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-nested-history.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-no-beforeunload.window.js` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/browsers/browsing-the-web/navigating-across-documents/javascript-url-object-embed-history.html` | 0 / 2 | harnais : délai du harnais dépassé |
@@ -1004,7 +1005,6 @@ est le plus honnête des deux.
 | `html/browsers/origin/origin-keyed-agent-clusters/regression-1399759.https.sub.html` | 0 / 2 |  |
 | `html/browsers/origin/origin-keyed-agent-clusters/removing-iframes.sub.https.html` | 0 / 13 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/origin-of-data-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain.html` | 3 / 4 |  |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_access_details.sub.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_setter.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/browsers/origin/relaxing-the-same-origin-restriction/document_domain_setter_srcdoc.html` | 0 / 3 | harnais : délai du harnais dépassé |
@@ -3653,25 +3653,25 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/coop-sandbox-cuts-opener.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/coop-sandbox-redirects-cuts-opener.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/coop-sandbox.https.html` | 2 / 4 | harnais : délai du harnais dépassé |
-| `html/cross-origin-opener-policy/header-parsing-failures.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/header-parsing-failures.https.html` | 0 / 16 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/header-parsing-non-ascii.https.html` | 0 / 1 |  |
 | `html/cross-origin-opener-policy/header-parsing-repeated.https.html` | 0 / 1 |  |
-| `html/cross-origin-opener-policy/header-parsing-successes.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/header-parsing-successes.https.html` | 0 / 6 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/historical/coep-navigate-popup-unsafe-inherit.https.html` | 0 / 4 | harnais : Timeout while running cleanup for test named "Popup navigating to same-origin with coop unsafe-inherit/coep". |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/iframe-popup-same-origin-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-unsafe-none.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-unsafe-none.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-unsafe-none.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/javascript-url.https.html` | 0 / 18 | harnais : délai du harnais dépassé |
@@ -3684,19 +3684,19 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/popup-meta-http-equiv.https.html` | 0 / 1 |  |
 | `html/cross-origin-opener-policy/popup-redirect-cache.https.html` | 0 / 9 | harnais : Timeout while running cleanup for test named "same-origin document opening popup redirect from https://{{host}}:{{ports[ |
 | `html/cross-origin-opener-policy/popup-redirect-same-origin-allow-popups.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Same origin popup redirects to same-origin with same-origin-allow-popups". |
-| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/popup-same-origin-non-initial-about-blank.https.html` | 0 / 1 | harnais : Test named 'Navigating a popup to about:blank' specified 1 'cleanup' function, and 1 failed. |
-| `html/cross-origin-opener-policy/popup-same-origin-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-same-origin-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-same-origin-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-same-origin-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-same-origin-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/popup-unsafe-none-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
-| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-unspecified-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-unspecified-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
-| `html/cross-origin-opener-policy/popup-unspecified-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-unspecified-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-unspecified-with-same-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-unspecified-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/popup-with-structured-header.https.html` | 0 / 3 |  |
 | `html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-openee_coop-ro.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "access-from-coop-page-to-openee, same-origin". |
 | `html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-openee_coop-ro_cross-origin.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "access-from-coop-page-to-openee, cross-origin". |
@@ -3810,6 +3810,7 @@ est le plus honnête des deux.
 | `html/dom/documents/dom-tree-accessors/document.embeds-document.plugins-01.html` | 0 / 5 |  |
 | `html/dom/documents/dom-tree-accessors/document.forms.html` | 2 / 6 |  |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName/document.getElementsByName-liveness.html` | 0 / 1 |  |
+| `html/dom/documents/dom-tree-accessors/document.getElementsByName/document.getElementsByName-namespace-xhtml.xhtml` | 0 / 1 |  |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName/document.getElementsByName-namespace.html` | 0 / 1 |  |
 | `html/dom/documents/dom-tree-accessors/document.images.html` | 5 / 11 |  |
 | `html/dom/documents/dom-tree-accessors/document.links.html` | 0 / 1 |  |
@@ -3840,7 +3841,7 @@ est le plus honnête des deux.
 | `html/dom/documents/resource-metadata-management/document-lastModified.html` | 0 / 1 |  |
 | `html/dom/documents/resource-metadata-management/document-readyState.html` | 5 / 7 | harnais : délai du harnais dépassé |
 | `html/dom/elements/elements-in-the-dom/click-in-progress-flag.html` | 0 / 1 |  |
-| `html/dom/elements/global-attributes/cdata-dir_auto.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `html/dom/elements/global-attributes/cdata-dir_auto.html` | 1 / 4 |  |
 | `html/dom/elements/global-attributes/custom-attrs.html` | 0 / 1 |  |
 | `html/dom/elements/global-attributes/dataset-binding.window.js` | 0 / 4 |  |
 | `html/dom/elements/global-attributes/dataset-delete.html` | 8 / 9 |  |
@@ -3982,6 +3983,12 @@ est le plus honnête des deux.
 | `html/editing/dnd/dom/draggable.html` | 15 / 27 |  |
 | `html/editing/dnd/dom/events.html` | 0 / 7 |  |
 | `html/editing/dnd/dom/specials.html` | 0 / 21 |  |
+| `html/editing/dnd/drop/001.xhtml` | 0 / 3 |  |
+| `html/editing/dnd/drop/002.xhtml` | 0 / 3 |  |
+| `html/editing/dnd/drop/003.xhtml` | 0 / 3 |  |
+| `html/editing/dnd/drop/004.xhtml` | 0 / 3 |  |
+| `html/editing/dnd/drop/005.xhtml` | 0 / 3 |  |
+| `html/editing/dnd/drop/006.xhtml` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/drop/029.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/editing/dnd/drop/030.html` | 0 / 1 |  |
 | `html/editing/dnd/events/dragenter-dragleave-related-target.html` | 0 / 1 |  |
@@ -3995,6 +4002,10 @@ est le plus honnête des deux.
 | `html/editing/dnd/images/008.html` | 0 / 1 |  |
 | `html/editing/dnd/images/009.html` | 0 / 1 |  |
 | `html/editing/dnd/images/010.html` | 0 / 1 |  |
+| `html/editing/dnd/images/011.xhtml` | 0 / 1 |  |
+| `html/editing/dnd/images/012.xhtml` | 0 / 1 |  |
+| `html/editing/dnd/images/013.xhtml` | 0 / 1 |  |
+| `html/editing/dnd/images/014.xhtml` | 0 / 1 |  |
 | `html/editing/dnd/images/023.html` | 0 / 0 | harnais : Unhandled rejection: impossible de lire la propriété « document » de undefined (valeur de .contentWindow) |
 | `html/editing/dnd/images/024.html` | 0 / 0 | harnais : Unhandled rejection: impossible de lire la propriété « document » de undefined (valeur de .contentWindow) |
 | `html/editing/dnd/interactiveelements/button_inside_draggable_element.html` | 0 / 2 |  |
@@ -4044,6 +4055,7 @@ est le plus honnête des deux.
 | `html/editing/editing-0/contenteditable/contenteditable-enumerated-ascii-case-insensitive.html` | 2 / 24 |  |
 | `html/editing/editing-0/contenteditable/user-interaction-editing-contenteditable.html` | 0 / 9 |  |
 | `html/editing/editing-0/making-entire-documents-editable-the-designmode-idl-attribute/contenteditable-false-in-design-mode.html` | 1 / 2 |  |
+| `html/editing/editing-0/making-entire-documents-editable-the-designmode-idl-attribute/user-interaction-editing-designMode-svg.svg` | 0 / 3 |  |
 | `html/editing/editing-0/making-entire-documents-editable-the-designmode-idl-attribute/user-interaction-editing-designMode.html` | 0 / 3 |  |
 | `html/editing/editing-0/spelling-and-grammar-checking/spellcheck-enumerated-ascii-case-insensitive.html` | 0 / 1 |  |
 | `html/editing/editing-0/spelling-and-grammar-checking/user-interaction-editing-spellcheck.html` | 1 / 3 |  |
@@ -4115,6 +4127,7 @@ est le plus honnête des deux.
 | `html/infrastructure/urls/base-url/initial-about-blank-baseURI.window.js` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/infrastructure/urls/base-url/matches-about-blank-base-url.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/infrastructure/urls/dynamic-changes-to-base-urls/dynamic-urls.sub.html` | 0 / 19 |  |
+| `html/infrastructure/urls/dynamic-changes-to-base-urls/historical.sub.xhtml` | 15 / 20 |  |
 | `html/infrastructure/urls/resolving-urls/query-encoding/attributes.sub.html` | 14 / 26 |  |
 | `html/infrastructure/urls/resolving-urls/query-encoding/location.sub.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `html/infrastructure/urls/resolving-urls/query-encoding/navigation.sub.html` | 0 / 6 |  |
@@ -4531,6 +4544,7 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-style-element/sheet-with-empty-style.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/style-error-01.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/style-load-after-mutate.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/document-metadata/the-style-element/style-load-mutate-while-parsing.xhtml` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/style_disabled.html` | 0 / 1 |  |
 | `html/semantics/document-metadata/the-style-element/style_events.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/style_load_async.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -4540,6 +4554,7 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-style-element/style_non_matching_media.html` | 0 / 1 |  |
 | `html/semantics/document-metadata/the-style-element/style_type_change.html` | 0 / 3 |  |
 | `html/semantics/document-metadata/the-style-element/style_type_html.html` | 3 / 5 |  |
+| `html/semantics/document-metadata/the-style-element/style_type_svg.svg` | 2 / 5 |  |
 | `html/semantics/document-metadata/the-style-element/tentative/style-element-basic-import.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/tentative/style-element-csp-allowed.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/tentative/style-element-csp-blocked.html` | 1 / 3 | harnais : délai du harnais dépassé |
@@ -4552,7 +4567,9 @@ est le plus honnête des deux.
 | `html/semantics/document-metadata/the-style-element/tentative/style-element-csp-style-src-blocked-script-src-allowed.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-style-element/tentative/style-element-fixed.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/document-metadata/the-title-element/title.text-01.html` | 0 / 1 |  |
+| `html/semantics/document-metadata/the-title-element/title.text-02.xhtml` | 0 / 1 |  |
 | `html/semantics/document-metadata/the-title-element/title.text-03.html` | 0 / 11 |  |
+| `html/semantics/document-metadata/the-title-element/title.text-04.xhtml` | 0 / 11 |  |
 | `html/semantics/edits/the-del-element/del_effect.html` | 0 / 1 |  |
 | `html/semantics/edits/the-ins-element/ins_effect.html` | 0 / 1 |  |
 | `html/semantics/embedded-content/bfcache/embedded-html.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -5337,6 +5354,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/textfieldselection/selection-value-interactions.html` | 2 / 14 |  |
 | `html/semantics/forms/textfieldselection/selection.html` | 7 / 18 |  |
 | `html/semantics/forms/textfieldselection/setSelectionRange.html` | 0 / 1 |  |
+| `html/semantics/forms/textfieldselection/textarea-selection-while-parsing.xhtml` | 0 / 1 |  |
 | `html/semantics/forms/textfieldselection/textfieldselection-setRangeText.html` | 9 / 88 | harnais : délai du harnais dépassé |
 | `html/semantics/forms/textfieldselection/textfieldselection-setSelectionRange.html` | 0 / 0 | harnais : Error: Unexpected direction |
 | `html/semantics/forms/the-button-element/active-onblur.html` | 0 / 1 |  |
@@ -5358,6 +5376,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-datalist-element/input-list-detached.html` | 0 / 1 |  |
 | `html/semantics/forms/the-fieldset-element/HTMLFieldSetElement.html` | 1 / 4 |  |
 | `html/semantics/forms/the-fieldset-element/disabled-001.html` | 1 / 5 |  |
+| `html/semantics/forms/the-fieldset-element/disabled-002.xhtml` | 0 / 1 |  |
 | `html/semantics/forms/the-fieldset-element/disabled-003.html` | 0 / 2 |  |
 | `html/semantics/forms/the-fieldset-element/disabled-nested-legend.html` | 3 / 4 |  |
 | `html/semantics/forms/the-fieldset-element/fieldset-checkvalidity.html` | 0 / 1 |  |
@@ -6038,6 +6057,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/execution-timing/106-defer-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/106-external-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/106-external-module-import.html` | 0 / 1 |  |
+| `html/semantics/scripting-1/the-script-element/execution-timing/106-import-xhtml.xhtml` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/106-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/106-module-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/108.html` | 0 / 1 |  |
@@ -6071,6 +6091,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/execution-timing/144.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/145.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/146-href.html` | 0 / 1 |  |
+| `html/semantics/scripting-1/the-script-element/execution-timing/150-import-xhtml.xhtml` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/150-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/execution-timing/non-external-no-import.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/fetch-src/empty-set-while-connected.html` | 1 / 2 | harnais : délai du harnais dépassé |
@@ -6178,7 +6199,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer-base-url.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-cross-origin-referrerpolicy.sub.html` | 0 / 7 |  |
-| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 4001 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrer-check.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrerpolicy.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/nested-imports.html` | 0 / 1 |  |
@@ -6259,6 +6280,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/script-charset-03.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/script-crossorigin-network.sub.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/script-crossorigin.html` | 0 / 1 |  |
+| `html/semantics/scripting-1/the-script-element/script-defer-xhtml.xhtml` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/script-defer.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/script-error-status-fires-error.html` | 0 / 2 |  |
 | `html/semantics/scripting-1/the-script-element/script-not-found-not-executed.html` | 1 / 2 |  |
@@ -6270,7 +6292,10 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/script-supports.html` | 0 / 5 |  |
 | `html/semantics/scripting-1/the-script-element/script-text-modifications-csp.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/script-text-modifications.html` | 0 / 1 |  |
+| `html/semantics/scripting-1/the-script-element/script-text-xhtml.xhtml` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/script-text.html` | 5 / 6 |  |
+| `html/semantics/scripting-1/the-script-element/script-type-and-language-js-svg.svg` | 53 / 444 |  |
+| `html/semantics/scripting-1/the-script-element/script-type-and-language-js-xhtml.xhtml` | 150 / 456 |  |
 | `html/semantics/scripting-1/the-script-element/script-type-and-language-js.html` | 150 / 456 |  |
 | `html/semantics/scripting-1/the-script-element/script-type-whitespace.html` | 1 / 5 |  |
 | `html/semantics/scripting-1/the-script-element/src-empty-or-invalid-error-event-queued.html` | 0 / 4 | harnais : délai du harnais dépassé |
@@ -6428,9 +6453,10 @@ est le plus honnête des deux.
 | `html/syntax/charset/meta-http-equiv-no-quotes.html` | 0 / 1 |  |
 | `html/syntax/charset/meta-http-equiv-single-quotes.html` | 0 / 1 |  |
 | `html/syntax/charset/with-inheritance.html` | 0 / 22 |  |
-| `html/syntax/charset/xhr.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `html/syntax/charset/xhr.html` | 1 / 2 | harnais : délai du harnais dépassé |
 | `html/syntax/parsing-html-fragments/fragment-parse-form-in-template-002.html` | 0 / 1 |  |
 | `html/syntax/parsing-html-fragments/fragment-parse-form-owner-001.html` | 2 / 4 |  |
+| `html/syntax/parsing-html-fragments/innerHTML-setter-default-namespace.xhtml` | 0 / 2 |  |
 | `html/syntax/parsing-html-fragments/tokenizer-modes-001.html` | 0 / 10 |  |
 | `html/syntax/parsing-xml-fragments/innerHTML-already-started.html` | 0 / 5 |  |
 | `html/syntax/parsing/DOMContentLoaded-defer-task-order.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6612,18 +6638,19 @@ est le plus honnête des deux.
 | `html/syntax/xmldecl/xmldecl-1.html` | 0 / 40 |  |
 | `html/syntax/xmldecl/xmldecl-2.html` | 7 / 47 |  |
 | `html/syntax/xmldecl/xmldecl-3.html` | 0 / 1 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-1.htm` | 5 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-1.htm` | 279 / 2125 |  |
 | `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-10.htm` | 385 / 2231 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-11.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-12.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-2.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-3.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-4.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-5.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-6.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-7.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-8.htm` | 5 / 2125 |  |
-| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-9.htm` | 5 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-11.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-12.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-2.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-3.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-4.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-5.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-6.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-7.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-8.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xhtml-mathml-dtd-entity-9.htm` | 279 / 2125 |  |
+| `html/the-xhtml-syntax/parsing-xhtml-documents/xml-stylesheet-blocking.xhtml` | 0 / 1 |  |
 | `html/user-activation/activation-trigger-keyboard-enter.html` | 0 / 1 |  |
 | `html/user-activation/activation-trigger-mouse-left.html` | 0 / 1 |  |
 | `html/user-activation/activation-trigger-mouse-right.html` | 0 / 1 |  |
@@ -6651,6 +6678,7 @@ est le plus honnête des deux.
 | `html/webappapis/animation-frames/spurious-frame-callbacks-optimization.html` | 0 / 1 |  |
 | `html/webappapis/atob/base64.any.js` | 285 / 286 |  |
 | `html/webappapis/dynamic-markup-insertion/closing-the-input-stream/document-close-with-pending-script.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/webappapis/dynamic-markup-insertion/closing-the-input-stream/document.close-01.xhtml` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/closing-the-input-stream/load-event-after-location-set-during-write.window.js` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/001.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/003.html` | 0 / 1 |  |
@@ -6697,6 +6725,7 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/document-write/050.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/051.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/contentType.window.js` | 1 / 4 | harnais : délai du harnais dépassé |
+| `html/webappapis/dynamic-markup-insertion/document-write/document.write-01.xhtml` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/document.write-02.html` | 1 / 3 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/iframe_001.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/iframe_002.html` | 0 / 1 |  |
@@ -6723,6 +6752,7 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/document-write/script_012.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/script_013.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-write/write-active-document.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/webappapis/dynamic-markup-insertion/document-writeln/document.writeln-01.xhtml` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/document-writeln/document.writeln-02.html` | 1 / 3 |  |
 | `html/webappapis/dynamic-markup-insertion/document-writeln/document.writeln-03.html` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/html-unsafe-methods/Document-parseHTMLUnsafe-encoding.html` | 0 / 0 | harnais : Error: assert_equals: the meta charset must be in effect, making the main document windows-1252 expected "windows-1252"  |
@@ -6756,9 +6786,10 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/crbug-583445-regression.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/custom-element.window.js` | 1 / 2 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/document-open-cancels-javascript-url-navigation.html` | 0 / 1 |  |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/document.open-01.xhtml` | 0 / 1 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/document.open-02.html` | 0 / 2 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/encoding.window.js` | 0 / 1 |  |
-| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/event-listeners.window.js` | 4 / 18 |  |
+| `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/event-listeners.window.js` | 6 / 18 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/form-control-state.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/history.window.js` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/ignore-opens-during-unload.window.js` | 0 / 12 | harnais : délai du harnais dépassé |
@@ -6778,9 +6809,11 @@ est le plus honnête des deux.
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/url-fragment.window.js` | 1 / 2 |  |
 | `html/webappapis/dynamic-markup-insertion/opening-the-input-stream/url.window.js` | 2 / 5 |  |
 | `html/webappapis/dynamic-markup-insertion/the-innerhtml-property/annotation-xml-fragment-parsing.html` | 1 / 2 |  |
+| `html/webappapis/dynamic-markup-insertion/the-innerhtml-property/innerhtml-and-xml-namespaces.svg` | 2 / 14 |  |
 | `html/webappapis/events/event-handler-object-environment-instantiation.html` | 0 / 1 | harnais : Uncaught ReferenceError: onclickCalled n'est pas défini |
 | `html/webappapis/microtask-queuing/queue-microtask-cross-realm-callback-report-exception.html` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/microtask_before_prepare_the_script_element-01.html` | 0 / 1 |  |
+| `html/webappapis/scripting/event-loops/microtask_before_prepare_the_script_element-02.xhtml` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/new-scroll-event-dispatched-at-next-updating-rendering-time.html` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/raf-from-animation-event-serviced-in-same-rendering-update.html` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/update-the-rendering-resize-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6830,7 +6863,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/processing-model-2/compile-error-same-origin-with-hash.html` | 0 / 2 |  |
 | `html/webappapis/scripting/processing-model-2/compile-error-same-origin.html` | 0 / 2 |  |
 | `html/webappapis/scripting/processing-model-2/compile-error.html` | 0 / 2 |  |
-| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/atomics-wait-async.https.any.js` | 1 / 2 |  |
+| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/atomics-wait-async.https.any.js` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/requires-failure.https.any.js` | 0 / 1 |  |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry-different-function-realm.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry.html` | 0 / 6 | harnais : délai du harnais dépassé |

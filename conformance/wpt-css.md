@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9025 / 27885 (32,4 %)** — fichiers entièrement réussis : 579 / 2267 (25,5 %).
+**Sous-tests réussis : 9046 / 27914 (32,4 %)** — fichiers entièrement réussis : 579 / 2269 (25,5 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -75,7 +75,7 @@ est le plus honnête des deux.
 | `css/css-grid/placement` | 10 / 24 | 234 / 316 (74,1 %) |
 | `css/css-grid/subgrid` | 6 / 26 | 67 / 256 (26,2 %) |
 | `css/css-grid/test-plan` | 0 / 1 | 0 / 0 (—) |
-| `css/css-position` | 26 / 47 | 148 / 301 (49,2 %) |
+| `css/css-position` | 26 / 47 | 149 / 306 (48,7 %) |
 | `css/css-position/animations` | 0 / 9 | 0 / 0 (—) |
 | `css/css-position/overlay` | 1 / 6 | 9 / 28 (32,1 %) |
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
 | `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 72 / 233 | 885 / 1816 (48,7 %) |
+| `css/cssom-view` | 72 / 235 | 905 / 1840 (49,2 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -1293,8 +1293,8 @@ est le plus honnête des deux.
 | `css/css-position/animations/right-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/top-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-position/animations/top-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `css/css-position/backdrop-inherit-computed.html` | 0 / 0 | harnais : TypeError: .showModal n'est pas une fonction (c'est undefined) |
-| `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
+| `css/css-position/backdrop-inherit-computed.html` | 1 / 4 |  |
+| `css/css-position/backdrop-tree-abiding-slotted.html` | 0 / 1 |  |
 | `css/css-position/backdrop-ua-style.html` | 0 / 1 |  |
 | `css/css-position/out-of-flow-in-inline-content-intrinsic-size-001.html` | 10 / 17 |  |
 | `css/css-position/overlay/animation/overlay-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
@@ -1775,6 +1775,8 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollWidthHeight-child-border-within-padding.tentative.html` | 0 / 5 |  |
 | `css/cssom-view/scrollWidthHeight-flex-column-padding-001.html` | 0 / 2 |  |
 | `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 80 / 200 |  |
+| `css/cssom-view/scrollWidthHeight.xht` | 10 / 12 |  |
+| `css/cssom-view/scrollWidthHeightWhenNotScrollable.xht` | 10 / 12 |  |
 | `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `css/cssom-view/scrollingElement.html` | 0 / 8 |  |
 | `css/cssom-view/scrollintoview-containingblock-chain.html` | 0 / 1 |  |

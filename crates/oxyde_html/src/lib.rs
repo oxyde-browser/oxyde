@@ -2,7 +2,8 @@
 //!
 //! Deux étages, comme dans Blink : le [`tokenizer`] (machine à états du
 //! standard WHATWG) et le constructeur d'arbre ([`parse_document`]), qui
-//! produit un [`oxyde_dom::Document`].
+//! produit un [`oxyde_dom::Document`]. Les documents XML (XHTML, SVG, XML
+//! quelconque) passent par [`parse_xml`].
 //!
 //! ```
 //! let doc = oxyde_html::parse_document("<!DOCTYPE html><p>Bonjour <b>Oxyde");
@@ -17,5 +18,7 @@ mod encoding_tables;
 mod entities;
 pub mod tokenizer;
 mod tree_builder;
+mod xml;
 
 pub use tree_builder::parse_document;
+pub use xml::{XmlError, parse_xml};

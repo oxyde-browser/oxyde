@@ -3,10 +3,10 @@
 // avec le `fetch` d'origine : une page qui remplace `window.fetch` ne change
 // pas le comportement de `XMLHttpRequest`.
 //
-// LIMITES CONNUES : pas de requête synchrone ; les types de réponse
-// `arraybuffer`, `blob` et `document` rendent le texte ; pas d'événements de
+// LIMITES CONNUES : pas de requête synchrone ; pas d'événements de
 // progression intermédiaires ; `withCredentials` est sans effet (pas de
-// cookies).
+// cookies) ; `responseText` reste lisible quel que soit `responseType` ;
+// le texte est lu en UTF-8 sauf encodage annoncé par l'en-tête.
 (function (fetch) {
   "use strict";
   const EventTargetBase = EventTarget;
@@ -14,6 +14,25 @@
   const startTimer = setTimeout;
   const stopTimer = clearTimeout;
   const parseJSON = JSON.parse;
+  const Parser = DOMParser;
+  const PARSER_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
+  // Document de la réponse `text` servie comme `mime` : XML pour un type XML
+  // (ou sans type), HTML seulement si le script a demandé un document ;
+  // null sinon, ou si le XML est mal formé.
+  function parseDocument(text, mime, wanted) {
+    const essence = String(mime).split(";")[0].trim().toLowerCase();
+    if (essence === "text/html") {
+      return wanted ? new Parser().parseFromString(text, "text/html") : null;
+    }
+    const xml = essence === "" || essence === "text/xml" || essence === "application/xml"
+      || essence.endsWith("+xml");
+    if (!xml) return null;
+    const type = ["text/xml", "application/xhtml+xml", "image/svg+xml"].includes(essence)
+      ? essence : "application/xml";
+    const doc = new Parser().parseFromString(text, type);
+    const top = doc.documentElement;
+    return top !== null && top.namespaceURI === PARSER_ERROR ? null : doc;
+  }
   const UNSENT = 0;
   const OPENED = 1;
   const HEADERS_RECEIVED = 2;
@@ -31,6 +50,8 @@
     #sent = false;
     #responseHeaders = [];
     #timer = 0;
+    // Type MIME imposé par `overrideMimeType`.
+    #mime = null;
     // Change à chaque `open()` ou `abort()` : une réponse d'une requête
     // précédente est alors ignorée.
     #generation = 0;
@@ -40,6 +61,7 @@
     statusText = "";
     responseText = "";
     response = "";
+    responseXML = null;
     responseType = "";
     responseURL = "";
     timeout = 0;
@@ -64,6 +86,7 @@
       this.statusText = "";
       this.responseText = "";
       this.response = "";
+      this.responseXML = null;
       this.responseURL = "";
       this.#state(OPENED);
     }
@@ -105,19 +128,35 @@
           response.headers.forEach((value, name) => headers.push([name, value]));
           this.#responseHeaders = headers;
           this.#state(HEADERS_RECEIVED);
+          const kind = this.responseType;
+          if (kind === "arraybuffer" || kind === "blob") {
+            const body = kind === "blob" ? response.blob() : response.arrayBuffer();
+            return body.then((value) => {
+              if (!current()) return;
+              this.#state(LOADING);
+              if (!current()) return;
+              this.response = value;
+              this.#finish("load");
+            });
+          }
+          const mime = this.#mime ?? response.headers.get("content-type") ?? "";
           return response.text().then((text) => {
             if (!current()) return;
             this.#state(LOADING);
             if (!current()) return;
             this.responseText = text;
-            if (this.responseType === "json") {
+            if (kind === "json") {
               try {
                 this.response = parseJSON(text);
               } catch {
                 this.response = null;
               }
+            } else if (kind === "document") {
+              this.responseXML = parseDocument(text, mime, true);
+              this.response = this.responseXML;
             } else {
               this.response = text;
+              this.responseXML = parseDocument(text, mime, false);
             }
             this.#finish("load");
           });
@@ -159,7 +198,12 @@
       return text;
     }
 
-    overrideMimeType() {}
+    overrideMimeType(mime) {
+      if (this.readyState >= LOADING) {
+        throw invalidState("overrideMimeType exige une réponse pas encore reçue");
+      }
+      this.#mime = String(mime);
+    }
 
     #state(state) {
       this.readyState = state;

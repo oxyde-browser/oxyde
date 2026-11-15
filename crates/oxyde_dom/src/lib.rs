@@ -951,17 +951,45 @@ impl Document {
     /// renvoie la racine de la copie, détachée.
     pub fn import(&mut self, source: &Document, node: NodeId) -> NodeId {
         // Parcours itératif : (nœud source, parent de la copie).
-        let root = self.push(source.node(node).data.clone());
+        let data = self.imported_data(source, node);
+        let root = self.push(data);
         let mut pending: Vec<(NodeId, NodeId)> = source.children(node).map(|c| (c, root)).collect();
         pending.reverse();
         while let Some((src, parent)) = pending.pop() {
-            let copy = self.push(source.node(src).data.clone());
+            let data = self.imported_data(source, src);
+            let copy = self.push(data);
             self.append_child(parent, copy);
             let before = pending.len();
             pending.extend(source.children(src).map(|c| (c, copy)));
             pending[before..].reverse();
         }
         root
+    }
+
+    /// Contenu du nœud `node` de `source`, prêt à entrer dans ce document :
+    /// les espaces de noms propres à `source` sont traduits dans la table
+    /// de ce document, et les nœuds `Attr` de `source` oubliés.
+    fn imported_data(&mut self, source: &Document, node: NodeId) -> NodeData {
+        let mut data = source.node(node).data.clone();
+        if let NodeData::Element(element) = &mut data {
+            element.ns = self.imported_namespace(source, element.ns);
+            for attr in &mut element.attrs {
+                attr.ns = self.imported_namespace(source, attr.ns);
+                attr.node = None;
+            }
+        }
+        data
+    }
+
+    /// Espace de noms `ns` de `source`, dans la table de ce document.
+    fn imported_namespace(&mut self, source: &Document, ns: Namespace) -> Namespace {
+        match ns {
+            Namespace::Other(_) => match source.namespace_uri(ns) {
+                Some(uri) => self.namespace(uri),
+                None => Namespace::None,
+            },
+            known => known,
+        }
     }
 
     /// Crée un élément détaché.
