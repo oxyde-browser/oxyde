@@ -295,7 +295,22 @@ fn index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn last_index_of(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let s = this_str(vm, this)?;
     let needle = vm.to_string(&arg(args, 0))?;
-    Ok(s.rfind(&*needle)
+    // Position de départ : `NaN` (ou absente) vaut la fin de la chaîne.
+    let wanted = vm.to_number(&arg(args, 1))?;
+    let length = vm.string_units(&s);
+    let from = if wanted.is_nan() {
+        length
+    } else {
+        position(vm, &Value::Number(wanted), length, length)?
+    };
+    // Une occurrence qui commence à `from` au plus finit avant `end`.
+    let start = vm.string_byte_of_unit(&s, from).0;
+    let mut end = start.saturating_add(needle.len()).min(s.len());
+    while !s.is_char_boundary(end) {
+        end = end.saturating_sub(1);
+    }
+    Ok(s.get(..end)
+        .and_then(|head| head.rfind(&*needle))
         .map_or(Value::Number(-1.0), |i| number(units_before(&s, i))))
 }
 
@@ -441,6 +456,18 @@ fn pad(vm: &mut Vm, this: &Value, args: &[Value], at_start: bool) -> JsResult {
     } else {
         format!("{s}{padding}")
     })
+}
+
+/// `isWellFormed` : une chaîne de ce moteur ne porte jamais de substitut
+/// isolé (LIMITE : ils sont remplacés par U+FFFD dès leur création).
+fn is_well_formed(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    this_str(vm, this)?;
+    Ok(Value::Bool(true))
+}
+
+/// `toWellFormed` : la chaîne elle-même, pour la même raison.
+fn to_well_formed(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    Ok(Value::String(this_str(vm, this)?))
 }
 
 fn pad_start(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -1343,8 +1370,10 @@ pub(super) fn install(vm: &mut Vm) {
         ("strike", 0, html_strike),
         ("sub", 0, html_sub),
         ("sup", 0, html_sup),
-        ("padStart", 2, pad_start),
-        ("padEnd", 2, pad_end),
+        ("padStart", 1, pad_start),
+        ("padEnd", 1, pad_end),
+        ("isWellFormed", 0, is_well_formed),
+        ("toWellFormed", 0, to_well_formed),
         ("repeat", 1, repeat),
         ("concat", 1, concat),
         ("split", 2, split),

@@ -159,7 +159,7 @@ fn now_ms() -> f64 {
 /// Année sur au moins quatre chiffres, avec signe si elle est négative.
 fn year_text(year: f64) -> String {
     if year < 0.0 {
-        format!("-{:06}", -year)
+        format!("-{:04}", -year)
     } else {
         format!("{year:04}")
     }
@@ -531,11 +531,12 @@ fn set_fields(vm: &mut Vm, this: &Value, args: &[Value], first: usize, max: usiz
             f[first + offset] = vm.to_number(&arg(args, offset))?;
         }
     }
-    let result = if time.is_nan() && first != 0 {
-        f64::NAN
-    } else {
-        compose(&f)
-    };
+    // Date invalide : les arguments sont convertis, la date reste telle
+    // qu'ils l'ont laissée.
+    if time.is_nan() && first != 0 {
+        return Ok(Value::Number(f64::NAN));
+    }
+    let result = compose(&f);
     set_time(vm, this, result);
     Ok(Value::Number(result))
 }

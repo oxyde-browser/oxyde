@@ -96,6 +96,9 @@ fn iterator_self(_vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 
 /// `String.prototype[Symbol.iterator]` : parcours par points de code.
 fn string_iterator(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    if this.is_nullish() {
+        return Err(vm.type_error("méthode de chaîne appelée sur null ou undefined"));
+    }
     let text = vm.to_string(this)?;
     let values = text
         .chars()
