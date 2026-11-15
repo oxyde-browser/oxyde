@@ -367,6 +367,9 @@ fn drain_console(page: &mut Page, driver: &mut Driver) -> bool {
         } else if message.text.starts_with("WPT-") {
             println!("{}", message.text);
             finished |= message.text.starts_with("WPT-H");
+        } else if std::env::var_os("OXYDE_WPT_CONSOLE").is_some() {
+            // Diagnostic : toute la console de la page, à la demande.
+            println!("console : {}", message.text);
         }
     }
     finished

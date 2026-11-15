@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 40733 / 117224 (34,7 %)** — fichiers entièrement réussis : 734 / 7254 (10,1 %).
+**Sous-tests réussis : 42220 / 117232 (36,0 %)** — fichiers entièrement réussis : 781 / 7254 (10,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -152,7 +152,7 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/reporting/tentative` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/document-isolation-policy` | 0 / 46 | 9 / 250 (3,6 %) |
-| `html/dom` | 1 / 23 | 30268 / 51854 (58,4 %) |
+| `html/dom` | 1 / 23 | 30306 / 51854 (58,4 %) |
 | `html/dom/documents/dom-tree-accessors` | 13 / 40 | 93 / 240 (38,8 %) |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 7 / 9 | 25 / 27 (92,6 %) |
 | `html/dom/documents/resource-metadata-management` | 3 / 8 | 10 / 20 (50,0 %) |
@@ -331,8 +331,8 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-option-element` | 5 / 11 | 85 / 108 (78,7 %) |
 | `html/semantics/forms/the-output-element` | 0 / 4 | 0 / 5 (0,0 %) |
 | `html/semantics/forms/the-progress-element` | 1 / 5 | 1 / 19 (5,3 %) |
-| `html/semantics/forms/the-select-element` | 14 / 49 | 45 / 164 (27,4 %) |
-| `html/semantics/forms/the-select-element/customizable-select` | 8 / 90 | 38 / 318 (11,9 %) |
+| `html/semantics/forms/the-select-element` | 15 / 49 | 46 / 164 (28,0 %) |
+| `html/semantics/forms/the-select-element/customizable-select` | 8 / 90 | 41 / 318 (12,9 %) |
 | `html/semantics/forms/the-select-element/customizable-select-listbox` | 0 / 6 | 0 / 25 (0,0 %) |
 | `html/semantics/forms/the-select-element/customizable-select-multiple-popup` | 0 / 5 | 0 / 6 (0,0 %) |
 | `html/semantics/forms/the-select-element/filterable-select` | 0 / 3 | 0 / 13 (0,0 %) |
@@ -352,14 +352,14 @@ est le plus honnête des deux.
 | `html/semantics/interactive-elements` | 0 / 1 | 9 / 11 (81,8 %) |
 | `html/semantics/interactive-elements/commands/option` | 0 / 2 | 0 / 5 (0,0 %) |
 | `html/semantics/interactive-elements/the-details-element` | 2 / 9 | 8 / 42 (19,0 %) |
-| `html/semantics/interactive-elements/the-dialog-element` | 1 / 87 | 3 / 442 (0,7 %) |
+| `html/semantics/interactive-elements/the-dialog-element` | 29 / 87 | 178 / 447 (39,8 %) |
 | `html/semantics/interactive-elements/the-summary-element` | 1 / 6 | 3 / 50 (6,0 %) |
-| `html/semantics/interestfor` | 0 / 31 | 12 / 136 (8,8 %) |
+| `html/semantics/interestfor` | 1 / 31 | 15 / 136 (11,0 %) |
 | `html/semantics/links/downloading-resources` | 0 / 18 | 0 / 18 (0,0 %) |
 | `html/semantics/links/following-hyperlinks` | 1 / 2 | 6 / 7 (85,7 %) |
 | `html/semantics/links/hyperlink-auditing` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/links/links-created-by-a-and-area-elements` | 6 / 15 | 141 / 189 (74,6 %) |
-| `html/semantics/menu/tentative` | 0 / 25 | 5 / 116 (4,3 %) |
+| `html/semantics/menu/tentative` | 0 / 25 | 6 / 116 (5,2 %) |
 | `html/semantics/permission-element` | 0 / 8 | 0 / 49 (0,0 %) |
 | `html/semantics/permission-element/camera` | 0 / 5 | 0 / 7 (0,0 %) |
 | `html/semantics/permission-element/geolocation-element` | 0 / 13 | 0 / 52 (0,0 %) |
@@ -368,7 +368,7 @@ est le plus honnête des deux.
 | `html/semantics/permission-element/permission-icon` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/permission-element/usermedia` | 0 / 13 | 6 / 23 (26,1 %) |
 | `html/semantics/permission-element/usermedia/legacy-mode` | 0 / 1 | 0 / 4 (0,0 %) |
-| `html/semantics/popovers` | 1 / 89 | 2 / 3897 (0,1 %) |
+| `html/semantics/popovers` | 18 / 89 | 1176 / 3900 (30,2 %) |
 | `html/semantics/scripting-1/the-noscript-element` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/semantics/scripting-1/the-script-element` | 15 / 56 | 211 / 595 (35,5 %) |
 | `html/semantics/scripting-1/the-script-element/css-module` | 0 / 18 | 2 / 41 (4,9 %) |
@@ -411,7 +411,7 @@ est le plus honnête des deux.
 | `html/semantics/text-level-semantics` | 1 / 1 | 3 / 3 (100,0 %) |
 | `html/semantics/text-level-semantics/the-a-element` | 4 / 7 | 22 / 26 (84,6 %) |
 | `html/semantics/text-level-semantics/the-time-element` | 0 / 1 | 4 / 8 (50,0 %) |
-| `html/semantics/the-button-element/command-and-commandfor` | 2 / 26 | 120 / 482 (24,9 %) |
+| `html/semantics/the-button-element/command-and-commandfor` | 2 / 26 | 212 / 482 (44,0 %) |
 | `html/syntax/charset` | 1 / 12 | 3 / 39 (7,7 %) |
 | `html/syntax/parsing` | 16 / 47 | 508 / 2416 (21,0 %) |
 | `html/syntax/parsing-html-fragments` | 4 / 13 | 6 / 25 (24,0 %) |
@@ -3894,7 +3894,7 @@ est le plus honnête des deux.
 | `html/dom/reflection-forms.html` | 5827 / 8817 |  |
 | `html/dom/reflection-grouping.html` | 3857 / 5904 |  |
 | `html/dom/reflection-metadata.html` | 2128 / 3344 |  |
-| `html/dom/reflection-misc.html` | 3445 / 5345 |  |
+| `html/dom/reflection-misc.html` | 3483 / 5345 |  |
 | `html/dom/reflection-obsolete.html` | 1418 / 2816 |  |
 | `html/dom/reflection-sections.html` | 4035 / 6189 |  |
 | `html/dom/reflection-tabular.html` | 3124 / 6506 |  |
@@ -5546,18 +5546,18 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select/select-click-picker-light-dismiss.tentative.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-dialog-mode-focus.optional.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-disabled.html` | 0 / 2 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-events-2.optional.html` | 0 / 7 | harnais : délai du harnais dépassé |
+| `html/semantics/forms/the-select-element/customizable-select/select-events-2.optional.html` | 1 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/forms/the-select-element/customizable-select/select-events.optional.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-focus-visible-with-mouse.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-home-end-pagedown-pageup-detailed.optional.html` | 0 / 4 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-home-end-pagedown-pageup.optional.html` | 0 / 4 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-initial-focus-display-animation.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-input-parsing.tentative.html` | 2 / 4 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-inside-top-layer.html` | 0 / 4 | harnais : Test named 'select can be nested inside a popover' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/forms/the-select-element/customizable-select/select-inside-top-layer.html` | 0 / 4 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-iterate-before-beginning.optional.html` | 0 / 2 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-keyboard-behavior.optional.html` | 0 / 10 | harnais : Test named 'defaultbutton: When the listbox is closed, spacebar should open the listbox.' specified 1 'cleanup' function |
+| `html/semantics/forms/the-select-element/customizable-select/select-keyboard-behavior.optional.html` | 0 / 10 | harnais : délai du harnais dépassé |
 | `html/semantics/forms/the-select-element/customizable-select/select-keyboard-focus-change-for-hidden-options.optional.html` | 0 / 1 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-mouse-behavior.html` | 0 / 8 |  |
+| `html/semantics/forms/the-select-element/customizable-select/select-mouse-behavior.html` | 1 / 8 | harnais : délai du harnais dépassé |
 | `html/semantics/forms/the-select-element/customizable-select/select-mousedown-slot-mutation.optional.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-optgroup-arrow-keys.optional.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-optgroup-tabindex-focus.html` | 0 / 1 |  |
@@ -5574,7 +5574,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-interactive-element-focus.optional.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-option-animation-reopens.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-option-hover-while-dragging.optional.html` | 0 / 2 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-picker-option-optgroup-client-rects.html` | 0 / 8 |  |
+| `html/semantics/forms/the-select-element/customizable-select/select-picker-option-optgroup-client-rects.html` | 1 / 8 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-popover-open-invalid.tentative.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-pseudo-box-type.html` | 2 / 3 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-starting-style.html` | 0 / 1 |  |
@@ -5588,7 +5588,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select/select-tabindex-order.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-type-to-search.tentative.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-value-selectedOption.html` | 5 / 11 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-vertical-writing-mode-navigation.optional.html` | 0 / 8 | harnais : Test named 'vertical-lr: Right/Left keys navigate as primary axis' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/forms/the-select-element/customizable-select/select-vertical-writing-mode-navigation.optional.html` | 0 / 8 |  |
 | `html/semantics/forms/the-select-element/customizable-select/selectedcontent-attribute-change.html` | 0 / 7 |  |
 | `html/semantics/forms/the-select-element/customizable-select/selectedcontent-cloned-option-is-not-an-option.tentative.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/selectedcontent-custom-element-reactions.html` | 0 / 6 |  |
@@ -5618,7 +5618,6 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/select-add-optgroup.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/select-ask-for-reset.html` | 1 / 4 |  |
 | `html/semantics/forms/the-select-element/select-attribute-change-reset.html` | 5 / 8 |  |
-| `html/semantics/forms/the-select-element/select-click-does-not-open-picker.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/select-insertion-inherited-style.html` | 1 / 3 |  |
 | `html/semantics/forms/the-select-element/select-label-click.tentative.html` | 0 / 9 | harnais : Test named 'Clicking label opens select picker: appearance:auto with label[for]' specified 1 'cleanup' function, and 1 f |
 | `html/semantics/forms/the-select-element/select-listbox-touch.optional.html` | 0 / 1 |  |
@@ -5669,90 +5668,62 @@ est le plus honnête des deux.
 | `html/semantics/interactive-elements/the-details-element/details-toggle-source.html` | 0 / 3 |  |
 | `html/semantics/interactive-elements/the-details-element/name-attribute.html` | 1 / 18 |  |
 | `html/semantics/interactive-elements/the-details-element/toggleEvent.html` | 1 / 11 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/abspos-dialog-layout.html` | 0 / 10 |  |
-| `html/semantics/interactive-elements/the-dialog-element/backdrop-receives-element-events.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/abspos-dialog-layout.html` | 8 / 10 |  |
 | `html/semantics/interactive-elements/the-dialog-element/centering.html` | 0 / 23 |  |
-| `html/semantics/interactive-elements/the-dialog-element/child-sequential-focus.html` | 0 / 5 |  |
-| `html/semantics/interactive-elements/the-dialog-element/closed-dialog-does-not-block-mouse-events.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/default-color.html` | 0 / 2 |  |
+| `html/semantics/interactive-elements/the-dialog-element/child-sequential-focus.html` | 3 / 5 |  |
+| `html/semantics/interactive-elements/the-dialog-element/default-color.html` | 1 / 2 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-active-document.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus-just-once.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus-multiple-times.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus-multiple-times.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-events.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-preventDefault.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-with-input.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-with-select.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-canceling.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-canceling.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-close-event-async.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-close-event.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-close-focus-no-previous.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-close-via-attribute.tentative.html` | 0 / 2 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-close.html` | 0 / 5 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-bounds-clicking.html` | 0 / 14 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-close.html` | 4 / 5 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-bounds-clicking.html` | 2 / 14 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-corner-cases.html` | 0 / 30 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-show-stacked.html` | 0 / 4 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-show-stacked.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-closedby-start-open.html` | 0 / 2 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby.html` | 0 / 27 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-focus-previous-outside.html` | 0 / 6 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-closedby.html` | 0 / 27 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-focus-previous-outside.html` | 2 / 6 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-focus-shadow-double-nested.html` | 0 / 2 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-focus-shadow.html` | 0 / 50 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-focus-shadow.html` | 24 / 50 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-focusability.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-focusing-steps-disconnected.html` | 0 / 2 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-focusing-steps-disconnected.html` | 1 / 2 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-focusing-steps-inert.html` | 0 / 2 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-focusing-steps-prevent-autofocus.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-form-submission-unusual.html` | 0 / 2 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-form-submission.html` | 0 / 8 | harnais : Test named 'click the form submission button should close the dialog' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-form-submission.html` | 5 / 8 | harnais : Uncaught { message: 'assert_equals: dialog's returnValue remains the same expected "" but got "undefined"', stack: 'Erro |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-inert.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-keydown-preventDefault.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-light-dismiss-drag.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-light-dismiss-pointer-capture.html` | 0 / 2 | harnais : Test named 'Light dismiss on dialog with touch input with pointer capture.' specified 1 'cleanup' function, and 1 failed |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-light-dismiss-pointer-capture.html` | 0 / 4 | harnais : Uncaught TypeError: .setPointerCapture n'est pas une fonction (c'est undefined) |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-light-dismiss-touch.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-no-throw-requested-state.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-open-2.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-open-movebefore-setup.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-open.html` | 0 / 3 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-open-movebefore-setup.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-overlay.html` | 0 / 2 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-popover-closedby-complex.html` | 0 / 40 | harnais : Test named 'clicking outside all with modeless dialogA and modeless dialogB, normal DOM nesting' specified 1 'cleanup' f |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-popover-closedby-simple.html` | 0 / 6 | harnais : Test named 'Dialog closedby=any parent, popover child' specified 1 'cleanup' function, and 1 failed. |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-requestclose-2.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-requestclose-3.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-requestclose-closedby.tentative.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-requestclose-recurse.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-requestclose.html` | 0 / 75 | harnais : Test named 'requestClose basic behavior for modeless dialog with closedby=null' specified 1 'cleanup' function, and 1 fa |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-return-value.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-showModal-remove.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-showModal.html` | 0 / 10 | harnais : Test named 'showModal() on a <dialog> that already has an open attribute throws an InvalidStateError exception' specifie |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-synthetic-keydown.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-showModal.html` | 7 / 10 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-toggle-source.html` | 0 / 6 |  |
-| `html/semantics/interactive-elements/the-dialog-element/focus-after-close.html` | 0 / 7 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/focus-previous-iframe.tentative.html` | 2 / 2 | harnais : Uncaught TypeError: .showModal n'est pas une fonction (c'est undefined) |
-| `html/semantics/interactive-elements/the-dialog-element/form-submit-dialog-shadow.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/inert-does-not-match-disabled-selector.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/focus-after-close.html` | 3 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/inert-focus-in-frames.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/inert-inlines.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/inert-label-focus.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/inert-node-is-uneditable.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/inert-node-is-unfocusable.html` | 0 / 16 | harnais : TypeError: .showModal n'est pas une fonction (c'est undefined) |
+| `html/semantics/interactive-elements/the-dialog-element/inert-node-is-uneditable.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/inert-node-is-unfocusable.html` | 5 / 16 |  |
 | `html/semantics/interactive-elements/the-dialog-element/inert-node-is-unselectable.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/inert-svg-hittest.html` | 0 / 2 |  |
+| `html/semantics/interactive-elements/the-dialog-element/inert-svg-hittest.html` | 1 / 2 | harnais : Timeout while running cleanup for test named "Hit-testing can reach contents of a no longer inert SVG". |
 | `html/semantics/interactive-elements/the-dialog-element/inertness-with-modal-dialogs-and-iframes.html` | 0 / 8 |  |
-| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-ancestor-is-inert.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-ancestor-is-inert.html` | 0 / 1 | harnais : Uncaught { message: 'assert_unreached: body was targeted for an click event Reached unreachable code', stack: 'Error' } |
 | `html/semantics/interactive-elements/the-dialog-element/modal-dialog-blocks-mouse-events.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-in-visibility-hidden.html` | 0 / 3 |  |
-| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-scroll-height.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-selection.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/multiple-centered-dialogs.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-in-visibility-hidden.html` | 2 / 3 |  |
+| `html/semantics/interactive-elements/the-dialog-element/modal-dialog-selection.html` | 1 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/non-modal-canceling.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/non-modal-dialog-does-not-block-mouse-events.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/non-modal-dialog-layout.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/popover-dialog-does-not-block-mouse-events.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/remove-dialog-should-unblock-document.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/show-modal-focusing-steps.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/simulated-click-inert.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/submit-dialog-close-event.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/synthetic-click-inert.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/toggle-events.html` | 0 / 12 | harnais : Test named 'dialog.show() should not open if beforetoggle removes' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/interactive-elements/the-dialog-element/show-modal-focusing-steps.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/toggle-events.html` | 2 / 12 |  |
 | `html/semantics/interactive-elements/the-dialog-element/top-layer-position.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/top-layer-removal-invalidates-ua-styles.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-summary-element/activation-behavior.html` | 0 / 9 |  |
@@ -5778,7 +5749,6 @@ est le plus honnête des deux.
 | `html/semantics/interestfor/interestfor-hide-popover-interest-state.tentative.html` | 0 / 3 |  |
 | `html/semantics/interestfor/interestfor-iframe-popover.tentative.html` | 0 / 6 |  |
 | `html/semantics/interestfor/interestfor-implicit-anchor.tentative.html` | 0 / 1 |  |
-| `html/semantics/interestfor/interestfor-input-invalid.tentative.html` | 3 / 6 |  |
 | `html/semantics/interestfor/interestfor-invoker-descendants.tentative.html` | 0 / 8 |  |
 | `html/semantics/interestfor/interestfor-keyboard-behavior.tentative.html` | 0 / 1 |  |
 | `html/semantics/interestfor/interestfor-on-popover-behavior.tentative.html` | 0 / 2 | harnais : Test named 'hover interest invoking closed popover opens' specified 1 'cleanup' function, and 1 failed. |
@@ -5825,7 +5795,7 @@ est le plus honnête des deux.
 | `html/semantics/menu/tentative/checkable.html` | 2 / 15 |  |
 | `html/semantics/menu/tentative/focus-enters-menulist.html` | 0 / 6 |  |
 | `html/semantics/menu/tentative/focus-menu-elements-arrowoperations.html` | 0 / 4 | harnais : délai du harnais dépassé |
-| `html/semantics/menu/tentative/focus-menu-elements-nested-arrowoperations.html` | 0 / 5 | harnais : délai du harnais dépassé |
+| `html/semantics/menu/tentative/focus-menu-elements-nested-arrowoperations.html` | 0 / 5 |  |
 | `html/semantics/menu/tentative/focus-menu-elements-side-arrowoperations.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `html/semantics/menu/tentative/focus-without-user-activation.html` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/semantics/menu/tentative/idlharness.https.html` | 0 / 1 |  |
@@ -5834,9 +5804,9 @@ est le plus honnête des deux.
 | `html/semantics/menu/tentative/menu-elements-tab-focus.optional.html` | 0 / 1 |  |
 | `html/semantics/menu/tentative/menu-elements-typeahead.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/menu/tentative/menu-safe-triangle.optional.html` | 0 / 2 |  |
-| `html/semantics/menu/tentative/menu-violation-mode-focus.html` | 0 / 5 |  |
+| `html/semantics/menu/tentative/menu-violation-mode-focus.html` | 0 / 5 | harnais : délai du harnais dépassé |
 | `html/semantics/menu/tentative/menubar-interest-command-invoker.tentative.html` | 0 / 2 |  |
-| `html/semantics/menu/tentative/menubar-invoke-menulist.html` | 0 / 6 |  |
+| `html/semantics/menu/tentative/menubar-invoke-menulist.html` | 1 / 6 |  |
 | `html/semantics/menu/tentative/menuitem-activate.html` | 0 / 6 |  |
 | `html/semantics/menu/tentative/menuitem-drag-click-event.html` | 2 / 3 | harnais : délai du harnais dépassé |
 | `html/semantics/menu/tentative/menuitem-implicit-interest-invoker.tentative.html` | 0 / 3 |  |
@@ -5908,94 +5878,77 @@ est le plus honnête des deux.
 | `html/semantics/permission-element/usermedia/usermedia-iframe.https.html` | 0 / 1 |  |
 | `html/semantics/permission-element/usermedia/usermedia-set-constraints-sanitization.https.html` | 0 / 1 |  |
 | `html/semantics/permission-element/usermedia/usermedia-untrusted-click.https.html` | 0 / 1 |  |
-| `html/semantics/popovers/button-type-popovertarget.html` | 0 / 15 | harnais : Test named 'Button type=reset in form should trigger form reset and not toggle popover' specified 1 'cleanup' function,  |
+| `html/semantics/popovers/button-type-popovertarget.html` | 7 / 15 |  |
 | `html/semantics/popovers/hide-other-popover-side-effects.html` | 0 / 1 |  |
-| `html/semantics/popovers/imperative-invokers.html` | 0 / 10 |  |
-| `html/semantics/popovers/input-type-popovertarget.html` | 0 / 12 | harnais : Test named 'input type=reset in form should trigger form reset and not toggle popover' specified 1 'cleanup' function, a |
-| `html/semantics/popovers/label-in-invoker.html` | 0 / 1 |  |
+| `html/semantics/popovers/imperative-invokers.html` | 1 / 10 | harnais : Test named 'normal opening' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/popovers/input-type-popovertarget.html` | 6 / 12 |  |
 | `html/semantics/popovers/light-dismiss-event-ordering.html` | 0 / 11 |  |
 | `html/semantics/popovers/light-dismiss-event-ordering.tentative.html` | 0 / 11 |  |
-| `html/semantics/popovers/light-dismiss-remove-target.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-active-document.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-anchor-display-none.tentative.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-anchor-multicol-display.html` | 0 / 2 |  |
-| `html/semantics/popovers/popover-anchor-nesting.tentative.html` | 0 / 0 | harnais : Unhandled rejection: .showPopover n'est pas une fonction (c'est undefined) |
-| `html/semantics/popovers/popover-anchor-transition.tentative.tentative.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-attribute-all-elements.html` | 0 / 1101 |  |
-| `html/semantics/popovers/popover-attribute-basic.html` | 0 / 249 |  |
-| `html/semantics/popovers/popover-beforetoggle-opening-event.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-change-type.html` | 0 / 1 |  |
+| `html/semantics/popovers/popover-anchor-nesting.tentative.html` | 0 / 1 |  |
+| `html/semantics/popovers/popover-attribute-all-elements.html` | 952 / 1101 |  |
+| `html/semantics/popovers/popover-attribute-basic.html` | 63 / 249 |  |
+| `html/semantics/popovers/popover-change-type.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/popovers/popover-close-request.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-document-open.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-events.html` | 0 / 6 |  |
+| `html/semantics/popovers/popover-events.html` | 3 / 6 |  |
 | `html/semantics/popovers/popover-focus-2.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/semantics/popovers/popover-focus-3.html` | 0 / 9 | harnais : Uncaught TypeError: .togglePopover n'est pas une fonction (c'est undefined) |
-| `html/semantics/popovers/popover-focus-4.html` | 0 / 3 | harnais : Test named 'Cases where the next focus candidate isn't in the direct parent scope with popovertarget invocation' specifi |
-| `html/semantics/popovers/popover-focus-5.html` | 0 / 6 | harnais : Test named 'Focusing elements inside a popover with form controls inside, using popovertarget' specified 1 'cleanup' fun |
+| `html/semantics/popovers/popover-focus-3.html` | 2 / 9 |  |
+| `html/semantics/popovers/popover-focus-4.html` | 1 / 3 | harnais : Test named 'Cases where the next focus candidate isn't in the direct parent scope with popovertarget invocation' specifi |
+| `html/semantics/popovers/popover-focus-5.html` | 2 / 6 |  |
 | `html/semantics/popovers/popover-focus-across-slot.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus-form-control.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus-inert-invoker.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus-inside-shadow-dom.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus-inside-slot.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus-invoker-inside-popover.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-focus-invoker-with-children.tentative.html` | 0 / 2 | harnais : Test named 'Focus navigation goes to popover contents and then children of popover invoker.' specified 1 'cleanup' funct |
+| `html/semantics/popovers/popover-focus-invoker-with-children.tentative.html` | 0 / 2 |  |
 | `html/semantics/popovers/popover-focus-overflow-visible.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-focus-slotted.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/semantics/popovers/popover-focus-source-contenteditable.html` | 0 / 1 | harnais : Test named 'Focus navigation goes to popover after contenteditable source.' specified 1 'cleanup' function, and 1 failed |
-| `html/semantics/popovers/popover-focus-tabindex.html` | 0 / 1 | harnais : Test named 'Cases where the popover invoker has different tabindex' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/popovers/popover-focus-source-contenteditable.html` | 0 / 1 |  |
+| `html/semantics/popovers/popover-focus-tabindex.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-focus.html` | 1 / 30 |  |
-| `html/semantics/popovers/popover-hide-inactive-document.html` | 0 / 8 |  |
 | `html/semantics/popovers/popover-hint-hierarchy.html` | 0 / 5 |  |
 | `html/semantics/popovers/popover-hint-loseinterest-show-child.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-hover-active-ancestors.html` | 0 / 3 |  |
-| `html/semantics/popovers/popover-invoker-reset.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-invoking-attribute-hint.html` | 0 / 700 |  |
-| `html/semantics/popovers/popover-invoking-attribute.html` | 0 / 1402 |  |
-| `html/semantics/popovers/popover-light-dismiss-command-edge-cases.html` | 0 / 11 |  |
-| `html/semantics/popovers/popover-light-dismiss-command.html` | 0 / 14 |  |
-| `html/semantics/popovers/popover-light-dismiss-contextmenu.html` | 0 / 1 | harnais : Uncaught TypeError: .showPopover n'est pas une fonction (c'est undefined) |
-| `html/semantics/popovers/popover-light-dismiss-disabled-button.html` | 0 / 3 | harnais : Test named 'Clicking on disabled command button should just close popover like normal' specified 1 'cleanup' function, a |
+| `html/semantics/popovers/popover-invoking-attribute.html` | 2 / 1402 |  |
+| `html/semantics/popovers/popover-light-dismiss-command-edge-cases.html` | 9 / 11 |  |
+| `html/semantics/popovers/popover-light-dismiss-command.html` | 1 / 14 |  |
+| `html/semantics/popovers/popover-light-dismiss-disabled-button.html` | 1 / 3 | harnais : Test named 'Clicking on disabled command button should just close popover like normal' specified 1 'cleanup' function, a |
 | `html/semantics/popovers/popover-light-dismiss-flat-tree-nested.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-light-dismiss-flat-tree.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-light-dismiss-hint.html` | 0 / 10 |  |
-| `html/semantics/popovers/popover-light-dismiss-input-button.html` | 0 / 14 |  |
-| `html/semantics/popovers/popover-light-dismiss-input-text.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-light-dismiss-on-scroll.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-light-dismiss-scroll-within.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-light-dismiss-touch-scroll.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-light-dismiss.html` | 0 / 33 | harnais : Test named 'Synthetic events can't close popovers' specified 1 'cleanup' function, and 1 failed. |
-| `html/semantics/popovers/popover-manual-hide-does-not-close-auto.html` | 0 / 2 | harnais : Test named 'Hiding a manual popover shown after an auto popover does not close the auto popover' specified 1 'cleanup' f |
+| `html/semantics/popovers/popover-light-dismiss-input-button.html` | 7 / 14 |  |
+| `html/semantics/popovers/popover-light-dismiss.html` | 14 / 33 | harnais : Uncaught { message: 'assert_throws_dom: function "() => p17.showPopover()" did not throw', stack: 'Error' } |
+| `html/semantics/popovers/popover-manual-hide-does-not-close-auto.html` | 1 / 2 | harnais : Test named 'Hiding a manual popover shown after an auto popover does not close the auto popover' specified 1 'cleanup' f |
 | `html/semantics/popovers/popover-minimum-role.html` | 0 / 2 |  |
-| `html/semantics/popovers/popover-move-documents-during-hide.html` | 0 / 3 |  |
-| `html/semantics/popovers/popover-move-documents.html` | 0 / 3 |  |
+| `html/semantics/popovers/popover-move-documents-during-hide.html` | 0 / 3 | harnais : Uncaught InvalidStateError: le popover est déjà affiché |
+| `html/semantics/popovers/popover-move-documents.html` | 1 / 3 | harnais : Uncaught ReferenceError: p1 n'est pas défini |
 | `html/semantics/popovers/popover-nested-in-button.html` | 0 / 4 |  |
-| `html/semantics/popovers/popover-not-keyboard-focusable.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-open-in-beforetoggle.html` | 0 / 5 |  |
-| `html/semantics/popovers/popover-open-overflow-display-2.html` | 0 / 6 |  |
+| `html/semantics/popovers/popover-open-in-beforetoggle.html` | 0 / 5 | harnais : Uncaught { message: 'assert_throws_dom: function "() => p6.showPopover()" did not throw', stack: 'Error' } |
 | `html/semantics/popovers/popover-overlay.html` | 0 / 4 |  |
 | `html/semantics/popovers/popover-removal-2.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-removal-hides.html` | 0 / 6 |  |
-| `html/semantics/popovers/popover-removal.html` | 0 / 1 |  |
 | `html/semantics/popovers/popover-remove-attribute-during-focusing-steps.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-self-invoke.html` | 0 / 3 |  |
-| `html/semantics/popovers/popover-shadow-dom.html` | 0 / 3 |  |
+| `html/semantics/popovers/popover-self-invoke.html` | 1 / 3 |  |
+| `html/semantics/popovers/popover-shadow-dom.html` | 1 / 3 |  |
 | `html/semantics/popovers/popover-shadowhost-focus-navigation.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-shadowhost-focus.html` | 0 / 4 |  |
-| `html/semantics/popovers/popover-stacking.html` | 0 / 6 |  |
-| `html/semantics/popovers/popover-synthetic-keydown.html` | 0 / 1 |  |
-| `html/semantics/popovers/popover-target-element-disabled.html` | 0 / 7 |  |
+| `html/semantics/popovers/popover-shadowhost-focus.html` | 2 / 4 |  |
+| `html/semantics/popovers/popover-stacking.html` | 2 / 6 |  |
+| `html/semantics/popovers/popover-target-element-disabled.html` | 2 / 7 |  |
 | `html/semantics/popovers/popover-toggle-source.html` | 0 / 7 |  |
 | `html/semantics/popovers/popover-top-layer-combinations.html` | 0 / 5 |  |
-| `html/semantics/popovers/popover-top-layer-interactions.html` | 0 / 9 |  |
-| `html/semantics/popovers/popover-top-layer-nesting-anchor.tentative.html` | 0 / 20 | harnais : Test named 'Single popover=auto ancestor with dialog' specified 2 'cleanup' functions, and 1 failed. |
-| `html/semantics/popovers/popover-top-layer-nesting-hints.html` | 0 / 20 | harnais : Test named 'Single popover=hint ancestor with dialog' specified 2 'cleanup' functions, and 1 failed. |
-| `html/semantics/popovers/popover-top-layer-nesting.html` | 0 / 20 | harnais : Test named 'Single popover=auto ancestor with dialog' specified 2 'cleanup' functions, and 1 failed. |
-| `html/semantics/popovers/popover-types-with-hints.html` | 0 / 7 |  |
-| `html/semantics/popovers/popover-types.html` | 0 / 1 |  |
+| `html/semantics/popovers/popover-top-layer-interactions.html` | 3 / 9 |  |
+| `html/semantics/popovers/popover-top-layer-nesting-anchor.tentative.html` | 7 / 20 | harnais : Test named 'Nested popover=auto ancestors with dialog' specified 3 'cleanup' functions, and 1 failed. |
+| `html/semantics/popovers/popover-top-layer-nesting-hints.html` | 4 / 20 | harnais : Test named 'Nested auto/hint ancestors with dialog' specified 3 'cleanup' functions, and 1 failed. |
+| `html/semantics/popovers/popover-top-layer-nesting.html` | 7 / 20 | harnais : Test named 'Nested popover=auto ancestors with dialog' specified 3 'cleanup' functions, and 1 failed. |
+| `html/semantics/popovers/popover-types-with-hints.html` | 5 / 7 |  |
 | `html/semantics/popovers/popovertarget-disabled-fieldset.html` | 0 / 1 |  |
 | `html/semantics/popovers/popovertarget-reflection.html` | 0 / 1 |  |
-| `html/semantics/popovers/togglePopover.html` | 0 / 3 |  |
-| `html/semantics/popovers/toggleevent-interface.html` | 0 / 40 |  |
+| `html/semantics/popovers/togglePopover.html` | 2 / 3 |  |
+| `html/semantics/popovers/toggleevent-interface.html` | 35 / 40 |  |
 | `html/semantics/rellist-feature-detection.html` | 0 / 4 |  |
 | `html/semantics/scripting-1/the-noscript-element/non-html-noscript.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/async_001.htm` | 0 / 1 |  |
@@ -6455,10 +6408,10 @@ est le plus honnête des deux.
 | `html/semantics/text-level-semantics/the-time-element/001.html` | 4 / 8 |  |
 | `html/semantics/the-button-element/command-and-commandfor/button-event-dispatch-content-attribute.html` | 0 / 2 |  |
 | `html/semantics/the-button-element/command-and-commandfor/button-event-dispatch.html` | 34 / 57 |  |
-| `html/semantics/the-button-element/command-and-commandfor/button-type-behavior.html` | 0 / 23 | harnais : Test named 'Button type=reset in form should trigger form reset and not toggle popover' specified 1 'cleanup' function,  |
+| `html/semantics/the-button-element/command-and-commandfor/button-type-behavior.html` | 1 / 23 | harnais : Test named 'Button type=reset in form should trigger form reset and not toggle popover' specified 1 'cleanup' function,  |
 | `html/semantics/the-button-element/command-and-commandfor/button-type-reflection.html` | 9 / 27 |  |
 | `html/semantics/the-button-element/command-and-commandfor/command-reflection.html` | 8 / 16 |  |
-| `html/semantics/the-button-element/command-and-commandfor/commandfor-shadow-host.html` | 0 / 5 | harnais : Test named 'A built-in command can target the button's own shadow host' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/the-button-element/command-and-commandfor/commandfor-shadow-host.html` | 0 / 5 |  |
 | `html/semantics/the-button-element/command-and-commandfor/event-dispatch-shadow.html` | 0 / 1 |  |
 | `html/semantics/the-button-element/command-and-commandfor/event-interface.html` | 0 / 23 |  |
 | `html/semantics/the-button-element/command-and-commandfor/fullscreen-behavior.tentative.html` | 2 / 11 | harnais : délai du harnais dépassé |
@@ -6466,13 +6419,13 @@ est le plus honnête des deux.
 | `html/semantics/the-button-element/command-and-commandfor/invalid-element-types.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/the-button-element/command-and-commandfor/on-audio-behavior.tentative.html` | 5 / 14 | harnais : Unhandled rejection: lecture non prise en charge |
 | `html/semantics/the-button-element/command-and-commandfor/on-details-behavior.tentative.html` | 11 / 19 |  |
-| `html/semantics/the-button-element/command-and-commandfor/on-dialog-behavior.html` | 0 / 104 | harnais : Test named 'invoking (with command property as show-modal) closed dialog opens as modal' specified 1 'cleanup' function, |
+| `html/semantics/the-button-element/command-and-commandfor/on-dialog-behavior.html` | 39 / 104 |  |
 | `html/semantics/the-button-element/command-and-commandfor/on-dialog-disconnect.html` | 0 / 1 |  |
-| `html/semantics/the-button-element/command-and-commandfor/on-dialog-invalid-behavior.html` | 0 / 40 | harnais : Test named 'invoking (as ) on dialog does nothing' specified 1 'cleanup' function, and 1 failed. |
+| `html/semantics/the-button-element/command-and-commandfor/on-dialog-invalid-behavior.html` | 31 / 40 |  |
 | `html/semantics/the-button-element/command-and-commandfor/on-input-number.tentative.html` | 2 / 6 |  |
-| `html/semantics/the-button-element/command-and-commandfor/on-popover-behavior.html` | 0 / 28 |  |
+| `html/semantics/the-button-element/command-and-commandfor/on-popover-behavior.html` | 13 / 28 |  |
 | `html/semantics/the-button-element/command-and-commandfor/on-popover-disconnect.html` | 0 / 1 |  |
-| `html/semantics/the-button-element/command-and-commandfor/on-popover-invalid-behavior.html` | 0 / 16 |  |
+| `html/semantics/the-button-element/command-and-commandfor/on-popover-invalid-behavior.html` | 8 / 16 |  |
 | `html/semantics/the-button-element/command-and-commandfor/on-scroll-behavior.tentative.html` | 19 / 35 |  |
 | `html/semantics/the-button-element/command-and-commandfor/on-video-behavior.tentative.html` | 5 / 12 | harnais : Unhandled rejection: lecture non prise en charge |
 | `html/semantics/the-button-element/command-and-commandfor/source-attribute-retargeting.html` | 0 / 3 |  |

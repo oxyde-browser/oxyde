@@ -753,8 +753,22 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : `tooLong`, `tooShort` et `badInput` valent toujours `false` ;
       `reportValidity()` donne le focus au champ fautif sans afficher de bulle ;
       `:invalid` ne juge que `required`.
-- [ ] Web Platform Tests `html/` : de 10,1 % vers 30 % des fichiers (`document.write`,
-      `<dialog>` et popovers, cadres, `canvas`).
+- [x] `<dialog>` : masqué tant qu'il n'est pas ouvert (il s'affichait comme un bloc
+      ordinaire), `show()`, `showModal()`, `close()`, `requestClose()`, `returnValue`,
+      événements `cancel` et `close`, touche Échap, `<form method=dialog>`, focus rendu
+      à la fermeture, `:modal` et `:open`. Popovers : attribut `popover`,
+      `showPopover()`, `hidePopover()`, `togglePopover()`, boutons `popovertarget`,
+      fermeture au clic ailleurs et à Échap, `beforetoggle` et `toggle`,
+      `:popover-open`.
+      Limites : pas de `::backdrop` ; une boîte modale ne rend pas le reste de la page
+      inerte ; pas de `closedby`, de popover `hint` ni d'ancrage au bouton ; boîtes et
+      popovers passent devant par un `z-index` maximal, pas par une vraie couche
+      supérieure.
+- [x] L'état d'activation d'un clic (case cochée, bouton) est protégé du
+      ramasse-miettes pendant la distribution de l'événement : il pouvait être recyclé
+      avant d'être relu.
+- [ ] Web Platform Tests `html/` : de 10,8 % vers 30 % des fichiers (`document.write`,
+      cadres, `canvas`, contenus embarqués).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

@@ -112,6 +112,12 @@ pub enum Pseudo {
     Scope,
     /// `:defined` : toujours vrai, faute d'éléments personnalisés.
     Always,
+    /// `:modal` : boîte de dialogue ouverte par `showModal()`.
+    Modal,
+    /// `:popover-open` : popover affiché.
+    PopoverOpen,
+    /// `:open` : `<dialog>` ou `<details>` ouvert.
+    Open,
     /// `:invalid` (`true`) et `:valid` (`false`) : contrôle de formulaire
     /// requis et vide, ou formulaire et `fieldset` qui en contiennent un.
     /// LIMITE : seul `required` est jugé (pas `pattern`, `min`, `type`…).
@@ -530,6 +536,9 @@ fn compound_matches(
             _ => false,
         },
         Pseudo::Disabled => is_disabled(doc, node, el),
+        Pseudo::Modal => doc.has_state(node, oxyde_dom::STATE_MODAL),
+        Pseudo::PopoverOpen => doc.has_state(node, oxyde_dom::STATE_POPOVER_OPEN),
+        Pseudo::Open => (el.is_html("dialog") || el.is_html("details")) && el.has_attr("open"),
         Pseudo::Validity(invalid) => match el.name.as_str() {
             _ if el.ns != oxyde_dom::Namespace::Html => false,
             "form" | "fieldset" => {
@@ -937,6 +946,9 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
         "enabled" => Pseudo::Enabled,
         "required" => Pseudo::Required,
         "placeholder-shown" => Pseudo::PlaceholderShown,
+        "modal" => Pseudo::Modal,
+        "popover-open" => Pseudo::PopoverOpen,
+        "open" => Pseudo::Open,
         "invalid" => Pseudo::Validity(true),
         "valid" => Pseudo::Validity(false),
         "hover" | "active" | "visited" | "target" | "indeterminate" | "fullscreen" => Pseudo::Never,

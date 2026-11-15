@@ -69,6 +69,26 @@ pub(super) fn shadow_root_of(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsRe
     Ok(wrap_opt(vm, root))
 }
 
+/// `setElementState(élément, nom, actif)` : pose ou retire l'état `modal`
+/// ou `popover-open`, que le style lit (`:modal`, `:popover-open`).
+pub(super) fn set_element_state(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let node = node_of(vm, &arg(args, 0));
+    let name = vm.to_string(&arg(args, 1))?;
+    let on = arg(args, 2).truthy();
+    let flag = match &*name {
+        "modal" => oxyde_dom::STATE_MODAL,
+        "popover-open" => oxyde_dom::STATE_POPOVER_OPEN,
+        _ => 0,
+    };
+    if let (Some(node), Some(h)) = (node, host(vm))
+        && flag != 0
+    {
+        h.doc.set_state(node, flag, on);
+        h.dirty = true;
+    }
+    Ok(Value::Undefined)
+}
+
 /// `shadowRootList()` : les racines fantômes du document, chacune suivie
 /// de `true` si elle est ouverte aux scripts : `[racine, ouverte, …]`.
 pub(super) fn shadow_root_list(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
