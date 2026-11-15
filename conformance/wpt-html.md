@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 48221 / 123964 (38,9 %)** — fichiers entièrement réussis : 2262 / 7308 (31,0 %).
+**Sous-tests réussis : 48239 / 123969 (38,9 %)** — fichiers entièrement réussis : 2275 / 7308 (31,1 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -78,7 +78,7 @@ est le plus honnête des deux.
 | `html/canvas/element/conformance-requirements` | 3 / 4 | 3 / 4 (75,0 %) |
 | `html/canvas/element/drawing-images-to-the-canvas` | 13 / 37 | 13 / 37 (35,1 %) |
 | `html/canvas/element/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
-| `html/canvas/element/fill-and-stroke-styles` | 163 / 257 | 163 / 257 (63,4 %) |
+| `html/canvas/element/fill-and-stroke-styles` | 168 / 257 | 168 / 257 (65,4 %) |
 | `html/canvas/element/filters` | 1 / 12 | 1 / 12 (8,3 %) |
 | `html/canvas/element/global-hdr-headroom` | 3 / 3 | 10 / 10 (100,0 %) |
 | `html/canvas/element/layers` | 4 / 20 | 4 / 25 (16,0 %) |
@@ -92,7 +92,7 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/draw-element-image/privacy/visited-link` | 0 / 12 | 0 / 12 (0,0 %) |
 | `html/canvas/element/manual/drawing-images-to-the-canvas` | 0 / 5 | 221 / 284 (77,8 %) |
 | `html/canvas/element/manual/drawing-paths-to-the-canvas` | 1 / 6 | 1 / 6 (16,7 %) |
-| `html/canvas/element/manual/fill-and-stroke-styles` | 0 / 6 | 0 / 6 (0,0 %) |
+| `html/canvas/element/manual/fill-and-stroke-styles` | 1 / 6 | 1 / 6 (16,7 %) |
 | `html/canvas/element/manual/filters` | 0 / 7 | 1 / 18 (5,6 %) |
 | `html/canvas/element/manual/filters/tentative/idl-conversions` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/canvas/element/manual/image-smoothing` | 0 / 1 | 6 / 9 (66,7 %) |
@@ -106,7 +106,7 @@ est le plus honnête des deux.
 | `html/canvas/element/pixel-manipulation` | 62 / 71 | 62 / 71 (87,3 %) |
 | `html/canvas/element/reset` | 23 / 29 | 23 / 29 (79,3 %) |
 | `html/canvas/element/shadows` | 23 / 59 | 23 / 59 (39,0 %) |
-| `html/canvas/element/text` | 25 / 125 | 25 / 285 (8,8 %) |
+| `html/canvas/element/text` | 27 / 125 | 28 / 285 (9,8 %) |
 | `html/canvas/element/the-canvas-state` | 23 / 23 | 68 / 68 (100,0 %) |
 | `html/canvas/element/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
 | `html/canvas/element/video` | 0 / 1 | 0 / 1 (0,0 %) |
@@ -119,14 +119,14 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/conformance-requirements` | 1 / 2 | 1 / 2 (50,0 %) |
 | `html/canvas/offscreen/drawing-images-to-the-canvas` | 7 / 28 | 7 / 28 (25,0 %) |
 | `html/canvas/offscreen/drawing-rectangles-to-the-canvas` | 30 / 32 | 30 / 32 (93,8 %) |
-| `html/canvas/offscreen/fill-and-stroke-styles` | 165 / 247 | 165 / 247 (66,8 %) |
+| `html/canvas/offscreen/fill-and-stroke-styles` | 170 / 247 | 170 / 247 (68,8 %) |
 | `html/canvas/offscreen/filters` | 1 / 12 | 1 / 12 (8,3 %) |
 | `html/canvas/offscreen/layers` | 4 / 20 | 4 / 25 (16,0 %) |
 | `html/canvas/offscreen/line-styles` | 32 / 33 | 32 / 33 (97,0 %) |
 | `html/canvas/offscreen/manual/context-attributes` | 0 / 1 | 4 / 16 (25,0 %) |
 | `html/canvas/offscreen/manual/convert-to-blob` | 0 / 2 | 4 / 24 (16,7 %) |
 | `html/canvas/offscreen/manual/draw-element-image` | 0 / 5 | 0 / 6 (0,0 %) |
-| `html/canvas/offscreen/manual/draw-generic-family` | 2 / 2 | 10 / 10 (100,0 %) |
+| `html/canvas/offscreen/manual/draw-generic-family` | 1 / 2 | 13 / 15 (86,7 %) |
 | `html/canvas/offscreen/manual/filter` | 1 / 2 | 1 / 2 (50,0 %) |
 | `html/canvas/offscreen/manual/image-smoothing` | 0 / 1 | 6 / 9 (66,7 %) |
 | `html/canvas/offscreen/manual/the-offscreen-canvas` | 0 / 13 | 11 / 60 (18,3 %) |
@@ -136,7 +136,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/pixel-manipulation` | 55 / 59 | 55 / 59 (93,2 %) |
 | `html/canvas/offscreen/reset` | 23 / 29 | 23 / 29 (79,3 %) |
 | `html/canvas/offscreen/shadows` | 19 / 56 | 19 / 56 (33,9 %) |
-| `html/canvas/offscreen/text` | 25 / 119 | 25 / 277 (9,0 %) |
+| `html/canvas/offscreen/text` | 26 / 119 | 26 / 277 (9,4 %) |
 | `html/canvas/offscreen/the-canvas-state` | 20 / 20 | 56 / 56 (100,0 %) |
 | `html/canvas/offscreen/transformations` | 22 / 22 | 22 / 22 (100,0 %) |
 | `html/canvas/offscreen/wide-gamut-canvas` | 0 / 3 | 0 / 8 (0,0 %) |
@@ -1297,17 +1297,12 @@ est le plus honnête des deux.
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.behind.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.beside.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.bottom.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.cylinder.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.cone.shape2.html` | 0 / 1 |  |
-| `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.equal.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.inside2.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.inside3.html` | 0 / 1 |  |
 | `html/canvas/element/fill-and-stroke-styles/2d.gradient.radial.outside2.html` | 0 / 1 |  |
@@ -1554,7 +1549,6 @@ est le plus honnête des deux.
 | `html/canvas/element/manual/drawing-paths-to-the-canvas/drawFocusIfNeeded_004.html` | 0 / 1 |  |
 | `html/canvas/element/manual/drawing-paths-to-the-canvas/drawFocusIfNeeded_005.html` | 0 / 1 |  |
 | `html/canvas/element/manual/fill-and-stroke-styles/2d.fillStyle.parse.current.notrendered.html` | 0 / 1 |  |
-| `html/canvas/element/manual/fill-and-stroke-styles/canvas_colorsandstyles_createlineargradient_001.htm` | 0 / 1 |  |
 | `html/canvas/element/manual/fill-and-stroke-styles/pattern-from-canvas-cross-origin-taint.https.sub.html` | 0 / 1 |  |
 | `html/canvas/element/manual/fill-and-stroke-styles/pattern-from-image-cross-origin-taint.https.sub.html` | 0 / 1 |  |
 | `html/canvas/element/manual/fill-and-stroke-styles/pattern-from-img-cross-origin-taint.https.sub.html` | 0 / 1 |  |
@@ -1683,7 +1677,7 @@ est le plus honnête des deux.
 | `html/canvas/element/shadows/2d.shadow.stroke.join.2.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.transform.1.html` | 0 / 1 |  |
 | `html/canvas/element/shadows/2d.shadow.transform.2.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.draw.align.center.complex-shaping.html` | 0 / 2 |  |
+| `html/canvas/element/text/2d.text.draw.align.center.complex-shaping.html` | 1 / 2 |  |
 | `html/canvas/element/text/2d.text.draw.align.center.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.end.ltr.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.draw.align.end.rtl.html` | 0 / 1 |  |
@@ -1717,7 +1711,6 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.drawing.style.letterSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.letterSpacing.measure.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.measure.direction.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.drawing.style.measure.textAlign.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.nonfinite.spacing.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.textRendering.settings.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.drawing.style.wordSpacing.change.font.html` | 0 / 1 |  |
@@ -1781,7 +1774,6 @@ est le plus honnête des deux.
 | `html/canvas/element/text/2d.text.shape.selection-rects-exceptions.tentative.html` | 0 / 1 |  |
 | `html/canvas/element/text/2d.text.shape.selection-rects.tentative.html` | 0 / 24 |  |
 | `html/canvas/element/text/2d.text.shape.strokeGlyphRun-range.tentative.html` | 0 / 1 |  |
-| `html/canvas/element/text/2d.text.variationSelectors.html` | 0 / 1 |  |
 | `html/canvas/element/text/parent-style-relative-units.html` | 0 / 2 |  |
 | `html/canvas/element/video/2d.video.invalid.html` | 0 / 1 | harnais : Unhandled rejection: lecture non prise en charge |
 | `html/canvas/element/wide-gamut-canvas/2d.color.space.getImageData.convert.html` | 0 / 4 |  |
@@ -1902,17 +1894,12 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.invalid.inputs.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.negative.rotation.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.conic.positive.rotation.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fill.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.fillRect.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.stroke.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.interpolate.zerosize.strokeRect.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.object.invalidoffset.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.behind.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.beside.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.bottom.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.cylinder.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.cone.shape2.html` | 0 / 1 |  |
-| `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.equal.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside2.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.inside3.html` | 0 / 1 |  |
 | `html/canvas/offscreen/fill-and-stroke-styles/2d.gradient.radial.outside2.html` | 0 / 1 |  |
@@ -1985,6 +1972,7 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage-worker.tentative.html` | 0 / 1 |  |
 | `html/canvas/offscreen/manual/draw-element-image/offscreenCanvas-drawElementImage.tentative.html` | 0 / 2 |  |
 | `html/canvas/offscreen/manual/draw-element-image/video-worker.tentative.html` | 0 / 1 |  |
+| `html/canvas/offscreen/manual/draw-generic-family/2d.text.draw.generic.family.w.html` | 8 / 10 | harnais : Uncaught { message: 'assert_array_equals: The image data generated by drawing generic font family 'sans-serif' should be |
 | `html/canvas/offscreen/manual/filter/offscreencanvas.filter.w.html` | 0 / 1 |  |
 | `html/canvas/offscreen/manual/image-smoothing/image.smoothing.html` | 6 / 9 |  |
 | `html/canvas/offscreen/manual/the-offscreen-canvas/offscreencanvas.constructor.html` | 2 / 3 |  |
@@ -2111,7 +2099,6 @@ est le plus honnête des deux.
 | `html/canvas/offscreen/text/2d.text.drawing.style.letterSpacing.change.font.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.letterSpacing.measure.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.measure.direction.html` | 0 / 1 |  |
-| `html/canvas/offscreen/text/2d.text.drawing.style.measure.textAlign.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.nonfinite.spacing.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.textRendering.settings.html` | 0 / 1 |  |
 | `html/canvas/offscreen/text/2d.text.drawing.style.wordSpacing.change.font.html` | 0 / 1 |  |

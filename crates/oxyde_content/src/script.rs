@@ -2576,6 +2576,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("canvasSourceSize", 2, canvas::source_size)),
         Value::Object(vm.new_function("parseCssColor", 1, canvas::parse_css_color)),
         Value::Object(vm.new_function("canvasDecode", 2, canvas::decode)),
+        Value::Object(vm.new_function("canvasText", 7, canvas::text)),
+        Value::Object(vm.new_function("canvasMeasure", 2, canvas::measure)),
     ];
     vm.call(&canvas_script, &Value::Undefined, &helpers)?;
     // `Worker` : son script se lit par le `fetch` du standard.

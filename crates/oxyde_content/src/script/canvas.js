@@ -16,10 +16,14 @@
 //   canvasSourceSize(nature, id)      -> « largeur hauteur » d'une source, ou null ;
 //   parseCssColor(texte)              -> « r g b a », ou null ;
 //   canvasDecode(id, octets)          -> décode une image dans une surface neuve et rend
-//                                        « largeur hauteur », ou null.
+//                                        « largeur hauteur », ou null ;
+//   canvasText(id, texte, police, placement, peinture, état, trait) ;
+//   canvasMeasure(texte, police)      -> « largeur montée descente », ou null.
 //
-// LIMITES CONNUES : pas de texte dessiné (`fillText` et `strokeText` ne
-// font rien, `measureText` estime) ; pas d'ombres ni de filtres ;
+// LIMITES CONNUES : le texte se dessine sur une ligne, de gauche à droite
+// (`direction` est retenu sans effet), sans `letterSpacing`, `wordSpacing`
+// ni `fontKerning` ; les lignes de base `hanging` et `ideographic` valent
+// `top` et `bottom` ; pas d'ombres ni de filtres ;
 // `isPointInStroke` rend toujours faux ; pas de dégradé conique ; un motif se
 // répète toujours dans les deux sens ; `drawImage` ne prend ni vidéo ni
 // image SVG ; seul le contexte `2d` existe (ni WebGL, ni `bitmaprenderer`) ;
@@ -29,7 +33,7 @@
 // changer la taille d'un canevas par `setAttribute` avec la même valeur ne
 // l'efface pas.
 (function (canvasId, canvasResize, canvasFill, canvasStroke, canvasClip, canvasImage, canvasGetPixels,
-  canvasPutPixels, canvasPng, canvasSourceSize, parseCssColor, canvasDecode) {
+  canvasPutPixels, canvasPng, canvasSourceSize, parseCssColor, canvasDecode, canvasText, canvasMeasure) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -608,6 +612,29 @@
     throw new TypeError("image attendue : un canevas, une image ou une ImageBitmap");
   };
 
+  // ---- TextMetrics ----------------------------------------------------------------------
+  const metrics = new WeakMap();
+  class TextMetrics {
+    constructor() {
+      throw new TypeError("constructeur illégal");
+    }
+  }
+  for (const name of ["width", "actualBoundingBoxLeft", "actualBoundingBoxRight", "actualBoundingBoxAscent",
+    "actualBoundingBoxDescent", "fontBoundingBoxAscent", "fontBoundingBoxDescent", "emHeightAscent",
+    "emHeightDescent", "hangingBaseline", "alphabeticBaseline", "ideographicBaseline"]) {
+    define(TextMetrics.prototype, name, {
+      get() { return metrics.get(this)[name]; },
+      enumerable: true, configurable: true,
+    });
+  }
+  tag(TextMetrics, "TextMetrics");
+  expose("TextMetrics", TextMetrics);
+  const makeMetrics = (values) => {
+    const result = Object.create(TextMetrics.prototype);
+    metrics.set(result, values);
+    return result;
+  };
+
   // ---- ImageData ------------------------------------------------------------------------
   class ImageData {
     #data;
@@ -1038,19 +1065,51 @@
       canvasPutPixels(id, toBinary(image.data), image.width, dx, dy, x, y, w, h);
     }
 
-    // -- Texte : mesuré à l'estime, pas dessiné.
-    fillText() {}
-    strokeText() {}
+    // -- Texte
+    #text(text, x, y, maxWidth, stroked) {
+      [x, y] = [Number(x), Number(y)];
+      const limit = maxWidth === undefined ? -1 : Number(maxWidth);
+      const id = this.#surface();
+      if (id === null || !finite(x, y) || Number.isNaN(limit) || (maxWidth !== undefined && limit <= 0)) return;
+      const s = this.#state;
+      // Tabulations et fins de ligne valent des espaces.
+      const line = String(text).replace(/[\t\n\f\r]/g, " ");
+      const align = { center: 1, right: 2, end: 2 }[s.textAlign] ?? 0;
+      const baseline = { top: 1, hanging: 1, middle: 2, bottom: 3, ideographic: 3 }[s.textBaseline] ?? 0;
+      canvasText(id, line, s.font, [x, y, Number.isFinite(limit) ? limit : -1, align, baseline].join(" "),
+        paintText(stroked ? s.stroke : s.fill), this.#stateText(), stroked ? this.#strokeText() : "");
+    }
+    fillText(text, x, y, maxWidth = undefined) {
+      if (arguments.length < 3) throw new TypeError("fillText : le texte et sa position sont requis");
+      this.#text(text, x, y, maxWidth, false);
+    }
+    strokeText(text, x, y, maxWidth = undefined) {
+      if (arguments.length < 3) throw new TypeError("strokeText : le texte et sa position sont requis");
+      this.#text(text, x, y, maxWidth, true);
+    }
     measureText(text) {
-      const size = parseFloat(/(\d*\.?\d+)px/.exec(this.#state.font)?.[1] ?? "10");
-      const width = Array.from(String(text)).length * size * 0.5;
-      return {
-        width, actualBoundingBoxLeft: 0, actualBoundingBoxRight: width,
-        actualBoundingBoxAscent: size * 0.8, actualBoundingBoxDescent: size * 0.2,
-        fontBoundingBoxAscent: size * 0.9, fontBoundingBoxDescent: size * 0.25,
-        emHeightAscent: size * 0.8, emHeightDescent: size * 0.2,
-        hangingBaseline: size * 0.8, alphabeticBaseline: 0, ideographicBaseline: -size * 0.2,
-      };
+      if (arguments.length < 1) throw new TypeError("measureText : un texte est requis");
+      const s = this.#state;
+      const measured = canvasMeasure(String(text).replace(/[\t\n\f\r]/g, " "), s.font);
+      const [width, ascent, descent] = measured === null ? [0, 0, 0] : measured.split(" ").map(Number);
+      // Décalage de l'ancre selon l'alignement et la ligne de base.
+      const left = { center: width / 2, right: width, end: width }[s.textAlign] ?? 0;
+      const raised = { top: ascent, hanging: ascent, middle: (ascent - descent) / 2, bottom: -descent,
+        ideographic: -descent }[s.textBaseline] ?? 0;
+      return makeMetrics({
+        width,
+        actualBoundingBoxLeft: left,
+        actualBoundingBoxRight: width - left,
+        actualBoundingBoxAscent: ascent - raised,
+        actualBoundingBoxDescent: descent + raised,
+        fontBoundingBoxAscent: ascent - raised,
+        fontBoundingBoxDescent: descent + raised,
+        emHeightAscent: ascent - raised,
+        emHeightDescent: descent + raised,
+        hangingBaseline: ascent - raised,
+        alphabeticBaseline: -raised,
+        ideographicBaseline: -descent - raised,
+      });
     }
     // Les méthodes de tracé agissent sur le tracé courant, dans le repère courant.
     static {

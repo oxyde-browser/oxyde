@@ -2597,6 +2597,7 @@ dependencies = [
  "oxyde_paint",
  "oxyde_text",
  "sha2",
+ "skrifa",
  "tiny-skia",
  "url",
 ]
