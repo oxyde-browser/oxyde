@@ -192,7 +192,10 @@ fn start(vm: &mut Vm, node: NodeId, checkpoint: bool) {
     }
     // Sinon, seuls les scripts classiques ; `nomodule` est un repli
     // pour les navigateurs sans modules.
-    if !crate::is_classic_script(element.attr("type")) || element.has_attr("nomodule") {
+    if !crate::is_classic_script(element.attr("type"))
+        || element.has_attr("nomodule")
+        || !crate::script_event_allows(element)
+    {
         return;
     }
     let action = match element.attr("src").map(str::trim) {

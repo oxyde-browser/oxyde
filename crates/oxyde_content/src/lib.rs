@@ -555,6 +555,7 @@ fn frame_scripts(doc: &Document, base: &Url) -> Vec<ScriptSlot> {
         };
         if !el.is_html("script")
             || !is_classic_script(el.attr("type"))
+            || !script_event_allows(el)
             || scripts.len() >= MAX_SCRIPTS
         {
             continue;
@@ -764,6 +765,20 @@ pub(crate) fn is_classic_script(kind: Option<&str>) -> bool {
             | "application/ecmascript"
             | "application/x-javascript"
     )
+}
+
+/// Vrai si les attributs `for` et `event` d'un `<script>` le laissent
+/// s'exécuter : absents, ou `for=window` avec `event=onload` (ancienne
+/// syntaxe d'Internet Explorer, HTML Standard §4.12.1.1).
+pub(crate) fn script_event_allows(el: &oxyde_dom::ElementData) -> bool {
+    let (Some(target), Some(event)) = (el.attr("for"), el.attr("event")) else {
+        return true;
+    };
+    let blank = |c: char| matches!(c, '\t' | '\n' | '\u{c}' | '\r' | ' ');
+    let target = target.trim_matches(blank);
+    let event = event.trim_matches(blank);
+    target.eq_ignore_ascii_case("window")
+        && (event.eq_ignore_ascii_case("onload") || event.eq_ignore_ascii_case("onload()"))
 }
 
 /// Vrai si l'attribut `type` d'un `<script>` désigne un module.
@@ -1120,7 +1135,9 @@ impl Page {
                     import_map = ImportMap::parse(&doc.text_content(node), &base);
                 }
             } else if el.is_html("script")
-                && (is_classic_script(el.attr("type")) || is_module_script(el.attr("type")))
+                // `for` et `event` ne filtrent que les scripts classiques.
+                && ((is_classic_script(el.attr("type")) && script_event_allows(el))
+                    || is_module_script(el.attr("type")))
                 && scripts.len() < MAX_SCRIPTS
             {
                 let module = is_module_script(el.attr("type"));
@@ -6050,6 +6067,59 @@ mod tests {
                  none auto manual closed>open true true open>closed false true NotSupportedError false \
                  close:accord"
             )
+        );
+    }
+
+    #[test]
+    fn document_write_inserts_after_the_running_script() {
+        let mut p = page(
+            "<head><script>document.write('<meta name=ecrit content=oui><p id=tete>depuis la tête</p>');</script></head>
+             <body><div id=avant></div><script id=s>
+               document.write('<b id=un>un</b>');
+               document.writeln('<i id=deux>deux</i>', '<scr' + 'ipt>window.execute = (window.execute || 0) + 1;</scr' + 'ipt>');
+               const out = [];
+               const s = document.getElementById('s');
+               out.push(s.nextElementSibling.id, s.nextElementSibling.nextElementSibling.id, window.execute);
+               out.push(document.querySelector('meta[name=ecrit]').parentNode.localName,
+                 document.getElementById('tete').parentNode.localName,
+                 document.body.firstElementChild.id);
+               out.push(document.open() === document, document.getElementById('avant') !== null);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script><p id=apres></p></body>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("un deux 1 head body tete true true")
+        );
+    }
+
+    #[test]
+    fn document_write_after_load_replaces_the_document() {
+        let mut p = page(
+            "<body><p id=ancien>ancien</p><script>
+               setTimeout(() => {
+                 document.write('<title>Neuf</title><p id=neuf>un');
+                 document.write('deux</p>');
+                 document.close();
+                 document.body.setAttribute('data-out', [document.title,
+                   document.getElementById('ancien'), document.getElementById('neuf').textContent,
+                   document.documentElement.localName].join(' '));
+               }, 0);
+             </script>",
+        );
+        p.run_scripts();
+        for _ in 0..3 {
+            let Some(due) = p.next_wake() else { break };
+            p.tick(due);
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("Neuf  undeux html")
         );
     }
 }
