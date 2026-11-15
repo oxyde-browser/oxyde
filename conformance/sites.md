@@ -33,84 +33,91 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 
 ## Résultat
 
-| | Départ | 14 novembre 2026 |
-|---|---|---|
-| lisible | 14 | 20 |
-| partiel | 8 | 12 |
-| vide | 13 | 9 |
-| erreur | 3 | 1 |
-| mur | 7 | 8 |
-| délai | 5 | 0 |
+| | Départ | 14 novembre 2026 | 15 novembre 2026 |
+|---|---|---|---|
+| lisible | 14 | 20 | 19 |
+| partiel | 8 | 12 | 12 |
+| vide | 13 | 9 | 9 |
+| erreur | 3 | 1 | 3 |
+| mur | 7 | 8 | 7 |
+| délai | 5 | 0 | 0 |
 
 « Départ » : état avant tout travail sur l'étape H (branche principale au 14 novembre 2026).
 
-| N° | Site | Famille | Départ | Aujourd'hui | Remarque |
-|---|---|---|---|---|---|
-| 1 | google.com | recherche | vide | **lisible** | HTTP/2 était refusé par les serveurs de Google |
-| 2 | bing.com | recherche | partiel | partiel | champ de recherche sans logo ni fond |
-| 3 | duckduckgo.com | recherche | vide | partiel | texte de la page d'accueil, sans le champ de recherche |
-| 4 | qwant.com | recherche | erreur | partiel | titre seul, en 12 s |
-| 5 | fr.wikipedia.org | encyclopédie | lisible | lisible | en-tête mal aligné |
-| 6 | en.wikipedia.org | encyclopédie | lisible | lisible | en-tête mal aligné |
-| 7 | fr.wiktionary.org | encyclopédie | lisible | lisible | |
-| 8 | lemonde.fr | presse | partiel | **lisible** | la fenêtre de consentement s'affiche |
-| 9 | lefigaro.fr | presse | délai | **lisible** | sous le voile de la fenêtre de consentement ; le site dit ne pas reconnaître le navigateur |
-| 10 | francetvinfo.fr | presse | partiel | partiel | en-tête seul |
-| 11 | bbc.com | presse | partiel | partiel | menu seul |
-| 12 | theguardian.com | presse | délai | partiel | en-tête ; le contenu est masqué par un bloc noir |
-| 13 | nytimes.com | presse | mur | mur | 403 (DataDome) |
-| 14 | mail.google.com | messagerie | vide | vide | |
-| 15 | outlook.live.com | messagerie | erreur | vide | l'application ne démarre pas |
-| 16 | proton.me | messagerie | erreur | **lisible** | réponse compressée, affichée en caractères illisibles |
-| 17 | youtube.com | vidéo | vide | partiel | squelette de la page, sans vidéos |
-| 18 | twitch.tv | vidéo | vide | vide | |
-| 19 | dailymotion.com | vidéo | vide | vide | |
-| 20 | vimeo.com | vidéo | lisible | lisible | en 16 s ; l'épreuve Cloudflare passe (elle ne finissait pas : lecture de chaînes en temps quadratique) |
-| 21 | amazon.fr | commerce | mur | mur | épreuve anti-robot |
-| 22 | leboncoin.fr | commerce | mur | mur | 403 (DataDome) |
-| 23 | cdiscount.com | commerce | mur | mur | épreuve anti-robot |
-| 24 | fnac.com | commerce | mur | mur | 403 |
-| 25 | ebay.fr | commerce | mur | mur | 403 (Akamai) |
-| 26 | credit-agricole.fr | banque | partiel | partiel | le site annonce une configuration non prise en charge |
-| 27 | boursobank.com | banque | lisible | lisible | |
-| 28 | paypal.com | banque | vide | mur | 403 |
-| 29 | service-public.fr | administration | lisible | lisible | bandeau de cookies mal placé |
-| 30 | impots.gouv.fr | administration | partiel | partiel | fond noir, texte peu lisible |
-| 31 | ameli.fr | administration | lisible | lisible | bandeau de cookies mal placé |
-| 32 | doctolib.fr | administration | vide | vide | se charge en 6 s (l'analyse d'un script ne finissait pas) ; l'application ne s'affiche pas |
-| 33 | developer.mozilla.org | documentation | lisible | lisible | |
-| 34 | docs.rs | documentation | lisible | lisible | |
-| 35 | doc.rust-lang.org | documentation | lisible | lisible | |
-| 36 | stackoverflow.com | documentation | mur | mur | épreuve Cloudflare |
-| 37 | github.com | documentation | délai | **lisible** | en 20 s ; des conteneurs flex et grille imbriqués coûtaient un temps exponentiel ; mise en forme encore grossière |
-| 38 | crates.io | documentation | vide | vide | |
-| 39 | x.com | réseaux sociaux | lisible | lisible | page de connexion, en 15 s |
-| 40 | facebook.com | réseaux sociaux | vide | vide | |
-| 41 | instagram.com | réseaux sociaux | délai | **lisible** | page de connexion, en 9 s |
-| 42 | linkedin.com | réseaux sociaux | lisible | lisible | avec son bandeau de cookies |
-| 43 | reddit.com | réseaux sociaux | vide | vide | |
-| 44 | mastodon.social | réseaux sociaux | vide | erreur | l'application se charge en 12 s (une centaine de modules) puis affiche sa page d'erreur |
-| 45 | openstreetmap.org | outils | délai | partiel | en-tête ; la carte reste vide |
-| 46 | deepl.com | outils | partiel | partiel | texte sans mise en forme |
-| 47 | sncf-connect.com | outils | vide | vide | |
-| 48 | meteofrance.com | outils | partiel | partiel | |
-| 49 | allocine.fr | outils | lisible | lisible | |
-| 50 | news.ycombinator.com | outils | lisible | lisible | |
+Le critère de sortie de l'étape H (40 pages lisibles sur 50) n'est pas atteint : 19.
+Entre les deux mesures, eBay s'est ouvert ; Vimeo et X ne s'affichent plus. Le temps de
+chargement a baissé : 45 secondes au plus (eBay), 33 pour Le Figaro, moins de 26 pour
+tous les autres.
+
+| N° | Site | Famille | Départ | 14 novembre | 15 novembre | Remarque |
+|---|---|---|---|---|---|---|
+| 1 | google.com | recherche | vide | lisible | lisible | HTTP/2 était refusé par les serveurs de Google |
+| 2 | bing.com | recherche | partiel | partiel | partiel | champ de recherche sur fond gris, sans logo |
+| 3 | duckduckgo.com | recherche | vide | partiel | partiel | au premier essai le serveur a fermé la connexion (curl aussi) ; jugé sur un second chargement |
+| 4 | qwant.com | recherche | erreur | partiel | partiel | titre et champ sans mise en forme, en 8 s ; `attachEvent` absent |
+| 5 | fr.wikipedia.org | encyclopédie | lisible | lisible | lisible | en-tête mal aligné |
+| 6 | en.wikipedia.org | encyclopédie | lisible | lisible | lisible | en-tête mal aligné |
+| 7 | fr.wiktionary.org | encyclopédie | lisible | lisible | lisible |  |
+| 8 | lemonde.fr | presse | partiel | lisible | lisible | la fenêtre de consentement s'affiche |
+| 9 | lefigaro.fr | presse | délai | lisible | lisible | en 33 s, sous le voile de la fenêtre de consentement ; le site dit ne pas reconnaître le navigateur |
+| 10 | francetvinfo.fr | presse | partiel | partiel | partiel | fenêtre de consentement lisible ; la page derrière est noire |
+| 11 | bbc.com | presse | partiel | partiel | partiel | menu seul |
+| 12 | theguardian.com | presse | délai | partiel | partiel | bandeau et titre ; le contenu est masqué par un bloc bleu |
+| 13 | nytimes.com | presse | mur | mur | mur | 403 (DataDome) |
+| 14 | mail.google.com | messagerie | vide | vide | vide |  |
+| 15 | outlook.live.com | messagerie | erreur | vide | vide | le script d'un worker ne se charge pas (`importScripts`) |
+| 16 | proton.me | messagerie | erreur | lisible | lisible | texte lisible sur fond uni, sans les illustrations |
+| 17 | youtube.com | vidéo | vide | partiel | partiel | squelette de la page, sans vidéos, en 18 s |
+| 18 | twitch.tv | vidéo | vide | vide | erreur | l'application démarre en 25 s puis affiche sa page d'erreur |
+| 19 | dailymotion.com | vidéo | vide | vide | vide |  |
+| 20 | vimeo.com | vidéo | lisible | lisible | erreur | **régression** : l'épreuve Cloudflare dépasse le temps d'exécution accordé, puis l'application affiche son erreur ; déjà le cas le 14 novembre en fin de journée |
+| 21 | amazon.fr | commerce | mur | mur | mur | épreuve anti-robot |
+| 22 | leboncoin.fr | commerce | mur | mur | mur | 403 (DataDome) |
+| 23 | cdiscount.com | commerce | mur | mur | mur | épreuve anti-robot |
+| 24 | fnac.com | commerce | mur | mur | mur | 403 |
+| 25 | ebay.fr | commerce | mur | mur | **lisible** | en 45 s ; la page est maintenant servie |
+| 26 | credit-agricole.fr | banque | partiel | partiel | partiel | contenu lisible, recouvert par l'annonce d'une configuration non prise en charge |
+| 27 | boursobank.com | banque | lisible | lisible | lisible |  |
+| 28 | paypal.com | banque | vide | mur | mur | 403 |
+| 29 | service-public.fr | administration | lisible | lisible | lisible | bandeau de cookies mal placé |
+| 30 | impots.gouv.fr | administration | partiel | partiel | partiel | fond noir, texte peu lisible |
+| 31 | ameli.fr | administration | lisible | lisible | lisible | bandeau de cookies mal placé |
+| 32 | doctolib.fr | administration | vide | vide | vide | l'application ne s'affiche pas |
+| 33 | developer.mozilla.org | documentation | lisible | lisible | lisible | sans la mise en forme de ses composants (`CSSStyleSheet` absent) |
+| 34 | docs.rs | documentation | lisible | lisible | lisible |  |
+| 35 | doc.rust-lang.org | documentation | lisible | lisible | lisible |  |
+| 36 | stackoverflow.com | documentation | mur | mur | mur | épreuve Cloudflare |
+| 37 | github.com | documentation | délai | lisible | lisible | en 19 s ; mise en forme encore grossière |
+| 38 | crates.io | documentation | vide | vide | vide |  |
+| 39 | x.com | réseaux sociaux | lisible | lisible | vide | **régression** : le site sert une nouvelle application (un module unique) qui ne produit aucun contenu ; cause non trouvée |
+| 40 | facebook.com | réseaux sociaux | vide | vide | vide |  |
+| 41 | instagram.com | réseaux sociaux | délai | lisible | lisible | page de connexion en 11 s ; la fenêtre de cookies chevauche le formulaire |
+| 42 | linkedin.com | réseaux sociaux | lisible | lisible | lisible | avec son bandeau de cookies |
+| 43 | reddit.com | réseaux sociaux | vide | vide | vide |  |
+| 44 | mastodon.social | réseaux sociaux | vide | erreur | erreur | page d'erreur de l'application : expression rationnelle `\p{RGI_Emoji}` refusée |
+| 45 | openstreetmap.org | outils | délai | partiel | partiel | en-tête ; la carte reste vide |
+| 46 | deepl.com | outils | partiel | partiel | partiel | texte sans mise en forme |
+| 47 | sncf-connect.com | outils | vide | vide | vide |  |
+| 48 | meteofrance.com | outils | partiel | partiel | partiel | fenêtre de consentement lisible ; la carte manque |
+| 49 | allocine.fr | outils | lisible | lisible | lisible | fenêtre de consentement |
+| 50 | news.ycombinator.com | outils | lisible | lisible | lisible |  |
 
 Au départ, trois sites affichaient le contenu de leur `<noscript>` (« activez JavaScript ») :
 ils sont comptés « mur » (Amazon, Cdiscount, Stack Overflow) ou « vide » (Mastodon).
 
 ## Ce qui bloque, par ordre de fréquence
 
-1. **Applications qui ne démarrent pas ou ne s'affichent pas** (Gmail, Outlook, Twitch,
-   Dailymotion, Doctolib, crates.io, Facebook, Reddit, SNCF Connect, YouTube) : leurs scripts
-   ne signalent plus d'erreur pour la plupart, mais il manque le Shadow DOM, le canevas, les
-   workers, `crypto.subtle`.
-2. **Murs anti-robot** (NYTimes, Leboncoin, Fnac, eBay, PayPal : réponse 403 ; Amazon,
-   Cdiscount, Stack Overflow, Vimeo : épreuve en JavaScript). Oxyde s'annonce sous son nom et
-   ne cherche pas à se faire passer pour un autre navigateur ; ces sites s'ouvriront quand
-   leurs épreuves s'exécuteront correctement.
-3. **Lenteur** : plus aucun site ne dépasse 60 secondes, mais Twitch, YouTube et eBay en
-   demandent plus de 30 ; le moteur JavaScript reste 6 à 7 fois plus lent que l'interpréteur de
-   V8 ([bench/moteur-js.md](../bench/moteur-js.md)).
-4. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants.
+1. **Applications qui ne démarrent pas ou n'affichent rien** (Gmail, Outlook, Dailymotion,
+   Doctolib, crates.io, X, Facebook, Reddit, SNCF Connect ; YouTube s'arrête au squelette).
+   La plupart ne signalent aucune erreur. Celles qui en signalent : Outlook (`importScripts`
+   d'un worker), YouTube (une exception de son injection de dépendances).
+2. **Murs anti-robot** (NYTimes, Leboncoin, Fnac, PayPal : réponse 403 ; Amazon, Cdiscount,
+   Stack Overflow : épreuve en JavaScript ; Vimeo : l'épreuve dépasse le temps accordé).
+   Oxyde s'annonce sous son nom et ne cherche pas à se faire passer pour un autre navigateur ;
+   ces sites s'ouvriront quand leurs épreuves s'exécuteront correctement.
+3. **Pages d'erreur des applications** : Twitch et Vimeo (lecture de `length` sur
+   `undefined`), Mastodon (`\p{RGI_Emoji}` : propriétés de chaînes du drapeau `v`).
+4. **Manques relevés dans les journaux** : `CSSStyleSheet` (MDN), `attachEvent` (Qwant),
+   un objet de la page non itérable et une « marque inconnue » (GitHub, BBC).
+5. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants, blocs qui
+   masquent le contenu (The Guardian, France Info, BBC).

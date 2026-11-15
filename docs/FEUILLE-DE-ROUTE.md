@@ -514,7 +514,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] Dresser la liste (recherche, encyclopédie, presse, messagerie web, vidéo, commerce,
       banque, administration, documentation technique, réseaux sociaux) et noter l'état de départ :
       [conformance/sites.md](../conformance/sites.md). Départ : 14 pages lisibles sur 50 ;
-      au 14 novembre 2026 : 20, et plus aucun site ne dépasse 60 secondes. Seul l'affichage de la page d'accueil est mesuré ; la
+      au 14 novembre 2026 : 20 ; au 15 novembre : 19 (eBay gagné, Vimeo et X perdus), 45 secondes au plus. Seul l'affichage de la page d'accueil est mesuré ; la
       connexion et l'action principale restent à essayer.
 - [x] Mise en page de conteneurs flex et grille imbriqués en temps linéaire (elle doublait à
       chaque niveau : GitHub ne s'affichait jamais) ; les erreurs de script disent où elles
