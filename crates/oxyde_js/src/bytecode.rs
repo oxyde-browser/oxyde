@@ -282,9 +282,16 @@ pub(crate) enum Op {
         obj: Reg,
         key: Reg,
     },
-    /// `super[key]` : recherche à partir du prototype de l'objet d'attache.
+    /// Base de `super` : le prototype de l'objet d'attache de la fonction
+    /// (`null` s'il n'en a pas), lu avant que la clé ne soit convertie.
+    SuperBase {
+        dst: Reg,
+    },
+    /// `super[key]` : recherche à partir de `base`, avec `this` pour
+    /// receveur.
     GetSuper {
         dst: Reg,
+        base: Reg,
         key: Reg,
     },
     /// `delete nom` sur une liaison globale : supprime la propriété de
@@ -323,9 +330,10 @@ pub(crate) enum Op {
         func: Reg,
         kind: u8,
     },
-    /// `super[key] = src` : écriture à partir du prototype de l'objet
-    /// d'attache, avec `this` pour receveur.
+    /// `super[key] = src` : écriture à partir de `base`, avec `this` pour
+    /// receveur.
     SetSuper {
+        base: Reg,
         key: Reg,
         src: Reg,
     },

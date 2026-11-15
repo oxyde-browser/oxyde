@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 264 tests de test262 sur 48 795 (98,9 %)** ; il en reste 531.
+- `oxyde_js` réussit **48 312 tests de test262 sur 48 795 (99,0 %)** ; il en reste 483.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -998,7 +998,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       ignorait un mutateur ou un élément figé posé au même index sur un prototype.
       Limite : une chaîne ne porte jamais de substitut isolé, `isWellFormed` rend donc
       toujours vrai.
-- [ ] Les 531 tests de test262 restants : tables Unicode des propriétés d'expressions
+- [x] test262, troisième lot (48 tests, 48 264 → 48 312) : l'itération d'une `Map` ou d'un
+      `Set` (`for…of`, `forEach`, `keys`, `values`, `entries`) suit les ajouts et les
+      retraits faits en cours de route, au lieu de parcourir une copie figée — défaut réel,
+      courant dans les algorithmes à file d'attente ; prototypes d'itérateurs par nature
+      (`Array Iterator`, `Map Iterator`, `Set Iterator`, `String Iterator`) ;
+      `super[clé]` (`this` vérifié d'abord, base lue avant la conversion de la clé,
+      `TypeError` sans prototype) et `super()` (constructeur parent lu au moment de
+      l'appel) ; `Object.fromEntries` ferme l'itérateur sur une erreur.
+      Limite : au-delà de 4096 retraits entre deux pas d'un même parcours, celui-ci peut
+      sauter ou revoir des entrées.
+- [ ] Les 483 tests de test262 restants : tables Unicode des propriétés d'expressions
       rationnelles (94), chaînes UTF-16 (substituts isolés), tableaux denses, objet de type
       `document.all`, `import()` et modules (phases `defer` et `source`, octets), accesseurs
       automatiques (`accessor`), et une longue traîne de cas isolés.

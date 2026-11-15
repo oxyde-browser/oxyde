@@ -5,7 +5,7 @@
 
 use indexmap::IndexMap;
 
-use crate::heap::{IterState, Kind, MapKey, Object};
+use crate::heap::{IndexedKind, IterState, Kind, MapKey, Object, RemovalLog};
 use crate::value::{ObjId, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
@@ -133,9 +133,11 @@ fn map_has(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn map_delete(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_map(vm, this)?;
     let key = MapKey::from_value(&arg(args, 0));
-    Ok(Value::Bool(
-        map_mut(vm, id).is_some_and(|m| m.shift_remove(&key).is_some()),
-    ))
+    let removed = map_mut(vm, id).and_then(|m| m.shift_remove_full(&key));
+    if let Some((index, ..)) = removed {
+        vm.collection_removed(id, index);
+    }
+    Ok(Value::Bool(removed.is_some()))
 }
 
 fn map_clear(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -143,6 +145,7 @@ fn map_clear(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     if let Some(map) = map_mut(vm, id) {
         map.clear();
     }
+    vm.collection_removed(id, RemovalLog::CLEARED);
     Ok(Value::Undefined)
 }
 
@@ -155,41 +158,41 @@ fn map_size(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     Ok(Value::Number(map_mut(vm, id).map_or(0, |m| m.len()) as f64))
 }
 
-fn map_pairs(vm: &mut Vm, this: &Value) -> JsResult<Vec<(Value, Value)>> {
-    let id = this_map(vm, this)?;
-    Ok(map_mut(vm, id)
-        .map(|m| m.values().cloned().collect())
-        .unwrap_or_default())
-}
-
 fn map_for_each(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_map(vm, this)?;
     let callback = callable(vm, &arg(args, 0))?;
-    for (key, value) in map_pairs(vm, this)? {
+    // Les entrées ajoutées pendant le parcours sont visitées aussi.
+    let mut cursor = vm.collection_cursor(id);
+    while let Some((key, value)) = vm.collection_step(id, &mut cursor) {
+        vm.tick(1)?;
         vm.call(&callback, &arg(args, 1), &[value, key, this.clone()])?;
     }
     Ok(Value::Undefined)
 }
 
+/// Itérateur sur la `Map` ou le `Set` `id`.
+fn collection_iterator(vm: &mut Vm, id: ObjId, kind: IndexedKind) -> Value {
+    let cursor = vm.collection_cursor(id);
+    vm.new_iterator(IterState::Collection {
+        target: id,
+        cursor,
+        kind,
+    })
+}
+
 fn map_keys(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let values = map_pairs(vm, this)?.into_iter().map(|(k, _)| k).collect();
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    let id = this_map(vm, this)?;
+    Ok(collection_iterator(vm, id, IndexedKind::Keys))
 }
 
 fn map_values(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let values = map_pairs(vm, this)?.into_iter().map(|(_, v)| v).collect();
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    let id = this_map(vm, this)?;
+    Ok(collection_iterator(vm, id, IndexedKind::Values))
 }
 
 fn map_entries(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let pairs = map_pairs(vm, this)?;
-    let entries = pairs
-        .into_iter()
-        .map(|(k, v)| vm.new_array(vec![k, v]))
-        .collect();
-    Ok(vm.new_iterator(IterState::Values {
-        values: entries,
-        index: 0,
-    }))
+    let id = this_map(vm, this)?;
+    Ok(collection_iterator(vm, id, IndexedKind::Entries))
 }
 
 fn set_add(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
@@ -217,9 +220,11 @@ fn set_has(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
 fn set_delete(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let id = this_set(vm, this)?;
     let key = MapKey::from_value(&arg(args, 0));
-    Ok(Value::Bool(
-        set_mut(vm, id).is_some_and(|s| s.shift_remove(&key).is_some()),
-    ))
+    let removed = set_mut(vm, id).and_then(|s| s.shift_remove_full(&key));
+    if let Some((index, ..)) = removed {
+        vm.collection_removed(id, index);
+    }
+    Ok(Value::Bool(removed.is_some()))
 }
 
 fn set_clear(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
@@ -227,6 +232,7 @@ fn set_clear(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     if let Some(set) = set_mut(vm, id) {
         set.clear();
     }
+    vm.collection_removed(id, RemovalLog::CLEARED);
     Ok(Value::Undefined)
 }
 
@@ -239,40 +245,25 @@ fn set_size(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     Ok(Value::Number(set_mut(vm, id).map_or(0, |s| s.len()) as f64))
 }
 
-fn set_items(vm: &mut Vm, this: &Value) -> JsResult<Vec<Value>> {
-    let id = this_set(vm, this)?;
-    Ok(set_mut(vm, id)
-        .map(|s| s.values().cloned().collect())
-        .unwrap_or_default())
-}
-
 fn set_for_each(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
+    let id = this_set(vm, this)?;
     let callback = callable(vm, &arg(args, 0))?;
-    for value in set_items(vm, this)? {
-        vm.call(
-            &callback,
-            &arg(args, 1),
-            &[value.clone(), value, this.clone()],
-        )?;
+    let mut cursor = vm.collection_cursor(id);
+    while let Some((key, value)) = vm.collection_step(id, &mut cursor) {
+        vm.tick(1)?;
+        vm.call(&callback, &arg(args, 1), &[value, key, this.clone()])?;
     }
     Ok(Value::Undefined)
 }
 
 fn set_values(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let values = set_items(vm, this)?;
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    let id = this_set(vm, this)?;
+    Ok(collection_iterator(vm, id, IndexedKind::Values))
 }
 
 fn set_entries(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
-    let values = set_items(vm, this)?;
-    let entries = values
-        .into_iter()
-        .map(|v| vm.new_array(vec![v.clone(), v]))
-        .collect();
-    Ok(vm.new_iterator(IterState::Values {
-        values: entries,
-        index: 0,
-    }))
+    let id = this_set(vm, this)?;
+    Ok(collection_iterator(vm, id, IndexedKind::Entries))
 }
 
 // ---- Opérations ensemblistes de Set ------------------------------------------
@@ -541,7 +532,6 @@ pub(super) fn install(vm: &mut Vm) {
         ("delete", 1, set_delete),
         ("clear", 0, set_clear),
         ("forEach", 1, set_for_each),
-        ("keys", 0, set_values),
         ("values", 0, set_values),
         ("entries", 0, set_entries),
         ("union", 1, set_union),
@@ -565,6 +555,10 @@ pub(super) fn install(vm: &mut Vm) {
     constructor(vm, "Set", 0, set_ctor, set_proto);
     for (name, arity, func) in set_methods {
         vm.define_method(set_proto, name, *arity, *func);
+    }
+    // `Set.prototype.keys` est la fonction `values` elle-même.
+    if let Ok(values) = vm.get(&Value::Object(set_proto), "values") {
+        vm.define_hidden(set_proto, "keys", values);
     }
     getter(vm, set_proto, "size", set_size);
     vm.define_hidden_symbol(set_proto, &tag, Value::string("Set"));

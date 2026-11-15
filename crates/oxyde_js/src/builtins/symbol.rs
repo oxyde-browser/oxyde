@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use super::{arg, constructor, getter};
-use crate::heap::{IterState, Kind, Property, Slot};
+use crate::heap::{IterState, Kind, Object, Property, Slot};
 use crate::value::{Symbol, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
@@ -104,7 +104,11 @@ fn string_iterator(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
         .chars()
         .map(|c| Value::string(c.encode_utf8(&mut [0; 4])))
         .collect();
-    Ok(vm.new_iterator(IterState::Values { values, index: 0 }))
+    let proto = Some(vm.intrinsics.string_iterator_proto);
+    Ok(Value::Object(vm.heap.alloc(Object::new(
+        proto,
+        Kind::Iterator(IterState::Values { values, index: 0 }),
+    ))))
 }
 
 pub(super) fn install(vm: &mut Vm) {
@@ -158,6 +162,29 @@ pub(super) fn install(vm: &mut Vm) {
     // dont héritent tous les itérateurs.
     let root = vm.intrinsics.iterator_root;
     vm.heap.get_mut(iterator_proto).proto = Some(root);
+    // Un prototype par nature d'itérateur, chacun avec son `next` et son
+    // étiquette.
+    let intr = vm.intrinsics;
+    for (proto, tag) in [
+        (iterator_proto, "Array Iterator"),
+        (intr.map_iterator_proto, "Map Iterator"),
+        (intr.set_iterator_proto, "Set Iterator"),
+        (intr.string_iterator_proto, "String Iterator"),
+    ] {
+        if proto != iterator_proto {
+            vm.define_method(proto, "next", 0, iterator_next);
+            vm.heap.get_mut(proto).proto = Some(root);
+        }
+        vm.heap.get_mut(proto).symbols.insert(
+            known.to_string_tag.clone(),
+            Property {
+                slot: Slot::Data(Value::string(tag)),
+                writable: false,
+                enumerable: false,
+                configurable: true,
+            },
+        );
+    }
     let this_fn = vm.new_function("[Symbol.iterator]", 0, iterator_self);
     vm.define_hidden_symbol(root, &known.iterator, Value::Object(this_fn));
 
