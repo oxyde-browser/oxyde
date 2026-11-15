@@ -565,6 +565,22 @@ pub(crate) fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec
     }
 }
 
+/// Type MIME d'un document XML d'après l'extension de son adresse
+/// (`.xhtml`, `.xht`, `.svg`, `.xml`) ; `None` pour le reste, lu en HTML.
+///
+/// LIMITE CONNUE : l'en-tête `Content-Type` de la réponse n'arrive pas
+/// jusqu'ici ; un document XML servi sous une autre extension est lu en
+/// HTML.
+fn xml_type_of(url: &Url) -> Option<&'static str> {
+    let path = url.path().to_ascii_lowercase();
+    match path.rsplit('.').next()? {
+        "xhtml" | "xht" => Some("application/xhtml+xml"),
+        "svg" => Some("image/svg+xml"),
+        "xml" => Some("application/xml"),
+        _ => None,
+    }
+}
+
 /// Décode les octets d'une ressource texte (feuille de style, script) :
 /// d'après sa marque d'ordre d'octets, sinon en UTF-8 si elle en est, sinon
 /// en `windows-1252`. Un encodage annoncé par l'en-tête HTTP a déjà été
@@ -677,7 +693,11 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     };
     let (url, html, encoding) = match first {
         Ok((final_url, bytes)) => {
-            let encoding = oxyde_content::encoding::sniff_document(&bytes);
+            let encoding = if xml_type_of(&final_url).is_some() {
+                oxyde_content::encoding::sniff_xml(&bytes)
+            } else {
+                oxyde_content::encoding::sniff_document(&bytes)
+            };
             (final_url, encoding.decode(&bytes), encoding)
         }
         Err(error) => {
@@ -688,7 +708,8 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
         }
     };
     journal("document reçu", started);
-    let mut page = Page::from_html(url, &html);
+    let xml = xml_type_of(&url);
+    let mut page = Page::from_source(url, &html, xml);
     let document = page.url().clone();
     if let Some(cookies) = read_cookies(&document) {
         page.set_cookies(&cookies);
@@ -715,10 +736,15 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
         // Un cadre indisponible reste vide. Sans encodage déclaré, un cadre
         // de même origine hérite de celui de la page.
         let parent = (frame_url.origin() == document.origin()).then_some(encoding);
+        let xml = xml_type_of(frame_url);
         let html = fetched.ok().map(|(_, bytes)| {
-            oxyde_content::encoding::sniff_document_in(&bytes, parent).decode(&bytes)
+            if xml.is_some() {
+                oxyde_content::encoding::sniff_xml(&bytes).decode(&bytes)
+            } else {
+                oxyde_content::encoding::sniff_document_in(&bytes, parent).decode(&bytes)
+            }
         });
-        page.set_frame(frame_url, html.as_deref());
+        page.set_frame_typed(frame_url, html.as_deref(), xml);
     }
     let scripts = page.pending_scripts();
     for (script_url, fetched) in scripts.iter().zip(fetch_many(&scripts, &document)) {

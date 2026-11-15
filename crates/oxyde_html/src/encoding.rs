@@ -389,6 +389,25 @@ pub fn sniff_document(bytes: &[u8]) -> Encoding {
         .unwrap_or_else(|| sniff_text(bytes))
 }
 
+/// Encodage d'un document XML reçu sans encodage annoncé par le transport :
+/// sa marque d'ordre d'octets, sinon l'`encoding` de sa déclaration
+/// `<?xml … ?>`, sinon UTF-8.
+#[must_use]
+pub fn sniff_xml(bytes: &[u8]) -> Encoding {
+    from_bom(bytes)
+        .or_else(|| {
+            let head = bytes.get(..PRESCAN.min(bytes.len()))?;
+            let declaration = head.strip_prefix(b"<?xml")?;
+            let end = declaration.iter().position(|b| *b == b'>')?;
+            let inside = declaration.get(..end)?;
+            let at = find_ascii(inside, b"encoding")?;
+            let label = charset_value(inside.get(at + 8..)?)?;
+            // Lu octet par octet jusqu'ici : ce n'est pas de l'UTF-16.
+            Encoding::for_label(&label).filter(|e| !matches!(e.kind, Kind::Utf16 { .. }))
+        })
+        .unwrap_or(UTF_8)
+}
+
 /// Encodage d'un document de cadre : comme [`sniff_document`], mais sans
 /// marque ni `<meta charset>` valable, il hérite de `parent`, l'encodage
 /// du document qui le contient (à ne donner que pour un cadre de même
@@ -522,6 +541,13 @@ mod tests {
             Some("windows-1250")
         );
         assert_eq!(from_content_type("text/html"), None);
+        // Document XML : l'encodage de sa déclaration, sinon UTF-8.
+        assert_eq!(
+            sniff_xml(b"<?xml version='1.0' encoding='ISO-8859-2'?><a/>").name(),
+            "ISO-8859-2"
+        );
+        assert_eq!(sniff_xml(b"<a>\xE9</a>").name(), "UTF-8");
+        assert_eq!(sniff_xml(b"\xFF\xFE<\x00").name(), "UTF-16LE");
         // Un cadre sans déclaration valable hérite de son parent.
         let greek = Encoding::for_label("windows-1253");
         assert_eq!(

@@ -208,7 +208,7 @@ pub(super) fn scan(vm: &mut Vm) -> bool {
             let parsed = oxyde_html::parse_document(srcdoc);
             let scripts = inline_scripts(&parsed);
             if let Ok(url) = Url::parse("about:srcdoc") {
-                load(vm, element, &url, &parsed, &scripts);
+                load(vm, element, &url, &parsed, &scripts, None);
                 ran = true;
             }
             continue;
@@ -262,10 +262,18 @@ pub(super) fn property(vm: &mut Vm, element: NodeId, key: &str) -> JsResult {
 /// Charge dans le cadre `element` le document `source`, d'adresse `url` :
 /// son arbre remplace le document vide, ses scripts s'exécutent dans le
 /// royaume du cadre, puis `load` est distribué à sa fenêtre et à l'élément.
-pub(super) fn load(vm: &mut Vm, element: NodeId, url: &Url, source: &Document, scripts: &[String]) {
+pub(super) fn load(
+    vm: &mut Vm,
+    element: NodeId,
+    url: &Url,
+    source: &Document,
+    scripts: &[String],
+    xml: Option<&'static str>,
+) {
     let Some(context) = ensure(vm, element) else {
         return;
     };
+    super::documents::set_windowed_kind(vm, context.document, xml);
     if let Some(h) = host(vm) {
         h.doc.remove_children(context.document);
         let children: Vec<NodeId> = source.children(source.root()).collect();

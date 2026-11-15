@@ -181,7 +181,10 @@ fn is_test(path: &Path, name: &str) -> bool {
     if name.ends_with(".window.js") {
         return true;
     }
-    if name.ends_with(".html") || name.ends_with(".htm") {
+    if [".html", ".htm", ".xhtml", ".xht", ".svg"]
+        .iter()
+        .any(|extension| name.ends_with(extension))
+    {
         return std::fs::read(path)
             .is_ok_and(|b| String::from_utf8_lossy(&b).contains("testharness.js"));
     }
@@ -386,7 +389,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         println!("WPT-X\tfichier illisible");
         return ExitCode::FAILURE;
     };
-    let mut page = Page::from_html(url, &html);
+    let mut page = Page::from_source(url, &html, Some(content_type(rel)));
     page.set_task_budget(TASK_BUDGET);
     page.set_viewport(VIEWPORT);
     for url in page.pending_stylesheets() {
@@ -403,7 +406,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
     }
     for url in page.pending_frames() {
         let html = read_document(suite, &url, encoding);
-        page.set_frame(&url, html.as_deref());
+        page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
     }
     for url in page.pending_scripts() {
         let source = read_url(suite, &url);
@@ -452,7 +455,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         // Cadres créés par les scripts : documents et scripts servis de même.
         for url in page.pending_frames() {
             let html = read_document(suite, &url, encoding);
-            page.set_frame(&url, html.as_deref());
+            page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
         }
         for url in page.pending_scripts() {
             let source = read_url(suite, &url);
@@ -501,7 +504,13 @@ fn load_test(suite: &Path, rel: &str) -> Option<(Url, String, Encoding)> {
         let url = Url::parse(&format!("{ORIGIN}/{rel}")).ok()?;
         let encoding = oxyde_content::encoding::from_bom(&bytes)
             .or_else(|| declared_encoding(suite, rel))
-            .unwrap_or_else(|| oxyde_content::encoding::sniff_document(&bytes));
+            .unwrap_or_else(|| {
+                if oxyde_content::xml_content_type(content_type(rel)).is_some() {
+                    oxyde_content::encoding::sniff_xml(&bytes)
+                } else {
+                    oxyde_content::encoding::sniff_document(&bytes)
+                }
+            });
         return Some((url, encoding.decode(&bytes), encoding));
     };
     let source = String::from_utf8_lossy(&bytes).into_owned();
@@ -549,7 +558,13 @@ fn read_document(suite: &Path, url: &Url, parent: Encoding) -> Option<String> {
     // Une marque d'ordre d'octets l'emporte sur l'en-tête.
     let encoding = oxyde_content::encoding::from_bom(&bytes)
         .or_else(|| declared_encoding(suite, rel))
-        .unwrap_or_else(|| oxyde_content::encoding::sniff_document_in(&bytes, Some(parent)));
+        .unwrap_or_else(|| {
+            if oxyde_content::xml_content_type(content_type(rel)).is_some() {
+                oxyde_content::encoding::sniff_xml(&bytes)
+            } else {
+                oxyde_content::encoding::sniff_document_in(&bytes, Some(parent))
+            }
+        });
     Some(encoding.decode(&bytes))
 }
 
@@ -597,7 +612,9 @@ fn content_type(path: &str) -> &'static str {
         "js" => "text/javascript",
         "json" => "application/json",
         "css" => "text/css",
-        "xml" | "xhtml" => "application/xml",
+        "xhtml" | "xht" => "application/xhtml+xml",
+        "svg" => "image/svg+xml",
+        "xml" => "application/xml",
         "txt" => "text/plain",
         _ => "application/octet-stream",
     }

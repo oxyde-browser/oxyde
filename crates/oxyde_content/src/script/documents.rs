@@ -25,6 +25,33 @@ pub(super) struct DocumentKind {
     pub(super) html: bool,
     /// Vrai si l'objet est un `XMLDocument` (`createDocument`).
     pub(super) xml_interface: bool,
+    /// Vrai pour le document d'une page ou d'un cadre, qui a une fenêtre ;
+    /// faux pour un document créé par un script.
+    pub(super) windowed: bool,
+}
+
+/// Note que `document`, celui d'une page ou d'un cadre, est un document XML
+/// de type MIME `content_type` ; `None` : un document HTML.
+pub(super) fn set_windowed_kind(vm: &mut Vm, document: NodeId, content_type: Option<&'static str>) {
+    let Some(h) = host(vm) else {
+        return;
+    };
+    match content_type {
+        Some(content_type) => {
+            h.kinds.insert(
+                index(document),
+                DocumentKind {
+                    content_type,
+                    html: false,
+                    xml_interface: true,
+                    windowed: true,
+                },
+            );
+        }
+        None => {
+            h.kinds.remove(&index(document));
+        }
+    }
 }
 
 fn index(node: NodeId) -> u32 {
@@ -93,6 +120,7 @@ pub(super) fn document_ctor(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsRe
             content_type: "application/xml",
             html: false,
             xml_interface: false,
+            windowed: false,
         },
     );
     Ok(wrap_opt(vm, document))
@@ -261,6 +289,7 @@ fn clone_into(vm: &mut Vm, node: NodeId, deep: bool, owner: NodeId) -> Option<No
             content_type: "text/html",
             html: true,
             xml_interface: false,
+            windowed: false,
         });
         h.kinds.insert(index(copy), kind);
     }
@@ -394,6 +423,7 @@ pub(super) fn create_document(vm: &mut Vm, this: &Value, args: &[Value]) -> JsRe
             content_type,
             html: false,
             xml_interface: true,
+            windowed: false,
         },
     ) else {
         return Ok(Value::Null);
@@ -432,6 +462,7 @@ pub(super) fn create_html_document(vm: &mut Vm, this: &Value, args: &[Value]) ->
             content_type: "text/html",
             html: true,
             xml_interface: false,
+            windowed: false,
         },
     ) else {
         return Ok(Value::Null);
@@ -469,6 +500,44 @@ pub(super) fn parse_html_document(vm: &mut Vm, _this: &Value, args: &[Value]) ->
             content_type: "text/html",
             html: true,
             xml_interface: false,
+            windowed: false,
+        },
+    ) else {
+        return Ok(Value::Null);
+    };
+    if let Some(h) = host(vm) {
+        let children: Vec<NodeId> = parsed.children(parsed.root()).collect();
+        for child in children {
+            let copy = h.doc.import(&parsed, child);
+            h.doc.append_child(document, copy);
+        }
+    }
+    Ok(wrap(vm, document))
+}
+
+/// `parseXmlDocument(texte, type)` : un nouveau document XML de type MIME
+/// `type`, analysé depuis `texte` (pour `DOMParser` et `responseXML`). Si
+/// le texte est mal formé, rend le message de la faute, une chaîne.
+pub(super) fn parse_xml_document(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let text = vm.to_string(&arg(args, 0))?;
+    let kind = vm.to_string(&arg(args, 1))?;
+    let content_type = match &*kind {
+        "application/xhtml+xml" => "application/xhtml+xml",
+        "image/svg+xml" => "image/svg+xml",
+        "text/xml" => "text/xml",
+        _ => "application/xml",
+    };
+    let parsed = match oxyde_html::parse_xml(&text) {
+        Ok(parsed) => parsed,
+        Err(error) => return Ok(Value::string(&error.to_string())),
+    };
+    let Some(document) = new_document(
+        vm,
+        DocumentKind {
+            content_type,
+            html: false,
+            xml_interface: true,
+            windowed: false,
         },
     ) else {
         return Ok(Value::Null);
