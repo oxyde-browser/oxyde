@@ -2042,6 +2042,8 @@ impl Browser {
         let Some(url) = self.tabs.get(index).map(|t| t.page.url().clone()) else {
             return Vec::new();
         };
+        // Recharger redemande la page et ses ressources aux serveurs.
+        crate::network::forget_cache(&url);
         self.load(index, url, false)
     }
 

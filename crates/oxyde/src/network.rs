@@ -229,6 +229,10 @@ enum Call {
     SocketDrop {
         socket: u64,
     },
+    /// Oublier ce que le cache HTTP garde pour le site de `document`.
+    ForgetCache {
+        document: String,
+    },
 }
 ipc_enum!(Call {
     0 => Send(request),
@@ -239,6 +243,7 @@ ipc_enum!(Call {
     5 => SocketBinary { socket, bytes },
     6 => SocketClose { socket, code, reason },
     7 => SocketDrop { socket },
+    8 => ForgetCache { document },
 });
 
 /// Réponse du service réseau.
@@ -521,6 +526,12 @@ fn serve_here(call: Call) -> Answer {
                 );
             } else {
                 with_socket(socket, |handle| handle.close(code, reason));
+            }
+            Answer::Done
+        }
+        Call::ForgetCache { document } => {
+            if let (Ok(document), Ok(client)) = (Url::parse(&document), client()) {
+                client.forget_cached(&document);
             }
             Answer::Done
         }
@@ -870,6 +881,16 @@ pub(crate) fn send(request: &HttpRequest) -> Result<NetResponse, NetFailure> {
         }),
         Answer::Response(Err(failure)) => Err(failure),
         _ => Err(NetFailure::other("réponse inattendue du service réseau")),
+    }
+}
+
+/// Oublie ce que le cache HTTP garde pour le site de `document` :
+/// l'utilisateur recharge la page, ses ressources sont redemandées.
+pub(crate) fn forget_cache(document: &Url) {
+    if matches!(document.scheme(), "http" | "https") {
+        let _ = call(Call::ForgetCache {
+            document: document.to_string(),
+        });
     }
 }
 

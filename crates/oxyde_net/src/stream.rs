@@ -98,7 +98,8 @@ impl Client {
                     .await
                     .map_err(|_| NetError::Timeout)??;
                 match step {
-                    HeadStep::Final(head, body) => break (head, body),
+                    // Un flux garde sa connexion jusqu'au bout.
+                    HeadStep::Final(head, body, _) => break (head, body),
                     HeadStep::Redirect(next, status) => {
                         hops += 1;
                         if hops > MAX_REDIRECTS {
