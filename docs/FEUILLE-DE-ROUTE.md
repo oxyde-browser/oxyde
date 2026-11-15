@@ -926,7 +926,10 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : le flou gaussien est approché par trois moyennes glissantes ; écart type
       plafonné à 100 pixels ; `currentColor` n'est pas lu sur l'élément. Les essais WPT à base d'images
       ne peuvent pas passer : le dossier `images/` de WPT n'est pas dans le dépôt local.
-- [ ] Vu à la mesure des sites et encore absent : chargement des ressources en parallèle.
+- [x] Chargement des ressources en parallèle : déjà en place, par lots de seize, pour chaque
+      nature de ressource (feuilles de style, polices, images, cadres, scripts). Ce qui
+      reste — toutes les natures à la fois, graphe des modules — est une affaire de
+      vitesse, suivie à l'étape L.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,
       `importScripts`, `name`, `WorkerGlobalScope`, plus `fetch`, minuteurs, `URL`…), les
