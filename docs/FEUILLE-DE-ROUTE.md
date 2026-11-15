@@ -567,8 +567,26 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       (Ctrl flèche), pas d'événements `copy`, `cut`, `paste`, `select` ni de
       `selectionStart` / `setSelectionRange` reliés à cette sélection.
       Vérifié par tests ; pas encore essayé au clavier dans la fenêtre.
-- [ ] Saisie, ce qui reste : curseur et édition au milieu d'un `<textarea>`, liste déroulante
-      qui se déroule, ordre de `tabindex`, `autofocus`, saisie par méthode d'entrée (IME).
+- [x] Saisie, suite : une zone de texte (`<textarea>`) s'édite au curseur (flèches, Haut et
+      Bas, Début et Fin de ligne, Entrée, Retour arrière et Suppr au milieu du texte,
+      sélection au clavier, copier, couper, coller, clic qui place le curseur, curseur
+      dessiné) ; Tab suit l'ordre de `tabindex` (positifs d'abord, par valeur, puis
+      l'ordre du document ; un `tabindex` négatif en sort) ; `autofocus` donne le focus à
+      la fin du chargement.
+      Limites : dans une zone de texte, Haut et Bas suivent les lignes du texte, pas les
+      lignes affichées quand il est replié ; la sélection n'y est pas surlignée ; elle
+      ne défile pas pour suivre le curseur. Non essayé à la main dans la fenêtre.
+- [x] Liste déroulante : un `<select>` à choix unique se déroule au clic, à Entrée ou à
+      Espace ; ses options se dessinent par-dessus la page, celle qui est choisie en
+      évidence ; un clic sur une option la choisit (`input`, `change`) et referme la
+      liste ; une option désactivée ne se choisit pas ; Échap, un clic ailleurs ou la
+      perte du focus la referment ; les flèches choisissent, liste déroulée ou non.
+      Limites : la liste s'ouvre toujours vers le bas et ne défile pas (une longue
+      liste sort de la fenêtre) ; elle ignore les transformations et le défilement des
+      zones internes ; pas de recherche par frappe d'une lettre ; `<optgroup>` n'y a
+      pas de titre ; une liste `multiple` ou de taille supérieure à 1 ne se déroule
+      pas. Non essayé à la main dans la fenêtre.
+- [ ] Saisie, ce qui reste : saisie par méthode d'entrée (IME).
 - [x] Sélection de texte à la souris et copie : glisser sélectionne, un double clic prend
       le mot, Ctrl A toute la page, Ctrl C copie dans le presse-papiers (un processus de
       rendu n'y écrit que si l'utilisateur vient de copier). Le texte copié est celui
@@ -805,7 +823,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [ ] Web Platform Tests `html/` : de 11,7 % vers 30 % des fichiers (cadres, `canvas`,
+- [ ] Web Platform Tests `html/` : de 11,8 % vers 30 % des fichiers (cadres, `canvas`,
       contenus embarqués, scripts).
 - [x] Analyseur XML 1.0 avec espaces de noms (`oxyde_html::parse_xml`) : documents
       bien formés seulement (première faute signalée avec sa ligne et sa colonne),

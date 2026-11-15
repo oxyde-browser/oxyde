@@ -40,6 +40,8 @@ pub use ranges::{Boundary, IteratorState, LiveRange};
 pub const STATE_MODAL: u8 = 1;
 /// État d'élément : popover affiché (`:popover-open`).
 pub const STATE_POPOVER_OPEN: u8 = 2;
+/// État d'élément : liste déroulante (`<select>`) déroulée.
+pub const STATE_SELECT_OPEN: u8 = 4;
 
 /// Espace de noms d'un élément.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

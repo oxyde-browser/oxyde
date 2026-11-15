@@ -25,7 +25,7 @@ mod grid;
 mod selection;
 mod table;
 
-pub use controls::{PASSWORD_MASK, field_caret_at};
+pub use controls::{PASSWORD_MASK, area_caret_at, field_caret_at};
 pub use find::{MAX_MATCHES, find_text};
 pub use selection::{TextSelection, select_all, select_between, select_word};
 
@@ -199,6 +199,7 @@ pub fn layout_document(
         block_child_cache: vec![None; doc.len()],
         shrink_depth: 0,
         out_of_flow: Vec::new(),
+        overlays: Vec::new(),
         inline_origin: (0.0, 0.0),
         grids: std::collections::HashMap::new(),
         floats: Vec::new(),
@@ -239,6 +240,8 @@ pub fn layout_document(
                 let placed = engine.layout_out_of_flow(item, initial);
                 root.children.push(placed);
             }
+            // Par-dessus tout le reste.
+            root.children.append(&mut engine.overlays);
             root
         });
     let height = root.as_ref().map_or(0.0, |b| {
@@ -577,6 +580,9 @@ struct Engine<'a> {
     shrink_depth: usize,
     /// Boîtes hors flux rencontrées, en attente de leur bloc conteneur.
     out_of_flow: Vec<OutOfFlow>,
+    /// Fragments à peindre par-dessus toute la page (liste déroulée d'un
+    /// `<select>`), déjà placés.
+    overlays: Vec<Fragment>,
     /// Origine du contexte en ligne en cours : position statique des boîtes
     /// hors flux qu'il contient.
     inline_origin: (f32, f32),
@@ -1136,6 +1142,10 @@ impl Engine<'_> {
                 h: (border_box.h - bw.top - bw.bottom - pad.top - pad.bottom).max(0.0),
             };
             children.extend(self.control_content(node, style, content));
+        }
+        // Une zone de texte qui a le focus montre son curseur dans son texte.
+        if self.doc.focus() == Some(node) {
+            self.push_area_caret(node, style, border_box, &mut children);
         }
 
         BoxFragment {

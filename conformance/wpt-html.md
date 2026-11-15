@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 46283 / 119637 (38,7 %)** — fichiers entièrement réussis : 854 / 7308 (11,7 %).
+**Sous-tests réussis : 46293 / 123638 (37,4 %)** — fichiers entièrement réussis : 863 / 7308 (11,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -152,7 +152,7 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/reporting/tentative` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/document-isolation-policy` | 0 / 46 | 9 / 253 (3,6 %) |
-| `html/dom` | 1 / 23 | 30307 / 51854 (58,4 %) |
+| `html/dom` | 1 / 23 | 30309 / 51854 (58,5 %) |
 | `html/dom/documents/dom-tree-accessors` | 15 / 42 | 99 / 245 (40,4 %) |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 12 / 15 | 31 / 34 (91,2 %) |
 | `html/dom/documents/resource-metadata-management` | 6 / 11 | 13 / 23 (56,5 %) |
@@ -220,7 +220,7 @@ est le plus honnête des deux.
 | `html/interaction/focus/focusreset` | 0 / 6 | 13 / 64 (20,3 %) |
 | `html/interaction/focus/processing-model` | 5 / 10 | 18 / 35 (51,4 %) |
 | `html/interaction/focus/sequential-focus-navigation-and-the-tabindex-attribute` | 0 / 7 | 110 / 134 (82,1 %) |
-| `html/interaction/focus/the-autofocus-attribute` | 4 / 27 | 4 / 38 (10,5 %) |
+| `html/interaction/focus/the-autofocus-attribute` | 11 / 27 | 11 / 38 (28,9 %) |
 | `html/links/icon` | 2 / 2 | 2 / 2 (100,0 %) |
 | `html/links/manifest/link-relationship` | 0 / 1 | 0 / 1 (0,0 %) |
 | `html/links/stylesheet` | 2 / 3 | 2 / 3 (66,7 %) |
@@ -332,7 +332,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-output-element` | 0 / 4 | 0 / 5 (0,0 %) |
 | `html/semantics/forms/the-progress-element` | 1 / 5 | 1 / 19 (5,3 %) |
 | `html/semantics/forms/the-select-element` | 15 / 49 | 46 / 164 (28,0 %) |
-| `html/semantics/forms/the-select-element/customizable-select` | 8 / 90 | 41 / 318 (12,9 %) |
+| `html/semantics/forms/the-select-element/customizable-select` | 9 / 90 | 41 / 318 (12,9 %) |
 | `html/semantics/forms/the-select-element/customizable-select-listbox` | 0 / 6 | 0 / 25 (0,0 %) |
 | `html/semantics/forms/the-select-element/customizable-select-multiple-popup` | 0 / 5 | 0 / 6 (0,0 %) |
 | `html/semantics/forms/the-select-element/filterable-select` | 0 / 3 | 0 / 13 (0,0 %) |
@@ -378,7 +378,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/import-attributes` | 2 / 5 | 4 / 7 (57,1 %) |
 | `html/semantics/scripting-1/the-script-element/json-module` | 1 / 18 | 9 / 159 (5,7 %) |
 | `html/semantics/scripting-1/the-script-element/microtasks` | 1 / 8 | 2 / 13 (15,4 %) |
-| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 153 (37,9 %) |
+| `html/semantics/scripting-1/the-script-element/module` | 19 / 74 | 58 / 4154 (1,4 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import` | 8 / 32 | 17 / 154 (11,0 %) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/alpha` | 0 / 3 | 0 / 0 (—) |
 | `html/semantics/scripting-1/the-script-element/module/dynamic-import/microtasks` | 1 / 2 | 3 / 4 (75,0 %) |
@@ -445,7 +445,7 @@ est le plus honnête des deux.
 | `html/webappapis/events` | 1 / 2 | 1 / 2 (50,0 %) |
 | `html/webappapis/microtask-queuing` | 3 / 4 | 8 / 9 (88,9 %) |
 | `html/webappapis/scripting` | 0 / 2 | 2 / 6 (33,3 %) |
-| `html/webappapis/scripting/event-loops` | 3 / 8 | 4 / 9 (44,4 %) |
+| `html/webappapis/scripting/event-loops` | 4 / 8 | 5 / 9 (55,6 %) |
 | `html/webappapis/scripting/events` | 6 / 35 | 43 / 109 (39,4 %) |
 | `html/webappapis/scripting/events/event-handler-processing-algorithm-error` | 10 / 12 | 24 / 24 (100,0 %) |
 | `html/webappapis/scripting/processing-model-2` | 6 / 36 | 11 / 55 (20,0 %) |
@@ -3960,7 +3960,7 @@ est le plus honnête des deux.
 | `html/dom/render-blocking/stylesheet-link-href-change-keeps-blocking.html` | 0 / 1 |  |
 | `html/dom/self-origin.any.js` | 0 / 1 |  |
 | `html/dom/self-origin.sub.html` | 1 / 11 | harnais : délai du harnais dépassé |
-| `html/dom/usvstring-reflection.https.html` | 8 / 19 |  |
+| `html/dom/usvstring-reflection.https.html` | 10 / 19 |  |
 | `html/editing/activation/click-bail-on-disabled.html` | 0 / 4 |  |
 | `html/editing/activation/click.html` | 0 / 1 |  |
 | `html/editing/activation/click_checkbox.html` | 0 / 1 |  |
@@ -4302,7 +4302,6 @@ est le plus honnête des deux.
 | `html/interaction/focus/setSequentialFocusStartingPoint.tentative.html` | 0 / 1 |  |
 | `html/interaction/focus/tab-table-caption.html` | 2 / 6 | harnais : délai du harnais dépassé |
 | `html/interaction/focus/tabindex-focus-flag.html` | 19 / 35 |  |
-| `html/interaction/focus/the-autofocus-attribute/autofocus-area.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/autofocus-dialog.html` | 0 / 2 |  |
 | `html/interaction/focus/the-autofocus-attribute/autofocus-in-not-fully-active-document.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/autofocus-on-stable-document.html` | 0 / 1 |  |
@@ -4312,16 +4311,10 @@ est le plus honnête des deux.
 | `html/interaction/focus/the-autofocus-attribute/document-with-fragment-top.html` | 0 / 2 |  |
 | `html/interaction/focus/the-autofocus-attribute/document-with-fragment-valid.html` | 0 / 3 |  |
 | `html/interaction/focus/the-autofocus-attribute/first-reconnected.html` | 0 / 1 |  |
-| `html/interaction/focus/the-autofocus-attribute/first-when-later-but-before.html` | 0 / 1 |  |
-| `html/interaction/focus/the-autofocus-attribute/first-when-later.html` | 0 / 1 |  |
-| `html/interaction/focus/the-autofocus-attribute/first.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/focusable-area-in-top-document.html` | 0 / 1 |  |
-| `html/interaction/focus/the-autofocus-attribute/no-autofocus-on-changing-input-type.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/no-cross-origin-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/interaction/focus/the-autofocus-attribute/queue-non-focusable.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/same-origin-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/interaction/focus/the-autofocus-attribute/skip-another-top-level-browsing-context.html` | 0 / 1 |  |
-| `html/interaction/focus/the-autofocus-attribute/skip-non-focusable.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/spin-by-blocking-style-sheet.html` | 0 / 1 |  |
 | `html/interaction/focus/the-autofocus-attribute/supported-elements.html` | 0 / 6 |  |
 | `html/interaction/focus/the-autofocus-attribute/update-the-rendering.html` | 0 / 1 | harnais : Test named '"Flush autofocus candidates" should be happen before a scroll event and animation frame callbacks' specified |
@@ -5588,7 +5581,7 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-interactive-element-focus.optional.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-option-animation-reopens.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-option-hover-while-dragging.optional.html` | 0 / 2 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-picker-option-optgroup-client-rects.html` | 1 / 8 |  |
+| `html/semantics/forms/the-select-element/customizable-select/select-picker-option-optgroup-client-rects.html` | 0 / 8 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-popover-open-invalid.tentative.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-pseudo-box-type.html` | 2 / 3 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-picker-starting-style.html` | 0 / 1 |  |
@@ -5599,7 +5592,6 @@ est le plus honnête des deux.
 | `html/semantics/forms/the-select-element/customizable-select/select-pseudo-open-top-layer.html` | 0 / 4 | harnais : Test named 'Showing an unrelated auto popover closes the picker.' specified 1 'cleanup' function, and 1 failed. |
 | `html/semantics/forms/the-select-element/customizable-select/select-pseudo-open.html` | 0 / 2 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-synthetic-events.html` | 0 / 2 |  |
-| `html/semantics/forms/the-select-element/customizable-select/select-tabindex-order.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-type-to-search.tentative.html` | 0 / 1 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-value-selectedOption.html` | 5 / 11 |  |
 | `html/semantics/forms/the-select-element/customizable-select/select-vertical-writing-mode-navigation.optional.html` | 0 / 8 |  |
@@ -5687,8 +5679,8 @@ est le plus honnête des deux.
 | `html/semantics/interactive-elements/the-dialog-element/child-sequential-focus.html` | 3 / 5 |  |
 | `html/semantics/interactive-elements/the-dialog-element/default-color.html` | 1 / 2 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-active-document.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus-multiple-times.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus-multiple-times.html` | 0 / 1 |  |
+| `html/semantics/interactive-elements/the-dialog-element/dialog-autofocus.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-events.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-cancel-preventDefault.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/semantics/interactive-elements/the-dialog-element/dialog-canceling.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -5736,7 +5728,7 @@ est le plus honnête des deux.
 | `html/semantics/interactive-elements/the-dialog-element/non-modal-canceling.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/non-modal-dialog-layout.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/remove-dialog-should-unblock-document.html` | 0 / 1 |  |
-| `html/semantics/interactive-elements/the-dialog-element/show-modal-focusing-steps.html` | 0 / 1 | harnais : délai du harnais dépassé |
+| `html/semantics/interactive-elements/the-dialog-element/show-modal-focusing-steps.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/toggle-events.html` | 2 / 12 |  |
 | `html/semantics/interactive-elements/the-dialog-element/top-layer-position.html` | 0 / 1 |  |
 | `html/semantics/interactive-elements/the-dialog-element/top-layer-removal-invalidates-ua-styles.html` | 0 / 1 |  |
@@ -6195,7 +6187,7 @@ est le plus honnête des deux.
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer-base-url.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/module-import-referrer.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-cross-origin-referrerpolicy.sub.html` | 0 / 7 |  |
-| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/semantics/scripting-1/the-script-element/module/modulepreload-inline-referrerpolicy.html` | 0 / 4001 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrer-check.html` | 0 / 1 |  |
 | `html/semantics/scripting-1/the-script-element/module/modulepreload-referrerpolicy.html` | 0 / 7 | harnais : délai du harnais dépassé |
 | `html/semantics/scripting-1/the-script-element/module/nested-imports.html` | 0 / 1 |  |
@@ -6811,7 +6803,6 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/event-loops/microtask_before_prepare_the_script_element-02.xhtml` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/new-scroll-event-dispatched-at-next-updating-rendering-time.html` | 0 / 1 |  |
 | `html/webappapis/scripting/event-loops/raf-from-animation-event-serviced-in-same-rendering-update.html` | 0 / 1 |  |
-| `html/webappapis/scripting/event-loops/update-the-rendering-resize-autofocus.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/events/compile-event-handler-lexical-scopes-form-owner.html` | 1 / 4 |  |
 | `html/webappapis/scripting/events/compile-event-handler-lexical-scopes.html` | 0 / 3 |  |
 | `html/webappapis/scripting/events/compile-event-handler-settings-objects.html` | 0 / 3 | harnais : délai du harnais dépassé |

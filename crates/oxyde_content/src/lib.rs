@@ -1698,6 +1698,7 @@ impl Page {
     /// les modules importés. Les exceptions vont dans la console.
     pub fn run_scripts(&mut self) {
         if self.scripts.is_empty() {
+            self.autofocus();
             return;
         }
         let entries: Vec<(String, String)> = self
@@ -1773,6 +1774,28 @@ impl Page {
         engine.take_dirty();
         self.engine = Some(engine);
         self.dom_changed();
+        self.autofocus();
+    }
+
+    /// La page est chargée : le premier élément `autofocus` prend le focus,
+    /// si rien ne l'a déjà.
+    fn autofocus(&mut self) {
+        let wanted = self.doc.focus().is_none()
+            && self.doc.descendants(self.doc.root()).any(|node| {
+                self.doc
+                    .element(node)
+                    .is_some_and(|e| e.has_attr("autofocus"))
+            });
+        if !wanted {
+            return;
+        }
+        self.ensure_engine();
+        if let Some(engine) = self.engine.as_mut() {
+            engine.autofocus(&mut self.doc);
+            if engine.take_dirty() {
+                self.dom_changed();
+            }
+        }
     }
 
     /// Crée le moteur de script s'il n'existe pas : les contrôles de
@@ -2271,7 +2294,7 @@ impl Page {
         // Ce relâchement est consommé : un clic venu d'ailleurs ne le reprend pas.
         self.released = MouseInput::default();
         let link = self.click_with(node, Some(&pointer));
-        self.place_caret(node, x);
+        self.place_caret(node, x, y);
         link
     }
 
@@ -2540,9 +2563,32 @@ impl Page {
     }
 
     /// Après un clic sur le champ de texte `node`, qui vient de prendre le
-    /// focus : le curseur va au caractère le plus proche de l'abscisse `x`.
-    fn place_caret(&mut self, node: NodeId, x: f32) {
-        if self.doc.focus() != Some(node) || !script::is_text_input(&self.doc, node) {
+    /// focus : le curseur va au caractère le plus proche du point (`x`,
+    /// `y`) (de l'abscisse seule dans un champ d'une ligne).
+    fn place_caret(&mut self, node: NodeId, x: f32, y: f32) {
+        if self.doc.focus() != Some(node) {
+            return;
+        }
+        if script::is_text_area(&self.doc, node) {
+            let Some(shown) = self
+                .tree
+                .as_ref()
+                .and_then(|tree| oxyde_layout::area_caret_at(tree, node, x, y))
+            else {
+                return;
+            };
+            let value = self.doc.text_content(node);
+            let mut caret = shown.min(value.len());
+            while !value.is_char_boundary(caret) {
+                caret -= 1;
+            }
+            if caret != self.doc.caret() || caret != self.doc.selection_anchor() {
+                self.doc.set_focus(Some(node), caret);
+                self.dom_changed();
+            }
+            return;
+        }
+        if !script::is_text_input(&self.doc, node) {
             return;
         }
         let (Some(tree), Some(element)) = (&self.tree, self.doc.element(node)) else {
@@ -4876,6 +4922,235 @@ mod tests {
         p.click_node(field);
         p.key_event(true, &key("a", true));
         assert_eq!(p.selected_text(), "");
+    }
+
+    #[test]
+    fn text_areas_edit_at_the_caret_and_tab_follows_tabindex() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'>
+               <textarea id=zone style='width:300px;height:100px;font-size:16px'>abc\ndefgh\nij</textarea>
+               <input id=trois tabindex=3>
+               <input id=libre>
+               <input id=un tabindex=1 autofocus>
+               <input id=hors tabindex=-1>
+               <script>
+                 var saisies = 0;
+                 addEventListener('input', () => {
+                   document.documentElement.setAttribute('data-saisies', ++saisies);
+                 });
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let by_id = |p: &Page, id: &str| {
+            p.document()
+                .descendants(p.document().root())
+                .find(|n| {
+                    p.document()
+                        .element(*n)
+                        .is_some_and(|e| e.attr("id") == Some(id))
+                })
+                .expect("élément")
+        };
+        let focused = |p: &Page| {
+            p.document()
+                .focus()
+                .and_then(|node| p.document().element(node)?.attr("id").map(str::to_owned))
+        };
+        let key = |key: &'static str, shift: bool| KeyInput {
+            key,
+            code: "",
+            ctrl: false,
+            shift,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        // `autofocus` a donné le focus au chargement.
+        assert_eq!(focused(&p).as_deref(), Some("un"));
+        // Tab : les `tabindex` positifs d'abord, par valeur ; puis l'ordre du
+        // document ; un `tabindex` négatif n'y est pas.
+        let mut order = Vec::new();
+        for _ in 0..4 {
+            p.key_event(true, &key("Tab", false));
+            order.push(focused(&p).unwrap_or_default());
+        }
+        assert_eq!(order, ["trois", "zone", "libre", "un"]);
+        p.key_event(true, &key("Tab", true));
+        assert_eq!(focused(&p).as_deref(), Some("libre"));
+
+        // Zone de texte : le focus place le curseur en fin de texte.
+        let zone = by_id(&p, "zone");
+        let content = |p: &Page| p.document().text_content(by_id(p, "zone"));
+        p.click_node(zone);
+        assert_eq!(p.document().caret(), "abc\ndefgh\nij".len());
+        // Haut : même colonne sur la ligne d'au-dessus ; Début : début de ligne.
+        p.key_event(true, &key("ArrowUp", false));
+        assert_eq!(p.document().caret(), "abc\nde".len());
+        p.key_event(true, &key("ArrowUp", false));
+        assert_eq!(p.document().caret(), "ab".len());
+        p.key_event(true, &key("X", false));
+        assert_eq!(content(&p), "abXc\ndefgh\nij");
+        p.key_event(true, &key("End", false));
+        p.key_event(true, &key("Enter", false));
+        assert_eq!(content(&p), "abXc\n\ndefgh\nij");
+        assert_eq!(p.document().caret(), "abXc\n".len());
+        // Bas depuis une ligne vide, puis Retour arrière au milieu.
+        p.key_event(true, &key("ArrowDown", false));
+        p.key_event(true, &key("ArrowRight", false));
+        p.key_event(true, &key("Backspace", false));
+        assert_eq!(content(&p), "abXc\n\nefgh\nij");
+        // Maj Fin sélectionne jusqu'à la fin de la ligne ; coller la remplace.
+        p.key_event(true, &key("End", true));
+        p.paste("12\r\n34");
+        assert_eq!(content(&p), "abXc\n\n12\n34\nij");
+        assert_eq!(p.document().caret(), "abXc\n\n12\n34".len());
+        assert_eq!(
+            p.document()
+                .element(
+                    p.document()
+                        .find_html_element(p.document().root(), "html")
+                        .expect("html")
+                )
+                .and_then(|e| e.attr("data-saisies")),
+            Some("4")
+        );
+        // Un clic place le curseur : en haut à gauche, au début du texte.
+        p.update(&mut text, VIEWPORT);
+        p.click(3.0, 3.0);
+        assert_eq!(focused(&p).as_deref(), Some("zone"));
+        assert_eq!(p.document().caret(), 0);
+        // Et le curseur est dessiné.
+        p.update(&mut text, VIEWPORT);
+        let before = p.display_list().items.len();
+        // Un clic hors de tout champ retire le focus, et le curseur avec.
+        let body = p
+            .document()
+            .find_html_element(p.document().root(), "body")
+            .expect("body");
+        p.click_node(body);
+        assert_eq!(focused(&p), None);
+        p.update(&mut text, VIEWPORT);
+        assert!(p.display_list().items.len() < before);
+    }
+
+    #[test]
+    fn a_select_drops_down_and_picks_by_click_or_key() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'>
+               <select id=liste style='font-size:16px'>
+                 <option>un</option><option>deux</option><option disabled>trois</option><option>quatre</option>
+               </select>
+               <p id=ailleurs style='margin-top:200px'>ailleurs</p>
+               <script>
+                 var journal = [];
+                 liste.addEventListener('change', () => {
+                   journal.push(liste.value);
+                   document.body.setAttribute('data-journal', journal.join(','));
+                 });
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let by_id = |p: &Page, id: &str| {
+            p.document()
+                .descendants(p.document().root())
+                .find(|n| {
+                    p.document()
+                        .element(*n)
+                        .is_some_and(|e| e.attr("id") == Some(id))
+                })
+                .expect("élément")
+        };
+        let key = |key: &'static str| KeyInput {
+            key,
+            code: "",
+            ctrl: false,
+            shift: false,
+            alt: false,
+            meta: false,
+            repeat: false,
+        };
+        let select = by_id(&p, "liste");
+        let open = |p: &Page| {
+            p.document()
+                .has_state(by_id(p, "liste"), oxyde_dom::STATE_SELECT_OPEN)
+        };
+        let journal = |p: &Page| {
+            let doc = p.document();
+            let body = doc.find_html_element(doc.root(), "body").expect("body");
+            doc.element(body)
+                .and_then(|e| e.attr("data-journal"))
+                .unwrap_or_default()
+                .to_owned()
+        };
+        // Rectangle, dans la page, de la ligne de l'option de rang `rank`
+        // dans la liste déroulée.
+        let row = |p: &Page, rank: usize| {
+            let option = p
+                .document()
+                .descendants(by_id(p, "liste"))
+                .filter(|n| {
+                    p.document()
+                        .element(*n)
+                        .is_some_and(|e| e.is_html("option"))
+                })
+                .nth(rank)
+                .expect("option");
+            let mut stack: Vec<&oxyde_layout::Fragment> = p
+                .tree
+                .as_ref()
+                .and_then(|tree| tree.root.as_ref())
+                .into_iter()
+                .collect();
+            while let Some(fragment) = stack.pop() {
+                match fragment {
+                    oxyde_layout::Fragment::Box(b) if b.node == Some(option) => {
+                        return b.border_box;
+                    }
+                    oxyde_layout::Fragment::Box(b) => stack.extend(b.children.iter()),
+                    oxyde_layout::Fragment::Text(text) => stack.extend(text.boxes.iter()),
+                }
+            }
+            panic!("ligne de l'option absente de la mise en page");
+        };
+        let closed = p.display_list().items.len();
+        // Un clic déroule la liste : ses options se dessinent sous elle.
+        p.click_node(select);
+        p.update(&mut text, VIEWPORT);
+        assert!(open(&p));
+        assert!(p.display_list().items.len() > closed);
+        let second = row(&p, 1);
+        assert!(second.y > 16.0, "{second:?}");
+        // Un clic sur une option la choisit et referme la liste.
+        p.click(second.x + 5.0, second.y + second.h / 2.0);
+        p.update(&mut text, VIEWPORT);
+        assert!(!open(&p));
+        assert_eq!(journal(&p), "deux");
+        assert_eq!(p.display_list().items.len(), closed);
+        // Une option désactivée ne se choisit pas ; la liste se referme.
+        p.click_node(select);
+        p.update(&mut text, VIEWPORT);
+        let third = row(&p, 2);
+        p.click(third.x + 5.0, third.y + third.h / 2.0);
+        assert!(!open(&p));
+        assert_eq!(journal(&p), "deux");
+        // Au clavier : Entrée déroule, les flèches choisissent, Échap referme.
+        p.key_event(true, &key("Enter"));
+        assert!(open(&p));
+        p.key_event(true, &key("ArrowDown"));
+        assert_eq!(journal(&p), "deux,quatre");
+        p.key_event(true, &key("Escape"));
+        assert!(!open(&p));
+        // Un clic ailleurs referme aussi.
+        p.key_event(true, &key(" "));
+        assert!(open(&p));
+        p.click_node(by_id(&p, "ailleurs"));
+        assert!(!open(&p));
     }
 
     #[test]

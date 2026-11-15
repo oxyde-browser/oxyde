@@ -5,12 +5,17 @@
 //!   curseur quand il a le focus ; un mot de passe est masqué ;
 //! - bouton (`submit`, `reset`, `button`) : son libellé, centré ;
 //! - case cochée et bouton radio coché : leur marque ;
-//! - liste déroulante : l'option choisie et une flèche.
+//! - liste déroulante : l'option choisie et une flèche ; déroulée, la
+//!   liste de ses options, peinte par-dessus la page.
 //!
-//! LIMITES CONNUES : pas de sélection de texte ; une liste déroulante ne se
-//! déroule pas ; les types `range`, `color`, `file` et `date` n'ont pas
+//! LIMITES CONNUES : une liste déroulée s'ouvre toujours vers le bas, à
+//! l'emplacement de sa liste dans la page (ni transformation ni défilement
+//! d'une zone interne pris en compte), et ne défile pas ; les types
+//! `range`, `color`, `file` et `date` n'ont pas
 //! d'apparence propre ; le contenu d'un `<textarea>` est mis en page comme
-//! du texte ordinaire, sans curseur.
+//! du texte ordinaire, avec son curseur mais sans surlignage de la
+//! sélection ; une zone de texte plus longue que sa boîte ne défile pas
+//! pour suivre le curseur.
 
 use oxyde_text::parley::{Affinity, Cursor};
 
@@ -94,7 +99,180 @@ pub fn field_caret_at(tree: &crate::LayoutTree, node: NodeId, x: f32) -> Option<
     None
 }
 
+/// Premier texte mis en page parmi `fragments` et leurs descendants, dans
+/// l'ordre du document.
+fn first_text(fragments: &[Fragment]) -> Option<&TextFragment> {
+    // Parcours itératif, en profondeur d'abord.
+    let mut stack: Vec<&Fragment> = fragments.iter().rev().collect();
+    while let Some(fragment) = stack.pop() {
+        match fragment {
+            Fragment::Text(text) => return Some(text),
+            Fragment::Box(b) => stack.extend(b.children.iter().rev()),
+        }
+    }
+    None
+}
+
+/// Position, dans le contenu de la zone de texte `node`, du caractère le
+/// plus proche du point (`x`, `y`) ; 0 pour une zone vide, `None` si la
+/// zone n'est pas mise en page.
+#[must_use]
+pub fn area_caret_at(tree: &crate::LayoutTree, node: NodeId, x: f32, y: f32) -> Option<usize> {
+    let mut stack: Vec<&Fragment> = tree.root.iter().collect();
+    while let Some(fragment) = stack.pop() {
+        match fragment {
+            Fragment::Box(b) if b.node == Some(node) => {
+                return Some(first_text(&b.children).map_or(0, |text| {
+                    Cursor::from_point(&text.layout, x - text.x, y - text.y).index()
+                }));
+            }
+            Fragment::Box(b) => stack.extend(b.children.iter()),
+            Fragment::Text(text) => stack.extend(text.boxes.iter()),
+        }
+    }
+    None
+}
+
 impl Engine<'_> {
+    /// Liste déroulée du `<select>` `node`, dont la boîte de contenu est
+    /// `content` : une ligne par option, celle qui est choisie en
+    /// évidence. Chaque ligne porte le nœud de son option, pour qu'un clic
+    /// la désigne.
+    #[inline(never)]
+    fn dropdown(&mut self, node: NodeId, style: &ComputedStyle, content: Rect) -> Fragment {
+        let doc = self.doc;
+        let chosen = selected_option(doc, node);
+        let options: Vec<NodeId> = doc
+            .descendants(node)
+            .filter(|n| doc.element(*n).is_some_and(|e| e.is_html("option")))
+            .collect();
+        let row = style.line_height_px() + 4.0;
+        let widest = self.control_widths.get(&node).copied().unwrap_or(24.0);
+        let width = (widest + 12.0).max(content.w + 8.0);
+        #[expect(
+            clippy::cast_precision_loss,
+            reason = "nombre d'options, loin des bornes de f32"
+        )]
+        let frame = Rect {
+            x: content.x - 4.0,
+            y: content.y + content.h + 4.0,
+            w: width + 2.0,
+            h: row * options.len() as f32 + 2.0,
+        };
+        let mut rows = Vec::with_capacity(options.len());
+        let mut top = frame.y + 1.0;
+        for option in options {
+            let picked = chosen == Some(option);
+            let disabled = doc.element(option).is_some_and(|e| e.has_attr("disabled"));
+            let mut shown = style.clone();
+            shown.background_color = if picked {
+                ACCENT
+            } else {
+                oxyde_css::Color::rgb(0xFF, 0xFF, 0xFF)
+            };
+            shown.color = if picked {
+                oxyde_css::Color::rgb(0xFF, 0xFF, 0xFF)
+            } else if disabled {
+                oxyde_css::Color::rgb(0x8A, 0x8A, 0x8A)
+            } else {
+                oxyde_css::Color::rgb(0x00, 0x00, 0x00)
+            };
+            let rect = Rect {
+                x: frame.x + 1.0,
+                y: top,
+                w: width,
+                h: row,
+            };
+            let label = option_text(doc, option);
+            let layout = self.control_line(&label, &shown, option);
+            let mut backdrop = ComputedStyle::initial();
+            backdrop.background_color = shown.background_color;
+            rows.push(Fragment::Box(BoxFragment {
+                node: Some(option),
+                style: Arc::new(backdrop),
+                border_box: rect,
+                children: vec![Self::control_text(layout, rect.x + 4.0, rect)],
+            }));
+            top += row;
+        }
+        // Cadre gris d'un pixel, peint au-dessus de tout le reste.
+        let mut border = ComputedStyle::initial();
+        border.background_color = oxyde_css::Color::rgb(0x76, 0x76, 0x76);
+        border.position = oxyde_css::Position::Relative;
+        border.z_index = Some(i32::MAX);
+        Fragment::Box(BoxFragment {
+            node: Some(node),
+            style: Arc::new(border),
+            border_box: frame,
+            children: rows,
+        })
+    }
+
+    /// Si `node` est une zone de texte, ajoute son curseur à `children`, son
+    /// contenu déjà mis en page dans la boîte `border_box`.
+    ///
+    /// Jamais fondue dans l'appelant : `layout_box` est récursive, et ce
+    /// code alourdirait chacun de ses niveaux de pile.
+    #[inline(never)]
+    pub(super) fn push_area_caret(
+        &self,
+        node: NodeId,
+        style: &ComputedStyle,
+        border_box: Rect,
+        children: &mut Vec<Fragment>,
+    ) {
+        if !self
+            .doc
+            .element(node)
+            .is_some_and(|e| e.is_html("textarea"))
+        {
+            return;
+        }
+        let pad = super::edges_px(style.padding, border_box.w);
+        let bw = style.border_widths();
+        let content = Rect {
+            x: border_box.x + bw.left + pad.left,
+            y: border_box.y + bw.top + pad.top,
+            w: (border_box.w - bw.left - bw.right - pad.left - pad.right).max(0.0),
+            h: (border_box.h - bw.top - bw.bottom - pad.top - pad.bottom).max(0.0),
+        };
+        let caret = self.area_caret(style, content, children);
+        children.push(caret);
+    }
+
+    /// Curseur de la zone de texte qui a le focus : un trait à la position
+    /// du curseur dans son texte `children` déjà mis en page, ou au début
+    /// de sa boîte de contenu `content` si elle est vide.
+    fn area_caret(&self, style: &ComputedStyle, content: Rect, children: &[Fragment]) -> Fragment {
+        let rect = match first_text(children).filter(|text| !text.text.is_empty()) {
+            Some(text) => {
+                let mut caret = self.doc.caret().min(text.text.len());
+                while !text.text.is_char_boundary(caret) {
+                    caret -= 1;
+                }
+                let geometry = Cursor::from_byte_index(&text.layout, caret, Affinity::Downstream)
+                    .geometry(&text.layout, 1.0);
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "coordonnées dans un texte, loin des bornes de f32"
+                )]
+                Rect {
+                    x: text.x + geometry.x0 as f32,
+                    y: text.y + geometry.y0 as f32,
+                    w: 1.5,
+                    h: (geometry.y1 - geometry.y0) as f32,
+                }
+            }
+            None => Rect {
+                x: content.x,
+                y: content.y,
+                w: 1.5,
+                h: style.line_height_px(),
+            },
+        };
+        Self::control_mark(rect, style.color, 0.0)
+    }
+
     /// Met en forme `text` sur une ligne, dans le style `style`.
     fn control_line(&mut self, text: &str, style: &ComputedStyle, node: NodeId) -> TextLayout {
         let family = css_font_family(&style.font_family);
@@ -288,6 +466,10 @@ impl Engine<'_> {
             let label = selected_option(self.doc, node)
                 .map(|option| option_text(self.doc, option))
                 .unwrap_or_default();
+            if self.doc.has_state(node, oxyde_dom::STATE_SELECT_OPEN) {
+                let list = self.dropdown(node, style, content);
+                self.overlays.push(list);
+            }
             let text = self.control_line(&label, style, node);
             let mut fragments = vec![Self::control_text(text, content.x, content)];
             // Flèche : un petit triangle, dessiné ligne à ligne pour ne
