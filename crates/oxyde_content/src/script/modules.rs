@@ -46,7 +46,7 @@ fn request(vm: &mut Vm, load: usize, url: Url) {
         return;
     };
     if state.seen.len() >= MAX_MODULES_PER_LOAD
-        || h.fetches.len() >= MAX_PENDING_FETCHES * 8
+        || h.fetches.len() >= MAX_PENDING_FETCHES
         || !state.seen.insert(url.to_string())
     {
         return;

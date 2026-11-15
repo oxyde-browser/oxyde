@@ -14,9 +14,9 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 70 fichiers entièrement réussis sur 363 (19,3 %) ; détail dans [wpt-animations.md](wpt-animations.md) |
 | Web Platform Tests, dossier `url/` | `oxyde_content` | **branchée** : 16 fichiers entièrement réussis sur 34 ; détail dans [wpt-url.md](wpt-url.md) |
 | Web Platform Tests, dossier `encoding/` | `oxyde_html`, `oxyde_content` | **branchée** : 44 fichiers entièrement réussis sur 153 (tous les encodages sont lus ; les encodeurs autres qu'UTF-8 manquent) ; détail dans [wpt-encoding.md](wpt-encoding.md) |
-| Web Platform Tests, dossier `html/` | `oxyde_html`, `oxyde_content` | **branchée** : 2 275 fichiers entièrement réussis sur 7 308 (31,1 %) ; détail dans [wpt-html.md](wpt-html.md) |
+| Web Platform Tests, dossier `html/` | `oxyde_html`, `oxyde_content` | **branchée** : 2 398 fichiers entièrement réussis sur 7 308 (32,8 %) ; détail dans [wpt-html.md](wpt-html.md) |
 | Sites de référence (50 sites courants) | tout le navigateur | **mesurée** à la main sur captures : 19 pages d'accueil lisibles et 12 partielles sur 50 (15 novembre 2026) ; détail dans [sites.md](sites.md) |
-| test262 | `oxyde_js` | **branchée** : 48 139 tests réussis sur 48 795 (98,7 %), détail par dossier dans [test262.md](test262.md) |
+| test262 | `oxyde_js` | **branchée** : 48 357 tests réussis sur 48 795 (99,1 %), détail par dossier dans [test262.md](test262.md) |
 
 Pour les suites qui ne tournent pas encore, aucun taux de réussite ne peut être annoncé : seuls
 les tests unitaires de chaque crate (`cargo test --workspace`) les couvrent.

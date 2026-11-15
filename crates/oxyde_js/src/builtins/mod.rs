@@ -1592,7 +1592,28 @@ pub(crate) fn console_message(vm: &mut Vm, level: &'static str, text: String) {
 }
 
 fn console_write(vm: &mut Vm, level: &'static str, args: &[Value]) -> JsResult {
-    let parts: Vec<String> = args.iter().map(|a| vm.display(a)).collect();
+    let parts: Vec<String> = args
+        .iter()
+        .map(|value| {
+            let mut shown = vm.display(value);
+            // Une erreur s'écrit avec sa pile d'appels, comme dans les consoles
+            // des navigateurs : sans elle, « Error » ne dit pas d'où elle vient.
+            if let Some(id) = value.as_object()
+                && matches!(vm.heap.get(id).kind, Kind::Error)
+                && let Ok(Value::String(stack)) = vm.get(value, "stack")
+            {
+                let frames = stack
+                    .strip_prefix(shown.as_str())
+                    .unwrap_or(&stack)
+                    .trim_start_matches('\n');
+                if !frames.is_empty() {
+                    shown.push('\n');
+                    shown.push_str(frames);
+                }
+            }
+            shown
+        })
+        .collect();
     console_message(vm, level, parts.join(" "));
     Ok(Value::Undefined)
 }

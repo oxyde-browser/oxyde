@@ -848,7 +848,12 @@ impl Vm {
                 None => break,
             }
         }
-        self.heap.get_mut(id).proto = proto;
+        let custom = self.is_class_prototype(proto);
+        let object = self.heap.get_mut(id);
+        object.proto = proto;
+        if matches!(object.kind, Kind::Host { .. }) {
+            object.custom_proto = custom;
+        }
         Ok(())
     }
 

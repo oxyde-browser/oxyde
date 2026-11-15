@@ -1275,12 +1275,54 @@
       "secureConnectionStart", "requestStart", "responseStart", "responseEnd", "domLoading",
       "domInteractive", "domContentLoadedEventStart", "domContentLoadedEventEnd", "domComplete",
       "loadEventStart", "loadEventEnd"].map((name) => [name, Math.round(timeOrigin)])),
-    mark(name) {
-      const entry = { name: String(name), entryType: "mark", startTime: performance.now(), duration: 0 };
+    mark(name, options) {
+      const given = options !== null && typeof options === "object" ? options : {};
+      const startTime = given.startTime === undefined ? performance.now() : Number(given.startTime);
+      if (!(startTime >= 0)) throw new TypeError("performance.mark : startTime doit être positif");
+      const detail = given.detail === undefined ? null : structuredClone(given.detail);
+      const entry = { name: String(name), entryType: "mark", startTime, duration: 0, detail };
       entries.push(entry);
       return entry;
     },
     measure(name, start, end) {
+      // Deuxième forme (User Timing 3) : `measure(nom, { start, end, duration, detail })`.
+      // Une borne y est un instant en millisecondes ou le nom d'une marque.
+      if (start !== null && typeof start === "object"
+        && ["start", "end", "duration", "detail"].some((key) => start[key] !== undefined)) {
+        const given = start;
+        if (end !== undefined) throw new TypeError("performance.measure : options et marque de fin à la fois");
+        if (given.start === undefined && given.end === undefined) {
+          throw new TypeError("performance.measure : ni start ni end");
+        }
+        if (given.start !== undefined && given.end !== undefined && given.duration !== undefined) {
+          throw new TypeError("performance.measure : start, end et duration à la fois");
+        }
+        const instant = (bound) => {
+          if (typeof bound === "number") {
+            if (!(bound >= 0)) throw new TypeError("performance.measure : instant négatif");
+            return bound;
+          }
+          const found = entries.findLast((e) => e.entryType === "mark" && e.name === String(bound));
+          if (found !== undefined) return found.startTime;
+          if (String(bound) in performance.timing) return performance.timing[String(bound)] - Math.round(timeOrigin);
+          throw new DOMException("marque inconnue : " + String(bound), "SyntaxError");
+        };
+        const duration = given.duration === undefined ? undefined : Number(given.duration);
+        let endTime;
+        if (given.end !== undefined) endTime = instant(given.end);
+        else if (given.start !== undefined && duration !== undefined) endTime = instant(given.start) + duration;
+        else endTime = performance.now();
+        let startTime;
+        if (given.start !== undefined) startTime = instant(given.start);
+        else if (duration !== undefined) startTime = endTime - duration;
+        else startTime = 0;
+        const entry = {
+          name: String(name), entryType: "measure", startTime, duration: endTime - startTime,
+          detail: given.detail === undefined ? null : structuredClone(given.detail),
+        };
+        entries.push(entry);
+        return entry;
+      }
       const at = (mark, fallback) => {
         if (mark === undefined) return fallback;
         const found = entries.findLast((e) => e.entryType === "mark" && e.name === String(mark));
@@ -1291,10 +1333,11 @@
         }
         return found.startTime;
       };
-      const startTime = at(start, 0);
+      // Un objet sans aucune option ne désigne pas de marque de départ.
+      const startTime = at(start !== null && typeof start === "object" ? undefined : start, 0);
       const entry = {
         name: String(name), entryType: "measure", startTime,
-        duration: at(end, performance.now()) - startTime,
+        duration: at(end, performance.now()) - startTime, detail: null,
       };
       entries.push(entry);
       return entry;

@@ -4812,9 +4812,9 @@ mod tests {
             body_text(&p),
             "construit present;depart null>3;branché present;true true 1 true mon-compteur;\
              construit neuf;créé true 1;construit neuf;direct mon-compteur;SyntaxError;TypeError;\
-             gabarit 2 0 0 2;copie un;html Titre c salut 1 false;\
+             depart 3>4;gabarit 2 0 0 2;copie un;html Titre c salut 1 false;\
              xml r 1 & 2 urn:x té <b> vide 8;cassé parsererror;svg http://www.w3.org/2000/svg;\
-             branché cree;depart 3>4;débranché present;défini true;",
+             branché cree;débranché present;défini true;",
             "{console:?}"
         );
     }
@@ -6587,6 +6587,82 @@ mod tests {
             "{out}"
         );
         assert!(!out.contains("perdu"), "{out}");
+    }
+
+    #[test]
+    fn constructed_sheets_are_adopted_and_measures_take_options() {
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body><p id=p>texte</p><div id=hote></div>
+               <script>
+                 const out = [];
+                 // Le rappel d'attribut part pendant `setAttribute`, une seule fois.
+                 const seen = [];
+                 class Guarded extends HTMLElement {
+                   static observedAttributes = ['a'];
+                   attributeChangedCallback(name, before, after) {
+                     seen.push(name + ':' + before + '>' + after + ':' + this.busy);
+                   }
+                   // Un accesseur de la classe passe avant l'attribut reflété.
+                   get href() { return 'classe ' + this.kept; }
+                   set href(value) { this.kept = value; }
+                 }
+                 customElements.define('x-guarded', Guarded);
+                 const guarded = document.createElement('x-guarded');
+                 document.body.append(guarded);
+                 guarded.busy = true;
+                 guarded.setAttribute('a', '1');
+                 guarded.busy = false;
+                 guarded.href = 'u';
+                 out.push(guarded.href, guarded.hasAttribute('href'), guarded.localName);
+                 out.push(seen.length, [...guarded.attributes].map((a) => a.name).join(','));
+                 out.push([...document.body.style].length);
+                 const sheet = new CSSStyleSheet();
+                 sheet.replaceSync('@import url(x.css); p { color: rgb(1, 2, 3) } /* } */ a[title=\"}\"] { top: 0 }');
+                 out.push(sheet.cssRules.length, sheet.cssRules[0].cssText);
+                 document.adoptedStyleSheets = [sheet];
+                 const p = document.getElementById('p');
+                 out.push(getComputedStyle(p).color);
+                 sheet.insertRule('p { color: rgb(4, 5, 6) }', sheet.cssRules.length);
+                 out.push(getComputedStyle(p).color);
+                 const root = document.getElementById('hote').attachShadow({ mode: 'open' });
+                 root.innerHTML = '<p id=q>dedans</p>';
+                 const inner = new CSSStyleSheet();
+                 root.adoptedStyleSheets.push(inner);
+                 inner.replace('p { color: rgb(7, 8, 9) }').then((same) => {
+                   out.push(same === inner, getComputedStyle(root.getElementById('q')).color);
+                   document.adoptedStyleSheets = [];
+                   out.push(getComputedStyle(p).color, root.adoptedStyleSheets.length);
+                   try { document.adoptedStyleSheets = [{}]; } catch (e) { out.push(e.name); }
+                   try { sheet.insertRule('p {}', 9); } catch (e) { out.push(e.name); }
+                   performance.mark('a', { startTime: 10 });
+                   const m = performance.measure('m', { start: 'a', duration: 5, detail: { n: 1 } });
+                   out.push(m.startTime, m.duration, m.detail.n);
+                   out.push(performance.measure('n', { start: 2, end: 9 }).duration);
+                   out.push(performance.measure('o', {}, 'a').duration);
+                   try { performance.measure('o', { detail: 1 }); } catch (e) { out.push(e.name); }
+                   guarded.removeAttribute('a');
+                   out.push(/^\\p{RGI_Emoji}$/v.test('\\u{1F468}\\u200D\\u{1F469}\\u200D\\u{1F467}'));
+                   out.push(/^\\p{RGI_Emoji}$/v.test('\\u{1F1EB}\\u{1F1F7}'), /^\\p{RGI_Emoji}$/v.test('\\u{1F1FD}\\u{1F1FD}'));
+                 }).then(() => Promise.resolve()).then(() => {
+                   out.push(seen.join(','));
+                   document.documentElement.setAttribute('data-out', out.join(' | '));
+                 });
+               </script>
+             </body>",
+        );
+        p.run_scripts();
+        p.update(&mut text, VIEWPORT);
+        let doc = p.document();
+        let html = doc.find_html_element(doc.root(), "html").expect("html");
+        assert_eq!(
+            doc.element(html).and_then(|e| e.attr("data-out")),
+            Some(
+                "classe u | false | x-guarded | 1 | a | 0 | 2 | p { color: rgb(1, 2, 3) } | rgb(1, 2, 3) | rgb(4, 5, 6) | true | \
+                 rgb(7, 8, 9) | rgb(0, 0, 0) | 1 | TypeError | IndexSizeError | 10 | 5 | 1 | 7 | 10 | \
+                 TypeError | true | true | false | a:null>1:true,a:1>null:false"
+            )
+        );
     }
 
     #[test]

@@ -3221,8 +3221,11 @@ fn load_module(vm: &mut Vm, specifier: &str, referrer: &str) -> Result<(String, 
 // par `Page::complete_fetch`. La politique de même origine est appliquée ici,
 // au moment de livrer la réponse au script.
 
-/// Nombre maximal de requêtes `fetch` en cours pour une page.
-const MAX_PENDING_FETCHES: usize = 64;
+/// Nombre maximal de requêtes en cours pour une page, toutes natures
+/// confondues (`fetch`, modules, scripts ajoutés) : elles partagent la même
+/// table, et le graphe de modules d'une application en occupe vite une
+/// centaine.
+const MAX_PENDING_FETCHES: usize = 512;
 
 /// Identifiants de requêtes, uniques dans tout le processus : une réponse
 /// tardive ne peut pas être prise pour celle d'une autre page.

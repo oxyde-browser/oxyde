@@ -938,6 +938,10 @@ pub(crate) struct Object {
     /// Propriétés virtuelles d'une fonction (`name`, `length`) supprimées ;
     /// voir [`crate::internal::DELETED_NAME`].
     pub(crate) deleted_virtual: u8,
+    /// Objet hôte dont un script a changé le prototype (élément
+    /// personnalisé) : une propriété de sa chaîne de prototypes passe
+    /// avant celle que l'hôte servirait.
+    pub(crate) custom_proto: bool,
     /// Royaume dans lequel l'objet a été créé ; pour une fonction, celui
     /// dans lequel elle s'exécute.
     pub(crate) realm: u16,
@@ -952,6 +956,7 @@ impl Object {
             kind,
             extensible: true,
             deleted_virtual: 0,
+            custom_proto: false,
             realm: 0,
         }
     }

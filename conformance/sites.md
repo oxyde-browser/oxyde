@@ -36,9 +36,9 @@ machine et du réseau au moment de la mesure ; un site proche de 60 secondes peu
 | | Départ | 14 novembre 2026 | 15 novembre 2026 |
 |---|---|---|---|
 | lisible | 14 | 20 | 19 |
-| partiel | 8 | 12 | 12 |
+| partiel | 8 | 12 | 13 |
 | vide | 13 | 9 | 9 |
-| erreur | 3 | 1 | 3 |
+| erreur | 3 | 1 | 2 |
 | mur | 7 | 8 | 7 |
 | délai | 5 | 0 | 0 |
 
@@ -48,6 +48,9 @@ Le critère de sortie de l'étape H (40 pages lisibles sur 50) n'est pas atteint
 Entre les deux mesures, eBay s'est ouvert ; Vimeo et X ne s'affichent plus. Le temps de
 chargement a baissé : 45 secondes au plus (eBay), 33 pour Le Figaro, moins de 26 pour
 tous les autres.
+
+La colonne du 15 novembre tient compte des corrections faites le jour même après la
+mesure (Mastodon, MDN, GitHub, BBC rechargés) : Mastodon passe d'« erreur » à « partiel ».
 
 | N° | Site | Famille | Départ | 14 novembre | 15 novembre | Remarque |
 |---|---|---|---|---|---|---|
@@ -61,7 +64,7 @@ tous les autres.
 | 8 | lemonde.fr | presse | partiel | lisible | lisible | la fenêtre de consentement s'affiche |
 | 9 | lefigaro.fr | presse | délai | lisible | lisible | en 33 s, sous le voile de la fenêtre de consentement ; le site dit ne pas reconnaître le navigateur |
 | 10 | francetvinfo.fr | presse | partiel | partiel | partiel | fenêtre de consentement lisible ; la page derrière est noire |
-| 11 | bbc.com | presse | partiel | partiel | partiel | menu seul |
+| 11 | bbc.com | presse | partiel | partiel | partiel | menu et bandeau de cookies ; une erreur de syntaxe dans un script ajouté par la page, non localisée |
 | 12 | theguardian.com | presse | délai | partiel | partiel | bandeau et titre ; le contenu est masqué par un bloc bleu |
 | 13 | nytimes.com | presse | mur | mur | mur | 403 (DataDome) |
 | 14 | mail.google.com | messagerie | vide | vide | vide |  |
@@ -83,18 +86,18 @@ tous les autres.
 | 30 | impots.gouv.fr | administration | partiel | partiel | partiel | fond noir, texte peu lisible |
 | 31 | ameli.fr | administration | lisible | lisible | lisible | bandeau de cookies mal placé |
 | 32 | doctolib.fr | administration | vide | vide | vide | l'application ne s'affiche pas |
-| 33 | developer.mozilla.org | documentation | lisible | lisible | lisible | sans la mise en forme de ses composants (`CSSStyleSheet` absent) |
+| 33 | developer.mozilla.org | documentation | lisible | lisible | lisible | en 2 s ; ses composants se chargent, mais la feuille de style principale ne s'applique pas |
 | 34 | docs.rs | documentation | lisible | lisible | lisible |  |
 | 35 | doc.rust-lang.org | documentation | lisible | lisible | lisible |  |
 | 36 | stackoverflow.com | documentation | mur | mur | mur | épreuve Cloudflare |
-| 37 | github.com | documentation | délai | lisible | lisible | en 19 s ; mise en forme encore grossière |
+| 37 | github.com | documentation | délai | lisible | lisible | en 20 s, sans erreur de script ; mise en forme encore grossière |
 | 38 | crates.io | documentation | vide | vide | vide |  |
 | 39 | x.com | réseaux sociaux | lisible | lisible | vide | **régression** : le site sert une nouvelle application (un module unique) qui ne produit aucun contenu ; cause non trouvée |
 | 40 | facebook.com | réseaux sociaux | vide | vide | vide |  |
 | 41 | instagram.com | réseaux sociaux | délai | lisible | lisible | page de connexion en 11 s ; la fenêtre de cookies chevauche le formulaire |
 | 42 | linkedin.com | réseaux sociaux | lisible | lisible | lisible | avec son bandeau de cookies |
 | 43 | reddit.com | réseaux sociaux | vide | vide | vide |  |
-| 44 | mastodon.social | réseaux sociaux | vide | erreur | erreur | page d'erreur de l'application : expression rationnelle `\p{RGI_Emoji}` refusée |
+| 44 | mastodon.social | réseaux sociaux | vide | erreur | **partiel** | l'application s'affiche (menu, recherche) ; la colonne des messages reste vide ; `indexedDB` absent |
 | 45 | openstreetmap.org | outils | délai | partiel | partiel | en-tête ; la carte reste vide |
 | 46 | deepl.com | outils | partiel | partiel | partiel | texte sans mise en forme |
 | 47 | sncf-connect.com | outils | vide | vide | vide |  |
@@ -116,8 +119,9 @@ ils sont comptés « mur » (Amazon, Cdiscount, Stack Overflow) ou « vide » (M
    Oxyde s'annonce sous son nom et ne cherche pas à se faire passer pour un autre navigateur ;
    ces sites s'ouvriront quand leurs épreuves s'exécuteront correctement.
 3. **Pages d'erreur des applications** : Twitch et Vimeo (lecture de `length` sur
-   `undefined`), Mastodon (`\p{RGI_Emoji}` : propriétés de chaînes du drapeau `v`).
-4. **Manques relevés dans les journaux** : `CSSStyleSheet` (MDN), `attachEvent` (Qwant),
-   un objet de la page non itérable et une « marque inconnue » (GitHub, BBC).
+   `undefined`).
+4. **Manques relevés dans les journaux** : `indexedDB` (Mastodon), `attachEvent` (Qwant),
+   une erreur de syntaxe dans un script ajouté par la page (BBC), la feuille de style
+   principale de MDN qui ne s'applique pas.
 5. **Mise en page** : en-têtes mal alignés, bandeaux mal placés, fonds manquants, blocs qui
    masquent le contenu (The Guardian, France Info, BBC).
