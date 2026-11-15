@@ -7,7 +7,7 @@
 // LIMITES CONNUES : l'état d'un contrôle (valeur, case cochée, option
 // choisie) vit dans ses attributs ; un contrôle est rattaché au formulaire
 // qui le contient (l'attribut `form` est ignoré) ; pas de fichiers ; la
-// validation des contraintes accepte tout ; une liste déroulante ne se
+// validation des contraintes ignore la longueur du texte ; une liste déroulante ne se
 // déroule pas (les flèches changent l'option) ; la frappe dans une zone de
 // texte se fait en fin de texte.
 (function (registerInterface, parseUrl, changeUrl, locationHref, navigate) {
@@ -358,13 +358,241 @@
       (label) => label.control === this || (id !== null && label.htmlFor === id),
     );
   });
-  const validity = {
-    willValidate: accessor(() => true),
-    validationMessage: accessor(() => ""),
-    checkValidity: method(function checkValidity() { return true; }),
-    reportValidity: method(function reportValidity() { return true; }),
-    setCustomValidity: method(function setCustomValidity() {}),
+  // ---- Validation des contraintes (HTML Standard §4.10.21) -------------------------------------------
+  // LIMITES : `tooLong`, `tooShort` et `badInput` valent toujours `false`
+  // (ils dépendent d'une saisie de l'utilisateur, que rien ne suit ici) ;
+  // `reportValidity()` donne le focus au contrôle fautif sans afficher de
+  // bulle ; les messages ne sont pas traduits selon la langue de la page.
+  const customErrors = new WeakMap();
+  const typeOf = (control) => (control.localName === "input" ? inputType(control) : control.localName);
+  // Contrôles exclus de la validation.
+  function barred(control) {
+    const name = control.localName;
+    if (name === "fieldset" || name === "output" || name === "object") return true;
+    if (name === "button") {
+      const type = (control.getAttribute("type") ?? "submit").toLowerCase();
+      if (type === "reset" || type === "button") return true;
+    }
+    if (name === "input" && ["hidden", "reset", "button"].includes(inputType(control))) return true;
+    if ((name === "input" || name === "textarea") && control.hasAttribute("readonly")) return true;
+    if (control.hasAttribute("disabled") || control.closest("fieldset[disabled]") !== null) return true;
+    return control.closest("datalist") !== null;
+  }
+  const NUMBER = /^-?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/;
+  const pad = (n) => n !== undefined && /^\d+$/.test(n);
+  // Instant, en millisecondes, d'une date `aaaa-mm-jj` valide.
+  function dateValue(text) {
+    const found = /^(\d{4,})-(\d\d)-(\d\d)$/.exec(text);
+    if (found === null) return NaN;
+    const [year, month, day] = [Number(found[1]), Number(found[2]), Number(found[3])];
+    if (year < 1 || month < 1 || month > 12 || day < 1) return NaN;
+    const at = new Date(0);
+    at.setUTCFullYear(year, month - 1, day);
+    return at.getUTCMonth() === month - 1 && at.getUTCDate() === day ? at.getTime() : NaN;
+  }
+  function timeValue(text) {
+    const found = /^(\d\d):(\d\d)(?::(\d\d)(?:\.(\d{1,3}))?)?$/.exec(text);
+    if (found === null) return NaN;
+    const [hours, minutes, seconds] = [Number(found[1]), Number(found[2]), Number(found[3] ?? 0)];
+    if (hours > 23 || minutes > 59 || seconds > 59) return NaN;
+    const fraction = pad(found[4]) ? Number(found[4].padEnd(3, "0")) : 0;
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000 + fraction;
+  }
+  // Valeur numérique d'un champ, selon son type ; NaN si le texte ne s'y prête pas.
+  function numeric(type, text) {
+    switch (type) {
+      case "number":
+      case "range":
+        return NUMBER.test(text) ? Number(text) : NaN;
+      case "date":
+        return dateValue(text);
+      case "time":
+        return timeValue(text);
+      case "datetime-local": {
+        const [date, time] = text.split(/[T ]/);
+        return time === undefined ? NaN : dateValue(date) + timeValue(time);
+      }
+      case "month": {
+        const found = /^(\d{4,})-(\d\d)$/.exec(text);
+        if (found === null || Number(found[1]) < 1 || Number(found[2]) < 1 || Number(found[2]) > 12) return NaN;
+        return (Number(found[1]) - 1970) * 12 + Number(found[2]) - 1;
+      }
+      case "week": {
+        const found = /^(\d{4,})-W(\d\d)$/.exec(text);
+        if (found === null) return NaN;
+        const [year, week] = [Number(found[1]), Number(found[2])];
+        // Le lundi de la semaine 1 est celui de la semaine du 4 janvier.
+        const fourth = new Date(0);
+        fourth.setUTCFullYear(year, 0, 4);
+        const monday = fourth.getTime() - ((fourth.getUTCDay() + 6) % 7) * 86400000;
+        const last = new Date(0);
+        last.setUTCFullYear(year, 11, 28);
+        const weeks = Math.round((last.getTime() - ((last.getUTCDay() + 6) % 7) * 86400000 - monday) / 604800000) + 1;
+        if (year < 1 || week < 1 || week > weeks) return NaN;
+        return monday + (week - 1) * 604800000;
+      }
+      default:
+        return NaN;
+    }
+  }
+  // Pas par défaut et échelle du pas, par type.
+  const STEPS = {
+    number: [1, 1], range: [1, 1], date: [1, 86400000], month: [1, 1], week: [1, 604800000],
+    time: [60, 1000], "datetime-local": [60, 1000],
   };
+  const TEXTUAL = ["text", "search", "url", "tel", "email", "password"];
+  const REQUIRABLE = [...TEXTUAL, "date", "month", "week", "time", "datetime-local", "number",
+    "checkbox", "radio", "file"];
+  const EMAIL = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  const valueOf = (control) => String(control.value ?? "");
+  // Chaque défaut de validité, calculé à la demande.
+  const FLAWS = {
+    valueMissing(control) {
+      if (!control.hasAttribute("required")) return false;
+      const type = typeOf(control);
+      if (type === "select") {
+        const options = optionsOf(control);
+        const chosen = options.filter(isSelected);
+        if (chosen.length === 0) return true;
+        // L'option d'invite : la première, vide, d'une liste déroulante simple.
+        const first = options[0];
+        const single = !control.hasAttribute("multiple") && (Number(control.getAttribute("size")) || 0) <= 1;
+        return single && chosen[0] === first && first.parentNode === control && optionValue(first) === "";
+      }
+      if (type === "textarea") return valueOf(control) === "";
+      if (!REQUIRABLE.includes(type)) return false;
+      if (type === "checkbox") return !control.hasAttribute("checked");
+      if (type === "radio") return !radioGroup(control).some((radio) => radio.hasAttribute("checked"));
+      if (type === "file") return true;
+      return valueOf(control) === "";
+    },
+    typeMismatch(control) {
+      const type = typeOf(control);
+      const value = valueOf(control);
+      if (value === "") return false;
+      if (type === "email") {
+        const parts = control.hasAttribute("multiple") ? value.split(",").map((part) => part.trim()) : [value];
+        return parts.some((part) => !EMAIL.test(part));
+      }
+      if (type === "url") return parseUrl(value.trim(), undefined) === null;
+      return false;
+    },
+    patternMismatch(control) {
+      const pattern = control.getAttribute("pattern");
+      const value = valueOf(control);
+      if (pattern === null || value === "" || !TEXTUAL.includes(typeOf(control))) return false;
+      let matcher;
+      try {
+        matcher = new RegExp("^(?:" + pattern + ")$", "v");
+      } catch (error) {
+        return false;
+      }
+      const parts = typeOf(control) === "email" && control.hasAttribute("multiple")
+        ? value.split(",").map((part) => part.trim()) : [value];
+      return parts.some((part) => !matcher.test(part));
+    },
+    tooLong() { return false; },
+    tooShort() { return false; },
+    rangeUnderflow(control) {
+      const type = typeOf(control);
+      const value = numeric(type, valueOf(control));
+      const min = numeric(type, control.getAttribute("min") ?? "");
+      return !Number.isNaN(value) && !Number.isNaN(min) && value < min;
+    },
+    rangeOverflow(control) {
+      const type = typeOf(control);
+      const value = numeric(type, valueOf(control));
+      const max = numeric(type, control.getAttribute("max") ?? "");
+      return !Number.isNaN(value) && !Number.isNaN(max) && value > max;
+    },
+    stepMismatch(control) {
+      const type = typeOf(control);
+      const rule = STEPS[type];
+      const value = numeric(type, valueOf(control));
+      if (rule === undefined || Number.isNaN(value)) return false;
+      const written = (control.getAttribute("step") ?? "").trim();
+      if (written.toLowerCase() === "any") return false;
+      let step = NUMBER.test(written) && Number(written) > 0 ? Number(written) : rule[0];
+      if (type !== "number" && type !== "range") step = Math.max(1, Math.round(step));
+      step *= rule[1];
+      let base = numeric(type, control.getAttribute("min") ?? "");
+      if (Number.isNaN(base)) base = numeric(type, control.getAttribute("value") ?? "");
+      if (Number.isNaN(base)) base = type === "week" ? -259200000 : 0;
+      const ratio = (value - base) / step;
+      return Math.abs(ratio - Math.round(ratio)) > 1e-7 * Math.max(1, Math.abs(ratio));
+    },
+    badInput() { return false; },
+    customError(control) { return (customErrors.get(control) ?? "") !== ""; },
+  };
+  const MESSAGES = {
+    valueMissing: "Veuillez renseigner ce champ.",
+    typeMismatch: "La valeur n'a pas la forme attendue.",
+    patternMismatch: "La valeur ne respecte pas le format demandé.",
+    rangeUnderflow: "La valeur est trop petite.",
+    rangeOverflow: "La valeur est trop grande.",
+    stepMismatch: "La valeur ne tombe pas sur un pas autorisé.",
+  };
+  const flawsOf = (control) => (barred(control) ? []
+    : Object.keys(FLAWS).filter((name) => FLAWS[name](control)));
+  const states = new WeakMap();
+  const owners = new WeakMap();
+  const ValidityState = function ValidityState() { throw new TypeError("constructeur illégal"); };
+  for (const name of Object.keys(FLAWS)) {
+    define(ValidityState.prototype, name, {
+      get() { return FLAWS[name](owners.get(this)); }, enumerable: true, configurable: true,
+    });
+  }
+  define(ValidityState.prototype, "valid", {
+    get() { return Object.keys(FLAWS).every((name) => !FLAWS[name](owners.get(this))); },
+    enumerable: true, configurable: true,
+  });
+  define(ValidityState.prototype, Symbol.toStringTag, { value: "ValidityState", configurable: true });
+  define(global, "ValidityState", { value: ValidityState, writable: true, enumerable: false, configurable: true });
+  // Vérifie `control` : faux, après un événement `invalid`, s'il a un défaut.
+  // `seen` : appelé avec le contrôle si personne n'a annulé l'événement.
+  function check(control, seen) {
+    if (flawsOf(control).length === 0) return true;
+    const proceed = control.dispatchEvent(new Event("invalid", { cancelable: true }));
+    if (proceed && seen !== undefined) seen(control);
+    return false;
+  }
+  const validity = {
+    willValidate: accessor(function () { return !barred(this); }),
+    validity: accessor(function () {
+      let state = states.get(this);
+      if (state === undefined) {
+        state = Object.create(ValidityState.prototype);
+        owners.set(state, this);
+        states.set(this, state);
+      }
+      return state;
+    }),
+    validationMessage: accessor(function () {
+      const flaws = flawsOf(this);
+      if (flaws.length === 0) return "";
+      if (flaws.includes("customError")) return customErrors.get(this);
+      return MESSAGES[flaws[0]] ?? "La valeur est invalide.";
+    }),
+    checkValidity: method(function checkValidity() { return check(this); }),
+    reportValidity: method(function reportValidity() {
+      return check(this, (control) => control.focus?.());
+    }),
+    setCustomValidity: method(function setCustomValidity(message) {
+      if (arguments.length === 0) throw new TypeError("setCustomValidity : un message est attendu");
+      customErrors.set(this, String(message));
+    }),
+  };
+  // Valide tous les contrôles de `form` ; `report` : le premier fautif dont
+  // l'événement `invalid` n'a pas été annulé reçoit le focus.
+  function validateForm(form, report) {
+    let first = null;
+    let valid = true;
+    for (const control of controlsOf(form)) {
+      if (!check(control, (flawed) => { first ??= flawed; })) valid = false;
+    }
+    if (report && first !== null) first.focus?.();
+    return valid;
+  }
   const isButtonType = (type) => ["submit", "image", "button", "reset"].includes(type);
   const inputType = (control) => (control.getAttribute("type") ?? "text").toLowerCase();
 
@@ -471,14 +699,18 @@
     length: accessor(function () { return controlsOf(this).length; }),
     submit: method(function submit() { submitForm(this, null); }),
     requestSubmit: method(function requestSubmit(submitter = null) {
+      // Validation avant l'envoi, sauf `novalidate` ou `formnovalidate`.
+      const skip = this.hasAttribute("novalidate")
+        || (submitter !== null && submitter.hasAttribute?.("formnovalidate"));
+      if (!skip && !validateForm(this, true)) return;
       const event = new SubmitEvent("submit", { bubbles: true, cancelable: true, submitter });
       if (this.dispatchEvent(event)) submitForm(this, submitter);
     }),
     reset: method(function reset() {
       this.dispatchEvent(new Event("reset", { bubbles: true, cancelable: true }));
     }),
-    checkValidity: method(function checkValidity() { return true; }),
-    reportValidity: method(function reportValidity() { return true; }),
+    checkValidity: method(function checkValidity() { return validateForm(this, false); }),
+    reportValidity: method(function reportValidity() { return validateForm(this, true); }),
   });
 
   elementInterface("HTMLInputElement", ["input"], {

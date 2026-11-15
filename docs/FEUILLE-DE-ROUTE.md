@@ -739,8 +739,22 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] Web Platform Tests `url/` (16 fichiers sur 32) et `encoding/` (18 sur 153) branchés
       et mesurés.
 - [ ] Encodages à plusieurs octets (index `jis0208`, `big5`, `euc-kr`, `gb18030`).
-- [ ] Web Platform Tests `html/` branché et mesuré (le dossier manque dans la copie
-      locale de la suite : téléchargement à autoriser).
+- [x] Web Platform Tests `html/` branché et mesuré : 711 fichiers sur 7 254 (9,8 %) à la
+      première mesure. Plus gros lots : `canvas` (2 426 fichiers), contenus embarqués
+      (759), scripts (525), formulaires (514), navigation (343), focus (206),
+      `document.write` (159). Trois fichiers très longs (`svg-in-iframe-*`) atteignent
+      parfois le délai du lanceur dans une mesure complète.
+- [x] Validation des formulaires : `validity` (`valueMissing`, `typeMismatch`,
+      `patternMismatch`, `rangeUnderflow`, `rangeOverflow`, `stepMismatch`,
+      `customError`), `willValidate`, `validationMessage`, `checkValidity()`,
+      `reportValidity()`, `setCustomValidity()`, événement `invalid` ; un formulaire
+      invalide n'est plus envoyé (sauf `novalidate` et `formnovalidate`) ; `:invalid` et
+      `:valid`.
+      Limites : `tooLong`, `tooShort` et `badInput` valent toujours `false` ;
+      `reportValidity()` donne le focus au champ fautif sans afficher de bulle ;
+      `:invalid` ne juge que `required`.
+- [ ] Web Platform Tests `html/` : de 10,1 % vers 30 % des fichiers (`document.write`,
+      `<dialog>` et popovers, cadres, `canvas`).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

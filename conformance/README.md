@@ -9,12 +9,12 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 |---|---|---|
 | html5lib-tests (tokenizer, tree-construction) | `oxyde_html` | **pas encore branchée** — `--dump-dom` produit déjà le format attendu |
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
-| Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 486 fichiers de test entièrement réussis sur 693 (70,1 %) ; détail dans [wpt.md](wpt.md) |
+| Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 487 fichiers de test entièrement réussis sur 693 (70,3 %) ; détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 579 fichiers entièrement réussis sur 2 267 (25,5 %) ; détail dans [wpt-css.md](wpt-css.md). Les tests de référence (comparaison d'images) ne sont pas encore lancés |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 70 fichiers entièrement réussis sur 363 (19,3 %) ; détail dans [wpt-animations.md](wpt-animations.md) |
 | Web Platform Tests, dossier `url/` | `oxyde_content` | **branchée** : 16 fichiers entièrement réussis sur 32 ; détail dans [wpt-url.md](wpt-url.md) |
 | Web Platform Tests, dossier `encoding/` | `oxyde_html`, `oxyde_content` | **branchée** : 18 fichiers entièrement réussis sur 153 (les encodages à plusieurs octets manquent) ; détail dans [wpt-encoding.md](wpt-encoding.md) |
-| Web Platform Tests, dossier `html/` | `oxyde_html`, `oxyde_content` | pas encore branchée : le dossier n'est pas dans la copie locale de la suite |
+| Web Platform Tests, dossier `html/` | `oxyde_html`, `oxyde_content` | **branchée** : 734 fichiers entièrement réussis sur 7 254 (10,1 %) ; détail dans [wpt-html.md](wpt-html.md) |
 | Sites de référence (50 sites courants) | tout le navigateur | **mesurée** à la main sur captures : 20 pages d'accueil lisibles et 12 partielles sur 50 ; détail dans [sites.md](sites.md) |
 | test262 | `oxyde_js` | **branchée** : 48 139 tests réussis sur 48 795 (98,7 %), détail par dossier dans [test262.md](test262.md) |
 
