@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44768 / 50172 (89,2 %)** — fichiers entièrement réussis : 486 / 693 (70,1 %).
+**Sous-tests réussis : 44770 / 50172 (89,2 %)** — fichiers entièrement réussis : 487 / 693 (70,3 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -20,10 +20,10 @@ est le plus honnête des deux.
 | `dom/events/non-cancelable-when-passive` | 42 / 42 | 53 / 53 (100,0 %) |
 | `dom/events/scrolling` | 15 / 39 | 38 / 94 (40,4 %) |
 | `dom/lists` | 4 / 5 | 181 / 189 (95,8 %) |
-| `dom/nodes` | 214 / 265 | 11132 / 13078 (85,1 %) |
+| `dom/nodes` | 215 / 265 | 11133 / 13078 (85,1 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
-| `dom/nodes/moveBefore` | 27 / 64 | 101 / 177 (57,1 %) |
+| `dom/nodes/moveBefore` | 27 / 64 | 102 / 177 (57,6 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 39 / 49 | 30718 / 33613 (91,4 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -115,7 +115,6 @@ est le plus honnête des deux.
 | `dom/nodes/Document-createElement.html` | 49 / 147 |  |
 | `dom/nodes/Document-createElementNS.html` | 205 / 596 |  |
 | `dom/nodes/Document-createEvent.https.html` | 261 / 279 |  |
-| `dom/nodes/Element-closest.html` | 28 / 29 |  |
 | `dom/nodes/Element-getElementsByTagName-change-document-HTMLNess.html` | 0 / 1 |  |
 | `dom/nodes/Element-matches.html` | 597 / 669 |  |
 | `dom/nodes/Element-webkitMatchesSelector.html` | 597 / 669 |  |
@@ -174,7 +173,7 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 1 / 3 |  |
-| `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 1 / 8 |  |
+| `dom/nodes/moveBefore/moveBefore-radio-groups.html` | 2 / 8 |  |
 | `dom/nodes/moveBefore/moveBefore-shadow-root.html` | 1 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-size-query.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/nonce.html` | 0 / 1 |  |

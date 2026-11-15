@@ -5947,4 +5947,56 @@ mod tests {
             Some("windows-1252 café€ При h😀 TypeError RangeError utf-8")
         );
     }
+
+    #[test]
+    fn forms_validate_their_constraints() {
+        let mut p = page(
+            "<body><form id=f action='/envoi'>
+               <input id=nom required>
+               <input id=mel type=email value='pas-un-mel'>
+               <input id=age type=number min=18 max=99 step=1 value=12.5>
+               <input id=code pattern='[A-Z]{3}' value='abc'>
+               <input id=jour type=date min='2026-01-01' value='2025-12-31'>
+               <select id=choix required><option value=''>Choisir</option><option value=a>A</option></select>
+               <input id=cache type=hidden required><button id=b>ok</button>
+             </form><script>
+               const out = [];
+               const $ = (id) => document.getElementById(id);
+               const flaws = (id) => Object.keys(ValidityState.prototype)
+                 .filter((k) => k !== 'valid' && $(id).validity[k]).join('+') || 'valide';
+               out.push(flaws('nom'), flaws('mel'), flaws('age'), flaws('code'), flaws('jour'), flaws('choix'));
+               out.push($('cache').willValidate, flaws('cache'), $('nom').validity === $('nom').validity);
+               let invalid = 0;
+               $('f').addEventListener('invalid', () => { invalid += 1; }, true);
+               let sent = 0;
+               $('f').addEventListener('submit', (e) => { sent += 1; e.preventDefault(); });
+               out.push($('f').checkValidity(), invalid, $('nom').matches(':invalid'), $('f').matches(':invalid'));
+               $('f').requestSubmit();
+               out.push(sent, document.activeElement === $('nom'));
+               $('nom').value = 'Ada';
+               $('mel').value = 'ada@exemple.test';
+               $('age').value = '30';
+               $('code').value = 'ABC';
+               $('jour').value = '2026-02-01';
+               $('choix').lastElementChild.setAttribute('selected', '');
+               out.push($('f').checkValidity(), $('nom').matches(':valid'));
+               $('code').setCustomValidity('refusé');
+               out.push($('code').validationMessage, $('code').validity.customError, $('f').reportValidity());
+               $('code').setCustomValidity('');
+               $('f').requestSubmit();
+               out.push(sent);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "valueMissing typeMismatch rangeUnderflow+stepMismatch patternMismatch rangeUnderflow \
+                 valueMissing false valide true false 6 true true 0 true true true refusé true false 1"
+            )
+        );
+    }
 }

@@ -112,6 +112,10 @@ pub enum Pseudo {
     Scope,
     /// `:defined` : toujours vrai, faute d'éléments personnalisés.
     Always,
+    /// `:invalid` (`true`) et `:valid` (`false`) : contrôle de formulaire
+    /// requis et vide, ou formulaire et `fieldset` qui en contiennent un.
+    /// LIMITE : seul `required` est jugé (pas `pattern`, `min`, `type`…).
+    Validity(bool),
     /// `:lang(fr, en-GB)` : la langue de l'élément (son attribut `lang` ou
     /// celui de son plus proche ancêtre) commence par l'une des étiquettes.
     Lang(Vec<String>),
@@ -526,6 +530,20 @@ fn compound_matches(
             _ => false,
         },
         Pseudo::Disabled => is_disabled(doc, node, el),
+        Pseudo::Validity(invalid) => match el.name.as_str() {
+            _ if el.ns != oxyde_dom::Namespace::Html => false,
+            "form" | "fieldset" => {
+                let flawed = doc.descendants(node).any(|inner| {
+                    doc.element(inner)
+                        .is_some_and(|control| misses_value(doc, inner, control))
+                });
+                flawed == *invalid
+            }
+            "input" | "select" | "textarea" | "button" => {
+                !is_disabled(doc, node, el) && misses_value(doc, node, el) == *invalid
+            }
+            _ => false,
+        },
         Pseudo::Enabled => is_control(el) && !is_disabled(doc, node, el),
         Pseudo::Lang(ranges) => {
             let lang = std::iter::once(node)
@@ -595,6 +613,48 @@ fn is_read_write(el: &oxyde_dom::ElementData) -> bool {
 }
 
 /// Vrai pour un contrôle de formulaire, qui peut être désactivé ou requis.
+/// Contrôle requis laissé sans valeur (`valueMissing`), vu des attributs.
+fn misses_value(doc: &Document, node: NodeId, el: &ElementData) -> bool {
+    if el.ns != oxyde_dom::Namespace::Html || !el.has_attr("required") || is_disabled(doc, node, el)
+    {
+        return false;
+    }
+    match el.name.as_str() {
+        "input" => {
+            if el.has_attr("readonly") {
+                return false;
+            }
+            let kind = el.attr("type").unwrap_or("text").to_ascii_lowercase();
+            match kind.as_str() {
+                "hidden" | "button" | "submit" | "reset" | "image" | "range" | "color" => false,
+                "checkbox" | "radio" => !el.has_attr("checked"),
+                _ => el.attr("value").is_none_or(str::is_empty),
+            }
+        }
+        "textarea" => !el.has_attr("readonly") && doc.text_content(node).is_empty(),
+        "select" => {
+            let options: Vec<NodeId> = doc
+                .descendants(node)
+                .filter(|n| doc.element(*n).is_some_and(|e| e.is_html("option")))
+                .collect();
+            // L'option choisie : celle qui porte `selected`, sinon la première.
+            let chosen = options
+                .iter()
+                .find(|n| doc.element(**n).is_some_and(|e| e.has_attr("selected")))
+                .or_else(|| options.first());
+            chosen.is_none_or(|option| {
+                doc.element(*option)
+                    .and_then(|e| e.attr("value"))
+                    .map_or_else(
+                        || doc.text_content(*option).trim().is_empty(),
+                        str::is_empty,
+                    )
+            })
+        }
+        _ => false,
+    }
+}
+
 /// Contrôle désactivé : par son attribut `disabled`, ou par un
 /// `<fieldset disabled>` qui le contient hors de sa première légende.
 fn is_disabled(doc: &Document, node: NodeId, el: &ElementData) -> bool {
@@ -877,9 +937,9 @@ fn simple_pseudo(name: &str) -> Option<Pseudo> {
         "enabled" => Pseudo::Enabled,
         "required" => Pseudo::Required,
         "placeholder-shown" => Pseudo::PlaceholderShown,
-        "hover" | "active" | "visited" | "target" | "indeterminate" | "invalid" | "fullscreen" => {
-            Pseudo::Never
-        }
+        "invalid" => Pseudo::Validity(true),
+        "valid" => Pseudo::Validity(false),
+        "hover" | "active" | "visited" | "target" | "indeterminate" | "fullscreen" => Pseudo::Never,
         _ => return None,
     })
 }
