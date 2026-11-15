@@ -879,9 +879,19 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       la tâche), flux (`ReadableStream`, `WritableStream`, `TransformStream`),
       `document.elementFromPoint`, interfaces `Window`, `Navigator`, `SVGElement`… ; les
       messages d'erreur nomment la méthode ou la valeur fautive.
-- [ ] Vus à la mesure des sites et encore absents : Shadow DOM, canevas (`Path2D` existe sans
-      rien dessiner), `document.write`,
-      `postMessage` entre fenêtres (la source n'est pas connue), `crypto.subtle`, Brotli
+- [x] `crypto.subtle` : `digest` (SHA-1, SHA-256, SHA-384, SHA-512) ; HMAC (`generateKey`,
+      `importKey`, `exportKey`, `sign`, `verify`) ; AES-GCM à clé de 128 ou 256 bits
+      (`encrypt`, `decrypt`) ; PBKDF2 et HKDF (`deriveBits`, `deriveKey`) ; clés aux
+      formats `raw` et `jwk` ; `CryptoKey` (usages, extractibilité). Calculs par les
+      crates RustCrypto déjà présents (`sha2`, `hmac`, `aes-gcm`), vérifiés sur les
+      vecteurs publiés.
+      Limites : pas de cryptographie à clé publique (RSA, ECDSA, ECDH, Ed25519), ni
+      AES-CBC, AES-CTR, AES-KW ; AES-GCM seulement avec un vecteur de 12 octets et un
+      sceau de 128 bits ; ni `wrapKey` ni `unwrapKey` ; exposé aussi hors d'un contexte
+      sûr ; le dossier `WebCryptoAPI/` de Web Platform Tests n'est pas dans le dépôt
+      local, donc rien n'est mesuré.
+- [ ] Vus à la mesure des sites et encore absents : canevas (`Path2D` existe sans rien
+      dessiner), `postMessage` entre fenêtres (la source n'est pas connue), Brotli
       (demande un crate à télécharger), chargement des ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,

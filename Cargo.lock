@@ -819,6 +819,7 @@ version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce6e4c961d6cd6c9a86db418387425e8bdeaf05b3c8bc1411e6dca4c252f1453"
 dependencies = [
+ "getrandom 0.4.3",
  "hybrid-array",
  "rand_core",
 ]
@@ -2581,7 +2582,9 @@ dependencies = [
 name = "oxyde_content"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "getrandom 0.3.4",
+ "hmac",
  "image",
  "oxyde_bindings",
  "oxyde_compositor",
@@ -2593,6 +2596,7 @@ dependencies = [
  "oxyde_layout",
  "oxyde_paint",
  "oxyde_text",
+ "sha2",
  "url",
 ]
 

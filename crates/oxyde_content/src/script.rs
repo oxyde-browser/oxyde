@@ -27,6 +27,7 @@ use url::Url;
 
 mod animations;
 mod attrs;
+mod crypto;
 mod documents;
 mod dom_ops;
 mod events;
@@ -2530,6 +2531,17 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let xhr = vm.call(&factory, &Value::Undefined, std::slice::from_ref(&fetch))?;
     vm.define_hidden(global, "XMLHttpRequest", xhr);
     vm.define_hidden(global, "fetch", fetch);
+    // `crypto.subtle`.
+    let subtle = vm.eval_script(include_str!("script/subtle.js"))?;
+    let helpers = [
+        Value::Object(vm.new_function("cryptoDigest", 2, crypto::digest)),
+        Value::Object(vm.new_function("cryptoHmac", 3, crypto::hmac)),
+        Value::Object(vm.new_function("cryptoEqual", 2, crypto::equal)),
+        Value::Object(vm.new_function("cryptoAesGcm", 5, crypto::aes_gcm_native)),
+        Value::Object(vm.new_function("cryptoPbkdf2", 5, crypto::pbkdf2)),
+        Value::Object(vm.new_function("cryptoHkdf", 5, crypto::hkdf)),
+    ];
+    vm.call(&subtle, &Value::Undefined, &helpers)?;
     // `WebSocket`.
     let websocket = vm.eval_script(include_str!("script/websocket.js"))?;
     let helpers = [

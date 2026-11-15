@@ -1596,7 +1596,7 @@
   expose("BroadcastChannel", BroadcastChannel);
 
   // ---- crypto --------------------------------------------------------------------------------------------------------
-  // LIMITE : pas de `crypto.subtle`.
+  // `crypto.subtle` est posé par `subtle.js`.
   const integerArrays = [Int8Array, Uint8Array, Uint8ClampedArray, Int16Array, Uint16Array,
     Int32Array, Uint32Array, BigInt64Array, BigUint64Array];
   const crypto = {
