@@ -911,8 +911,14 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       ni WebGL ni `bitmaprenderer` ; un `OffscreenCanvas` ne passe pas à un worker ;
       PNG seulement en sortie ; couleurs en sRGB 8 bits. Non essayé à la main dans la
       fenêtre.
-- [ ] Vus à la mesure des sites et encore absents : ombres du canevas,
-      `postMessage` entre fenêtres (la source n'est pas connue), chargement des
+- [x] `postMessage` entre fenêtres (une page, ses cadres, leur parent) : l'événement
+      porte la fenêtre qui a appelé (`source`) et son origine (`origin`), on peut donc
+      répondre par `e.source.postMessage(…)` ; l'origine cible est comparée à celle de
+      la fenêtre visée (message ignoré si elle diffère, `SyntaxError` si elle est
+      invalide) ; liste de transfert et `ports`.
+      Limites : seulement entre fenêtres qui vivent dans le même processus de rendu ;
+      pas de `window.open` ; vérifié par un essai page ↔ cadre `srcdoc`.
+- [ ] Vus à la mesure des sites et encore absents : ombres du canevas, chargement des
       ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
       (ni `window` ni `document` ; `self`, `postMessage`, `onmessage`, `close`,

@@ -6539,6 +6539,57 @@ mod tests {
     }
 
     #[test]
+    fn windows_post_messages_to_each_other() {
+        let mut p = page(
+            "<body><iframe id=cadre srcdoc=\"<script>
+                 addEventListener('message', (e) => {
+                   // Le cadre répond à qui lui a écrit.
+                   e.source.postMessage({ echo: e.data, vu: e.source === parent, de: e.origin }, '*');
+                 });
+               </script>\"></iframe>
+             <script>
+               const out = [];
+               const show = () => document.body.setAttribute('data-out', out.join(' '));
+               const cadre = document.getElementById('cadre');
+               addEventListener('message', (e) => {
+                 if (e.source === window) out.push('soi:' + e.data);
+                 else out.push('cadre:' + JSON.stringify(e.data) + ':' + (e.source === cadre.contentWindow)
+                   + ':' + (e.data instanceof Object));
+                 show();
+               });
+               addEventListener('load', () => {
+                 cadre.contentWindow.postMessage('salut', '*');
+                 postMessage('local', location.origin);
+                 // Origine cible qui n'est pas celle de la fenêtre visée : ignoré.
+                 cadre.contentWindow.postMessage('perdu', 'https://ailleurs.test');
+                 try { postMessage('x', 'pas une origine'); } catch (e) { out.push(e.name); }
+                 show();
+               });
+             </script>",
+        );
+        p.run_scripts();
+        for round in 1..6 {
+            let _ = p.tick(Instant::now() + Duration::from_secs(round));
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        let out = doc
+            .element(body)
+            .and_then(|e| e.attr("data-out"))
+            .unwrap_or_default()
+            .to_owned();
+        assert!(out.starts_with("SyntaxError"), "{out}");
+        assert!(out.contains("soi:local"), "{out}");
+        assert!(
+            out.contains(
+                "cadre:{\"echo\":\"salut\",\"vu\":true,\"de\":\"https://exemple.test\"}:true:true"
+            ),
+            "{out}"
+        );
+        assert!(!out.contains("perdu"), "{out}");
+    }
+
+    #[test]
     fn canvas_text_is_measured_and_drawn() {
         let mut p = page(
             "<body><canvas id=c width=200 height=60></canvas><script>

@@ -10,6 +10,7 @@
 //   randomBytes(n)               -> tableau de n octets aléatoires (source du système) ;
 //   fireTrusted(cible, événement) -> distribue un événement du navigateur (`isTrusted`) ;
 //   encodingName(étiquette)      -> nom de l'encodage désigné, ou null ;
+//   callerWindow()               -> fenêtre d'où est appelée la fonction en cours ;
 //   decodeBytes(nom, octets, strict) -> texte décodé (`octets` : une chaîne, un
 //                                   caractère par octet), ou null si `strict` et invalide.
 // Elle rend les fonctions que le moteur appelle en retour (`traverse`, `key`).
@@ -20,7 +21,7 @@
 // les `MessagePort`, et rend un `Blob` tel quel au lieu de le copier ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
 (function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes,
-  fireTrusted, encodingName, decodeBytes) {
+  fireTrusted, encodingName, decodeBytes, callerWindow) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -1495,15 +1496,34 @@
   eventInterface("CloseEvent", EventCtor, { wasClean: false, code: 0, reason: "" });
   eventInterface("PageTransitionEvent", EventCtor, { persisted: false });
   const later = (task) => startTimer(task, 0);
-  // `postMessage` vers la fenêtre elle-même : le message arrive dans une
-  // tâche ultérieure. LIMITE : rien n'est transféré ; une origine cible autre
-  // que celle de la page ou `*` fait ignorer le message.
-  fenetre("postMessage", function postMessage(message, target = "*") {
-    const wanted = typeof target === "object" && target !== null ? target.targetOrigin ?? "*" : target;
-    const data = global.structuredClone(message);
-    const origin = global.location.origin;
-    if (wanted !== "*" && wanted !== "/" && wanted !== origin) return;
-    later(() => global.dispatchEvent(new global.MessageEvent("message", { data, origin, source: global })));
+  // `postMessage` vers cette fenêtre, depuis elle-même ou depuis une autre
+  // (son parent, un de ses cadres) : le message, cloné ici, arrive dans une
+  // tâche ultérieure ; `source` et `origin` sont ceux de la fenêtre qui
+  // appelle. Une origine cible qui n'est pas celle de cette fenêtre fait
+  // ignorer le message.
+  fenetre("postMessage", function postMessage(message, target = "*", transfer = undefined) {
+    if (arguments.length < 1) throw new TypeError("postMessage : un message est requis");
+    const options = typeof target === "object" && target !== null;
+    const wanted = options ? target.targetOrigin ?? "*" : String(target);
+    const list = options ? target.transfer : transfer;
+    const moved = list === undefined || list === null ? [] : Array.from(list);
+    const source = callerWindow();
+    const origin = source.location.origin;
+    const here = global.location.origin;
+    if (wanted !== "*" && wanted !== "/") {
+      let aimed;
+      try {
+        aimed = new global.URL(wanted).origin;
+      } catch {
+        throw new DOMException("postMessage : origine cible invalide", "SyntaxError");
+      }
+      if (aimed !== here) return;
+    } else if (wanted === "/" && origin !== here) {
+      return;
+    }
+    const data = global.structuredClone(message, { transfer: moved });
+    const ports = moved.filter((item) => Object.prototype.toString.call(item) === "[object MessagePort]");
+    later(() => global.dispatchEvent(new global.MessageEvent("message", { data, origin, source, ports })));
   });
   class MessagePort extends EventTargetBase {
     #other = null;

@@ -713,6 +713,19 @@ impl Vm {
         usize::from(self.realm)
     }
 
+    /// Royaume d'où a été appelée la fonction en cours d'exécution : celui
+    /// de l'appelant quand l'appel a traversé une frontière de royaumes,
+    /// le royaume courant sinon. Vu d'une fonction native, la fonction en
+    /// cours est la fonction de script qui l'appelle.
+    #[must_use]
+    pub fn caller_realm(&self) -> usize {
+        usize::from(
+            self.frames
+                .last()
+                .map_or(self.realm, |frame| frame.prev_realm),
+        )
+    }
+
     /// Royaume dans lequel `value` a été créé (0 pour une valeur primitive).
     #[must_use]
     pub fn realm_of(&self, value: &Value) -> usize {
