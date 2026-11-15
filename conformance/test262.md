@@ -4,12 +4,12 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 48139 réussis sur 48795 (98.7 %).**
+**Total : 48206 réussis sur 48795 (98.8 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
 | `annexB/built-ins` | 241 | 232 | 96.3 % |
-| `annexB/language` | 845 | 815 | 96.4 % |
+| `annexB/language` | 845 | 822 | 97.3 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 25 | 100.0 % |
 | `built-ins/Array` | 3083 | 3033 | 98.4 % |
@@ -37,7 +37,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/JSON` | 166 | 161 | 97.0 % |
 | `built-ins/Map` | 204 | 199 | 97.5 % |
 | `built-ins/MapIteratorPrototype` | 11 | 9 | 81.8 % |
-| `built-ins/Math` | 327 | 314 | 96.0 % |
+| `built-ins/Math` | 327 | 327 | 100.0 % |
 | `built-ins/NaN` | 6 | 6 | 100.0 % |
 | `built-ins/NativeErrors` | 94 | 88 | 93.6 % |
 | `built-ins/Number` | 340 | 338 | 99.4 % |
@@ -56,7 +56,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 97 | 99.0 % |
 | `built-ins/Temporal` | 4614 | 4614 | 100.0 % |
-| `built-ins/ThrowTypeError` | 14 | 0 | 0.0 % |
+| `built-ins/ThrowTypeError` | 14 | 14 | 100.0 % |
 | `built-ins/TypedArray` | 1453 | 1453 | 100.0 % |
 | `built-ins/TypedArrayConstructors` | 738 | 738 | 100.0 % |
 | `built-ins/Uint8Array` | 70 | 70 | 100.0 % |
@@ -74,7 +74,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/parseFloat` | 54 | 54 | 100.0 % |
 | `built-ins/parseInt` | 55 | 55 | 100.0 % |
 | `built-ins/undefined` | 8 | 8 | 100.0 % |
-| `language/arguments-object` | 263 | 256 | 97.3 % |
+| `language/arguments-object` | 263 | 263 | 100.0 % |
 | `language/asi` | 102 | 102 | 100.0 % |
 | `language/block-scope` | 145 | 145 | 100.0 % |
 | `language/comments` | 52 | 52 | 100.0 % |
@@ -83,7 +83,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/directive-prologue` | 62 | 62 | 100.0 % |
 | `language/eval-code` | 347 | 342 | 98.6 % |
 | `language/export` | 3 | 3 | 100.0 % |
-| `language/expressions` | 11156 | 11022 | 98.8 % |
+| `language/expressions` | 11156 | 11044 | 99.0 % |
 | `language/function-code` | 217 | 217 | 100.0 % |
 | `language/future-reserved-words` | 55 | 55 | 100.0 % |
 | `language/global-code` | 42 | 42 | 100.0 % |
@@ -99,6 +99,6 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `language/rest-parameters` | 11 | 11 | 100.0 % |
 | `language/source-text` | 1 | 1 | 100.0 % |
 | `language/statementList` | 80 | 80 | 100.0 % |
-| `language/statements` | 9399 | 9317 | 99.1 % |
+| `language/statements` | 9399 | 9321 | 99.2 % |
 | `language/types` | 113 | 113 | 100.0 % |
 | `language/white-space` | 67 | 67 | 100.0 % |

@@ -156,6 +156,7 @@ struct FuncState {
     arguments_reg: Option<Reg>,
     /// Les éléments de `arguments` sont liés aux paramètres.
     mapped_arguments: bool,
+    arguments_callee: bool,
     /// Code en mode strict.
     strict: bool,
     /// Annexe B.3.3 : fonctions de blocs qui sont aussi des variables de
@@ -750,6 +751,7 @@ impl Compiler {
             dead_params: Vec::new(),
             in_params: Vec::new(),
             mapped_arguments: false,
+            arguments_callee: false,
             field_init: false,
             global_lexical: None,
             is_async: false,
@@ -779,6 +781,7 @@ impl Compiler {
             is_generator: state.is_generator,
             strict: state.strict,
             mapped_arguments: state.mapped_arguments,
+            arguments_callee: state.arguments_callee,
         })
     }
 
@@ -1533,11 +1536,12 @@ impl Compiler {
             }
             _ => false,
         });
-        self.f().mapped_arguments = !func.strict
+        let simple = !func.strict
             && kind != FunctionKind::Arrow
             && complex.is_empty()
-            && func.rest.is_none()
-            && distinct;
+            && func.rest.is_none();
+        self.f().arguments_callee = simple;
+        self.f().mapped_arguments = simple && distinct;
         let length = func
             .params
             .iter()
@@ -3098,6 +3102,9 @@ impl Compiler {
                 let key = self.key_reg(key)?;
                 self.emit(Op::SetSuper { key, src });
             }
+            Pattern::Expr(invalid @ Expr::InvalidTarget(_)) => {
+                self.expr(invalid, None)?;
+            }
             Pattern::Expr(_) => return error("cible d'affectation invalide"),
             Pattern::Object { props, rest } => {
                 // Déstructurer `null` ou `undefined` est une erreur, même sans
@@ -3864,6 +3871,15 @@ impl Compiler {
                     key: key_reg,
                     src: dst,
                 });
+                self.free_to(mark);
+                Ok(dst)
+            }
+            Expr::InvalidTarget(call) => {
+                let dst = self.dst_or_alloc(dst)?;
+                let mark = self.mark();
+                self.expr(call, None)?;
+                let message = self.string(&Arc::from("cible d'affectation invalide"));
+                self.emit(Op::ThrowReference { message });
                 self.free_to(mark);
                 Ok(dst)
             }

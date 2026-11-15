@@ -68,6 +68,10 @@ const MAX_STACK: usize = 4_000_000;
 pub(crate) struct Intrinsics {
     pub(crate) object_proto: ObjId,
     pub(crate) function_proto: ObjId,
+    /// `%ThrowTypeError%` : l'accesseur de `callee` sur un objet
+    /// `arguments` non lié, et de `caller` et `arguments` sur
+    /// `Function.prototype`.
+    pub(crate) throw_type_error: ObjId,
     pub(crate) array_proto: ObjId,
     pub(crate) string_proto: ObjId,
     pub(crate) number_proto: ObjId,
@@ -399,6 +403,7 @@ fn fresh_realm_objects(heap: &mut Heap) -> (Intrinsics, ObjId, ObjId) {
         wrap_iterator_proto: proto(heap, Kind::Ordinary),
         regexp_string_iterator_proto: proto(heap, Kind::Ordinary),
         iterator_ctor: object_proto,
+        throw_type_error: object_proto,
         generator_proto: proto(heap, Kind::Ordinary),
         generator_function_proto: proto(heap, Kind::Ordinary),
         async_function_proto: proto(heap, Kind::Ordinary),
@@ -3639,7 +3644,7 @@ impl Vm {
                     let (args, callee, base, mapped) = match self.frames.last() {
                         Some(f) => (
                             f.args.clone(),
-                            (!f.proto.strict).then_some(f.closure),
+                            f.proto.arguments_callee.then_some(f.closure),
                             f.base,
                             if f.proto.mapped_arguments {
                                 usize::from(f.proto.param_count).min(f.args.len())
@@ -3663,9 +3668,22 @@ impl Vm {
                         props.insert(Arc::from(index.to_string()), Property::data(value));
                     }
                     props.insert(Arc::from("length"), Property::hidden(length));
-                    if let Some(callee) = callee {
-                        props.insert(Arc::from("callee"), Property::hidden(Value::Object(callee)));
-                    }
+                    let callee = match callee {
+                        Some(callee) => Property::hidden(Value::Object(callee)),
+                        None => Property {
+                            slot: Slot::Accessor {
+                                get: Some(self.intrinsics.throw_type_error),
+                                set: Some(self.intrinsics.throw_type_error),
+                            },
+                            writable: false,
+                            enumerable: false,
+                            configurable: false,
+                        },
+                    };
+                    self.heap
+                        .get_mut(object)
+                        .props
+                        .insert(Arc::from("callee"), callee);
                     let values = self.get(&Value::Object(self.intrinsics.array_proto), "values")?;
                     let iterator = self.well_known.iterator.clone();
                     self.define_hidden_symbol(object, &iterator, values);
