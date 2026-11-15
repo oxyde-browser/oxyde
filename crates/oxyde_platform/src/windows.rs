@@ -2,6 +2,7 @@
 #![allow(unsafe_code, reason = "appels à l'API Win32, sans équivalent sûr")]
 
 use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
+use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
 use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
 
 use crate::time::CivilTime;
@@ -19,6 +20,38 @@ const EMPTY: SYSTEMTIME = SYSTEMTIME {
     wSecond: 0,
     wMilliseconds: 0,
 };
+
+/// Temps processeur, noyau et utilisateur, consommé par ce processus.
+pub(crate) fn process_cpu_time() -> Option<std::time::Duration> {
+    const ZERO: FILETIME = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (ZERO, ZERO, ZERO, ZERO);
+    // SAFETY: `GetCurrentProcess` ne prend aucun argument et rend un
+    // pseudo-descripteur toujours valide, qu'il ne faut pas fermer.
+    let process = unsafe { GetCurrentProcess() };
+    // SAFETY: `process` désigne ce processus ; les quatre pointeurs désignent
+    // des variables locales distinctes, valides, alignées et initialisées,
+    // qui vivent pendant l'appel et dans lesquelles la fonction écrit.
+    let read = unsafe {
+        GetProcessTimes(
+            process,
+            &raw mut created,
+            &raw mut exited,
+            &raw mut kernel,
+            &raw mut user,
+        )
+    };
+    if read == 0 {
+        return None;
+    }
+    // Durées en pas de 100 ns, en deux moitiés de 32 bits.
+    let ticks =
+        |time: FILETIME| (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+    let total = ticks(kernel).checked_add(ticks(user))?;
+    Some(std::time::Duration::from_nanos(total.checked_mul(100)?))
+}
 
 /// Date et heure de `epoch_seconds` dans le fuseau du système, avec les
 /// règles d'heure d'été en vigueur ; `None` si l'instant sort de ce que

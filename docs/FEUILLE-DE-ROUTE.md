@@ -727,9 +727,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       (tout était lu en UTF-8). Encodages lus : UTF-8, UTF-16, les 28 encodages à un
       octet de la norme, `x-user-defined`. `TextDecoder` les lit aussi, flux UTF-16
       compris.
-      Limites : pas d'encodages à plusieurs octets (`Shift_JIS`, `EUC-JP`, `Big5`,
-      `EUC-KR`, `GBK`, `gb18030`, `ISO-2022-JP`) : une page qui en déclare un est lue en
-      `windows-1252` ; la recherche de `<meta charset>` lit les 1024 premiers octets
+      Limites : la recherche de `<meta charset>` lit les 1024 premiers octets
       sans suivre l'algorithme de pré-analyse de la norme ; pas de `TextEncoder` autre
       qu'UTF-8 (conforme à la norme) ; l'encodage des formulaires reste UTF-8.
 - [x] Adresse de base : `a.href`, `img.src` et `baseURI` se résolvent contre le
@@ -738,7 +736,23 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limite : les liens suivis au clic gardent la base relevée au chargement.
 - [x] Web Platform Tests `url/` (16 fichiers sur 32) et `encoding/` (18 sur 153) branchés
       et mesurés.
-- [ ] Encodages à plusieurs octets (index `jis0208`, `big5`, `euc-kr`, `gb18030`).
+- [x] Encodages à plusieurs octets : `Shift_JIS`, `EUC-JP`, `ISO-2022-JP`, `EUC-KR`,
+      `Big5`, `GBK` et `gb18030` se lisent (pages, feuilles de style, scripts,
+      `TextDecoder`), ainsi que `replacement` ; tous les encodages de la norme sont
+      donc lus. `TextDecoder` suit `stream: true` pour tous, UTF-8 compris (un
+      caractère coupé entre deux morceaux d'une réponse devenait U+FFFD) : marque
+      d'ordre d'octets en plusieurs morceaux, caractère inachevé gardé pour la suite.
+      Web Platform Tests `encoding/` : 18 -> 44 fichiers sur 153, 11 559 -> 88 370
+      sous-tests.
+      Le lanceur WPT accorde désormais son délai en temps processeur du test, plus en
+      temps d'horloge : la mesure ne dépend plus de la charge de la machine. Il décode
+      les cadres d'après le `Content-Type` de leur fichier `.headers`.
+      Limites : aucun encodeur autre qu'UTF-8 (formulaires et URL d'une page en
+      `Shift_JIS` partent en UTF-8 ; 71 fichiers `encoding/` en dépendent) ;
+      `document.characterSet` vaut toujours `UTF-8` ; un document sans encodage
+      déclaré mais valable en UTF-8 est lu en UTF-8 (la norme veut `windows-1252`) ;
+      18 fichiers de décodage de plus de dix mille sous-tests dépassent le délai du
+      lanceur (vitesse : étape L) ; `TextDecoderStream` reste incomplet.
 - [x] Web Platform Tests `html/` branché et mesuré : 711 fichiers sur 7 254 (9,8 %) à la
       première mesure. Plus gros lots : `canvas` (2 426 fichiers), contenus embarqués
       (759), scripts (525), formulaires (514), navigation (343), focus (206),

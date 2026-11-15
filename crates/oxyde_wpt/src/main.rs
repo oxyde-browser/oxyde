@@ -38,10 +38,14 @@ const VIEWPORT: Viewport = Viewport {
     width: 800.0,
     height: 600.0,
 };
-/// Temps réel accordé à un fichier dans le processus fils.
+/// Temps processeur accordé à un fichier dans le processus fils (temps réel
+/// si le système ne dit pas le temps processeur) : la mesure ne dépend
+/// ainsi pas de la charge de la machine, où les fichiers s'exécutent côte à
+/// côte.
 const CHILD_BUDGET: Duration = Duration::from_secs(10);
-/// Temps au bout duquel le processus père tue un fils muet.
-const KILL_AFTER: Duration = Duration::from_secs(20);
+/// Temps réel au bout duquel le processus père tue un fils muet : un
+/// garde-fou, large parce que le fils compte en temps processeur.
+const KILL_AFTER: Duration = Duration::from_secs(60);
 /// Instructions accordées à chaque tâche de script : certains fichiers
 /// enchaînent des dizaines de milliers de sous-tests dans un seul script.
 const TASK_BUDGET: u64 = 2_000_000_000;
@@ -397,7 +401,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         page.set_image(&url, image);
     }
     for url in page.pending_frames() {
-        let html = read_url(suite, &url);
+        let html = read_document(suite, &url);
         page.set_frame(&url, html.as_deref());
     }
     for url in page.pending_scripts() {
@@ -446,7 +450,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         }
         // Cadres créés par les scripts : documents et scripts servis de même.
         for url in page.pending_frames() {
-            let html = read_url(suite, &url);
+            let html = read_document(suite, &url);
             page.set_frame(&url, html.as_deref());
         }
         for url in page.pending_scripts() {
@@ -455,7 +459,8 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         }
         let loaded = page.load_ready_frames();
         finished |= drain_console(&mut page, &mut driver);
-        if finished || started.elapsed() > CHILD_BUDGET {
+        let spent = oxyde_platform::process_cpu_time().unwrap_or_else(|| started.elapsed());
+        if finished || spent > CHILD_BUDGET {
             break;
         }
         // Un cadre vient d'être chargé, ou des cadres et des scripts sont
@@ -514,6 +519,30 @@ fn load_test(suite: &Path, rel: &str) -> Option<(Url, String)> {
     let _ = writeln!(html, "<div id=log></div>\n<script src=\"{file}\"></script>");
     let url = Url::parse(&format!("{ORIGIN}/{page_path}")).ok()?;
     Some((url, html))
+}
+
+/// Document HTML `url`, servi depuis la suite et décodé comme le ferait le
+/// navigateur : l'encodage qu'annonce l'en-tête `Content-Type` du fichier
+/// `.headers` voisin, sinon celui que le document déclare lui-même.
+fn read_document(suite: &Path, url: &Url) -> Option<String> {
+    use oxyde_content::encoding;
+    let bytes = read_url_bytes(suite, url)?;
+    let rel = url.path().trim_start_matches('/');
+    let declared = std::fs::read_to_string(suite.join(format!("{rel}.headers")))
+        .ok()
+        .and_then(|headers| {
+            headers.lines().find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.trim()
+                    .eq_ignore_ascii_case("content-type")
+                    .then(|| encoding::from_content_type(value))
+                    .flatten()
+            })
+        });
+    Some(match declared {
+        Some(declared) => declared.decode(&bytes),
+        None => encoding::decode_document(&bytes),
+    })
 }
 
 /// Contenu texte de la ressource `url`, servie depuis la suite.
