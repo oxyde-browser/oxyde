@@ -6539,6 +6539,64 @@ mod tests {
     }
 
     #[test]
+    fn canvas_text_is_measured_and_drawn() {
+        let mut p = page(
+            "<body><canvas id=c width=200 height=60></canvas><script>
+               const out = [];
+               const ctx = document.getElementById('c').getContext('2d');
+               // Nombre de pixels non transparents d'un rectangle.
+               const inked = (x, y, w, h) => {
+                 const data = ctx.getImageData(x, y, w, h).data;
+                 let count = 0;
+                 for (let i = 3; i < data.length; i += 4) if (data[i] > 0) count++;
+                 return count;
+               };
+               ctx.font = '20px Inter';
+               const one = ctx.measureText('Oxyde');
+               const two = ctx.measureText('Oxyde Oxyde');
+               out.push(one instanceof TextMetrics, one.width > 20, two.width > one.width * 1.9);
+               out.push(one.actualBoundingBoxAscent > one.actualBoundingBoxDescent);
+               ctx.fillText('Oxyde', 10, 30);
+               // L'encre est au-dessus de la ligne de base, à droite du point d'ancrage.
+               out.push(inked(10, 5, 80, 26) > 100, inked(10, 36, 80, 20), inked(110, 0, 90, 60));
+               // Aligné à droite : l'encre passe à gauche du point.
+               ctx.clearRect(0, 0, 200, 60);
+               ctx.textAlign = 'right';
+               ctx.textBaseline = 'top';
+               ctx.fillStyle = 'red';
+               ctx.fillText('Oxyde', 190, 30);
+               out.push(inked(100, 30, 90, 30) > 100, inked(100, 0, 100, 29), inked(0, 0, 60, 60));
+               const [r, g, b] = (() => {
+                 const data = ctx.getImageData(100, 30, 90, 30).data;
+                 for (let i = 0; i < data.length; i += 4) if (data[i + 3] === 255) return data.slice(i, i + 3);
+                 return [0, 0, 0];
+               })();
+               out.push(r + ',' + g + ',' + b);
+               // Contour, largeur maximale, texte vide.
+               ctx.clearRect(0, 0, 200, 60);
+               ctx.textAlign = 'start';
+               ctx.strokeText('Oxyde', 10, 10);
+               const outlined = inked(0, 0, 200, 60);
+               ctx.clearRect(0, 0, 200, 60);
+               ctx.fillText('Oxyde Oxyde Oxyde', 10, 10, 50);
+               out.push(outlined > 50, inked(0, 0, 61, 60) > 50, inked(62, 0, 138, 60));
+               ctx.clearRect(0, 0, 200, 60);
+               ctx.fillText('', 10, 10);
+               ctx.fillText('x', NaN, 10);
+               out.push(inked(0, 0, 200, 60), ctx.measureText('').width);
+               document.body.setAttribute('data-out', out.join(' '));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("true true true true true 0 0 true 0 0 255,0,0 true true 0 0 0")
+        );
+    }
+
+    #[test]
     fn a_canvas_draws_reads_back_and_shows_in_the_page() {
         let mut text = TextContext::new();
         let mut p = page(

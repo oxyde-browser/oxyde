@@ -13,8 +13,12 @@
 //!   nature source` (motif), un arrêt étant `position r g b a` ;
 //! - un état : `alpha fusion découpe a b c d e f` (transformation courante).
 //!
-//! LIMITES CONNUES : pas de texte (`fillText`, `strokeText`), ni d'ombres,
-//! ni de filtres ; un dégradé radial dont le cercle de départ a un rayon non
+//! Le texte est mis en forme par `parley` (une ligne), le contour de ses
+//! glyphes lu par `skrifa`, puis rempli ou tracé comme un tracé ordinaire.
+//!
+//! LIMITES CONNUES : le texte se dessine par ses contours, sans ajustement à
+//! la grille ni glyphes en couleur (émoji) ; ni ombres ni filtres ; un
+//! dégradé radial dont le cercle de départ a un rayon non
 //! nul est approché ; pas de dégradé conique ; un motif se répète toujours
 //! dans les deux sens ; les couleurs sont en sRGB 8 bits prémultiplié (une
 //! couleur très transparente perd de la précision) ; la somme des surfaces
@@ -222,8 +226,11 @@ fn parse_shader<'a>(
             let [x0, y0, x1, y1, tail @ ..] = values.as_slice() else {
                 return None;
             };
-            let stops = stops(tail, 0.0)?;
             // Début et fin confondus : le dégradé ne peint rien.
+            if x0 == x1 && y0 == y1 {
+                return None;
+            }
+            let stops = stops(tail, 0.0)?;
             LinearGradient::new(
                 Point::from_xy(*x0, *y0),
                 Point::from_xy(*x1, *y1),
@@ -237,6 +244,10 @@ fn parse_shader<'a>(
             let [x0, y0, r0, x1, y1, r1, tail @ ..] = values.as_slice() else {
                 return None;
             };
+            // Deux cercles confondus : le dégradé ne peint rien.
+            if x0 == x1 && y0 == y1 && r0 == r1 {
+                return None;
+            }
             let start = if *r1 > 0.0 {
                 (r0 / r1).clamp(0.0, 1.0)
             } else {
@@ -892,6 +903,316 @@ pub(super) fn parse_css_color(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsR
     })
 }
 
+/// Police que décrit la valeur de `ctx.font` (`italic bold 20px Arial`).
+struct FontSpec {
+    /// Corps, en pixels.
+    size: f32,
+    /// Liste de familles, écrite comme en CSS.
+    family: String,
+    weight: f32,
+    italic: bool,
+}
+
+/// Lit une valeur de `font` ; `None` si elle n'a pas de corps lisible.
+fn parse_font(text: &str) -> Option<FontSpec> {
+    let mut weight = 400.0;
+    let mut italic = false;
+    let mut rest = text.trim();
+    loop {
+        let (word, tail) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+        // Le corps : un nombre suivi d'une unité, avec ou sans `/interligne`.
+        let measure = word.split('/').next().unwrap_or(word);
+        let unit_at = measure
+            .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+            .unwrap_or(measure.len());
+        let (number, unit) = measure.split_at(unit_at);
+        if let Ok(value) = number.parse::<f32>() {
+            let size = match unit.to_ascii_lowercase().as_str() {
+                "px" => value,
+                "pt" => value * 4.0 / 3.0,
+                "em" | "rem" => value * 16.0,
+                "%" => value * 0.16,
+                // Un nombre sans unité est une graisse (`700`).
+                "" if (1.0..=1000.0).contains(&value) => {
+                    weight = value;
+                    rest = tail.trim_start();
+                    continue;
+                }
+                _ => return None,
+            };
+            let family = tail.trim();
+            return (size.is_finite() && size > 0.0 && !family.is_empty()).then(|| FontSpec {
+                size: size.min(10_000.0),
+                family: family.to_owned(),
+                weight,
+                italic,
+            });
+        }
+        match word.to_ascii_lowercase().as_str() {
+            "italic" | "oblique" => italic = true,
+            "bold" | "bolder" => weight = 700.0,
+            "lighter" => weight = 300.0,
+            "" => return None,
+            // `normal`, `small-caps`, largeurs de police : sans effet ici.
+            _ => {}
+        }
+        if tail.is_empty() {
+            return None;
+        }
+        rest = tail.trim_start();
+    }
+}
+
+/// Texte mis en forme sur une ligne : le contour de ses glyphes, dans un
+/// repère dont l'origine est le coin supérieur gauche de la ligne, et ses
+/// mesures.
+struct Shaped {
+    outline: Option<Path>,
+    width: f32,
+    /// Distance du haut de la ligne à la ligne de base.
+    baseline: f32,
+    ascent: f32,
+    descent: f32,
+}
+
+/// Plume qui recopie le contour d'un glyphe dans un tracé, à l'origine
+/// (`x`, `y`) du glyphe ; l'axe vertical des polices monte, celui du canevas
+/// descend.
+struct GlyphPen<'a> {
+    builder: &'a mut PathBuilder,
+    x: f32,
+    y: f32,
+}
+
+impl skrifa::outline::OutlinePen for GlyphPen<'_> {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.builder.move_to(self.x + x, self.y - y);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.builder.line_to(self.x + x, self.y - y);
+    }
+
+    fn quad_to(&mut self, cx0: f32, cy0: f32, x: f32, y: f32) {
+        self.builder
+            .quad_to(self.x + cx0, self.y - cy0, self.x + x, self.y - y);
+    }
+
+    fn curve_to(&mut self, cx0: f32, cy0: f32, cx1: f32, cy1: f32, x: f32, y: f32) {
+        self.builder.cubic_to(
+            self.x + cx0,
+            self.y - cy0,
+            self.x + cx1,
+            self.y - cy1,
+            self.x + x,
+            self.y - y,
+        );
+    }
+
+    fn close(&mut self) {
+        self.builder.close();
+    }
+}
+
+/// Met en forme `text` dans la police `font`.
+fn shape_text(context: &mut oxyde_text::TextContext, text: &str, font: &FontSpec) -> Shaped {
+    use oxyde_text::parley::{
+        Alignment, AlignmentOptions, FontFamily, FontStyle, FontWeight, PositionedLayoutItem,
+        StyleProperty,
+    };
+    use skrifa::MetadataProvider;
+    let mut builder = context
+        .layouts
+        .ranged_builder(&mut context.fonts, text, 1.0, true);
+    builder.push_default(StyleProperty::FontSize(font.size));
+    builder.push_default(StyleProperty::FontFamily(FontFamily::from(
+        font.family.as_str(),
+    )));
+    builder.push_default(StyleProperty::FontWeight(FontWeight::new(font.weight)));
+    if font.italic {
+        builder.push_default(StyleProperty::FontStyle(FontStyle::Italic));
+    }
+    let mut layout = builder.build(text);
+    layout.break_all_lines(None);
+    layout.align(Alignment::Start, AlignmentOptions::default());
+    let mut path = PathBuilder::new();
+    let (mut baseline, mut ascent, mut descent) =
+        (font.size * 0.8, font.size * 0.8, font.size * 0.2);
+    let mut measured = false;
+    for (rank, line) in layout.lines().enumerate() {
+        if rank == 0 {
+            baseline = line.metrics().baseline;
+        }
+        for item in line.items() {
+            let PositionedLayoutItem::GlyphRun(glyphs) = item else {
+                continue;
+            };
+            let run = glyphs.run();
+            if !measured {
+                // Montée et descente de la première police employée.
+                let metrics = run.font_metrics();
+                (ascent, descent) = (metrics.ascent, metrics.descent);
+                measured = true;
+            }
+            let data = run.font();
+            let Ok(face) = skrifa::FontRef::from_index(data.data.as_ref(), data.index) else {
+                continue;
+            };
+            let outlines = face.outline_glyphs();
+            let coords: Vec<skrifa::instance::NormalizedCoord> = run
+                .normalized_coords()
+                .iter()
+                .map(|coord| skrifa::instance::NormalizedCoord::from_bits(coord.to_bits()))
+                .collect();
+            let size = skrifa::instance::Size::new(run.font_size());
+            for glyph in glyphs.positioned_glyphs() {
+                let Some(outline) = outlines.get(skrifa::GlyphId::new(glyph.id)) else {
+                    continue;
+                };
+                let mut pen = GlyphPen {
+                    builder: &mut path,
+                    x: glyph.x,
+                    y: glyph.y,
+                };
+                let settings = skrifa::outline::DrawSettings::unhinted(
+                    size,
+                    skrifa::instance::LocationRef::new(&coords),
+                );
+                // Un glyphe sans contour (espace) n'ajoute rien.
+                let _ = outline.draw(settings, &mut pen);
+            }
+        }
+    }
+    Shaped {
+        outline: path.finish(),
+        // Un texte vide n'occupe aucune largeur.
+        width: if text.is_empty() {
+            0.0
+        } else {
+            layout.full_width()
+        },
+        baseline,
+        ascent,
+        descent,
+    }
+}
+
+/// `canvasMeasure(texte, police)` : `largeur montée descente` du texte mis
+/// en forme sur une ligne, ou `null` si la police est illisible.
+pub(super) fn measure(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let text = vm.to_string(&arg(args, 0))?;
+    let font = vm.to_string(&arg(args, 1))?;
+    let (Some(font), Some(h)) = (parse_font(&font), host(vm)) else {
+        return Ok(Value::Null);
+    };
+    let context = h.text.get_or_insert_with(oxyde_text::TextContext::new);
+    let shaped = shape_text(context, &text, &font);
+    Ok(Value::string(&format!(
+        "{} {} {}",
+        shaped.width, shaped.ascent, shaped.descent
+    )))
+}
+
+/// `canvasText(id, texte, police, placement, peinture, état, trait)` :
+/// dessine le texte, rempli (`trait` vide) ou en contour. `placement` vaut
+/// `x y largeurMax alignement ligneDeBase` : largeur maximale négative s'il
+/// n'y en a pas ; alignement 0 (début), 1 (centre) ou 2 (fin) ; ligne de base
+/// 0 (alphabétique), 1 (haut), 2 (milieu), 3 (bas).
+pub(super) fn text(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
+    let id = surface_id(vm, &arg(args, 0))?;
+    let content = vm.to_string(&arg(args, 1))?;
+    let font = vm.to_string(&arg(args, 2))?;
+    let placement = vm.to_string(&arg(args, 3))?;
+    let paint = vm.to_string(&arg(args, 4))?;
+    let state = vm.to_string(&arg(args, 5))?;
+    let line = vm.to_string(&arg(args, 6))?;
+    let (Some(font), Some(placement), Some(state), Some(line)) = (
+        parse_font(&font),
+        numbers(&placement),
+        parse_state(&state),
+        numbers(&line),
+    ) else {
+        return Ok(Value::Undefined);
+    };
+    let [x, y, max_width, align, baseline] = placement.as_slice() else {
+        return Ok(Value::Undefined);
+    };
+    let Some(h) = host(vm) else {
+        return Ok(Value::Undefined);
+    };
+    let context = h.text.get_or_insert_with(oxyde_text::TextContext::new);
+    let shaped = shape_text(context, &content, &font);
+    let Some(outline) = shaped.outline else {
+        return Ok(Value::Undefined);
+    };
+    // Un texte plus large que la largeur maximale est resserré.
+    let squeeze = if *max_width >= 0.0 && shaped.width > *max_width && shaped.width > 0.0 {
+        max_width / shaped.width
+    } else {
+        1.0
+    };
+    if squeeze <= 0.0 {
+        return Ok(Value::Undefined);
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "rangs : de petits entiers positifs"
+    )]
+    let (align, baseline) = (*align as u8, *baseline as u8);
+    let anchor_x = match align {
+        1 => shaped.width / 2.0,
+        2 => shaped.width,
+        _ => 0.0,
+    };
+    let anchor_y = match baseline {
+        1 => shaped.baseline - shaped.ascent,
+        2 => shaped.baseline - (shaped.ascent - shaped.descent) / 2.0,
+        3 => shaped.baseline + shaped.descent,
+        _ => shaped.baseline,
+    };
+    // Dans le repère courant : l'ancre du texte au point (`x`, `y`).
+    let place = Transform::from_row(squeeze, 0.0, 0.0, 1.0, x - anchor_x * squeeze, y - anchor_y);
+    let Some(local) = outline.transform(place) else {
+        return Ok(Value::Undefined);
+    };
+    let transform = state.transform;
+    if let [width, cap, join, miter, offset, dashes @ ..] = line.as_slice() {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "rangs : de petits entiers positifs"
+        )]
+        let stroke = Stroke {
+            width: *width,
+            miter_limit: *miter,
+            line_cap: match *cap as u8 {
+                1 => LineCap::Round,
+                2 => LineCap::Square,
+                _ => LineCap::Butt,
+            },
+            line_join: match *join as u8 {
+                1 => LineJoin::Round,
+                2 => LineJoin::Bevel,
+                _ => LineJoin::Miter,
+            },
+            dash: if dashes.is_empty() {
+                None
+            } else {
+                StrokeDash::new(dashes.to_vec(), *offset)
+            },
+        };
+        draw(vm, id, &state, &paint, |pixmap, paint, clip| {
+            pixmap.stroke_path(&local, paint, &stroke, transform, clip);
+        });
+    } else {
+        draw(vm, id, &state, &paint, |pixmap, paint, clip| {
+            pixmap.fill_path(&local, paint, FillRule::Winding, transform, clip);
+        });
+    }
+    Ok(Value::Undefined)
+}
+
 /// Surfaces dont les pixels ont changé depuis le dernier appel : identifiant
 /// (l'index du nœud du canevas, pour un canevas de la page), largeur, hauteur
 /// et pixels RGBA non prémultipliés.
@@ -949,6 +1270,29 @@ mod tests {
         // Dégradé sans arrêt, ou motif sans source : rien à peindre.
         assert!(parse_shader("l 0 0 10 0", Transform::identity(), None).is_none());
         assert!(parse_shader("p c 3", Transform::identity(), None).is_none());
+    }
+
+    #[test]
+    fn fonts_are_parsed_and_text_is_shaped() {
+        let font = parse_font("italic bold 20px Arial, sans-serif").expect("police");
+        assert_eq!((font.size, font.weight, font.italic), (20.0, 700.0, true));
+        assert_eq!(font.family, "Arial, sans-serif");
+        let font = parse_font("300 12pt/1.5 serif").expect("police");
+        assert_eq!((font.size, font.weight, font.italic), (16.0, 300.0, false));
+        assert!(parse_font("bold").is_none());
+        assert!(parse_font("10px").is_none());
+        assert!(parse_font("").is_none());
+        let mut context = oxyde_text::TextContext::new();
+        let font = parse_font("20px Inter").expect("police");
+        let word = shape_text(&mut context, "Oxyde", &font);
+        let longer = shape_text(&mut context, "Oxyde Oxyde", &font);
+        assert!(word.width > 20.0 && longer.width > word.width * 1.9);
+        assert!(word.ascent > word.descent && word.baseline > 0.0);
+        let outline = word.outline.expect("contours");
+        assert!(outline.bounds().width() > 20.0 && outline.bounds().height() > 8.0);
+        // Une espace seule a une largeur, pas de contour.
+        let space = shape_text(&mut context, " ", &font);
+        assert!(space.outline.is_none() && space.width > 0.0);
     }
 
     #[test]

@@ -2699,7 +2699,9 @@ fn atomics_wait_async_settles_between_tasks() {
     );
     assert_eq!(run(&mut vm, "seen.join()"), "ok");
     assert_eq!(vm.pending_async_waits(), 0);
-    // Délai : rien avant son terme, `timed-out` après.
+    // Délai : rien avant son terme, `timed-out` après. L'instant de départ est
+    // pris avant que le délai ne commence à courir.
+    let started = std::time::Instant::now();
     assert_eq!(
         run(
             &mut vm,
@@ -2709,7 +2711,6 @@ fn atomics_wait_async_settles_between_tasks() {
         "ok"
     );
     assert_eq!(vm.pending_async_waits(), 1);
-    let started = std::time::Instant::now();
     while vm.pending_async_waits() > 0 && started.elapsed() < std::time::Duration::from_secs(5) {
         vm.park_for_async_waits(std::time::Duration::from_millis(50));
         vm.run_microtasks();

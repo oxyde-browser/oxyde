@@ -823,8 +823,8 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [x] Web Platform Tests `html/` : 30 % des fichiers atteints (2 262 fichiers entièrement
-      réussis sur 7 308, soit 31,0 %), le canevas 2D en apportant 1 377 d'un coup.
+- [x] Web Platform Tests `html/` : 30 % des fichiers atteints (2 275 fichiers entièrement
+      réussis sur 7 308, soit 31,1 %), le canevas 2D en apportant près de 1 400.
       Restent, par nombre de fichiers : le reste du canevas (texte, ombres, filtres,
       calques), les contenus embarqués, les scripts, les formulaires, la navigation.
 - [x] Analyseur XML 1.0 avec espaces de noms (`oxyde_html::parse_xml`) : documents
@@ -901,14 +901,17 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       `getImageData`, `putImageData`, `ImageData`, `isPointInPath`, `toDataURL`,
       `toBlob` ; `OffscreenCanvas` et `createImageBitmap` (canevas, image, `ImageData`,
       `Blob`). Le canevas s'affiche dans la page.
-      Limites : pas de texte dessiné (`fillText`, `strokeText` ; `measureText` estime) ;
-      pas d'ombres, de filtres ni de calques ; `isPointInStroke` rend faux ; pas de
+      Texte : `fillText`, `strokeText` et `measureText` mettent le texte en forme sur
+      une ligne (`font`, `textAlign`, `textBaseline`, largeur maximale) et le dessinent
+      par le contour de ses glyphes.
+      Limites : texte de gauche à droite seulement, sans `letterSpacing` ni glyphes en
+      couleur ; pas d'ombres, de filtres ni de calques ; `isPointInStroke` rend faux ; pas de
       dégradé conique ; un dégradé radial à cercle de départ non nul est approché ; un
       motif se répète toujours dans les deux sens ; ni vidéo ni image SVG en source ;
       ni WebGL ni `bitmaprenderer` ; un `OffscreenCanvas` ne passe pas à un worker ;
       PNG seulement en sortie ; couleurs en sRGB 8 bits. Non essayé à la main dans la
       fenêtre.
-- [ ] Vus à la mesure des sites et encore absents : texte et ombres du canevas,
+- [ ] Vus à la mesure des sites et encore absents : ombres du canevas,
       `postMessage` entre fenêtres (la source n'est pas connue), Brotli (demande un
       crate à télécharger), chargement des ressources en parallèle.
 - [x] Workers : `new Worker(adresse)` exécute son script dans un royaume JavaScript à lui
