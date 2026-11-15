@@ -767,8 +767,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
 - [x] L'état d'activation d'un clic (case cochée, bouton) est protégé du
       ramasse-miettes pendant la distribution de l'événement : il pouvait être recyclé
       avant d'être relu.
-- [ ] Web Platform Tests `html/` : de 10,8 % vers 30 % des fichiers (`document.write`,
-      cadres, `canvas`, contenus embarqués).
+- [x] `document.write()`, `writeln()`, `open()`, `close()` : pendant un script, le texte
+      écrit est inséré juste après ce script (dans `<body>` pour du contenu écrit depuis
+      `<head>`), et les scripts qu'il contient s'exécutent ; hors d'un script, le
+      document est remplacé. Un `<script for=… event=…>` ne s'exécute que pour
+      `for=window event=onload`.
+      Limites : chaque appel est analysé seul (une balise ouverte par un appel et
+      fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
+      ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
+- [ ] Web Platform Tests `html/` : de 11,3 % vers 30 % des fichiers (cadres, `canvas`,
+      contenus embarqués, scripts).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,
       `innerHTML`, `getElementById`, `activeElement`), emplacements `<slot>` nommés et par

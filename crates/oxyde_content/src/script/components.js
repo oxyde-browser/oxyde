@@ -32,6 +32,14 @@
 // - `DOMParser` : l'analyseur XML est réduit (pas de DTD, pas d'entités
 //   déclarées) ; un document XML mal formé rend un document `parsererror`.
 // - `template.content` : le fragment appartient au document de la page.
+// - `document.write()` : le document est déjà analysé en entier quand les
+//   scripts s'exécutent ; pendant un script, le texte écrit est analysé à
+//   part et inséré juste après ce script (dans `<body>` s'il s'agit de
+//   contenu écrit depuis `<head>`). Chaque appel est analysé seul : une
+//   balise ouverte par un appel et fermée par un autre se referme dès le
+//   premier. Un script externe écrit ainsi se charge sans bloquer la suite.
+//   Hors d'un script (minuteur, événement), `write()` remplace le document,
+//   sans retirer ses écouteurs ni relancer `load`.
 (function (parseHtmlDocument, attachShadowRoot, shadowRootOf, shadowHostOf, assignedSlotOf,
   assignedNodesOf, deepFocused, shadowRootList) {
   "use strict";
@@ -776,5 +784,78 @@
       return element;
     },
     writable: true, enumerable: true, configurable: true,
+  });
+  // ---- document.write(), writeln(), open(), close() ----------------------------------------------------
+  // Éléments qui ont leur place dans `<head>`.
+  const METADATA = new Set(["base", "link", "meta", "noscript", "script", "style", "template", "title"]);
+  // Point d'insertion du script en cours : après le dernier nœud qu'il a écrit.
+  let cursor = null;
+  // Texte écrit dans un document rouvert, par document.
+  const reopened = new WeakMap();
+  const inHead = (node) => {
+    for (let at = node; at !== null; at = at.parentNode) {
+      if (at.nodeType === 1 && at.localName === "head") return true;
+    }
+    return false;
+  };
+  // Écrit `text` à la suite du script `script`, comme le ferait l'analyseur.
+  function writeAfterScript(doc, script, text) {
+    if (cursor === null || cursor.script !== script) {
+      cursor = { script, last: script, body: null };
+    }
+    const holder = rawCreateElement.call(doc, "div");
+    holder.innerHTML = text;
+    for (const node of Array.from(holder.childNodes)) {
+      // Dans `<head>`, seules les métadonnées restent ; le reste ouvre le corps.
+      const metadata = node.nodeType === 8 || (node.nodeType === 3 && node.data.trim() === "")
+        || (node.nodeType === 1 && METADATA.has(node.localName));
+      if (inHead(cursor.script) && !metadata && doc.body !== null) {
+        if (cursor.body === null || cursor.body.parentNode !== doc.body) {
+          doc.body.insertBefore(node, doc.body.firstChild);
+        } else {
+          cursor.body.after(node);
+        }
+        cursor.body = node;
+      } else if (cursor.last.parentNode !== null) {
+        cursor.last.after(node);
+        cursor.last = node;
+      }
+    }
+  }
+  // Remplace le contenu de `doc` par l'analyse de `text`.
+  function rewrite(doc, text) {
+    const parsed = parseHtmlDocument(text);
+    doc.replaceChildren();
+    for (const node of Array.from(parsed.childNodes)) doc.appendChild(doc.adoptNode(node));
+  }
+  function write(doc, pieces, ending) {
+    const text = pieces.map(String).join("") + ending;
+    const script = doc === document ? doc.currentScript : null;
+    if (script !== null && script.isConnected && !reopened.has(doc)) {
+      writeAfterScript(doc, script, text);
+      return;
+    }
+    // Hors de l'analyse : le document est rouvert, et reçoit ce texte.
+    if (!reopened.has(doc)) reopened.set(doc, "");
+    const whole = reopened.get(doc) + text;
+    reopened.set(doc, whole);
+    rewrite(doc, whole);
+  }
+  const documentMethod = (name, value) => define(global.Document.prototype, name, {
+    value, writable: true, enumerable: true, configurable: true,
+  });
+  documentMethod("write", function write_(...pieces) { write(this, pieces, ""); });
+  documentMethod("writeln", function writeln(...pieces) { write(this, pieces, "\n"); });
+  documentMethod("open", function open() {
+    // `open(adresse, nom, options)` ouvre une fenêtre : c'est `window.open`.
+    if (arguments.length >= 3) return global.open?.(...arguments) ?? null;
+    // Pendant qu'un script du document s'exécute, l'analyse est en cours : sans effet.
+    if (this === document && this.currentScript !== null && !reopened.has(this)) return this;
+    reopened.set(this, "");
+    this.replaceChildren();
+    return this;
+  });
+  documentMethod("close", function close() {
+    reopened.delete(this);
   });
 })
