@@ -1804,6 +1804,16 @@ fn encoding_name(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsResult {
         .map_or(Value::Null, |encoding| Value::string(encoding.name())))
 }
 
+/// `callerWindow()` : objet global du royaume d'où a été appelée la
+/// fonction de script en cours (la fenêtre qui appelle `postMessage` sur
+/// une autre).
+fn caller_window(vm: &mut Vm, _this: &Value, _args: &[Value]) -> JsResult {
+    let caller = vm.caller_realm();
+    Ok(Value::Object(
+        vm.realm_global(caller).unwrap_or_else(|| vm.global()),
+    ))
+}
+
 /// `decodeBytes(nom, octets, strict, flux)` : décode `octets` (une chaîne
 /// dont chaque caractère vaut un octet) dans l'encodage `nom`, sans traiter
 /// de marque d'ordre d'octets. Rend `null` si `strict` et que la suite est
@@ -2439,6 +2449,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("fireTrusted", 2, events::dispatch_trusted)),
         Value::Object(vm.new_function("encodingName", 1, encoding_name)),
         Value::Object(vm.new_function("decodeBytes", 4, decode_bytes)),
+        Value::Object(vm.new_function("callerWindow", 0, caller_window)),
     ];
     let hooks = vm.call(&prelude, &Value::Undefined, &helpers)?;
     vm.add_root(hooks.clone());
