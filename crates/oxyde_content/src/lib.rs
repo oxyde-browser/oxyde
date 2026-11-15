@@ -44,6 +44,84 @@ pub fn dom_coverage_report() -> String {
     script::dom_coverage_report()
 }
 
+/// Ordre qu'un script donne à une connexion `WebSocket`, à exécuter par
+/// l'embarqueur (voir [`Page::take_socket_commands`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SocketCommand {
+    /// Ouvrir la connexion `id`.
+    Open {
+        /// Identifiant à rendre à [`Page::socket_event`].
+        id: u64,
+        /// Adresse, en `ws` ou `wss`.
+        url: Url,
+        /// Adresse du document qui ouvre la connexion (en-tête `Origin`,
+        /// choix des cookies).
+        document: Url,
+        /// Sous-protocoles proposés au serveur.
+        protocols: Vec<String>,
+    },
+    /// Envoyer un message texte.
+    Text {
+        /// Connexion visée.
+        id: u64,
+        /// Le message.
+        text: String,
+    },
+    /// Envoyer un message binaire.
+    Binary {
+        /// Connexion visée.
+        id: u64,
+        /// Le message.
+        bytes: Vec<u8>,
+    },
+    /// Fermer la connexion.
+    Close {
+        /// Connexion visée.
+        id: u64,
+        /// Code de fermeture, s'il y en a un.
+        code: Option<u16>,
+        /// Raison de la fermeture.
+        reason: String,
+    },
+}
+
+impl SocketCommand {
+    /// Connexion que vise cet ordre.
+    #[must_use]
+    pub fn id(&self) -> u64 {
+        match self {
+            Self::Open { id, .. }
+            | Self::Text { id, .. }
+            | Self::Binary { id, .. }
+            | Self::Close { id, .. } => *id,
+        }
+    }
+}
+
+/// Ce qui arrive à une connexion `WebSocket`, à remettre à
+/// [`Page::socket_event`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SocketEvent {
+    /// La connexion est ouverte.
+    Open {
+        /// Sous-protocole retenu par le serveur, vide s'il n'y en a pas.
+        protocol: String,
+    },
+    /// Message texte reçu.
+    Text(String),
+    /// Message binaire reçu.
+    Binary(Vec<u8>),
+    /// La connexion est finie ; aucun événement ne doit suivre.
+    Close {
+        /// Code de fermeture (1006 : coupure sans fermeture).
+        code: u16,
+        /// Raison donnée par le serveur.
+        reason: String,
+        /// Vrai si la fermeture s'est faite dans les règles.
+        clean: bool,
+    },
+}
+
 /// Requête réseau émise par un script (`fetch`), à exécuter par l'embarqueur.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FetchRequest {
@@ -2001,6 +2079,37 @@ impl Page {
             .as_mut()
             .map(|e| e.take_fetches())
             .unwrap_or_default()
+    }
+
+    /// Ordres que les scripts ont donnés à leurs connexions `WebSocket`
+    /// depuis le dernier appel, dans l'ordre. L'embarqueur ouvre les
+    /// connexions et rend ce qui leur arrive par [`Page::socket_event`].
+    pub fn take_socket_commands(&mut self) -> Vec<SocketCommand> {
+        self.engine
+            .as_mut()
+            .map(|e| e.take_socket_commands())
+            .unwrap_or_default()
+    }
+
+    /// Vrai si la connexion `WebSocket` `id` est en cours dans cette page.
+    /// Sinon (page quittée entre-temps, connexion finie), l'embarqueur n'a
+    /// plus à la garder ouverte.
+    pub fn has_socket(&mut self, id: u64) -> bool {
+        self.engine.as_mut().is_some_and(|e| e.has_socket(id))
+    }
+
+    /// Remet aux scripts ce qui arrive à la connexion `WebSocket` `id`.
+    /// Renvoie `true` si la page doit être redessinée.
+    pub fn socket_event(&mut self, id: u64, event: SocketEvent) -> bool {
+        let Some(engine) = self.engine.as_mut() else {
+            return false;
+        };
+        engine.socket_event(&mut self.doc, id, event);
+        if engine.take_dirty() {
+            self.dom_changed();
+            return true;
+        }
+        false
     }
 
     /// Livre aux scripts la réponse (ou l'échec, décrit par un message) de la
@@ -6100,6 +6209,121 @@ mod tests {
             }
             let _ = p.tick(Instant::now() + Duration::from_secs(round));
         }
+    }
+
+    #[test]
+    fn web_sockets_talk_through_the_embedder() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const show = () => document.body.setAttribute('data-out', out.join(' '));
+               const ws = new WebSocket('wss://exemple.test/canal', ['chat', 'v2']);
+               ws.binaryType = 'arraybuffer';
+               out.push(ws.url, ws.readyState, WebSocket.OPEN);
+               try { ws.send('trop tôt'); } catch (e) { out.push(e.name); }
+               ws.onopen = () => {
+                 out.push('open:' + ws.protocol + ':' + ws.readyState);
+                 ws.send('salut');
+                 ws.send(new Uint8Array([1, 2]));
+                 show();
+               };
+               ws.onmessage = (e) => {
+                 if (typeof e.data === 'string') out.push('texte:' + e.data);
+                 else {
+                   out.push('octets:' + new Uint8Array(e.data).join(','));
+                   ws.close(1000, 'fini');
+                 }
+                 show();
+               };
+               ws.onerror = () => { out.push('error'); show(); };
+               ws.onclose = (e) => {
+                 out.push('close:' + e.code + ':' + e.reason + ':' + e.wasClean + ':' + ws.readyState);
+                 show();
+               };
+               for (const bad of ['ftp://x/', 'ws://x/#f']) {
+                 try { new WebSocket(bad); } catch (e) { out.push(e.name); }
+               }
+               try { new WebSocket('wss://x/', ['a', 'a']); } catch (e) { out.push(e.name); }
+               try { ws.close(1001); } catch (e) { out.push(e.name); }
+               const perdu = new WebSocket('wss://exemple.test/perdu');
+               perdu.onerror = () => { out.push('perdu:error'); show(); };
+               perdu.onclose = (e) => { out.push('perdu:' + e.code + ':' + e.wasClean); show(); };
+               show();
+             </script>",
+        );
+        p.run_scripts();
+        let commands = p.take_socket_commands();
+        assert_eq!(commands.len(), 2);
+        let SocketCommand::Open {
+            id,
+            url,
+            document,
+            protocols,
+        } = &commands[0]
+        else {
+            panic!("ouverture attendue : {commands:?}");
+        };
+        assert_eq!(url.as_str(), "wss://exemple.test/canal");
+        assert_eq!(document.as_str(), "https://exemple.test/dossier/page.html");
+        assert_eq!(protocols, &["chat".to_owned(), "v2".to_owned()]);
+        let (id, lost) = (*id, commands[1].id());
+        let _ = p.socket_event(
+            id,
+            SocketEvent::Open {
+                protocol: "v2".to_owned(),
+            },
+        );
+        assert_eq!(
+            p.take_socket_commands(),
+            [
+                SocketCommand::Text {
+                    id,
+                    text: "salut".to_owned()
+                },
+                SocketCommand::Binary {
+                    id,
+                    bytes: vec![1, 2]
+                },
+            ]
+        );
+        let _ = p.socket_event(id, SocketEvent::Text("écho".to_owned()));
+        let _ = p.socket_event(id, SocketEvent::Binary(vec![9, 8]));
+        assert_eq!(
+            p.take_socket_commands(),
+            [SocketCommand::Close {
+                id,
+                code: Some(1000),
+                reason: "fini".to_owned()
+            }]
+        );
+        let _ = p.socket_event(
+            id,
+            SocketEvent::Close {
+                code: 1000,
+                reason: "fini".to_owned(),
+                clean: true,
+            },
+        );
+        let _ = p.socket_event(
+            lost,
+            SocketEvent::Close {
+                code: 1006,
+                reason: String::new(),
+                clean: false,
+            },
+        );
+        // Après la fermeture, plus rien n'est remis.
+        let _ = p.socket_event(id, SocketEvent::Text("trop tard".to_owned()));
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "wss://exemple.test/canal 0 1 InvalidStateError SyntaxError SyntaxError SyntaxError \
+                 InvalidAccessError open:v2:1 texte:écho octets:9,8 close:1000:fini:true:3 \
+                 perdu:error perdu:1006:false"
+            )
+        );
     }
 
     #[test]

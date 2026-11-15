@@ -17,7 +17,7 @@ use url::Url;
 
 use super::protocol::{
     EditAction, Frame, FromRenderer, MouseKind, NetworkReply, NetworkRequest, SelectGesture,
-    ToRenderer, mouse_input,
+    SocketOrder, ToRenderer, mouse_input,
 };
 use crate::loader::{self, LoadError};
 
@@ -423,6 +423,19 @@ impl Renderer {
                     loader::report_console(page);
                 }
             }
+            ToRenderer::Socket { id, news } => {
+                if let Some(page) = self.page.as_mut() {
+                    if page.has_socket(id) {
+                        page.socket_event(id, news.into());
+                        loader::report_console(page);
+                    } else {
+                        // Page quittée entre-temps : le navigateur peut
+                        // couper la connexion.
+                        self.link
+                            .send(&FromRenderer::Socket(SocketOrder::Drop { id }))?;
+                    }
+                }
+            }
             ToRenderer::Network { id, reply } => {
                 // Réponse à une requête `fetch` d'un script.
                 if let (Some(fetch), Some(page)) = (self.fetches.remove(&id), self.page.as_mut()) {
@@ -452,6 +465,9 @@ impl Renderer {
             let fetch = request.id;
             let id = self.link.post(NetworkRequest::Script(Box::new(request)))?;
             self.fetches.insert(id, fetch);
+        }
+        for command in page.take_socket_commands() {
+            self.link.send(&FromRenderer::Socket(command.into()))?;
         }
         for navigation in page.take_navigations() {
             self.link.send(&FromRenderer::Navigate(navigation))?;

@@ -565,6 +565,84 @@ pub(crate) fn fetch_from(url: &Url, initiator: Option<&Url>) -> Result<(Url, Vec
     }
 }
 
+/// Événement d'une connexion WebSocket, tel que la page l'attend.
+pub(crate) fn socket_event(event: oxyde_net::SocketEvent) -> oxyde_content::SocketEvent {
+    match event {
+        oxyde_net::SocketEvent::Open { protocol } => oxyde_content::SocketEvent::Open { protocol },
+        oxyde_net::SocketEvent::Text(text) => oxyde_content::SocketEvent::Text(text),
+        oxyde_net::SocketEvent::Binary(bytes) => oxyde_content::SocketEvent::Binary(bytes),
+        oxyde_net::SocketEvent::Close {
+            code,
+            reason,
+            clean,
+        } => oxyde_content::SocketEvent::Close {
+            code,
+            reason,
+            clean,
+        },
+    }
+}
+
+/// Connexions WebSocket ouvertes pour des pages, par identifiant de page.
+/// Les lâcher les coupe.
+#[derive(Debug, Default)]
+pub(crate) struct PageSockets {
+    open: std::collections::HashMap<u64, crate::network::Socket>,
+}
+
+impl PageSockets {
+    /// Exécute l'ordre `command` d'une page. Pour une ouverture, `listen`
+    /// fabrique le destinataire des nouvelles de la connexion, appelé
+    /// depuis un autre fil.
+    pub(crate) fn apply(
+        &mut self,
+        command: oxyde_content::SocketCommand,
+        listen: impl FnOnce(u64) -> Box<dyn FnMut(oxyde_content::SocketEvent) + Send>,
+    ) {
+        use oxyde_content::SocketCommand;
+        match command {
+            SocketCommand::Open {
+                id,
+                url,
+                document,
+                protocols,
+            } => {
+                let mut listener = listen(id);
+                let socket =
+                    crate::network::open_socket(&url, &document, &protocols, move |event| {
+                        listener(socket_event(event));
+                    });
+                self.open.insert(id, socket);
+            }
+            SocketCommand::Text { id, text } => {
+                if let Some(socket) = self.open.get(&id) {
+                    socket.send_text(text);
+                }
+            }
+            SocketCommand::Binary { id, bytes } => {
+                if let Some(socket) = self.open.get(&id) {
+                    socket.send_binary(bytes);
+                }
+            }
+            SocketCommand::Close { id, code, reason } => {
+                if let Some(socket) = self.open.get(&id) {
+                    socket.close(code, reason);
+                }
+            }
+        }
+    }
+
+    /// Oublie la connexion `id` : finie, ou plus personne ne l'écoute.
+    pub(crate) fn forget(&mut self, id: u64) {
+        self.open.remove(&id);
+    }
+
+    /// Coupe toutes les connexions (la page est quittée).
+    pub(crate) fn clear(&mut self) {
+        self.open.clear();
+    }
+}
+
 /// Type MIME d'un document XML d'après l'extension de son adresse
 /// (`.xhtml`, `.xht`, `.svg`, `.xml`) ; `None` pour le reste, lu en HTML.
 ///

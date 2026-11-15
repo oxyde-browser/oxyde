@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub mod cookies;
+pub mod websocket;
 
 use bytes::Bytes;
 pub use cookies::{Access, CookieJar, same_site};
@@ -32,6 +33,7 @@ use rustls::{ClientConfig, RootCertStore};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 pub use url::Url;
+pub use websocket::{SocketEvent, SocketHandle};
 
 /// Nombre maximal de redirections suivies (même valeur que Chromium).
 const MAX_REDIRECTS: usize = 20;
@@ -204,6 +206,9 @@ impl HttpRequest {
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     tls: TlsConnector,
+    /// Comme `tls`, mais sans proposer HTTP/2 : pour WebSocket, qui se
+    /// négocie en HTTP/1.1.
+    tls_http1: TlsConnector,
     /// Cookies reçus, joints aux requêtes suivantes.
     jar: std::sync::Mutex<CookieJar>,
     /// Connexions HTTP/2 ouvertes, par hôte et port : une connexion porte
@@ -246,9 +251,12 @@ impl Client {
                 .with_root_certificates(roots)
                 .with_no_client_auth();
         config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        let mut http1 = config.clone();
+        http1.alpn_protocols = vec![b"http/1.1".to_vec()];
         Ok(Self {
             runtime,
             tls: TlsConnector::from(Arc::new(config)),
+            tls_http1: TlsConnector::from(Arc::new(http1)),
             jar: std::sync::Mutex::new(CookieJar::new()),
             connections: std::sync::Mutex::new(std::collections::HashMap::new()),
         })

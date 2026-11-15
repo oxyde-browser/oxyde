@@ -23,7 +23,7 @@ use url::Url;
 
 use super::protocol::{
     EditAction, FromRenderer, KeyMessage, MouseKind, NetworkReply, NetworkRequest, SelectGesture,
-    ToRenderer, pack_modifiers,
+    SocketOrder, ToRenderer, pack_modifiers,
 };
 use crate::loader::{self, LoadError};
 
@@ -38,6 +38,8 @@ pub(crate) struct RemotePage {
     process: oxyde_sandbox::Process,
     sender: Sender<ToRenderer>,
     receiver: Receiver<FromRenderer>,
+    /// Connexions WebSocket ouvertes pour la page du processus.
+    sockets: loader::PageSockets,
     store: ResourceStore,
     list: DisplayList,
     /// Défilement tenu par le compositeur, de ce côté-ci : la molette
@@ -165,6 +167,7 @@ impl RemotePage {
             process: child.process,
             sender: Sender::new(child.stdin),
             receiver: Receiver::new(child.stdout, wake),
+            sockets: loader::PageSockets::default(),
             store: ResourceStore::new(),
             list: DisplayList::default(),
             scroll: ScrollTree::new(),
@@ -212,6 +215,8 @@ impl RemotePage {
                 lock.expected = Some(url.clone());
             }
         }
+        // La page quittée perd ses connexions.
+        self.sockets.clear();
         let message = ToRenderer::Load {
             url: url.to_string(),
             post,
@@ -269,6 +274,61 @@ impl RemotePage {
         }
     }
 
+    /// Exécute un ordre du processus de rendu pour une connexion WebSocket.
+    fn socket_order(&mut self, order: SocketOrder) {
+        use oxyde_content::{SocketCommand, SocketEvent};
+        let command = match order {
+            SocketOrder::Open {
+                id,
+                url,
+                document,
+                protocols,
+            } => {
+                // Un processus ne parle qu'au nom du site qu'il affiche.
+                let parsed = (Url::parse(&url), Url::parse(&document));
+                match parsed {
+                    (Ok(url), Ok(document)) if locked(&self.lock).allows(&document) => {
+                        SocketCommand::Open {
+                            id,
+                            url,
+                            document,
+                            protocols,
+                        }
+                    }
+                    _ => {
+                        let refused = SocketEvent::Close {
+                            code: 1006,
+                            reason: String::new(),
+                            clean: false,
+                        };
+                        let _ = self.sender.send(&ToRenderer::Socket {
+                            id,
+                            news: refused.into(),
+                        });
+                        return;
+                    }
+                }
+            }
+            SocketOrder::Text { id, text } => SocketCommand::Text { id, text },
+            SocketOrder::Binary { id, bytes } => SocketCommand::Binary { id, bytes: bytes.0 },
+            SocketOrder::Close { id, code, reason } => SocketCommand::Close { id, code, reason },
+            SocketOrder::Drop { id } => {
+                self.sockets.forget(id);
+                return;
+            }
+        };
+        let sender = self.sender.clone();
+        self.sockets.apply(command, move |id| {
+            Box::new(move |event| {
+                // Le processus de rendu a pu disparaître entre-temps.
+                let _ = sender.send(&ToRenderer::Socket {
+                    id,
+                    news: event.into(),
+                });
+            })
+        });
+    }
+
     /// Traite les messages du processus de rendu. Renvoie `true` si
     /// l'onglet doit être redessiné.
     pub(crate) fn pump(&mut self) -> bool {
@@ -293,6 +353,7 @@ impl RemotePage {
             };
             match message {
                 FromRenderer::Network { id, request } => self.serve(id, request),
+                FromRenderer::Socket(order) => self.socket_order(order),
                 FromRenderer::Committed { url, error } => {
                     // Redirection vers un autre site : la navigation est
                     // reprise par un autre processus, et cet échec-ci n'est
@@ -974,6 +1035,36 @@ impl PageHost {
                 redraw
             }
             Self::Remote(_) => false,
+        }
+    }
+
+    /// Ordres WebSocket d'une page servie sur place.
+    pub(crate) fn take_socket_commands(&mut self) -> Vec<oxyde_content::SocketCommand> {
+        match self {
+            Self::Local(page) => page.take_socket_commands(),
+            // Un processus de rendu adresse ses ordres par son canal.
+            Self::Remote(_) => Vec::new(),
+        }
+    }
+
+    /// Remet une nouvelle de la connexion WebSocket `id` à une page servie
+    /// sur place. `None` si la page ne connaît pas (ou plus) cette
+    /// connexion ; sinon, s'il faut la redessiner.
+    pub(crate) fn socket_event(
+        &mut self,
+        id: u64,
+        event: oxyde_content::SocketEvent,
+    ) -> Option<bool> {
+        match self {
+            Self::Local(page) => {
+                if !page.has_socket(id) {
+                    return None;
+                }
+                let redraw = page.socket_event(id, event);
+                loader::report_console(page);
+                Some(redraw)
+            }
+            Self::Remote(_) => None,
         }
     }
 

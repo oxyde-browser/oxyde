@@ -2730,6 +2730,37 @@ impl Browser {
         commands
     }
 
+    /// Ordres WebSocket des scripts des onglets servis sur place : (onglet,
+    /// ordre).
+    pub(crate) fn take_socket_commands(&mut self) -> Vec<(u64, oxyde_content::SocketCommand)> {
+        self.tabs
+            .iter_mut()
+            .flat_map(|tab| {
+                let id = tab.id;
+                tab.page
+                    .take_socket_commands()
+                    .into_iter()
+                    .map(move |command| (id, command))
+            })
+            .collect()
+    }
+
+    /// Remet une nouvelle de la connexion WebSocket `id` à l'onglet `tab`.
+    /// `None` si l'onglet ou la connexion n'existent plus ; sinon, s'il
+    /// faut redessiner.
+    pub(crate) fn socket_event(
+        &mut self,
+        tab: u64,
+        id: u64,
+        event: oxyde_content::SocketEvent,
+    ) -> Option<bool> {
+        self.tabs
+            .iter_mut()
+            .find(|t| t.id == tab)?
+            .page
+            .socket_event(id, event)
+    }
+
     /// Requêtes `fetch` émises par les scripts des onglets : (onglet, requête).
     pub(crate) fn take_fetches(&mut self) -> Vec<(u64, oxyde_content::FetchRequest)> {
         self.tabs
