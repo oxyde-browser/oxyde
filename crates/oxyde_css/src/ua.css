@@ -108,3 +108,52 @@ input:focus, select:focus, textarea:focus { border-color: #0075ff; }
 input[type=hidden] { display: none; }
 fieldset { margin-left: 2px; margin-right: 2px; padding: 0.35em 0.75em 0.625em; border: 2px groove silver; }
 slot { display: contents; }
+
+/* Boîtes de dialogue : masquées tant qu'elles ne sont pas ouvertes, centrées
+   une fois ouvertes ; modales, elles passent devant tout le reste. */
+dialog:not([open]) {
+  display: none;
+}
+
+dialog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: fit-content;
+  height: fit-content;
+  margin: auto;
+  border: 3px solid black;
+  padding: 1em;
+  background-color: white;
+  color: black;
+}
+
+dialog:modal {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  overflow: auto;
+  z-index: 2147483647;
+}
+
+/* Popovers : masqués tant qu'ils ne sont pas affichés, devant tout le reste. */
+[popover] {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: fit-content;
+  height: fit-content;
+  margin: auto;
+  border: 3px solid black;
+  padding: 0.25em;
+  overflow: auto;
+  background-color: white;
+  color: black;
+  z-index: 2147483647;
+}
+
+[popover]:not(:popover-open) {
+  display: none !important;
+}

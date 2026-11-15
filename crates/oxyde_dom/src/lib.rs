@@ -36,6 +36,11 @@ mod ranges;
 pub use attrs::{AttrData, HTML_NS, MATHML_NS, SVG_NS, XML_NS, XMLNS_NS};
 pub use ranges::{Boundary, IteratorState, LiveRange};
 
+/// État d'élément : boîte de dialogue ouverte par `showModal()` (`:modal`).
+pub const STATE_MODAL: u8 = 1;
+/// État d'élément : popover affiché (`:popover-open`).
+pub const STATE_POPOVER_OPEN: u8 = 2;
+
 /// Espace de noms d'un élément.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Namespace {
@@ -255,6 +260,9 @@ pub struct Document {
     /// Hôte de chaque racine fantôme, et si elle est ouverte (`mode: "open"`).
     /// INVARIANT : l'inverse exact de `shadow_roots`.
     shadow_hosts: std::collections::HashMap<NodeId, (NodeId, bool)>,
+    /// États d'élément que le style voit (`:modal`, `:popover-open`) :
+    /// voir [`STATE_MODAL`] et [`STATE_POPOVER_OPEN`].
+    states: std::collections::HashMap<NodeId, u8>,
 }
 
 /// Modification du document, consignée pour les observateurs de mutation.
@@ -332,6 +340,7 @@ impl Document {
             anchor: 0,
             shadow_roots: std::collections::HashMap::new(),
             shadow_hosts: std::collections::HashMap::new(),
+            states: std::collections::HashMap::new(),
         }
     }
 
@@ -654,6 +663,30 @@ impl Document {
     #[must_use]
     pub fn shadow_is_open(&self, root: NodeId) -> bool {
         self.shadow_hosts.get(&root).is_some_and(|(_, open)| *open)
+    }
+
+    /// Pose (`on`) ou retire l'état `flag` de l'élément `node`. Le style
+    /// en dépend : la version du document avance.
+    pub fn set_state(&mut self, node: NodeId, flag: u8, on: bool) {
+        let current = self.states.get(&node).copied().unwrap_or(0);
+        let next = if on { current | flag } else { current & !flag };
+        if next == current {
+            return;
+        }
+        if next == 0 {
+            self.states.remove(&node);
+        } else {
+            self.states.insert(node, next);
+        }
+        self.version = self.version.wrapping_add(1);
+    }
+
+    /// Vrai si l'élément `node` porte l'état `flag`.
+    #[must_use]
+    pub fn has_state(&self, node: NodeId, flag: u8) -> bool {
+        self.states
+            .get(&node)
+            .is_some_and(|state| state & flag != 0)
     }
 
     /// Vrai si le document porte au moins un arbre fantôme.

@@ -1,7 +1,8 @@
 // Interfaces des éléments HTML (HTML Standard §4) et formulaires, écrites en
 // JavaScript. Le script rend une fabrique qui reçoit :
 //   registerInterface(balise, prototype) -> prototype des éléments de cette balise ;
-//   parseUrl, changeUrl, locationHref, navigate -> voir le prélude.
+//   parseUrl, changeUrl, locationHref, navigate -> voir le prélude ;
+//   setElementState(élément, nom, actif) -> pose l'état `modal` ou `popover-open`.
 // Elle rend les fonctions d'activation que le moteur appelle autour d'un clic.
 //
 // LIMITES CONNUES : l'état d'un contrôle (valeur, case cochée, option
@@ -10,7 +11,7 @@
 // validation des contraintes ignore la longueur du texte ; une liste déroulante ne se
 // déroule pas (les flèches changent l'option) ; la frappe dans une zone de
 // texte se fait en fin de texte.
-(function (registerInterface, parseUrl, changeUrl, locationHref, navigate) {
+(function (registerInterface, parseUrl, changeUrl, locationHref, navigate, setElementState) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -82,10 +83,210 @@
     ["HTMLFieldSetElement", ["fieldset"]], ["HTMLLegendElement", ["legend"]],
     ["HTMLStyleElement", ["style"]], ["HTMLTemplateElement", ["template"]],
     ["HTMLPictureElement", ["picture"]], ["HTMLDetailsElement", ["details"]],
-    ["HTMLDialogElement", ["dialog"]], ["HTMLTimeElement", ["time"]],
+    ["HTMLTimeElement", ["time"]],
   ]) {
     elementInterface(name, tags);
   }
+
+  // ---- <dialog> et popovers (HTML Standard §4.11.4 et §6.12) ----------------------------------------
+  // LIMITES : pas de pseudo-élément `::backdrop` ; le reste de la page n'est
+  // pas rendu inerte par une boîte modale ; `closedby`, les popovers `hint`
+  // et l'ancrage d'un popover à son bouton ne sont pas pris en charge ; un
+  // popover n'est imbriqué dans un autre que s'il en est un descendant.
+  const invalidState = (message) => new DOMException(message, "InvalidStateError");
+  const modals = [];
+  const openPopovers = [];
+  const previousFocus = new WeakMap();
+  const returnValues = new WeakMap();
+  const later = (run) => global.setTimeout(run, 0);
+  class ToggleEvent extends global.Event {
+    #oldState;
+    #newState;
+    constructor(type, init = {}) {
+      super(type, init);
+      this.#oldState = String(init?.oldState ?? "");
+      this.#newState = String(init?.newState ?? "");
+    }
+    get oldState() { return this.#oldState; }
+    get newState() { return this.#newState; }
+  }
+  define(ToggleEvent.prototype, Symbol.toStringTag, { value: "ToggleEvent", configurable: true });
+  if (global.ToggleEvent === undefined) {
+    define(global, "ToggleEvent", { value: ToggleEvent, writable: true, enumerable: false, configurable: true });
+  }
+  // Le focus va au premier élément `autofocus` de `container`, à défaut au
+  // premier contrôle qui peut le prendre.
+  function focusInside(container) {
+    const candidates = Array.from(container.querySelectorAll(
+      "[autofocus], a[href], button, input, select, textarea, [tabindex]",
+    )).filter((element) => !element.matches(":disabled") && element.getAttribute("tabindex") !== "-1"
+      && !(element.localName === "input" && inputType(element) === "hidden"));
+    const target = candidates.find((element) => element.hasAttribute("autofocus")) ?? candidates[0];
+    target?.focus?.();
+  }
+  const restoreFocus = (element) => {
+    const previous = previousFocus.get(element);
+    previousFocus.delete(element);
+    if (previous && previous.isConnected && previous !== document.body) previous.focus?.();
+  };
+  function closeDialog(dialog, result) {
+    if (!dialog.hasAttribute("open")) return;
+    dialog.removeAttribute("open");
+    const at = modals.indexOf(dialog);
+    if (at >= 0) {
+      modals.splice(at, 1);
+      setElementState(dialog, "modal", false);
+    }
+    if (result !== undefined) returnValues.set(dialog, String(result));
+    restoreFocus(dialog);
+    later(() => dialog.dispatchEvent(new Event("close")));
+  }
+  // Demande de fermeture (touche Échap, `requestClose()`) : `cancel` peut la refuser.
+  function requestClose(dialog, result) {
+    if (!dialog.hasAttribute("open")) return;
+    if (dialog.dispatchEvent(new Event("cancel", { cancelable: true }))) closeDialog(dialog, result);
+  }
+  elementInterface("HTMLDialogElement", ["dialog"], {
+    open: flag("open"),
+    returnValue: accessor(
+      function () { return returnValues.get(this) ?? ""; },
+      function (value) { returnValues.set(this, String(value)); },
+    ),
+    show: method(function show() {
+      if (this.hasAttribute("open")) {
+        if (modals.includes(this)) throw invalidState("la boîte de dialogue est déjà ouverte en mode modal");
+        return;
+      }
+      if (openPopovers.includes(this)) throw invalidState("l'élément est affiché comme popover");
+      this.setAttribute("open", "");
+      previousFocus.set(this, document.activeElement);
+      focusInside(this);
+    }),
+    showModal: method(function showModal() {
+      if (this.hasAttribute("open")) {
+        if (modals.includes(this)) return;
+        throw invalidState("la boîte de dialogue est déjà ouverte");
+      }
+      if (!this.isConnected) throw invalidState("la boîte de dialogue n'est pas dans le document");
+      if (openPopovers.includes(this)) throw invalidState("l'élément est affiché comme popover");
+      this.setAttribute("open", "");
+      modals.push(this);
+      setElementState(this, "modal", true);
+      previousFocus.set(this, document.activeElement);
+      focusInside(this);
+    }),
+    close: method(function close(result) { closeDialog(this, result); }),
+    requestClose: method(function requestClose_(result) { requestClose(this, result); }),
+  });
+
+  // État d'un popover d'après son attribut : `null` s'il n'en est pas un.
+  const popoverKind = (element) => {
+    const value = element.getAttribute("popover");
+    if (value === null) return null;
+    const kind = value.toLowerCase();
+    return kind === "" || kind === "auto" ? "auto" : "manual";
+  };
+  const toggled = (type, showing, cancelable) => new ToggleEvent(type, {
+    oldState: showing ? "closed" : "open", newState: showing ? "open" : "closed", cancelable,
+  });
+  function hidePopover(element, strict) {
+    if (popoverKind(element) === null && !openPopovers.includes(element)) {
+      throw new DOMException("l'élément n'est pas un popover", "NotSupportedError");
+    }
+    if (!openPopovers.includes(element)) {
+      if (strict) throw invalidState("le popover n'est pas affiché");
+      return;
+    }
+    // Les popovers ouverts depuis celui-ci se ferment avec lui.
+    for (const inner of openPopovers.slice(openPopovers.indexOf(element) + 1).reverse()) {
+      if (element.contains(inner)) hidePopover(inner, false);
+    }
+    element.dispatchEvent(toggled("beforetoggle", false, false));
+    const at = openPopovers.indexOf(element);
+    if (at < 0) return;
+    openPopovers.splice(at, 1);
+    setElementState(element, "popover-open", false);
+    restoreFocus(element);
+    later(() => element.dispatchEvent(toggled("toggle", false, false)));
+  }
+  function showPopover(element) {
+    const kind = popoverKind(element);
+    if (kind === null) throw new DOMException("l'élément n'est pas un popover", "NotSupportedError");
+    if (!element.isConnected) throw invalidState("le popover n'est pas dans le document");
+    if (openPopovers.includes(element)) throw invalidState("le popover est déjà affiché");
+    if (element.localName === "dialog" && element.hasAttribute("open")) {
+      throw invalidState("la boîte de dialogue est déjà ouverte");
+    }
+    if (!element.dispatchEvent(toggled("beforetoggle", true, true))) return;
+    if (openPopovers.includes(element) || !element.isConnected) return;
+    // Un popover automatique ferme ceux qui ne le contiennent pas.
+    if (kind === "auto") {
+      for (const other of openPopovers.slice().reverse()) {
+        if (popoverKind(other) === "auto" && !other.contains(element)) hidePopover(other, false);
+      }
+    }
+    previousFocus.set(element, document.activeElement);
+    openPopovers.push(element);
+    setElementState(element, "popover-open", true);
+    if (element.querySelector("[autofocus]") !== null || element.hasAttribute("autofocus")) focusInside(element);
+    later(() => element.dispatchEvent(toggled("toggle", true, false)));
+  }
+  const htmlMembers = {
+    popover: accessor(
+      function () { return popoverKind(this); },
+      function (value) {
+        if (value === null || value === undefined) this.removeAttribute("popover");
+        else this.setAttribute("popover", String(value));
+      },
+    ),
+    showPopover: method(function showPopover_() { showPopover(this); }),
+    hidePopover: method(function hidePopover_() { hidePopover(this, true); }),
+    togglePopover: method(function togglePopover(force) {
+      const wanted = typeof force === "object" && force !== null ? force.force : force;
+      const showing = openPopovers.includes(this);
+      if (showing && wanted !== true) hidePopover(this, true);
+      else if (!showing && wanted !== false) showPopover(this);
+      else if (popoverKind(this) === null) {
+        throw new DOMException("l'élément n'est pas un popover", "NotSupportedError");
+      }
+      return openPopovers.includes(this);
+    }),
+  };
+  for (const [name, descriptor] of Object.entries(htmlMembers)) {
+    define(global.HTMLElement.prototype, name, descriptor);
+  }
+  // Bouton `popovertarget` : son clic affiche ou masque le popover visé ;
+  // tout autre clic ferme les popovers automatiques qu'il ne touche pas.
+  global.addEventListener("click", (event) => {
+    const target = event.target;
+    if (target === null || typeof target.closest !== "function") return;
+    const invoker = target.closest("button[popovertarget], input[popovertarget]");
+    let aimed = null;
+    if (invoker !== null && !event.defaultPrevented && !invoker.matches(":disabled")) {
+      aimed = invoker.ownerDocument.getElementById(invoker.getAttribute("popovertarget"));
+      if (aimed !== null && popoverKind(aimed) === null) aimed = null;
+    }
+    for (const popover of openPopovers.slice().reverse()) {
+      if (popoverKind(popover) === "auto" && popover !== aimed && !popover.contains(target)
+        && !(aimed !== null && popover.contains(aimed))) hidePopover(popover, false);
+    }
+    if (aimed === null) return;
+    const action = (invoker.getAttribute("popovertargetaction") ?? "toggle").toLowerCase();
+    const showing = openPopovers.includes(aimed);
+    if (showing && action !== "show") hidePopover(aimed, false);
+    else if (!showing && action !== "hide") showPopover(aimed);
+  });
+  // Échap ferme le popover automatique du dessus, sinon la boîte modale du dessus.
+  global.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    const popover = openPopovers.slice().reverse().find((element) => popoverKind(element) === "auto");
+    if (popover !== undefined) {
+      hidePopover(popover, false);
+      return;
+    }
+    const dialog = modals.filter((element) => element.isConnected).pop();
+    if (dialog !== undefined) requestClose(dialog);
+  });
 
   // ---- Tableaux ------------------------------------------------------------------------------------
   // LIMITE : `rows`, `cells` et `tBodies` rendent une collection figée au
@@ -659,7 +860,14 @@
       ? submitter.getAttribute(own)
       : form.getAttribute(fallback));
     const requestMethod = (pick("formmethod", "method") ?? "get").toLowerCase();
-    if (requestMethod === "dialog") return;
+    // `method=dialog` : ferme la boîte de dialogue qui contient le formulaire.
+    if (requestMethod === "dialog") {
+      const dialog = form.closest("dialog");
+      if (dialog !== null) {
+        closeDialog(dialog, submitter === null ? undefined : submitter.getAttribute("value") ?? "");
+      }
+      return;
+    }
     const action = pick("formaction", "action") ?? "";
     const parts = parseUrl(action === "" ? locationHref() : action, form.baseURI);
     if (parts === null) return;

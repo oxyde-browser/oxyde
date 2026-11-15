@@ -5999,4 +5999,57 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn dialogs_and_popovers_open_and_close() {
+        let mut p = page(
+            "<body><button id=avant>avant</button>
+             <dialog id=d><form method=dialog><input id=champ autofocus><button id=oui value=accord>oui</button></form></dialog>
+             <button id=inv popovertarget=p>ouvrir</button><div id=p popover>bulle</div>
+             <div id=m popover=manual>fixe</div>
+             <script>
+               const out = [];
+               const note = (...items) => {
+                 out.push(...items);
+                 document.body.setAttribute('data-out', out.join(' '));
+               };
+               const $ = (id) => document.getElementById(id);
+               const d = $('d');
+               $('avant').focus();
+               note(getComputedStyle(d).display, d.matches(':modal'));
+               d.showModal();
+               note(d.open, d.matches(':modal'), d.matches(':open'), getComputedStyle(d).position,
+                 document.activeElement.id);
+               try { d.show(); } catch (e) { note(e.name); }
+               d.addEventListener('close', () => note('close:' + d.returnValue));
+               $('oui').click();
+               note(d.open, d.matches(':modal'), document.activeElement.id);
+               const p = $('p');
+               note(getComputedStyle(p).display, p.popover, $('m').popover);
+               p.addEventListener('beforetoggle', (e) => note(e.oldState + '>' + e.newState));
+               $('inv').click();
+               note(p.matches(':popover-open'), getComputedStyle(p).display !== 'none');
+               $('m').showPopover();
+               document.body.click();
+               note(p.matches(':popover-open'), $('m').matches(':popover-open'));
+               try { $('avant').showPopover(); } catch (e) { note(e.name); }
+               note($('m').togglePopover());
+             </script>",
+        );
+        p.run_scripts();
+        for _ in 0..4 {
+            let Some(due) = p.next_wake() else { break };
+            p.tick(due);
+        }
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some(
+                "none false true true true fixed champ InvalidStateError false false avant \
+                 none auto manual closed>open true true open>closed false true NotSupportedError false \
+                 close:accord"
+            )
+        );
+    }
 }

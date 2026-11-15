@@ -1680,6 +1680,9 @@ fn activate(vm: &mut Vm, node: NodeId, pointer: Option<&crate::MouseInput>) -> b
         }
     };
     let state = hook(vm, "before", &[target]).unwrap_or(Value::Null);
+    // L'état d'activation vit le temps de la distribution : les écouteurs
+    // et leurs micro-tâches peuvent déclencher le ramasse-miettes.
+    vm.add_root(state.clone());
     let prevented = fire_mouse(
         vm,
         "click",
@@ -1689,7 +1692,8 @@ fn activate(vm: &mut Vm, node: NodeId, pointer: Option<&crate::MouseInput>) -> b
         (0.0, 0.0),
         true,
     );
-    hook(vm, "after", &[state, Value::Bool(prevented)]);
+    hook(vm, "after", &[state.clone(), Value::Bool(prevented)]);
+    vm.remove_root(&state);
     prevented
 }
 
@@ -2442,6 +2446,7 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
         Value::Object(vm.new_function("changeUrl", 3, change_url)),
         Value::Object(vm.new_function("locationHref", 0, location_href)),
         Value::Object(vm.new_function("navigate", 3, navigate)),
+        Value::Object(vm.new_function("setElementState", 3, dom_ops::set_element_state)),
     ];
     let activation = vm.call(&elements, &Value::Undefined, &helpers)?;
     vm.add_root(activation.clone());

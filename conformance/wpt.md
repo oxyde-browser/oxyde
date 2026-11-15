@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier dom`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 44770 / 50172 (89,2 %)** — fichiers entièrement réussis : 487 / 693 (70,3 %).
+**Sous-tests réussis : 44772 / 50172 (89,2 %)** — fichiers entièrement réussis : 489 / 693 (70,6 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -23,7 +23,7 @@ est le plus honnête des deux.
 | `dom/nodes` | 215 / 265 | 11133 / 13078 (85,1 %) |
 | `dom/nodes/Document-contentType/contentType` | 4 / 16 | 4 / 16 (25,0 %) |
 | `dom/nodes/insertion-removing-steps` | 13 / 22 | 20 / 38 (52,6 %) |
-| `dom/nodes/moveBefore` | 27 / 64 | 102 / 177 (57,6 %) |
+| `dom/nodes/moveBefore` | 29 / 64 | 104 / 177 (58,8 %) |
 | `dom/observable/tentative` | 19 / 27 | 223 / 242 (92,1 %) |
 | `dom/ranges` | 39 / 49 | 30718 / 33613 (91,4 %) |
 | `dom/ranges/tentative` | 0 / 19 | 0 / 189 (0,0 %) |
@@ -169,7 +169,6 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/hover-style-update.html` | 0 / 2 |  |
 | `dom/nodes/moveBefore/iframe-document-preserve.window.js` | 2 / 7 |  |
 | `dom/nodes/moveBefore/listed-form-element-reset.html` | 0 / 6 |  |
-| `dom/nodes/moveBefore/modal-dialog.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/moveBefore-custom-element-registry.html` | 0 / 4 |  |
 | `dom/nodes/moveBefore/moveBefore-image-map.html` | 0 / 3 |  |
 | `dom/nodes/moveBefore/moveBefore-name-map.html` | 1 / 3 |  |
@@ -178,7 +177,6 @@ est le plus honnête des deux.
 | `dom/nodes/moveBefore/moveBefore-size-query.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/nonce.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/pointer-events.html` | 0 / 1 |  |
-| `dom/nodes/moveBefore/popover-preserve.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/preserve-render-blocking-style.html` | 0 / 1 |  |
 | `dom/nodes/moveBefore/relevant-mutations.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `dom/nodes/moveBefore/role-updates-after-move.html` | 0 / 1 |  |
