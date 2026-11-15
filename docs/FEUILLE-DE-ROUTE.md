@@ -742,11 +742,14 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       donc lus. `TextDecoder` suit `stream: true` pour tous, UTF-8 compris (un
       caractère coupé entre deux morceaux d'une réponse devenait U+FFFD) : marque
       d'ordre d'octets en plusieurs morceaux, caractère inachevé gardé pour la suite.
-      Web Platform Tests `encoding/` : 18 -> 44 fichiers sur 153, 11 559 -> 88 370
+      Un cadre de même origine sans encodage déclaré hérite de celui de la page.
+      Web Platform Tests `encoding/` : 18 -> 44 fichiers sur 153, 11 559 -> 88 371
       sous-tests.
-      Le lanceur WPT accorde désormais son délai en temps processeur du test, plus en
-      temps d'horloge : la mesure ne dépend plus de la charge de la machine. Il décode
-      les cadres d'après le `Content-Type` de leur fichier `.headers`.
+      Le lanceur WPT accorde désormais son délai en temps processeur du fil du test,
+      plus en temps d'horloge : la mesure dépend moins de la charge de la machine
+      (les tests qui mesurent eux-mêmes le temps réel y restent sensibles). Il décode
+      les tests et leurs cadres comme le navigateur (`Content-Type` du fichier
+      `.headers`, marque d'ordre d'octets, `<meta charset>`, héritage).
       Limites : aucun encodeur autre qu'UTF-8 (formulaires et URL d'une page en
       `Shift_JIS` partent en UTF-8 ; 71 fichiers `encoding/` en dépendent) ;
       `document.characterSet` vaut toujours `UTF-8` ; un document sans encodage
@@ -789,7 +792,7 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       Limites : chaque appel est analysé seul (une balise ouverte par un appel et
       fermée par un autre se referme dès le premier) ; un script externe écrit ainsi
       ne bloque pas la suite ; `open()` ne retire pas les écouteurs.
-- [ ] Web Platform Tests `html/` : de 11,3 % vers 30 % des fichiers (cadres, `canvas`,
+- [ ] Web Platform Tests `html/` : de 11,4 % vers 30 % des fichiers (cadres, `canvas`,
       contenus embarqués, scripts).
 - [ ] Analyseur XML (`DOMParser`, `XMLHttpRequest.responseXML`, SVG en ligne).
 - [x] Shadow DOM : `attachShadow` (ouvert ou fermé), `ShadowRoot` (`host`, `mode`,

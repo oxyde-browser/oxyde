@@ -2,7 +2,7 @@
 #![allow(unsafe_code, reason = "appels à l'API Win32, sans équivalent sûr")]
 
 use windows_sys::Win32::Foundation::{FILETIME, SYSTEMTIME};
-use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+use windows_sys::Win32::System::Threading::{GetCurrentThread, GetThreadTimes};
 use windows_sys::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
 
 use crate::time::CivilTime;
@@ -21,22 +21,23 @@ const EMPTY: SYSTEMTIME = SYSTEMTIME {
     wMilliseconds: 0,
 };
 
-/// Temps processeur, noyau et utilisateur, consommé par ce processus.
-pub(crate) fn process_cpu_time() -> Option<std::time::Duration> {
+/// Temps processeur, noyau et utilisateur, consommé par le fil d'exécution
+/// appelant.
+pub(crate) fn thread_cpu_time() -> Option<std::time::Duration> {
     const ZERO: FILETIME = FILETIME {
         dwLowDateTime: 0,
         dwHighDateTime: 0,
     };
     let (mut created, mut exited, mut kernel, mut user) = (ZERO, ZERO, ZERO, ZERO);
-    // SAFETY: `GetCurrentProcess` ne prend aucun argument et rend un
+    // SAFETY: `GetCurrentThread` ne prend aucun argument et rend un
     // pseudo-descripteur toujours valide, qu'il ne faut pas fermer.
-    let process = unsafe { GetCurrentProcess() };
-    // SAFETY: `process` désigne ce processus ; les quatre pointeurs désignent
+    let thread = unsafe { GetCurrentThread() };
+    // SAFETY: `thread` désigne le fil appelant ; les quatre pointeurs désignent
     // des variables locales distinctes, valides, alignées et initialisées,
     // qui vivent pendant l'appel et dans lesquelles la fonction écrit.
     let read = unsafe {
-        GetProcessTimes(
-            process,
+        GetThreadTimes(
+            thread,
             &raw mut created,
             &raw mut exited,
             &raw mut kernel,

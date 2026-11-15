@@ -279,8 +279,10 @@ fn index_of(name: &str) -> Option<&'static [u16; 128]> {
         .map(|(_, index)| index)
 }
 
-/// Encodage annoncé par une marque d'ordre d'octets en tête de `bytes`.
-fn from_bom(bytes: &[u8]) -> Option<Encoding> {
+/// Encodage annoncé par une marque d'ordre d'octets en tête de `bytes` : elle
+/// l'emporte sur toute autre déclaration, en-tête HTTP compris.
+#[must_use]
+pub fn from_bom(bytes: &[u8]) -> Option<Encoding> {
     if bytes.starts_with(b"\xEF\xBB\xBF") {
         Some(UTF_8)
     } else if bytes.starts_with(b"\xFE\xFF") {
@@ -384,6 +386,18 @@ pub fn from_content_type(content_type: &str) -> Option<Encoding> {
 pub fn sniff_document(bytes: &[u8]) -> Encoding {
     from_bom(bytes)
         .or_else(|| from_meta(bytes))
+        .unwrap_or_else(|| sniff_text(bytes))
+}
+
+/// Encodage d'un document de cadre : comme [`sniff_document`], mais sans
+/// marque ni `<meta charset>` valable, il hérite de `parent`, l'encodage
+/// du document qui le contient (à ne donner que pour un cadre de même
+/// origine).
+#[must_use]
+pub fn sniff_document_in(bytes: &[u8], parent: Option<Encoding>) -> Encoding {
+    from_bom(bytes)
+        .or_else(|| from_meta(bytes))
+        .or(parent)
         .unwrap_or_else(|| sniff_text(bytes))
 }
 
@@ -508,6 +522,17 @@ mod tests {
             Some("windows-1250")
         );
         assert_eq!(from_content_type("text/html"), None);
+        // Un cadre sans déclaration valable hérite de son parent.
+        let greek = Encoding::for_label("windows-1253");
+        assert_eq!(
+            sniff_document_in(b"<meta charset=inconnu>\xA2", greek).name(),
+            "windows-1253"
+        );
+        assert_eq!(
+            sniff_document_in(b"<meta charset=koi8-r>\xA2", greek).name(),
+            "KOI8-R"
+        );
+        assert_eq!(sniff_document_in(b"\xA2", None).name(), "windows-1252");
         // Encodages à plusieurs octets et `replacement`.
         assert_eq!(
             decode_document(b"<meta charset=shift_jis>\x93\xFA\x96\x7B"),

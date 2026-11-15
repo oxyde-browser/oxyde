@@ -15,15 +15,15 @@ mod windows;
 
 pub use time::{CivilTime, local_time, utc_time};
 
-/// Temps processeur (noyau et utilisateur, tous fils d'exécution confondus)
-/// que ce processus a consommé depuis son lancement ; `None` si le système
-/// ne le dit pas. Contrairement au temps d'horloge, il ne dépend pas de la
-/// charge de la machine.
+/// Temps processeur (noyau et utilisateur) que le fil d'exécution appelant a
+/// consommé depuis son lancement ; `None` si le système ne le dit pas.
+/// Contrairement au temps d'horloge, il ne dépend pas de la charge de la
+/// machine ; il ne compte pas le travail confié à d'autres fils.
 #[must_use]
-pub fn process_cpu_time() -> Option<std::time::Duration> {
+pub fn thread_cpu_time() -> Option<std::time::Duration> {
     #[cfg(windows)]
     {
-        crate::windows::process_cpu_time()
+        crate::windows::thread_cpu_time()
     }
     #[cfg(not(windows))]
     {
@@ -36,9 +36,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn cpu_time_grows_with_work() {
-        let before = super::process_cpu_time().expect("temps processeur");
+        let before = super::thread_cpu_time().expect("temps processeur");
         let mut sum = 0u64;
-        while super::process_cpu_time().expect("temps processeur") == before {
+        while super::thread_cpu_time().expect("temps processeur") == before {
             for i in 0..1_000_000u64 {
                 sum = sum.wrapping_add(std::hint::black_box(i));
             }

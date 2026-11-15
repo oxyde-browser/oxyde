@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier html`, sur la suite
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 42323 / 117235 (36,1 %)** — fichiers entièrement réussis : 820 / 7254 (11,3 %).
+**Sous-tests réussis : 42830 / 118006 (36,3 %)** — fichiers entièrement réussis : 826 / 7254 (11,4 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -144,14 +144,14 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy` | 1 / 53 | 54 / 390 (13,8 %) |
 | `html/cross-origin-embedder-policy/credentialless` | 0 / 22 | 6 / 38 (15,8 %) |
 | `html/cross-origin-embedder-policy/multi-globals` | 0 / 1 | 0 / 1 (0,0 %) |
-| `html/cross-origin-opener-policy` | 0 / 55 | 6 / 114 (5,3 %) |
+| `html/cross-origin-opener-policy` | 0 / 55 | 6 / 266 (2,3 %) |
 | `html/cross-origin-opener-policy/historical` | 0 / 10 | 0 / 4 (0,0 %) |
-| `html/cross-origin-opener-policy/reporting/access-reporting` | 0 / 32 | 0 / 66 (0,0 %) |
-| `html/cross-origin-opener-policy/reporting/document-reporting` | 0 / 4 | 0 / 2 (0,0 %) |
-| `html/cross-origin-opener-policy/reporting/navigation-reporting` | 0 / 15 | 0 / 2 (0,0 %) |
+| `html/cross-origin-opener-policy/reporting/access-reporting` | 0 / 32 | 0 / 72 (0,0 %) |
+| `html/cross-origin-opener-policy/reporting/document-reporting` | 0 / 4 | 0 / 6 (0,0 %) |
+| `html/cross-origin-opener-policy/reporting/navigation-reporting` | 0 / 15 | 0 / 5 (0,0 %) |
 | `html/cross-origin-opener-policy/reporting/tentative` | 0 / 1 | 0 / 2 (0,0 %) |
 | `html/cross-origin-opener-policy/tentative/noopener` | 0 / 1 | 0 / 2 (0,0 %) |
-| `html/document-isolation-policy` | 0 / 46 | 9 / 250 (3,6 %) |
+| `html/document-isolation-policy` | 0 / 46 | 9 / 253 (3,6 %) |
 | `html/dom` | 1 / 23 | 30306 / 51854 (58,4 %) |
 | `html/dom/documents/dom-tree-accessors` | 13 / 40 | 94 / 240 (39,2 %) |
 | `html/dom/documents/dom-tree-accessors/document.getElementsByName` | 7 / 9 | 25 / 27 (92,6 %) |
@@ -244,7 +244,7 @@ est le plus honnête des deux.
 | `html/rendering/replaced-elements/attributes-for-embedded-content-and-images` | 5 / 18 | 50 / 127 (39,4 %) |
 | `html/rendering/replaced-elements/embedded-content` | 3 / 4 | 3 / 16 (18,8 %) |
 | `html/rendering/replaced-elements/images` | 1 / 4 | 1 / 3 (33,3 %) |
-| `html/rendering/replaced-elements/svg-embedded-sizing` | 0 / 9 | 0 / 6 (0,0 %) |
+| `html/rendering/replaced-elements/svg-embedded-sizing` | 0 / 9 | 500 / 609 (82,1 %) |
 | `html/rendering/replaced-elements/svg-inline-sizing` | 0 / 1 | 144 / 648 (22,2 %) |
 | `html/rendering/replaced-elements/the-textarea-element` | 1 / 1 | 1 / 1 (100,0 %) |
 | `html/rendering/the-css-user-agent-style-sheet-and-presentational-hints` | 1 / 4 | 2 / 7 (28,6 %) |
@@ -414,7 +414,7 @@ est le plus honnête des deux.
 | `html/semantics/the-button-element/command-and-commandfor` | 2 / 26 | 212 / 482 (44,0 %) |
 | `html/syntax/charset` | 1 / 12 | 3 / 39 (7,7 %) |
 | `html/syntax/parsing` | 16 / 47 | 508 / 2416 (21,0 %) |
-| `html/syntax/parsing-html-fragments` | 4 / 13 | 6 / 25 (24,0 %) |
+| `html/syntax/parsing-html-fragments` | 10 / 13 | 12 / 25 (48,0 %) |
 | `html/syntax/parsing-xml-fragments` | 0 / 1 | 0 / 5 (0,0 %) |
 | `html/syntax/parsing/template/additions-to-foster-parenting` | 2 / 2 | 4 / 4 (100,0 %) |
 | `html/syntax/parsing/template/additions-to-the-in-body-insertion-mode` | 6 / 8 | 37 / 42 (88,1 %) |
@@ -449,7 +449,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/events` | 6 / 35 | 43 / 109 (39,4 %) |
 | `html/webappapis/scripting/events/event-handler-processing-algorithm-error` | 8 / 12 | 20 / 24 (83,3 %) |
 | `html/webappapis/scripting/processing-model-2` | 6 / 36 | 11 / 55 (20,0 %) |
-| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 0 / 3 (0,0 %) |
+| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism` | 0 / 2 | 1 / 3 (33,3 %) |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue` | 1 / 4 | 14 / 31 (45,2 %) |
 | `html/webappapis/scripting/processing-model-2/unhandled-promise-rejections` | 1 / 14 | 36 / 61 (59,0 %) |
 | `html/webappapis/structured-clone` | 0 / 2 | 63 / 156 (40,4 %) |
@@ -468,7 +468,7 @@ est le plus honnête des deux.
 | `html/anonymous-iframe/cache-storage.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/cookie-store.tentative.https.window.js` | 0 / 4 | harnais : délai du harnais dépassé |
 | `html/anonymous-iframe/cookie.tentative.https.window.js` | 0 / 1 |  |
-| `html/anonymous-iframe/embedding.tentative.https.window.js` | 0 / 0 | le harnais n'a pas terminé |
+| `html/anonymous-iframe/embedding.tentative.https.window.js` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/anonymous-iframe/hasStorageAccess.tentative.https.window.js` | 0 / 0 | harnais : Error: assert_implements: requestStorageAccess is not supported. undefined |
 | `html/anonymous-iframe/indexeddb.tentative.https.window.js` | 0 / 1 |  |
 | `html/anonymous-iframe/initial-empty-document.tentative.https.window.js` | 0 / 2 |  |
@@ -3573,10 +3573,10 @@ est le plus honnête des deux.
 | `html/cross-origin-embedder-policy/credentialless/cross-origin-isolated.window.js` | 0 / 5 |  |
 | `html/cross-origin-embedder-policy/credentialless/dedicated-worker.https.window.js` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/credentialless/fetch.https.window.js` | 0 / 1 |  |
-| `html/cross-origin-embedder-policy/credentialless/iframe-coep-credentialless.https.window.js` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-embedder-policy/credentialless/iframe-coep-none.https.window.js` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-embedder-policy/credentialless/iframe-coep-redirect.https.window.js` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-embedder-policy/credentialless/iframe-coep-require-corp.https.window.js` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-embedder-policy/credentialless/iframe-coep-credentialless.https.window.js` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-embedder-policy/credentialless/iframe-coep-none.https.window.js` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-embedder-policy/credentialless/iframe-coep-redirect.https.window.js` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-embedder-policy/credentialless/iframe-coep-require-corp.https.window.js` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/cross-origin-embedder-policy/credentialless/iframe.window.js` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/credentialless/image.https.window.js` | 0 / 1 |  |
 | `html/cross-origin-embedder-policy/credentialless/link.https.window.js` | 0 / 1 |  |
@@ -3653,50 +3653,50 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/coop-sandbox-cuts-opener.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/coop-sandbox-redirects-cuts-opener.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/coop-sandbox.https.html` | 2 / 4 | harnais : délai du harnais dépassé |
-| `html/cross-origin-opener-policy/header-parsing-failures.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/header-parsing-failures.https.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/cross-origin-opener-policy/header-parsing-non-ascii.https.html` | 0 / 1 |  |
 | `html/cross-origin-opener-policy/header-parsing-repeated.https.html` | 0 / 1 |  |
-| `html/cross-origin-opener-policy/header-parsing-successes.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/header-parsing-successes.https.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/cross-origin-opener-policy/historical/coep-navigate-popup-unsafe-inherit.https.html` | 0 / 4 | harnais : Timeout while running cleanup for test named "Popup navigating to same-origin with coop unsafe-inherit/coep". |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-unsafe-none.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-unsafe-none.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/javascript-url.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/navigate-to-aboutblank.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/navigate-top-to-aboutblank.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-origin-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-unsafe-allow-outgoing-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/historical/popup-same-site-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-unsafe-none.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/iframe-popup-same-origin-to-unsafe-none.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-same-origin.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-unsafe-none.https.html` | 0 / 27 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/javascript-url.https.html` | 0 / 18 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/navigate-to-aboutblank.https.html` | 0 / 5 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/navigate-top-to-aboutblank.https.html` | 0 / 3 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/no-https.html` | 0 / 2 | harnais : Test named 'Cross-Origin-Opener-Policy only works over secure contexts' specified 1 'cleanup' function, and 1 failed. |
 | `html/cross-origin-opener-policy/non-secure-to-secure-context-navigation.https.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/noopener-popup-cross-origin-isolation.https.html` | 0 / 4 |  |
 | `html/cross-origin-opener-policy/popup-coop-by-sw.https.html` | 0 / 8 | harnais : Test named 'opener:basic, openee:basic, sw:basic' specified 1 'cleanup' function, and 1 failed. |
 | `html/cross-origin-opener-policy/popup-meta-http-equiv.https.html` | 0 / 1 |  |
 | `html/cross-origin-opener-policy/popup-redirect-cache.https.html` | 0 / 9 | harnais : Timeout while running cleanup for test named "same-origin document opening popup redirect from https://{{host}}:{{ports[ |
-| `html/cross-origin-opener-policy/popup-redirect-same-origin-allow-popups.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/popup-redirect-same-origin-allow-popups.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Same origin popup redirects to same-origin with same-origin-allow-popups". |
+| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-allow-popups-with-same-site.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/popup-same-origin-non-initial-about-blank.https.html` | 0 / 1 | harnais : Test named 'Navigating a popup to about:blank' specified 1 'cleanup' function, and 1 failed. |
-| `html/cross-origin-opener-policy/popup-same-origin-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-same-origin-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-same-origin-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unsafe-none-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unspecified-with-cross-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unspecified-with-same-origin.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/popup-unspecified-with-same-site.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/popup-same-origin-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-same-origin-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unsafe-none-with-cross-origin.https.html` | 0 / 8 | harnais : délai du harnais dépassé |
+| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unsafe-none-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unspecified-with-cross-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unspecified-with-same-origin.https.html` | 0 / 0 | boucle sans fin (processus tué) |
+| `html/cross-origin-opener-policy/popup-unspecified-with-same-site.https.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/cross-origin-opener-policy/popup-with-structured-header.https.html` | 0 / 3 |  |
 | `html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-openee_coop-ro.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "access-from-coop-page-to-openee, same-origin". |
 | `html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-openee_coop-ro_cross-origin.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "access-from-coop-page-to-openee, cross-origin". |
@@ -3728,19 +3728,19 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/reporting/access-reporting/property-top.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/reporting/access-reporting/property-window.https.html` | 0 / 2 |  |
 | `html/cross-origin-opener-policy/reporting/access-reporting/report-to-both_coop-ro.https.html` | 0 / 2 |  |
-| `html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer-no-endpoint.tentative.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/reporting/document-reporting/report-only-four-reports.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer-no-endpoint.tentative.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "ReportingObserver is notified without a reporting endpoint". |
+| `html/cross-origin-opener-policy/reporting/access-reporting/reporting-observer.html` | 0 / 4 | harnais : Timeout while running cleanup for test named "Opener COOP". |
+| `html/cross-origin-opener-policy/reporting/document-reporting/report-only-four-reports.https.html` | 0 / 0 | boucle sans fin (processus tué) |
 | `html/cross-origin-opener-policy/reporting/document-reporting/report-to-both_coop-ro.https.html` | 0 / 2 |  |
-| `html/cross-origin-opener-policy/reporting/document-reporting/reporting-redirect-with-same-origin-allow-popups.https.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/cross-origin-opener-policy/reporting/document-reporting/reporting-redirect-with-unsafe-none.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/reporting/document-reporting/reporting-redirect-with-same-origin-allow-popups.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Same origin openee redirected to same-origin with same-origin-allow-popups |
+| `html/cross-origin-opener-policy/reporting/document-reporting/reporting-redirect-with-unsafe-none.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Same origin openee redirected to same-origin with unsafe-none". |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-four-reports.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-from-unsafe-none.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-same-origin-report-to.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-same-origin-with-coep-report-only.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-same-origin-with-coep.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/report-only-same-origin.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
-| `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-coop-navigated-opener.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-coop-navigated-opener.https.html` | 0 / 1 | harnais : Timeout while running cleanup for test named "navigation-report-from-opener-navigation". |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-coop-navigated-popup.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Open a popup to a document without COOP, then navigate it to a document wi |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-popup-report-to-must-be-string.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-popup-same-origin-allow-popups-report-to.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
@@ -3748,7 +3748,7 @@ est le plus honnête des deux.
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-popup-same-origin-report-to.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-popup-same-origin.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
 | `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-popup-unsafe-none-report-to.https.html` | 0 / 0 | harnais : Unhandled rejection: assert_equals: reports cleared expected 200 but got 404 |
-| `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-redirect-with-same-origin-allow-popups.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/cross-origin-opener-policy/reporting/navigation-reporting/reporting-redirect-with-same-origin-allow-popups.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "Same origin openee redirected to same-origin with same-origin-allow-popups |
 | `html/cross-origin-opener-policy/reporting/tentative/access-to-noopener-page-from-no-coop-ro.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "access-to-coop-page-from-opener, noopener-allow-popups". |
 | `html/cross-origin-opener-policy/resource-popup.https.html` | 0 / 12 | harnais : délai du harnais dépassé |
 | `html/cross-origin-opener-policy/tentative/noopener/coop-noopener-allow-popups-restrict-properties.https.html` | 0 / 2 | harnais : Timeout while running cleanup for test named "     Cross-Origin-Opener-Policy: noopener-allow-popups means that the open |
@@ -3786,7 +3786,7 @@ est le plus honnête des deux.
 | `html/document-isolation-policy/navigate-across-policies.tentative.https.html` | 0 / 4 | harnais : Test named 'navigation.navigate() from a document without a policy to one with does not abort the navigation' specified  |
 | `html/document-isolation-policy/no-secure-context-https-iframe.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/document-isolation-policy/no-secure-context.tentative.html` | 0 / 2 |  |
-| `html/document-isolation-policy/origin-agent-cluster.tentative.https.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/document-isolation-policy/origin-agent-cluster.tentative.https.html` | 0 / 3 | harnais : Timeout while running cleanup for test named "After a document with a policy, a same-origin document without one that se |
 | `html/document-isolation-policy/partial-deployment.tentative.https.html` | 0 / 8 | harnais : Test named 'A document without a policy and its same-origin frame with one can post messages to each other' specified 1  |
 | `html/document-isolation-policy/reporting-cache-storage-corp.tentative.https.html` | 0 / 9 |  |
 | `html/document-isolation-policy/reporting-cached-and-service-worker-responses.tentative.https.html` | 0 / 10 | harnais : délai du harnais dépassé |
@@ -4406,9 +4406,9 @@ est le plus honnête des deux.
 | `html/rendering/replaced-elements/images/img-fallback-baseline-alignment.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/images/img-represents-image-size-before-partially-available.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/images/img-sizes-auto.html` | 0 / 0 | harnais : délai du harnais dépassé |
-| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-auto.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-fixed.html` | 0 / 0 | le harnais n'a pas terminé |
-| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-percentage.html` | 0 / 0 | le harnais n'a pas terminé |
+| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-auto.html` | 200 / 201 | harnais : délai du harnais dépassé |
+| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-fixed.html` | 200 / 201 | harnais : délai du harnais dépassé |
+| `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-iframe-percentage.html` | 100 / 201 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-img-auto.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-img-fixed.html` | 0 / 1 | harnais : délai du harnais dépassé |
 | `html/rendering/replaced-elements/svg-embedded-sizing/svg-in-img-percentage.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6431,12 +6431,6 @@ est le plus honnête des deux.
 | `html/syntax/charset/xhr.html` | 0 / 2 | harnais : délai du harnais dépassé |
 | `html/syntax/parsing-html-fragments/fragment-parse-form-in-template-002.html` | 0 / 1 |  |
 | `html/syntax/parsing-html-fragments/fragment-parse-form-owner-001.html` | 2 / 4 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-001.html` | 0 / 1 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-007.html` | 0 / 1 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-009.html` | 0 / 1 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-016.html` | 0 / 1 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-018.html` | 0 / 1 |  |
-| `html/syntax/parsing-html-fragments/the-input-byte-stream-030.html` | 0 / 1 |  |
 | `html/syntax/parsing-html-fragments/tokenizer-modes-001.html` | 0 / 10 |  |
 | `html/syntax/parsing-xml-fragments/innerHTML-already-started.html` | 0 / 5 |  |
 | `html/syntax/parsing/DOMContentLoaded-defer-task-order.tentative.html` | 0 / 1 | harnais : délai du harnais dépassé |
@@ -6836,7 +6830,7 @@ est le plus honnête des deux.
 | `html/webappapis/scripting/processing-model-2/compile-error-same-origin-with-hash.html` | 0 / 2 |  |
 | `html/webappapis/scripting/processing-model-2/compile-error-same-origin.html` | 0 / 2 |  |
 | `html/webappapis/scripting/processing-model-2/compile-error.html` | 0 / 2 |  |
-| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/atomics-wait-async.https.any.js` | 0 / 2 | harnais : délai du harnais dépassé |
+| `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/atomics-wait-async.https.any.js` | 1 / 2 |  |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-agent-formalism/requires-failure.https.any.js` | 0 / 1 |  |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry-different-function-realm.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `html/webappapis/scripting/processing-model-2/integration-with-the-javascript-job-queue/promise-job-entry.html` | 0 / 6 | harnais : délai du harnais dépassé |

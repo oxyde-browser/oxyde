@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier encoding`, sur la sui
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 88370 / 247546 (35,7 %)** — fichiers entièrement réussis : 44 / 153 (28,8 %).
+**Sous-tests réussis : 88371 / 247547 (35,7 %)** — fichiers entièrement réussis : 44 / 153 (28,8 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -13,7 +13,7 @@ est le plus honnête des deux.
 
 | Dossier | Fichiers réussis | Sous-tests réussis |
 |---|---:|---:|
-| `encoding` | 19 / 36 | 11515 / 12008 (95,9 %) |
+| `encoding` | 19 / 36 | 11516 / 12009 (95,9 %) |
 | `encoding/legacy-mb-japanese/euc-jp` | 1 / 14 | 11 / 36441 (0,0 %) |
 | `encoding/legacy-mb-japanese/iso-2022-jp` | 3 / 13 | 14666 / 43642 (33,6 %) |
 | `encoding/legacy-mb-japanese/shift_jis` | 9 / 24 | 59154 / 132551 (44,6 %) |
@@ -28,7 +28,7 @@ est le plus honnête des deux.
 | Fichier | Sous-tests | Cause |
 |---|---:|---|
 | `encoding/big5-encoder.html` | 1 / 13 |  |
-| `encoding/encodeInto-tail-unmodified.any.js` | 0 / 0 | le harnais n'a pas terminé |
+| `encoding/encodeInto-tail-unmodified.any.js` | 1 / 1 | harnais : délai du harnais dépassé |
 | `encoding/encodeInto.any.js` | 43 / 111 |  |
 | `encoding/idlharness.any.js` | 0 / 1 |  |
 | `encoding/iso-2022-jp-encoder.html` | 1 / 12 |  |

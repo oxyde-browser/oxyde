@@ -575,6 +575,7 @@ pub(crate) fn decode(bytes: &[u8]) -> String {
 
 /// Décode les octets d'un document HTML : comme [`decode`], en tenant compte
 /// de son `<meta charset>`.
+#[cfg(test)]
 pub(crate) fn decode_document(bytes: &[u8]) -> String {
     oxyde_content::encoding::decode_document(bytes)
 }
@@ -597,7 +598,8 @@ fn text_body(content_type: Option<&str>, body: Vec<u8>) -> Vec<u8> {
     let Some(declared) = encoding::from_content_type(content_type).filter(|_| textual) else {
         return body;
     };
-    if declared == encoding::UTF_8 {
+    // Une marque d'ordre d'octets l'emporte sur l'en-tête.
+    if declared == encoding::UTF_8 || encoding::from_bom(&body).is_some() {
         return body;
     }
     let mut out = vec![0xEF, 0xBB, 0xBF];
@@ -673,8 +675,11 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
         Some(form) if matches!(url.scheme(), "http" | "https") => post_http(&url, form),
         _ => fetch(&url),
     };
-    let (url, html) = match first {
-        Ok((final_url, bytes)) => (final_url, decode_document(&bytes)),
+    let (url, html, encoding) = match first {
+        Ok((final_url, bytes)) => {
+            let encoding = oxyde_content::encoding::sniff_document(&bytes);
+            (final_url, encoding.decode(&bytes), encoding)
+        }
         Err(error) => {
             return Loaded {
                 page: Page::from_html(url, ""),
@@ -707,8 +712,12 @@ pub(crate) fn load_with(url: Url, post: Option<oxyde_content::FormPost>) -> Load
     }
     let frames = page.pending_frames();
     for (frame_url, fetched) in frames.iter().zip(fetch_many(&frames, &document)) {
-        // Un cadre indisponible reste vide.
-        let html = fetched.ok().map(|(_, bytes)| decode_document(&bytes));
+        // Un cadre indisponible reste vide. Sans encodage déclaré, un cadre
+        // de même origine hérite de celui de la page.
+        let parent = (frame_url.origin() == document.origin()).then_some(encoding);
+        let html = fetched.ok().map(|(_, bytes)| {
+            oxyde_content::encoding::sniff_document_in(&bytes, parent).decode(&bytes)
+        });
         page.set_frame(frame_url, html.as_deref());
     }
     let scripts = page.pending_scripts();

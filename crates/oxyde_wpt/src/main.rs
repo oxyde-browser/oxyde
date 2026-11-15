@@ -21,6 +21,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use oxyde_content::encoding::Encoding;
 use oxyde_content::{
     FetchResponse, KeyInput, MouseInput, Page, TouchPhase, Url, Viewport, decode_image,
 };
@@ -38,10 +39,10 @@ const VIEWPORT: Viewport = Viewport {
     width: 800.0,
     height: 600.0,
 };
-/// Temps processeur accordé à un fichier dans le processus fils (temps réel
-/// si le système ne dit pas le temps processeur) : la mesure ne dépend
-/// ainsi pas de la charge de la machine, où les fichiers s'exécutent côte à
-/// côte.
+/// Temps processeur accordé au fil d'exécution du test dans le processus
+/// fils (temps réel si le système ne dit pas le temps processeur) : la
+/// mesure ne dépend ainsi pas de la charge de la machine, où les fichiers
+/// s'exécutent côte à côte.
 const CHILD_BUDGET: Duration = Duration::from_secs(10);
 /// Temps réel au bout duquel le processus père tue un fils muet : un
 /// garde-fou, large parce que le fils compte en temps processeur.
@@ -381,7 +382,7 @@ fn drain_console(page: &mut Page, driver: &mut Driver) -> bool {
 
 /// Exécute le test `rel` et écrit ses lignes de résultat sur la sortie.
 fn run_child(suite: &Path, rel: &str) -> ExitCode {
-    let Some((url, html)) = load_test(suite, rel) else {
+    let Some((url, html, encoding)) = load_test(suite, rel) else {
         println!("WPT-X\tfichier illisible");
         return ExitCode::FAILURE;
     };
@@ -401,7 +402,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         page.set_image(&url, image);
     }
     for url in page.pending_frames() {
-        let html = read_document(suite, &url);
+        let html = read_document(suite, &url, encoding);
         page.set_frame(&url, html.as_deref());
     }
     for url in page.pending_scripts() {
@@ -450,7 +451,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         }
         // Cadres créés par les scripts : documents et scripts servis de même.
         for url in page.pending_frames() {
-            let html = read_document(suite, &url);
+            let html = read_document(suite, &url, encoding);
             page.set_frame(&url, html.as_deref());
         }
         for url in page.pending_scripts() {
@@ -459,7 +460,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         }
         let loaded = page.load_ready_frames();
         finished |= drain_console(&mut page, &mut driver);
-        let spent = oxyde_platform::process_cpu_time().unwrap_or_else(|| started.elapsed());
+        let spent = oxyde_platform::thread_cpu_time().unwrap_or_else(|| started.elapsed());
         if finished || spent > CHILD_BUDGET {
             break;
         }
@@ -486,9 +487,8 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
 
 /// Adresse et source HTML du test `rel` ; les tests `.any.js` et
 /// `.window.js` sont enveloppés dans une page générée.
-fn load_test(suite: &Path, rel: &str) -> Option<(Url, String)> {
+fn load_test(suite: &Path, rel: &str) -> Option<(Url, String, Encoding)> {
     let bytes = std::fs::read(suite.join(rel)).ok()?;
-    let source = String::from_utf8_lossy(&bytes).into_owned();
     let wrapped = rel
         .strip_suffix(".any.js")
         .map(|stem| format!("{stem}.any.html"))
@@ -497,9 +497,14 @@ fn load_test(suite: &Path, rel: &str) -> Option<(Url, String)> {
                 .map(|stem| format!("{stem}.window.html"))
         });
     let Some(page_path) = wrapped else {
+        // Un test HTML est décodé comme le navigateur décoderait la page.
         let url = Url::parse(&format!("{ORIGIN}/{rel}")).ok()?;
-        return Some((url, source));
+        let encoding = oxyde_content::encoding::from_bom(&bytes)
+            .or_else(|| declared_encoding(suite, rel))
+            .unwrap_or_else(|| oxyde_content::encoding::sniff_document(&bytes));
+        return Some((url, encoding.decode(&bytes), encoding));
     };
+    let source = String::from_utf8_lossy(&bytes).into_owned();
     let mut html = String::from(
         "<!doctype html>\n<meta charset=utf-8>\n\
          <script src=\"/resources/testharness.js\"></script>\n\
@@ -518,31 +523,34 @@ fn load_test(suite: &Path, rel: &str) -> Option<(Url, String)> {
     let file = rel.rsplit('/').next().unwrap_or(rel);
     let _ = writeln!(html, "<div id=log></div>\n<script src=\"{file}\"></script>");
     let url = Url::parse(&format!("{ORIGIN}/{page_path}")).ok()?;
-    Some((url, html))
+    Some((url, html, oxyde_content::encoding::UTF_8))
 }
 
-/// Document HTML `url`, servi depuis la suite et décodé comme le ferait le
-/// navigateur : l'encodage qu'annonce l'en-tête `Content-Type` du fichier
-/// `.headers` voisin, sinon celui que le document déclare lui-même.
-fn read_document(suite: &Path, url: &Url) -> Option<String> {
-    use oxyde_content::encoding;
+/// Encodage qu'annonce l'en-tête `Content-Type` du fichier `.headers`
+/// voisin de la ressource `rel`.
+fn declared_encoding(suite: &Path, rel: &str) -> Option<Encoding> {
+    let headers = std::fs::read_to_string(suite.join(format!("{rel}.headers"))).ok()?;
+    headers.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.trim()
+            .eq_ignore_ascii_case("content-type")
+            .then(|| oxyde_content::encoding::from_content_type(value))
+            .flatten()
+    })
+}
+
+/// Document de cadre `url`, servi depuis la suite et décodé comme le ferait
+/// le navigateur : l'encodage qu'annonce l'en-tête `Content-Type` du
+/// fichier `.headers` voisin, sinon celui que le document déclare
+/// lui-même, sinon `parent`, celui de la page du test.
+fn read_document(suite: &Path, url: &Url, parent: Encoding) -> Option<String> {
     let bytes = read_url_bytes(suite, url)?;
     let rel = url.path().trim_start_matches('/');
-    let declared = std::fs::read_to_string(suite.join(format!("{rel}.headers")))
-        .ok()
-        .and_then(|headers| {
-            headers.lines().find_map(|line| {
-                let (name, value) = line.split_once(':')?;
-                name.trim()
-                    .eq_ignore_ascii_case("content-type")
-                    .then(|| encoding::from_content_type(value))
-                    .flatten()
-            })
-        });
-    Some(match declared {
-        Some(declared) => declared.decode(&bytes),
-        None => encoding::decode_document(&bytes),
-    })
+    // Une marque d'ordre d'octets l'emporte sur l'en-tête.
+    let encoding = oxyde_content::encoding::from_bom(&bytes)
+        .or_else(|| declared_encoding(suite, rel))
+        .unwrap_or_else(|| oxyde_content::encoding::sniff_document_in(&bytes, Some(parent)));
+    Some(encoding.decode(&bytes))
 }
 
 /// Contenu texte de la ressource `url`, servie depuis la suite.
