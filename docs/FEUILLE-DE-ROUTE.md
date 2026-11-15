@@ -2,7 +2,7 @@
 
 État au 12 novembre 2026, branche `main`, après la fusion de la PR n° 8.
 
-- `oxyde_js` réussit **48 206 tests de test262 sur 48 795 (98,8 %)** ; il en reste 589.
+- `oxyde_js` réussit **48 264 tests de test262 sur 48 795 (98,9 %)** ; il en reste 531.
 - Les jalons 1 à 3 du plan (socle, premier pixel, interface de la maquette) sont terminés.
 - Les jalons 4 (JavaScript et DOM), 5 (multi-processus), 6 (mise en page) et 7 (fonctions du
   navigateur) sont **entamés et utilisables, aucun n'est terminé** ; ce qu'il leur reste est
@@ -989,7 +989,16 @@ page s'affiche-t-elle, peut-on s'y connecter, peut-on y faire l'action principal
       qu'à l'exécution, hors mode strict), `%ThrowTypeError%` (accesseur `callee` des objets
       `arguments` non liés), `Math.sumPrecise`, `Math.hypot` et `Math.min`/`max` (tous les
       arguments convertis).
-- [ ] Les 589 tests de test262 restants : tables Unicode des propriétés d'expressions
+- [x] test262, deuxième lot (58 tests, 48 206 → 48 264) : `Date` (une date invalide n'est
+      pas réécrite par `setHours` et ses semblables, années négatives sur quatre chiffres
+      dans `toString`), `String` (`isWellFormed`, `toWellFormed`, position de départ de
+      `lastIndexOf`, longueur de `padStart`/`padEnd`), `Array` (`Symbol.unscopables`,
+      `toLocaleString` par élément, ordre de lecture de `toReversed` et `toSpliced`), et un
+      défaut réel : l'ajout en fin de tableau (`push`, `unshift`, `a[a.length] = v`)
+      ignorait un mutateur ou un élément figé posé au même index sur un prototype.
+      Limite : une chaîne ne porte jamais de substitut isolé, `isWellFormed` rend donc
+      toujours vrai.
+- [ ] Les 531 tests de test262 restants : tables Unicode des propriétés d'expressions
       rationnelles (94), chaînes UTF-16 (substituts isolés), tableaux denses, objet de type
       `document.all`, `import()` et modules (phases `defer` et `source`, octets), accesseurs
       automatiques (`accessor`), et une longue traîne de cas isolés.

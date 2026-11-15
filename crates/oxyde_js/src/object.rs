@@ -607,6 +607,35 @@ impl Vm {
     }
 
     /// Écrit `target[key]` et dit si l'écriture a eu lieu.
+    /// Vrai si `Array.prototype` ou `Object.prototype` peuvent porter un
+    /// élément d'index `index` : écrire cet index sur un tableau qui ne l'a
+    /// pas doit alors passer par l'écriture ordinaire.
+    pub(crate) fn prototypes_hold_index(&self, index: f64) -> bool {
+        let array_proto = self.heap.get(self.intrinsics.array_proto);
+        let object_proto = self.heap.get(self.intrinsics.object_proto);
+        // Chaîne de prototypes changée, ou éléments denses sur le prototype.
+        if array_proto.proto != Some(self.intrinsics.object_proto)
+            || object_proto.proto.is_some()
+            || !matches!(&array_proto.kind, Kind::Array(items) if items.is_empty())
+        {
+            return true;
+        }
+        // Aucune propriété ajoutée aux prototypes ne ressemble à un index :
+        // le cas de loin le plus courant, décidé sans rien allouer.
+        let indexed = |object: &Object| {
+            object
+                .props
+                .keys()
+                .any(|key| key.as_bytes().first().is_some_and(u8::is_ascii_digit))
+        };
+        if !indexed(array_proto) && !indexed(object_proto) {
+            return false;
+        }
+        let key = crate::value::number_to_string(index);
+        array_proto.props.get(key.as_str()).is_some()
+            || object_proto.props.get(key.as_str()).is_some()
+    }
+
     pub(crate) fn put_element(
         &mut self,
         target: &Value,
@@ -617,10 +646,16 @@ impl Vm {
             && *n >= 0.0
             && n.fract() == 0.0
         {
+            // Ajout en fin de tableau : direct si rien ne peut l'intercepter,
+            // ni sur l'objet (longueur figée, objet non extensible), ni sur
+            // ses prototypes (mutateur ou élément figé à cet index).
+            let object = self.heap.get(*id);
+            let appendable = object.extensible
+                && object.props.is_empty()
+                && object.proto == Some(self.intrinsics.array_proto)
+                && matches!(&object.kind, Kind::Array(items) if items.len() as f64 == *n)
+                && !self.prototypes_hold_index(*n);
             let object = self.heap.get_mut(*id);
-            // Ajout en fin de tableau : direct si rien sur l'objet ne peut
-            // l'intercepter (longueur figée, objet non extensible).
-            let appendable = object.extensible && object.props.is_empty();
             if let Kind::Array(items) = &mut object.kind {
                 #[expect(
                     clippy::cast_possible_truncation,

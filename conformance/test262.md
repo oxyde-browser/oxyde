@@ -4,7 +4,7 @@ Suite [tc39/test262](https://github.com/tc39/test262), révision `102924a26277`,
 
 Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict). Aucun test n'est écarté : ceux qui demandent une fonctionnalité absente échouent.
 
-**Total : 48206 réussis sur 48795 (98.8 %).**
+**Total : 48264 réussis sur 48795 (98.9 %).**
 
 | Dossier | Tests | Réussis | Taux |
 |---|---:|---:|---:|
@@ -12,7 +12,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `annexB/language` | 845 | 822 | 97.3 % |
 | `built-ins/AbstractModuleSource` | 8 | 0 | 0.0 % |
 | `built-ins/AggregateError` | 25 | 25 | 100.0 % |
-| `built-ins/Array` | 3083 | 3033 | 98.4 % |
+| `built-ins/Array` | 3083 | 3056 | 99.1 % |
 | `built-ins/ArrayBuffer` | 221 | 221 | 100.0 % |
 | `built-ins/ArrayIteratorPrototype` | 27 | 24 | 88.9 % |
 | `built-ins/AsyncDisposableStack` | 104 | 104 | 100.0 % |
@@ -25,7 +25,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/BigInt` | 77 | 76 | 98.7 % |
 | `built-ins/Boolean` | 51 | 51 | 100.0 % |
 | `built-ins/DataView` | 560 | 560 | 100.0 % |
-| `built-ins/Date` | 610 | 595 | 97.5 % |
+| `built-ins/Date` | 610 | 610 | 100.0 % |
 | `built-ins/DisposableStack` | 93 | 93 | 100.0 % |
 | `built-ins/Error` | 93 | 93 | 100.0 % |
 | `built-ins/FinalizationRegistry` | 47 | 47 | 100.0 % |
@@ -51,7 +51,7 @@ Un test n'est réussi que s'il passe dans tous ses modes (strict et non strict).
 | `built-ins/SetIteratorPrototype` | 11 | 9 | 81.8 % |
 | `built-ins/ShadowRealm` | 64 | 64 | 100.0 % |
 | `built-ins/SharedArrayBuffer` | 104 | 104 | 100.0 % |
-| `built-ins/String` | 1223 | 1197 | 97.9 % |
+| `built-ins/String` | 1223 | 1217 | 99.5 % |
 | `built-ins/StringIteratorPrototype` | 7 | 5 | 71.4 % |
 | `built-ins/SuppressedError` | 22 | 22 | 100.0 % |
 | `built-ins/Symbol` | 98 | 97 | 99.0 % |

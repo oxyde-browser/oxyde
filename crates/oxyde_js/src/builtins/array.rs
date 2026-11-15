@@ -4,13 +4,14 @@
 //! tout objet muni d'une propriété `length`, en passant par ses propriétés
 //! indexées (trous, accesseurs et prototype compris).
 //!
-//! LIMITES CONNUES : `toLocaleString` vaut `toString` ; un résultat ordinaire
+//! LIMITES CONNUES : `toLocaleString` ne passe ni langue ni options aux
+//! éléments ; un résultat ordinaire
 //! est borné à `MAX_LENGTH` éléments ; `Array.fromAsync` est écrit en
 //! JavaScript (`from_async.js`).
 
 use std::sync::Arc;
 
-use crate::heap::{IndexedKind, IterState, Kind};
+use crate::heap::{IndexedKind, IterState, Kind, Object, Property, Slot};
 use crate::value::{ObjId, PropertyKey, Value};
 use crate::vm::{JsResult, NativeFn, Vm};
 
@@ -445,7 +446,19 @@ fn shift(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
 fn unshift(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let t = target(vm, this)?;
     let count = args.len();
-    if let Some(items) = dense_mut(vm, t.id)
+    // Chemin direct : seulement si rien sur le tableau ne peut refuser
+    // l'écriture (tableau figé, longueur en lecture seule).
+    #[expect(clippy::cast_precision_loss, reason = "index bien en deçà de 2^53")]
+    let plain = {
+        let object = vm.heap.get(t.id);
+        object.extensible
+            && object.props.is_empty()
+            && object.proto == Some(vm.intrinsics.array_proto)
+            // Les index créés ne doivent rien croiser sur les prototypes.
+            && (t.len..t.len + count).all(|k| !vm.prototypes_hold_index(k as f64))
+    };
+    if plain
+        && let Some(items) = dense_mut(vm, t.id)
         && items.len() == t.len
     {
         items.splice(0..0, args.iter().cloned());
@@ -702,6 +715,27 @@ fn to_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     super::object_proto_to_string(vm, &object, &[])
 }
 
+/// `toLocaleString` : chaque élément par sa propre méthode
+/// `toLocaleString`, `null` et `undefined` donnant la chaîne vide.
+fn to_locale_string(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
+    let t = target(vm, this)?;
+    let mut out = String::new();
+    for k in 0..t.len {
+        vm.tick(1)?;
+        if k > 0 {
+            out.push(',');
+        }
+        let value = get(vm, &t, k)?;
+        if value.is_nullish() {
+            continue;
+        }
+        let method = vm.get(&value, "toLocaleString")?;
+        let text = vm.call(&method, &value, &[])?;
+        out.push_str(&vm.to_string(&text)?);
+    }
+    Ok(Value::string(&out))
+}
+
 /// Copie des éléments `0..len`, trous lus comme `undefined`.
 fn snapshot(vm: &mut Vm, t: &Target) -> JsResult<Vec<Value>> {
     check_length(vm, t.len)?;
@@ -715,8 +749,13 @@ fn snapshot(vm: &mut Vm, t: &Target) -> JsResult<Vec<Value>> {
 
 fn to_reversed(vm: &mut Vm, this: &Value, _args: &[Value]) -> JsResult {
     let t = target(vm, this)?;
-    let mut out = snapshot(vm, &t)?;
-    out.reverse();
+    check_length(vm, t.len)?;
+    // Les éléments sont lus du dernier au premier.
+    let mut out = Vec::with_capacity(t.len);
+    for k in (0..t.len).rev() {
+        vm.tick(1)?;
+        out.push(get(vm, &t, k)?);
+    }
     Ok(vm.new_array(out))
 }
 
@@ -724,9 +763,23 @@ fn to_spliced(vm: &mut Vm, this: &Value, args: &[Value]) -> JsResult {
     let t = target(vm, this)?;
     let (start, count) = splice_bounds(vm, args, t.len)?;
     let inserted = args.get(2..).unwrap_or(&[]);
-    check_length(vm, t.len - count + inserted.len())?;
-    let mut out = snapshot(vm, &t)?;
-    out.splice(start..start + count, inserted.iter().cloned());
+    let len = t.len - count + inserted.len();
+    #[expect(clippy::cast_precision_loss, reason = "comparaison à 2^53 - 1")]
+    if len as f64 > MAX_SAFE_LENGTH {
+        return Err(vm.type_error("longueur de tableau dépassée"));
+    }
+    check_length(vm, len)?;
+    // Les éléments retirés ne sont pas lus.
+    let mut out = Vec::with_capacity(len);
+    for k in 0..start {
+        vm.tick(1)?;
+        out.push(get(vm, &t, k)?);
+    }
+    out.extend(inserted.iter().cloned());
+    for k in start + count..t.len {
+        vm.tick(1)?;
+        out.push(get(vm, &t, k)?);
+    }
     Ok(vm.new_array(out))
 }
 
@@ -1301,9 +1354,45 @@ pub(super) fn install(vm: &mut Vm) {
         ("toSpliced", 2, to_spliced),
         ("with", 2, with),
         ("toString", 0, to_string),
-        ("toLocaleString", 0, to_string),
+        ("toLocaleString", 0, to_locale_string),
     ];
     for (name, arity, func) in methods {
         vm.define_method(proto, name, *arity, *func);
     }
+    // `Array.prototype[Symbol.unscopables]` : les méthodes récentes, qu'un
+    // `with (tableau)` ne doit pas masquer des variables du même nom.
+    let unscopables = vm.heap.alloc(Object::new(None, Kind::Ordinary));
+    for name in [
+        "at",
+        "copyWithin",
+        "entries",
+        "fill",
+        "find",
+        "findIndex",
+        "findLast",
+        "findLastIndex",
+        "flat",
+        "flatMap",
+        "includes",
+        "keys",
+        "toReversed",
+        "toSorted",
+        "toSpliced",
+        "values",
+    ] {
+        vm.heap
+            .get_mut(unscopables)
+            .props
+            .insert(Arc::from(name), Property::data(Value::Bool(true)));
+    }
+    let key = PropertyKey::Symbol(vm.well_known.unscopables.clone());
+    vm.heap.get_mut(proto).insert_prop(
+        key,
+        Property {
+            slot: Slot::Data(Value::Object(unscopables)),
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        },
+    );
 }
