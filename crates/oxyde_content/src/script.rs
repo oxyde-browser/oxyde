@@ -43,6 +43,7 @@ mod storage;
 mod tokens;
 mod traversal;
 mod tree;
+mod workers;
 
 use events::{Listener, add_event_listener, dispatch, remove_event_listener};
 
@@ -153,6 +154,10 @@ struct DomHost {
     frame_requests: Vec<(NodeId, Url)>,
     /// Version du document au dernier relevé des cadres.
     frames_scanned: Option<u64>,
+    /// Nombre de workers créés par la page.
+    workers: usize,
+    /// Contenu et type des adresses `blob:` vivantes.
+    blob_urls: HashMap<String, (Vec<u8>, String)>,
     /// Adresse de base du document de la page (`<base href>`), et la
     /// version du document pour laquelle elle vaut.
     base_cache: Option<(u64, String)>,
@@ -2292,6 +2297,8 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
             frame_sources: HashMap::new(),
             frame_requests: Vec::new(),
             frames_scanned: None,
+            workers: 0,
+            blob_urls: HashMap::new(),
             base_cache: None,
             layout_env: None,
             geometry: None,
@@ -2502,7 +2509,13 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     // `Blob`, `Request`, `Response` et le `fetch` du standard, bâti sur
     // celui du moteur.
     let factory = vm.eval_script(include_str!("script/fetch.js"))?;
-    let fetch = vm.call(&factory, &Value::Undefined, &[original_fetch])?;
+    let helpers = [
+        original_fetch,
+        Value::Object(vm.new_function("blobUrlPut", 3, workers::blob_url_put)),
+        Value::Object(vm.new_function("blobUrlGet", 1, workers::blob_url_get)),
+        Value::Object(vm.new_function("blobUrlDelete", 1, workers::blob_url_delete)),
+    ];
+    let fetch = vm.call(&factory, &Value::Undefined, &helpers)?;
     // `XMLHttpRequest`, écrit en JavaScript : le script rend une fabrique
     // qui reçoit le `fetch` du moteur ; une page qui remplace
     // `window.fetch` ne change pas son comportement.
@@ -2510,6 +2523,10 @@ fn install(vm: &mut Vm, url: &Url) -> JsResult<()> {
     let xhr = vm.call(&factory, &Value::Undefined, std::slice::from_ref(&fetch))?;
     vm.define_hidden(global, "XMLHttpRequest", xhr);
     vm.define_hidden(global, "fetch", fetch);
+    // `Worker` : son script se lit par le `fetch` du standard.
+    let workers = vm.eval_script(include_str!("script/workers.js"))?;
+    let create = Value::Object(vm.new_function("createWorker", 4, workers::create_worker));
+    vm.call(&workers, &Value::Undefined, &[create])?;
     Ok(())
 }
 

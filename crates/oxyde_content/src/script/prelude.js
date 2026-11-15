@@ -16,10 +16,8 @@
 // Les composants sont, dans l'ordre : href, protocol, username, password,
 // host, hostname, port, pathname, search, hash, origin.
 //
-// LIMITES CONNUES : `TextDecoder` ne lit pas les encodages à plusieurs octets
-// (`Shift_JIS`, `EUC-JP`, `Big5`, `EUC-KR`, `GBK`, `gb18030`, `ISO-2022-JP`), et
-// son option `stream` est sans effet en UTF-8 ; `structuredClone`
-// ne transfère rien et ignore les types exotiques ; `matchMedia` ne comprend
+// LIMITES CONNUES : `structuredClone` ne transfère que les `ArrayBuffer` et
+// les `MessagePort`, et rend un `Blob` tel quel au lieu de le copier ; `matchMedia` ne comprend
 // que les largeurs, les hauteurs et `prefers-color-scheme`.
 (function (parseUrl, changeUrl, observe, disconnect, takeRecords, locationHref, navigate, focusedElement, randomBytes,
   fireTrusted, encodingName, decodeBytes) {
@@ -774,6 +772,20 @@
   expose("AbortController", AbortController);
 
   // ---- structuredClone (HTML Standard §2.7) ---------------------------------------------------------------------------
+  // Les valeurs peuvent venir d'un autre royaume (cadre, worker) : leur
+  // nature se lit à leur étiquette, pas à `instanceof`, et la copie est
+  // toujours faite d'objets de ce royaume-ci.
+  const brandOf = (value) => Object.prototype.toString.call(value).slice(8, -1);
+  const VIEWS = new Set(["Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array", "BigUint64Array"]);
+  const ERRORS = new Set(["Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError",
+    "URIError"]);
+  const copyBuffer = (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    const copy = new ArrayBuffer(bytes.length);
+    new Uint8Array(copy).set(bytes);
+    return copy;
+  };
   function cloneValue(value, seen) {
     if (value === null || (typeof value !== "object" && typeof value !== "function")) {
       if (typeof value === "symbol") {
@@ -785,29 +797,44 @@
       throw new DOMException("une fonction ne peut pas être clonée", "DataCloneError");
     }
     if (seen.has(value)) return seen.get(value);
+    const brand = brandOf(value);
     let copy;
-    if (value instanceof Date) {
-      copy = new Date(value.getTime());
+    if (brand === "Date") {
+      copy = new Date(Date.prototype.getTime.call(value));
       seen.set(value, copy);
-    } else if (value instanceof RegExp) {
+    } else if (brand === "RegExp") {
       copy = new RegExp(value.source, value.flags);
       seen.set(value, copy);
-    } else if (value instanceof Map) {
+    } else if (brand === "Map") {
       copy = new Map();
       seen.set(value, copy);
-      for (const [key, item] of value) copy.set(cloneValue(key, seen), cloneValue(item, seen));
-    } else if (value instanceof Set) {
+      Map.prototype.forEach.call(value, (item, key) => {
+        copy.set(cloneValue(key, seen), cloneValue(item, seen));
+      });
+    } else if (brand === "Set") {
       copy = new Set();
       seen.set(value, copy);
-      for (const item of value) copy.add(cloneValue(item, seen));
-    } else if (value instanceof ArrayBuffer) {
-      copy = value.slice(0);
+      Set.prototype.forEach.call(value, (item) => {
+        copy.add(cloneValue(item, seen));
+      });
+    } else if (brand === "ArrayBuffer") {
+      copy = copyBuffer(value);
       seen.set(value, copy);
     } else if (ArrayBuffer.isView(value)) {
-      copy = value.slice ? value.slice() : new DataView(value.buffer.slice(0));
+      // Le tampon est cloné une fois, même vu par plusieurs tableaux.
+      const buffer = cloneValue(value.buffer, seen);
+      copy = brand === "DataView"
+        ? new DataView(buffer, value.byteOffset, value.byteLength)
+        : new (VIEWS.has(brand) ? global[brand] : Uint8Array)(buffer, value.byteOffset, value.length);
       seen.set(value, copy);
-    } else if (value instanceof Error) {
-      copy = new value.constructor(value.message);
+    } else if (brand === "Error" || brand === "DOMException") {
+      const name = String(value.name);
+      copy = brand === "DOMException"
+        ? new DOMException(String(value.message), name)
+        : new (ERRORS.has(name) ? global[name] : Error)(String(value.message));
+      seen.set(value, copy);
+    } else if (brand === "Boolean" || brand === "Number" || brand === "String" || brand === "BigInt") {
+      copy = Object(value.valueOf());
       seen.set(value, copy);
     } else if (Array.isArray(value)) {
       copy = [];
@@ -818,15 +845,48 @@
       copy.length = value.length;
     } else if (typeof value.nodeType === "number") {
       throw new DOMException("un nœud du DOM ne peut pas être cloné", "DataCloneError");
-    } else {
+    } else if (brand === "Blob" || brand === "File") {
+      // Immuable : l'objet lui-même tient lieu de copie.
+      copy = value;
+      seen.set(value, copy);
+    } else if (brand === "Object") {
       copy = {};
       seen.set(value, copy);
       for (const key of Object.keys(value)) copy[key] = cloneValue(value[key], seen);
+    } else {
+      throw new DOMException("un objet « " + brand + " » ne peut pas être cloné", "DataCloneError");
     }
     return copy;
   }
-  expose("structuredClone", function structuredClone(value) {
-    return cloneValue(value, new Map());
+  expose("structuredClone", function structuredClone(value, options = undefined) {
+    if (arguments.length < 1) throw new TypeError("structuredClone : une valeur est requise");
+    const seen = new Map();
+    const list = options === undefined || options === null ? undefined : options.transfer;
+    const transferred = [];
+    if (list !== undefined && list !== null) {
+      for (const item of list) {
+        const brand = item === null || typeof item !== "object" ? "" : brandOf(item);
+        if ((brand !== "ArrayBuffer" && brand !== "MessagePort") || seen.has(item)) {
+          throw new DOMException("cet objet ne peut pas être transféré", "DataCloneError");
+        }
+        if (brand === "ArrayBuffer") {
+          if (item.detached) {
+            throw new DOMException("ce tampon est déjà détaché", "DataCloneError");
+          }
+          // Le contenu passe à la copie ; le tampon d'origine est détaché
+          // une fois le clonage réussi.
+          seen.set(item, copyBuffer(item));
+          transferred.push(item);
+        } else {
+          // Un port vit dans la machine de la page : il change de mains
+          // tel quel.
+          seen.set(item, item);
+        }
+      }
+    }
+    const copy = cloneValue(value, seen);
+    for (const buffer of transferred) ArrayBuffer.prototype.transfer.call(buffer);
+    return copy;
   });
 
   // ---- Événements d'interface (UI Events) ---------------------------------------------------------------------------------
@@ -1455,24 +1515,30 @@
       a.#other = b;
       b.#other = a;
     }
-    postMessage(message) {
+    postMessage(message, options = undefined) {
+      const list = Array.isArray(options) ? options : options?.transfer;
+      const ports = list === undefined || list === null ? [] : Array.from(list);
+      if (ports.includes(this)) {
+        throw new DOMException("un port ne se transfère pas par lui-même", "DataCloneError");
+      }
+      const data = global.structuredClone(message, { transfer: ports });
       const other = this.#other;
       if (this.#closed || other === null || other.#closed) return;
-      other.#receive(global.structuredClone(message));
+      other.#receive(data, ports.filter((port) => port instanceof MessagePort));
     }
-    #receive(data) {
+    #receive(data, ports) {
       if (!this.#started) {
-        this.#queue.push(data);
+        this.#queue.push([data, ports]);
         return;
       }
       later(() => {
-        if (!this.#closed) this.dispatchEvent(new global.MessageEvent("message", { data }));
+        if (!this.#closed) this.dispatchEvent(new global.MessageEvent("message", { data, ports }));
       });
     }
     start() {
       if (this.#started) return;
       this.#started = true;
-      for (const data of this.#queue.splice(0)) this.#receive(data);
+      for (const [data, ports] of this.#queue.splice(0)) this.#receive(data, ports);
     }
     close() {
       this.#closed = true;

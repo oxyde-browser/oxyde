@@ -57,7 +57,7 @@ fn can_host(vm: &mut Vm, element: NodeId) -> bool {
 }
 
 /// Document vide d'un cadre neuf : `<html><head></head><body></body></html>`.
-fn blank_document(doc: &mut Document) -> NodeId {
+pub(super) fn blank_document(doc: &mut Document) -> NodeId {
     let document = doc.create_document();
     let html = doc.create_element("html", Namespace::Html, Vec::new());
     doc.append_child(document, html);

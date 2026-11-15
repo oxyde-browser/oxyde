@@ -6080,6 +6080,98 @@ mod tests {
         );
     }
 
+    /// Sert les requêtes de la page et fait avancer ses minuteurs jusqu'à
+    /// ce que plus rien ne soit demandé.
+    fn serve(p: &mut Page, files: &[(&str, &str)]) {
+        for round in 1..40 {
+            for request in p.take_fetches() {
+                let found = files.iter().find(|(path, _)| *path == request.url.path());
+                let _ = p.complete_fetch(
+                    request.id,
+                    Ok(FetchResponse {
+                        url: request.url.clone(),
+                        status: if found.is_some() { 200 } else { 404 },
+                        headers: vec![("content-type".to_owned(), "text/javascript".to_owned())],
+                        body: found
+                            .map(|(_, body)| body.as_bytes().to_vec())
+                            .unwrap_or_default(),
+                    }),
+                );
+            }
+            let _ = p.tick(Instant::now() + Duration::from_secs(round));
+        }
+    }
+
+    #[test]
+    fn workers_run_in_their_own_realm() {
+        let mut p = page(
+            "<body><script>
+               const out = [];
+               const done = () => document.body.setAttribute('data-out', out.join(' '));
+               const w = new Worker('/w.js', { name: 'calcul' });
+               w.onmessage = (e) => {
+                 out.push(JSON.stringify(e.data), e.data.liste instanceof Array, e.data.quand instanceof Date);
+                 done();
+               };
+               w.onerror = (e) => { out.push('erreur:' + e.message.includes('boum')); done(); };
+               const tampon = new Uint8Array([1, 2, 3]).buffer;
+               w.postMessage({ n: 20, tampon, ensemble: new Set([1]) }, [tampon]);
+               out.push('détaché:' + tampon.byteLength);
+               try { w.postMessage(() => 1); } catch (e) { out.push(e.name); }
+               w.postMessage('boum');
+               new Worker('/absent.js').onerror = () => { out.push('absent'); done(); };
+               const inline = new Worker(URL.createObjectURL(new Blob(['postMessage(typeof window)'])));
+               inline.addEventListener('message', (e) => { out.push('blob:' + e.data); done(); });
+               const canal = new MessageChannel();
+               canal.port2.onmessage = (e) => { out.push('port:' + e.data + ':' + e.ports.length); done(); };
+               const autre = new MessageChannel();
+               canal.port1.postMessage('via', [autre.port1]);
+             </script>",
+        );
+        p.run_scripts();
+        serve(
+            &mut p,
+            &[
+                (
+                    "/w.js",
+                    "importScripts('lib.js');
+                     const local = 2;
+                     onmessage = (e) => {
+                       if (e.data === 'boum') throw new Error('boum');
+                       postMessage({
+                         double: doubler(e.data.n) + local,
+                         env: [typeof window, typeof document, self instanceof WorkerGlobalScope, name,
+                               e.data.ensemble instanceof Set, e.data.tampon.byteLength].join(),
+                         liste: [1, 2],
+                         quand: new Date(0),
+                       });
+                     };",
+                ),
+                ("/lib.js", "const doubler = (n) => n * 2;"),
+            ],
+        );
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        let out = doc
+            .element(body)
+            .and_then(|e| e.attr("data-out"))
+            .unwrap_or_default()
+            .to_owned();
+        for expected in [
+            "détaché:0",
+            "DataCloneError",
+            "\"double\":42",
+            "undefined,undefined,true,calcul,true,3",
+            "true true",
+            "erreur:true",
+            "absent",
+            "blob:undefined",
+            "port:via:1",
+        ] {
+            assert!(out.contains(expected), "« {expected} » manque dans : {out}");
+        }
+    }
+
     #[test]
     fn xhr_parses_xml_responses() {
         let mut p = page(

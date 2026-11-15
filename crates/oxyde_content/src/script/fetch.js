@@ -2,7 +2,11 @@
 // `FileReader`, `Request`, `Response` et la fonction `fetch` qui les relie
 // au réseau. Le script rend une fabrique appelée avec le `fetch` du moteur,
 // qui prend une adresse et `{ method, headers, binaryBody }` et rend un
-// objet brut (`status`, `url`, `headers.forEach`, `binary()`…).
+// objet brut (`status`, `url`, `headers.forEach`, `binary()`…), et avec le
+// registre des adresses `blob:` de la page, commun à ses royaumes :
+//   blobUrlPut(adresse, octets, type) -> faux si le registre est plein ;
+//   blobUrlGet(adresse)    -> [octets, type], ou null ;
+//   blobUrlDelete(adresse).
 //
 // Les octets voyagent entre le moteur et ce script sous forme de « chaînes
 // binaires » : un caractère de code 0 à 255 par octet.
@@ -10,8 +14,9 @@
 // LIMITES CONNUES : pas de flux (`body` vaut toujours `null`, `Blob.stream`
 // manque) ; `Response.formData()` ne lit que les formulaires encodés dans
 // l'adresse ; les requêtes ne sont pas mises en cache ; `Request.signal`
-// n'interrompt pas une requête déjà partie.
-(function (nativeFetch) {
+// n'interrompt pas une requête déjà partie ; une adresse `blob:` ne se lit
+// que par `fetch`, `XMLHttpRequest` et `Worker` (pas par `<img src>`).
+(function (nativeFetch, blobUrlPut, blobUrlGet, blobUrlDelete) {
   "use strict";
   const global = globalThis;
   const define = Object.defineProperty;
@@ -119,6 +124,29 @@
   }
   tag(File, "File");
   expose("File", File);
+
+  // ---- Adresses blob: (File API §8) ---------------------------------------------------
+  define(global.URL, "createObjectURL", {
+    value: function createObjectURL(blob) {
+      const bytes = blobBytes(blob);
+      const random = global.crypto.getRandomValues(new Uint8Array(16));
+      const hex = [...random].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const id = hex.slice(0, 8) + "-" + hex.slice(8, 12) + "-" + hex.slice(12, 16) + "-"
+        + hex.slice(16, 20) + "-" + hex.slice(20);
+      const address = "blob:" + global.location.origin + "/" + id;
+      if (!blobUrlPut(address, toBinary(bytes), blob.type)) {
+        throw new global.DOMException("trop d'adresses blob: en vie", "QuotaExceededError");
+      }
+      return address;
+    },
+    writable: true, enumerable: false, configurable: true,
+  });
+  define(global.URL, "revokeObjectURL", {
+    value: function revokeObjectURL(address) {
+      blobUrlDelete(String(address));
+    },
+    writable: true, enumerable: false, configurable: true,
+  });
 
   // ---- FileReader ------------------------------------------------------------------------
   class FileReader extends global.EventTarget {
@@ -461,6 +489,19 @@
     const signal = request.signal;
     if (signal.aborted) {
       return Promise.reject(signal.reason ?? new global.DOMException("requête abandonnée", "AbortError"));
+    }
+    if (request.url.startsWith("blob:")) {
+      const found = request.method === "GET" ? blobUrlGet(request.url) : null;
+      if (found === null) return Promise.reject(new TypeError("adresse blob: inconnue ou révoquée"));
+      const headers = new global.Headers();
+      if (found[1] !== "") headers.append("content-type", found[1]);
+      headers.append("content-length", String(found[0].length));
+      const response = new Response(null);
+      responses.set(response, {
+        status: 200, statusText: "OK", headers, type: "basic", url: request.url, redirected: false,
+      });
+      bodies.set(response, { bytes: fromBinary(found[0]), used: false });
+      return Promise.resolve(response);
     }
     const body = bodyOf(request);
     const options = { method: request.method, headers: [...request.headers] };
