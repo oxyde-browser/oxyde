@@ -6715,6 +6715,29 @@ mod tests {
     }
 
     #[test]
+    fn svg_paint_properties_cascade_and_are_read_back() {
+        let mut p = page(
+            "<body><style>.i { fill: currentColor; stroke: url(#g) red; stroke-width: 2px }</style>
+             <svg id=s class=i style='color:rgb(1,2,3)' width=30 height=20>
+               <rect id=r width=5 height=5 stroke-dasharray='4 2' fill-rule=evenodd /></svg>
+             <script>
+               const cs = getComputedStyle(document.getElementById('r'));
+               const box = document.getElementById('s').getBoundingClientRect();
+               document.body.setAttribute('data-out', [cs.fill, cs.stroke, cs.strokeWidth,
+                 cs.strokeDasharray, cs.fillRule, cs.strokeLinecap, cs.fillOpacity,
+                 box.width, box.height].join('|'));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("rgb(1, 2, 3)|url(\"#g\") rgb(255, 0, 0)|2px|4px, 2px|evenodd|butt|1|30|20")
+        );
+    }
+
+    #[test]
     fn frames_are_painted_inside_their_content_box() {
         use oxyde_paint::DisplayItem;
         let mut text = TextContext::new();

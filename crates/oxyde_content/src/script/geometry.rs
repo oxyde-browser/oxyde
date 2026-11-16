@@ -963,6 +963,58 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
                 None => "none".to_owned(),
             }
         }
+        "fill" | "stroke" => {
+            let paint = if name == "fill" {
+                &style.svg.fill
+            } else {
+                &style.svg.stroke
+            };
+            match paint {
+                oxyde_css::SvgPaint::None => "none".to_owned(),
+                oxyde_css::SvgPaint::Color(c) => color(*c),
+                oxyde_css::SvgPaint::CurrentColor => color(style.color),
+                oxyde_css::SvgPaint::Server(id, None) => format!("url(\"#{id}\")"),
+                oxyde_css::SvgPaint::Server(id, Some(fallback)) => {
+                    format!("url(\"#{id}\") {}", color(*fallback))
+                }
+            }
+        }
+        "stroke-width" => px(style.svg.stroke_width),
+        "stroke-dashoffset" => px(style.svg.dash_offset),
+        "fill-opacity" => format!("{}", style.svg.fill_opacity),
+        "stroke-opacity" => format!("{}", style.svg.stroke_opacity),
+        "stroke-miterlimit" => format!("{}", style.svg.miter_limit),
+        "fill-rule" => if style.svg.even_odd {
+            "evenodd"
+        } else {
+            "nonzero"
+        }
+        .to_owned(),
+        "stroke-linecap" => match style.svg.line_cap {
+            oxyde_css::SvgLineCap::Butt => "butt",
+            oxyde_css::SvgLineCap::Round => "round",
+            oxyde_css::SvgLineCap::Square => "square",
+        }
+        .to_owned(),
+        "stroke-linejoin" => match style.svg.line_join {
+            oxyde_css::SvgLineJoin::Miter => "miter",
+            oxyde_css::SvgLineJoin::Round => "round",
+            oxyde_css::SvgLineJoin::Bevel => "bevel",
+        }
+        .to_owned(),
+        "stroke-dasharray" => {
+            if style.svg.dash_array.is_empty() {
+                "none".to_owned()
+            } else {
+                style
+                    .svg
+                    .dash_array
+                    .iter()
+                    .map(|length| px(*length))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+        }
         "translate" => match style.translate {
             Some(oxyde_css::TransformFunction::Translate(x, y)) => {
                 let part = |value: Size| match value {
