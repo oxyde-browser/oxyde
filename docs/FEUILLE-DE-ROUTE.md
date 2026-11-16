@@ -1070,6 +1070,9 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
       `getComputedStyle`. Une cellule hors d'un tableau aligne son contenu
       (`vertical-align`). Tests de référence : 3 393 → 3 406. Limite : une
       rotation autour d'un axe autre que z est sans effet.
+- [x] Pile du fil principal portée à 16 Mio (1 Mio par défaut sous Windows) : une page de
+      300 éléments imbriqués faisait déborder la pile à la mise en page et tuait le
+      processus ; la profondeur maximale (512) en demande un peu plus de 2 Mio.
 - [ ] La recherche de la boîte sous un point suit encore l'ancien ordre
       d'empilement, et voit une boîte collante à sa place dans le flux.
 - [x] Tableaux : `<col>` et `<colgroup>` (largeur, `span`, attribut `width` ; une

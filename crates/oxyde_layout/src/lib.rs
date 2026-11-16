@@ -47,6 +47,11 @@ use oxyde_text::{TextBrush, TextContext, TextLayout, css_font_family};
 /// Profondeur maximale de l'arbre mis en page. Au-delà, les descendants sont
 /// ignorés : la récursion (donc la pile) reste bornée même face à un document
 /// hostile. Blink applique la même borne (512) dès l'analyse.
+///
+/// Chaque niveau coûte environ 4 Kio de pile : la profondeur maximale en
+/// demande un peu plus de 2 Mio. Les binaires qui mettent en page sur leur
+/// fil principal sont liés avec une pile de 16 Mio (voir
+/// `crates/oxyde/build.rs`) ; un fil créé pour cela doit en demander autant.
 const MAX_DEPTH: usize = 512;
 
 /// Profondeur maximale d'imbrication de boîtes « ajustées au contenu » pour
@@ -2744,8 +2749,17 @@ mod tests {
 
     #[test]
     fn deep_nesting_is_bounded() {
-        let html = format!("{}x", "<div>".repeat(5000));
-        let (_, tree) = layout(&html, 300.0);
-        assert!(tree.root.is_some());
+        // Sur une pile de la taille de celle du fil principal des binaires
+        // (voir `MAX_DEPTH`) : celle d'un fil de test, 2 Mio, est trop juste
+        // pour la profondeur maximale.
+        let worker = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let html = format!("{}x", "<div>".repeat(5000));
+                let (_, tree) = layout(&html, 300.0);
+                tree.root.is_some()
+            })
+            .expect("fil de test");
+        assert!(worker.join().expect("mise en page sans débordement"));
     }
 }
