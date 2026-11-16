@@ -57,6 +57,9 @@ const MAX_CHAIN: usize = 8;
 /// Nombre maximal de surfaces intermédiaires ouvertes à la fois (opacité de
 /// groupe, découpe, masque) : chacune a la taille du rendu.
 const MAX_LAYERS: usize = 6;
+/// Nombre maximal d'éléments dessinés par rendu : des `use` imbriqués
+/// peuvent multiplier un petit document sans fin.
+const MAX_ELEMENTS: u32 = 200_000;
 /// Pixels de rendu par pixel CSS pour un `<svg>` de la page.
 pub(crate) const PAGE_SCALE: f32 = 2.0;
 /// Taille d'un `<svg>` sans dimensions ni `viewBox`.
@@ -784,6 +787,8 @@ struct Scene<'a> {
     text: Option<RefCell<&'a mut TextContext>>,
     /// Surfaces intermédiaires ouvertes en ce moment.
     layers: Cell<usize>,
+    /// Éléments qu'il reste permis de dessiner (voir [`MAX_ELEMENTS`]).
+    budget: Cell<u32>,
 }
 
 impl Scene<'_> {
@@ -1067,6 +1072,10 @@ impl Scene<'_> {
         if depth > MAX_DEPTH {
             return;
         }
+        let Some(left) = self.budget.get().checked_sub(1) else {
+            return;
+        };
+        self.budget.set(left);
         let (Some(el), Some(style)) = (self.doc.element(node), self.styles.get(node)) else {
             return;
         };
@@ -1644,6 +1653,7 @@ pub(crate) fn render(
         index,
         text: text.map(RefCell::new),
         layers: Cell::new(0),
+        budget: Cell::new(MAX_ELEMENTS),
     };
     scene.draw_children(&mut pixmap, root, inner, port, None, 0);
     // `tiny-skia` garde des couleurs prémultipliées ; l'image ne l'est pas.
