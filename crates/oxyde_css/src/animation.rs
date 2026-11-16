@@ -475,6 +475,9 @@ fn all_longhands() -> Vec<Longhand> {
         Longhand::VerticalAlign,
         Longhand::AspectRatio,
         Longhand::Transform,
+        Longhand::Translate,
+        Longhand::Rotate,
+        Longhand::Scale,
         Longhand::TransformOriginX,
         Longhand::TransformOriginY,
     ];
@@ -593,6 +596,22 @@ fn lerp_function(
         }
         _ => return None,
     })
+}
+
+/// Interpole `translate`, `rotate` ou `scale` ; `none` vaut la valeur
+/// neutre de l'autre bout.
+fn lerp_single(
+    a: Option<TransformFunction<Size>>,
+    b: Option<TransformFunction<Size>>,
+    t: f32,
+) -> Option<TransformFunction<Size>> {
+    let (a, b) = match (a, b) {
+        (None, None) => return None,
+        (Some(a), None) => (a, neutral(&a)),
+        (None, Some(b)) => (neutral(&b), b),
+        (Some(a), Some(b)) => (a, b),
+    };
+    lerp_function(&a, &b, t).or(Some(if t < 0.5 { a } else { b }))
 }
 
 fn lerp_transform(a: Option<&Functions>, b: Option<&Functions>, t: f32) -> Option<Arc<Functions>> {
@@ -796,6 +815,9 @@ fn interpolate(
         Longhand::Transform => {
             out.transform = lerp_transform(from.transform.as_deref(), to.transform.as_deref(), t);
         }
+        Longhand::Translate => out.translate = lerp_single(from.translate, to.translate, t),
+        Longhand::Rotate => out.rotate = lerp_single(from.rotate, to.rotate, t),
+        Longhand::Scale => out.scale = lerp_single(from.scale, to.scale, t),
         _ => discrete(out),
     }
 }

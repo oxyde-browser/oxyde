@@ -527,12 +527,33 @@ pub struct ComputedStyle {
     pub aspect_ratio: Option<f32>,
     /// `transform` ; `None` : `none`.
     pub transform: Option<Arc<[TransformFunction<Size>]>>,
+    /// `translate` ; `None` : `none`.
+    pub translate: Option<TransformFunction<Size>>,
+    /// `rotate` ; `None` : `none`.
+    pub rotate: Option<TransformFunction<Size>>,
+    /// `scale` ; `None` : `none`.
+    pub scale: Option<TransformFunction<Size>>,
     /// `transform-origin`, rapporté à la boîte de bordure.
     pub transform_origin: (Size, Size),
     /// Propriétés `animation-*` ; `None` : aucune n'est déclarée.
     pub animation: Option<Arc<AnimationStyle>>,
     /// Propriétés `transition-*` ; `None` : aucune n'est déclarée.
     pub transition: Option<Arc<TransitionStyle>>,
+}
+
+/// Matrice d'une fonction de transformation ; les pourcentages se
+/// rapportent à une boîte de bordure `width` × `height`.
+fn function_matrix(function: TransformFunction<Size>, width: f32, height: f32) -> Affine {
+    match function {
+        TransformFunction::Translate(x, y) => Affine::translate(
+            x.resolve(width).unwrap_or(0.0),
+            y.resolve(height).unwrap_or(0.0),
+        ),
+        TransformFunction::Scale(x, y) => Affine::scale(x, y),
+        TransformFunction::Rotate(angle) => Affine::rotate(angle),
+        TransformFunction::Skew(x, y) => Affine::skew(x, y),
+        TransformFunction::Matrix(m) => Affine(m),
+    }
 }
 
 impl ComputedStyle {
@@ -619,6 +640,9 @@ impl ComputedStyle {
             width_keyword: SizeKeyword::None,
             aspect_ratio: None,
             transform: None,
+            translate: None,
+            rotate: None,
+            scale: None,
             transform_origin: (Size::Percent(50.0), Size::Percent(50.0)),
             animation: None,
             transition: None,
@@ -639,27 +663,40 @@ impl ComputedStyle {
         let list = self.transform.as_ref()?;
         let mut matrix = Affine::IDENTITY;
         for function in list.iter() {
-            let step = match *function {
-                TransformFunction::Translate(x, y) => Affine::translate(
-                    x.resolve(width).unwrap_or(0.0),
-                    y.resolve(height).unwrap_or(0.0),
-                ),
-                TransformFunction::Scale(x, y) => Affine::scale(x, y),
-                TransformFunction::Rotate(angle) => Affine::rotate(angle),
-                TransformFunction::Skew(x, y) => Affine::skew(x, y),
-                TransformFunction::Matrix(m) => Affine(m),
-            };
-            matrix = matrix.then_inner(step);
+            matrix = matrix.then_inner(function_matrix(*function, width, height));
         }
         Some(matrix)
     }
 
+    /// Vrai si la boîte porte une transformation, même sans effet :
+    /// `transform`, `translate`, `rotate` ou `scale` autre que `none`.
+    #[must_use]
+    pub fn is_transformed(&self) -> bool {
+        self.transform.is_some()
+            || self.translate.is_some()
+            || self.rotate.is_some()
+            || self.scale.is_some()
+    }
+
     /// Transformation de la boîte, dans le repère dont l'origine est le coin
     /// supérieur gauche de sa boîte de bordure de taille `width` × `height` ;
-    /// `None` sans `transform`.
+    /// `None` sans transformation. `translate`, `rotate` et `scale`
+    /// s'appliquent dans cet ordre, avant `transform` (CSS Transforms 2).
     #[must_use]
     pub fn transform_matrix(&self, width: f32, height: f32) -> Option<Affine> {
-        let matrix = self.transform_functions_matrix(width, height)?;
+        if !self.is_transformed() {
+            return None;
+        }
+        let mut matrix = Affine::IDENTITY;
+        for function in [self.translate, self.rotate, self.scale]
+            .into_iter()
+            .flatten()
+        {
+            matrix = matrix.then_inner(function_matrix(function, width, height));
+        }
+        if let Some(list) = self.transform_functions_matrix(width, height) {
+            matrix = matrix.then_inner(list);
+        }
         let origin_x = self.transform_origin.0.resolve(width).unwrap_or(0.0);
         let origin_y = self.transform_origin.1.resolve(height).unwrap_or(0.0);
         Some(
@@ -861,6 +898,9 @@ pub(crate) fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, pro
         }
         Longhand::AspectRatio => style.aspect_ratio = from.aspect_ratio,
         Longhand::Transform => style.transform = from.transform.clone(),
+        Longhand::Translate => style.translate = from.translate,
+        Longhand::Rotate => style.rotate = from.rotate,
+        Longhand::Scale => style.scale = from.scale,
         Longhand::TransformOriginX => style.transform_origin.0 = from.transform_origin.0,
         Longhand::TransformOriginY => style.transform_origin.1 = from.transform_origin.1,
         Longhand::Height => style.height = from.height,
@@ -1209,6 +1249,18 @@ pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<
                             .collect(),
                     )
                 };
+            }
+        }
+        Longhand::Translate | Longhand::Rotate | Longhand::Scale => {
+            if let Value::Transform(list) = &decl.value {
+                let value = list
+                    .first()
+                    .map(|function| function.map(|length| length_px(length, fs, cx)));
+                match property {
+                    Longhand::Translate => style.translate = value,
+                    Longhand::Rotate => style.rotate = value,
+                    _ => style.scale = value,
+                }
             }
         }
         Longhand::TransformOriginX | Longhand::TransformOriginY => {

@@ -307,7 +307,7 @@ fn document_order(doc: &Document, styles: &StyleMap) -> Vec<u32> {
 pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
     // Une boîte transformée s'empile comme une boîte positionnée.
     let layer = |fragment: &Fragment| match fragment {
-        Fragment::Box(b) if b.style.is_positioned() || b.style.transform.is_some() => {
+        Fragment::Box(b) if b.style.is_positioned() || b.style.is_transformed() => {
             Some(b.style.z_index.unwrap_or(0))
         }
         _ => None,
@@ -1135,6 +1135,26 @@ impl Engine<'_> {
                 height = height.max(to_content_h(min));
             }
         }
+        // Une cellule plus haute que son contenu l'aligne verticalement.
+        // Dans un tableau, c'est lui qui s'en charge : la cellule y est
+        // mise en page à la hauteur de son contenu, et rien ne bouge ici.
+        if style.display == Display::TableCell {
+            let free = (height - content_h).max(0.0);
+            let offset = match style.vertical_align {
+                oxyde_css::VerticalAlign::Middle => free / 2.0,
+                oxyde_css::VerticalAlign::Bottom => free,
+                _ => 0.0,
+            };
+            if offset > 0.0 {
+                for child in &mut children {
+                    child.translate(0.0, offset);
+                }
+                // La position statique des boîtes hors flux suit le contenu.
+                for item in self.out_of_flow.iter_mut().skip(out_of_flow_start) {
+                    item.static_y += offset;
+                }
+            }
+        }
         let border_box = Rect {
             x: border_x,
             y,
@@ -1145,7 +1165,7 @@ impl Engine<'_> {
         // Une boîte positionnée est le bloc conteneur de ses descendants
         // absolus : sa boîte de marge intérieure (la bordure exclue). Une
         // boîte transformée l'est aussi, y compris pour les boîtes fixes.
-        let transformed = style.transform.is_some();
+        let transformed = style.is_transformed();
         if style.is_positioned() || transformed {
             let padding_box = Rect {
                 x: border_box.x + bw.left,
@@ -2605,6 +2625,49 @@ mod tests {
         let a = find(&doc, root, "a").expect("fragment");
         let matrix = box_transform(a).expect("transformation");
         assert_eq!(matrix.apply(0.0, 0.0), (200.0, 100.0));
+    }
+
+    #[test]
+    fn translate_rotate_and_scale_apply_before_transform() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>\
+             <div id=a style='width:100px;height:50px;transform-origin:0 0;\
+                  translate:200px 100px;scale:2;transform:translate(10px,0)'></div>\
+             <div id=b style='width:10px;height:10px;rotate:x 90deg'></div>\
+             <div id=c style='width:10px;height:10px;rotate:none'></div>",
+            800.0,
+        );
+        let root = tree.root.as_ref().expect("racine");
+        let a = find(&doc, root, "a").expect("fragment");
+        // Translation, puis échelle, puis `transform` : (10, 0) doublé, puis déplacé.
+        let matrix = box_transform(a).expect("transformation");
+        assert_eq!(matrix.apply(0.0, 0.0), (220.0, 100.0));
+        assert_eq!(matrix.apply(100.0, 50.0), (420.0, 200.0));
+        // Une rotation hors du plan ne déplace rien, mais la boîte reste « transformée ».
+        let b = find(&doc, root, "b").expect("fragment");
+        assert!(b.style.is_transformed());
+        assert!(box_transform(b).expect("transformation").is_identity());
+        let c = find(&doc, root, "c").expect("fragment");
+        assert!(!c.style.is_transformed());
+    }
+
+    #[test]
+    fn a_cell_outside_a_table_aligns_its_content() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}\
+               .c{display:table-cell;position:relative;width:100px;height:100px}</style>\
+             <div class=c style='vertical-align:middle'>\
+               <div id=flux style='height:20px'></div>\
+               <div id=hors style='position:absolute;width:10px;height:10px'></div></div>\
+             <div id=c2 class=c style='vertical-align:bottom'><div id=bas style='height:20px'></div></div>\
+             <div id=c3 class=c><div id=haut style='height:20px'></div></div>",
+            800.0,
+        );
+        assert_eq!(rect(&doc, &tree, "flux").y, 40.0);
+        // La position statique d'une boîte hors flux suit le contenu.
+        assert_eq!(rect(&doc, &tree, "hors").y, 60.0);
+        assert_eq!(rect(&doc, &tree, "bas").y - rect(&doc, &tree, "c2").y, 80.0);
+        assert_eq!(rect(&doc, &tree, "haut").y - rect(&doc, &tree, "c3").y, 0.0);
     }
 
     #[test]

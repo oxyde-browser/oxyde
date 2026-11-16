@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --ref --publier css`, sur la su
 fenêtre de 800 × 600 points, puis comparé point par point à la page qu'il désigne
 par `<link rel="match">` (ou `mismatch` : elles doivent alors différer).
 
-**Tests réussis : 3393 / 7210 (47,1 %)**, dont 94 sur une page d'une seule couleur.
+**Tests réussis : 3406 / 7210 (47,2 %)**, dont 94 sur une page d'une seule couleur.
 
 Une réussite dit que le test et sa référence sont dessinés de la même façon, pas que
 ce dessin est juste : deux pages vides sont identiques. Les réussites « sur une page
@@ -107,13 +107,13 @@ locale de la suite.
 | `css/css-tables/tentative` | 2 / 20 (10,0 %) | 0 |
 | `css/css-tables/tentative/paint` | 3 / 6 (50,0 %) | 2 |
 | `css/css-transforms` | 201 / 410 (49,0 %) | 35 |
-| `css/css-transforms/animation` | 9 / 27 (33,3 %) | 5 |
+| `css/css-transforms/animation` | 10 / 27 (37,0 %) | 5 |
 | `css/css-transforms/document-styles` | 14 / 14 (100,0 %) | 0 |
 | `css/css-transforms/external-styles` | 13 / 13 (100,0 %) | 0 |
 | `css/css-transforms/gradientTransform` | 3 / 3 (100,0 %) | 0 |
 | `css/css-transforms/group` | 32 / 40 (80,0 %) | 0 |
-| `css/css-transforms/individual-transform` | 3 / 16 (18,8 %) | 0 |
-| `css/css-transforms/individual-transform/animation` | 0 / 2 (0,0 %) | 0 |
+| `css/css-transforms/individual-transform` | 13 / 16 (81,3 %) | 0 |
+| `css/css-transforms/individual-transform/animation` | 2 / 2 (100,0 %) | 0 |
 | `css/css-transforms/inline-styles` | 14 / 14 (100,0 %) | 0 |
 | `css/css-transforms/matrix` | 69 / 69 (100,0 %) | 0 |
 | `css/css-transforms/patternTransform` | 0 / 2 (0,0 %) | 0 |
