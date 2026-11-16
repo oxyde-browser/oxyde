@@ -1057,7 +1057,18 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
       dessiné, ni dans le test ni dans sa référence). Restent : feuilles de style liées,
       images et cadres imbriqués dans un cadre ; clic et défilement dans un cadre.
 - [ ] Cadres d'un autre site dans leur propre processus.
-- [ ] `position: sticky`, modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
+- [x] `position: sticky` : la boîte est retenue dans la partie visible de sa zone
+      défilante (ou de la fenêtre) sans sortir de son bloc conteneur, le décalage étant
+      calculé à la composition ; une cellule ou une rangée collante a le tableau pour
+      bloc conteneur. Tests `css-position/sticky` : 20 → 37 sur 75.
+- [x] Ordre d'empilement à l'échelle du contexte : une boîte positionnée se peint dans
+      la couche de son contexte d'empilement, où qu'elle soit dans l'arbre, dans l'ordre
+      du document (celui que donne `order` dans un conteneur flexible ou en grille).
+      Tests de référence : 3 355 → 3 393.
+- [ ] Propriétés `rotate`, `scale` et `translate` (trois tests de référence qui
+      passaient par accident les attendent) ; la recherche de la boîte sous un point
+      suit encore l'ancien ordre, et voit une boîte collante à sa place dans le flux.
+- [ ] Modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
       fil principal ; calques mis en cache.
 - [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers.
