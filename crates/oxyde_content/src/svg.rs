@@ -9,8 +9,14 @@
 //! ([`oxyde_css::SvgStyle`]) : attributs de présentation, attribut `style`
 //! et feuilles de style comptent donc tous.
 //!
-//! LIMITES CONNUES : pas de texte (`text`, `tspan`), d'image (`image`), de
-//! découpe (`clipPath`), de masque, de motif, de marqueur ni de filtre ; un
+//! Le texte (`text`, `tspan`) est mis en forme sur une ligne et dessiné
+//! par le contour de ses glyphes.
+//!
+//! LIMITES CONNUES : pas d'image (`image`), de découpe (`clipPath`), de
+//! masque, de motif, de marqueur ni de filtre ; pour le texte, ni
+//! `textPath`, ni positions glyphe par glyphe, ni `textLength`, ni
+//! écriture de droite à gauche soignée, et pas de texte du tout dans une
+//! image SVG chargée par `<img>` ; un
 //! `use` ne suit pas une adresse vers un autre fichier, et son contenu
 //! hérite de lui par approximation (une propriété qui vaut celle du
 //! contexte où le modèle est rangé est tenue pour héritée) ; la
@@ -19,15 +25,18 @@
 //! deux pixels par pixel CSS, quel que soit l'écran ; une image SVG chargée
 //! par `<img>` est rendue une fois, à sa taille propre.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
+use crate::script::canvas::{FontSpec, shape_text};
 use oxyde_css::{
     ComputedStyle, Display, StyleMap, SvgLineCap, SvgLineJoin, SvgPaint, SvgStyle, Viewport,
     Visibility,
 };
 use oxyde_dom::{Document, ElementData, Namespace, NodeId};
 use oxyde_paint::Image;
+use oxyde_text::TextContext;
 use tiny_skia::{
     Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
     Pixmap, PixmapPaint, Point, RadialGradient, Rect, Shader, SpreadMode, Stroke, StrokeDash,
@@ -75,18 +84,21 @@ fn is_svg(doc: &Document, node: NodeId, name: &str) -> bool {
         .is_some_and(|el| el.ns == Namespace::Svg && el.name == name)
 }
 
-/// Éléments `<svg>` les plus extérieurs de `doc` : ceux que la page met en
-/// page comme des éléments remplacés.
+/// Vrai si `node` est un élément `<svg>` sans ancêtre SVG direct : la page
+/// le met en page comme un élément remplacé.
+pub(crate) fn is_outer_root(doc: &Document, node: NodeId) -> bool {
+    is_svg(doc, node, "svg")
+        && !doc
+            .node(node)
+            .parent
+            .and_then(|parent| doc.element(parent))
+            .is_some_and(|parent| parent.ns == Namespace::Svg)
+}
+
+/// Éléments `<svg>` les plus extérieurs de `doc`.
 pub(crate) fn outer_roots(doc: &Document) -> Vec<NodeId> {
     doc.descendants(doc.root())
-        .filter(|node| {
-            is_svg(doc, *node, "svg")
-                && !doc
-                    .node(*node)
-                    .parent
-                    .and_then(|parent| doc.element(parent))
-                    .is_some_and(|parent| parent.ns == Namespace::Svg)
-        })
+        .filter(|node| is_outer_root(doc, *node))
         .collect()
 }
 
@@ -760,6 +772,8 @@ struct Scene<'a> {
     doc: &'a Document,
     styles: &'a StyleMap,
     index: &'a Index<'a>,
+    /// De quoi mettre le texte en forme ; sans cela, il n'est pas dessiné.
+    text: Option<RefCell<&'a mut TextContext>>,
 }
 
 impl Scene<'_> {
@@ -1054,7 +1068,7 @@ impl Scene<'_> {
             el.name.as_str(),
             "path" | "rect" | "circle" | "ellipse" | "line" | "polyline" | "polygon"
         );
-        if !group && !shape {
+        if !group && !shape && el.name != "text" {
             return;
         }
         let transform = transform.pre_concat(own_transform(el, style));
@@ -1096,6 +1110,7 @@ impl Scene<'_> {
     ) {
         let font_size = style.font_size;
         match el.name.as_str() {
+            "text" => self.draw_text(target, node, transform, port, rebase, depth),
             "g" | "a" | "switch" => {
                 self.draw_children(target, node, transform, port, rebase, depth)
             }
@@ -1205,6 +1220,209 @@ fn dash(array: &[f32], offset: f32) -> Option<StrokeDash> {
     StrokeDash::new(list, offset)
 }
 
+// ---- Texte ------------------------------------------------------------------------------------
+
+/// Morceau de texte mis en forme, en attente de l'ancrage de sa ligne.
+struct Piece {
+    /// Contour des glyphes, l'origine sur la ligne de base au début du morceau.
+    outline: Path,
+    /// Début du morceau sur la ligne.
+    x: f32,
+    /// Ligne de base.
+    y: f32,
+    svg: SvgStyle,
+    color: oxyde_css::values::Color,
+}
+
+/// État du dessin d'un élément `text`.
+struct TextRun {
+    /// Position courante : où commence le prochain glyphe.
+    x: f32,
+    y: f32,
+    /// Morceaux de la ligne en cours, depuis sa dernière position absolue.
+    pieces: Vec<Piece>,
+    /// Début de la ligne en cours et part de sa largeur à retrancher
+    /// (`text-anchor` : 0, 0,5 ou 1).
+    start: f32,
+    anchor: f32,
+    /// Vrai si le dernier caractère gardé est un blanc (ou s'il n'y en a pas).
+    after_space: bool,
+}
+
+impl Scene<'_> {
+    /// Valeur de la propriété `name` déclarée par `node` ou, à défaut, par
+    /// son plus proche ancêtre SVG.
+    fn inherited(&self, node: NodeId, name: &str) -> Option<&str> {
+        let mut at = Some(node);
+        for _ in 0..MAX_DEPTH {
+            let el = self.doc.element(at?)?;
+            if el.ns != Namespace::Svg {
+                return None;
+            }
+            if let Some(value) = declared(el, name) {
+                return Some(value);
+            }
+            at = self.doc.node(at?).parent;
+        }
+        None
+    }
+
+    /// Peint la ligne en cours, décalée selon son ancrage.
+    fn flush_text(&self, target: &mut Pixmap, run: &mut TextRun, transform: Transform, port: Port) {
+        let shift = -(run.x - run.start) * run.anchor;
+        for piece in run.pieces.drain(..) {
+            let place = Transform::from_translate(piece.x + shift, piece.y);
+            if let Some(path) = piece.outline.transform(place) {
+                self.paint_shape(target, &path, &piece.svg, piece.color, transform, port);
+            }
+        }
+        run.start = run.x;
+    }
+
+    /// Met en forme le contenu de `node` (un `text`, un `tspan` ou un `a`)
+    /// à la suite de la ligne en cours.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "l'état de dessin, passé tel quel de proche en proche"
+    )]
+    fn text_content(
+        &self,
+        target: &mut Pixmap,
+        node: NodeId,
+        run: &mut TextRun,
+        transform: Transform,
+        port: Port,
+        rebase: Option<&Rebase>,
+        depth: usize,
+    ) {
+        let (Some(el), Some(style), Some(context)) = (
+            self.doc.element(node),
+            self.styles.get(node),
+            self.text.as_ref(),
+        ) else {
+            return;
+        };
+        if depth > MAX_DEPTH || style.display == Display::None {
+            return;
+        }
+        let font_size = style.font_size;
+        // Une position absolue commence une nouvelle ligne à ancrer.
+        let first = |name: &str, base: f32| {
+            let value = el.attr(name)?;
+            let head = value.split([',', ' ']).find(|part| !part.is_empty())?;
+            length(head, base, font_size)
+        };
+        let (x, y) = (first("x", port.width), first("y", port.height));
+        if x.is_some() || y.is_some() || el.name == "text" {
+            self.flush_text(target, run, transform, port);
+            run.x = x.unwrap_or(run.x);
+            run.y = y.unwrap_or(run.y);
+            run.start = run.x;
+            run.anchor = match self.inherited(node, "text-anchor") {
+                Some("middle") => 0.5,
+                Some("end") => 1.0,
+                _ => 0.0,
+            };
+        }
+        run.x += first("dx", port.width).unwrap_or(0.0);
+        run.y += first("dy", port.height).unwrap_or(0.0);
+        let font = FontSpec {
+            size: font_size,
+            family: oxyde_text::css_font_family(&style.font_family),
+            weight: style.font_weight,
+            italic: style.italic,
+        };
+        let baseline = self
+            .inherited(node, "dominant-baseline")
+            .or_else(|| declared(el, "alignment-baseline"));
+        for child in self.doc.children(node) {
+            if let Some(text) = self.doc.text(child) {
+                // Les blancs se fondent en un seul ; ceux du début tombent.
+                let mut kept = String::with_capacity(text.len());
+                for c in text.chars() {
+                    if c.is_whitespace() {
+                        if !run.after_space {
+                            kept.push(' ');
+                        }
+                        run.after_space = true;
+                    } else {
+                        kept.push(c);
+                        run.after_space = false;
+                    }
+                }
+                if kept.is_empty() {
+                    continue;
+                }
+                let shaped = shape_text(&mut context.borrow_mut(), &kept, &font);
+                // Où poser la ligne de base par rapport à la position donnée.
+                let drop = match baseline {
+                    Some("middle") => font_size * 0.25,
+                    Some("central") => (shaped.ascent - shaped.descent) / 2.0,
+                    Some("hanging" | "text-before-edge" | "text-top") => shaped.ascent,
+                    _ => 0.0,
+                };
+                if style.visibility == Visibility::Visible
+                    && let Some(outline) = shaped.outline.and_then(|path| {
+                        path.transform(Transform::from_translate(0.0, -shaped.baseline))
+                    })
+                {
+                    let (svg, color) = effective(style, rebase);
+                    run.pieces.push(Piece {
+                        outline,
+                        x: run.x,
+                        y: run.y + drop,
+                        svg,
+                        color,
+                    });
+                }
+                run.x += shaped.width;
+            } else if self.doc.element(child).is_some_and(|el| {
+                el.ns == Namespace::Svg && matches!(el.name.as_str(), "tspan" | "a")
+            }) {
+                self.text_content(target, child, run, transform, port, rebase, depth + 1);
+            }
+        }
+    }
+
+    /// Dessine un élément `text`.
+    fn draw_text(
+        &self,
+        target: &mut Pixmap,
+        node: NodeId,
+        transform: Transform,
+        port: Port,
+        rebase: Option<&Rebase>,
+        depth: usize,
+    ) {
+        let mut run = TextRun {
+            x: 0.0,
+            y: 0.0,
+            pieces: Vec::new(),
+            start: 0.0,
+            anchor: 0.0,
+            after_space: true,
+        };
+        self.text_content(target, node, &mut run, transform, port, rebase, depth);
+        // Un blanc final ne compte pas dans la largeur à ancrer.
+        if run.after_space
+            && let (Some(context), Some(style)) = (self.text.as_ref(), self.styles.get(node))
+            && !run.pieces.is_empty()
+        {
+            let font = FontSpec {
+                size: style.font_size,
+                family: oxyde_text::css_font_family(&style.font_family),
+                weight: style.font_weight,
+                italic: style.italic,
+            };
+            // Largeur d'une espace : celle de « a a » moins deux « a ».
+            let wide = shape_text(&mut context.borrow_mut(), "a a", &font).width;
+            let narrow = shape_text(&mut context.borrow_mut(), "aa", &font).width;
+            run.x -= (wide - narrow).max(0.0);
+        }
+        self.flush_text(target, &mut run, transform, port);
+    }
+}
+
 // ---- Entrées ----------------------------------------------------------------------------------
 
 /// Taille propre de l'élément `<svg>` `node`, en pixels CSS : ses attributs
@@ -1268,16 +1486,16 @@ pub(crate) fn signature(
     hasher.finish()
 }
 
-/// Rend l'élément `<svg>` `root` dans une image de `width` × `height`
-/// pixels CSS, à `scale` pixels par pixel CSS.
+/// Rend l'élément `<svg>` `root` dans une image de la taille donnée
+/// (largeur, hauteur) en pixels CSS, à `scale` pixels par pixel CSS.
 pub(crate) fn render(
     doc: &Document,
     styles: &StyleMap,
     index: &Index<'_>,
     root: NodeId,
-    width: f32,
-    height: f32,
+    (width, height): (f32, f32),
     scale: f32,
+    text: Option<&mut TextContext>,
 ) -> Option<Image> {
     let el = doc.element(root)?;
     if !(width > 0.0 && height > 0.0 && scale > 0.0) {
@@ -1293,7 +1511,12 @@ pub(crate) fn render(
     let side = |value: f32| (value * scale).ceil().clamp(1.0, MAX_SIDE) as u32;
     let mut pixmap = Pixmap::new(side(width), side(height))?;
     let (inner, port) = viewport_of(el, Transform::from_scale(scale, scale), width, height);
-    let scene = Scene { doc, styles, index };
+    let scene = Scene {
+        doc,
+        styles,
+        index,
+        text: text.map(RefCell::new),
+    };
     scene.draw_children(&mut pixmap, root, inner, port, None, 0);
     // `tiny-skia` garde des couleurs prémultipliées ; l'image ne l'est pas.
     let mut rgba = Vec::with_capacity(pixmap.data().len());
@@ -1318,7 +1541,15 @@ pub(crate) fn decode(bytes: &[u8]) -> Option<Image> {
     let (width, height) = intrinsic_size(&doc, root);
     let sheets = oxyde_css::collect_style_elements(&doc);
     let styles = oxyde_css::compute_styles(&doc, &sheets, Viewport { width, height });
-    render(&doc, &styles, &Index::new(&doc), root, width, height, 1.0)
+    render(
+        &doc,
+        &styles,
+        &Index::new(&doc),
+        root,
+        (width, height),
+        1.0,
+        None,
+    )
 }
 
 #[cfg(test)]

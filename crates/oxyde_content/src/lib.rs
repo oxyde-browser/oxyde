@@ -581,11 +581,15 @@ pub(crate) fn layout_snapshot(
     };
     let (styles, time) = env.animations.styles(doc, &usable_sheets(&slots), viewport);
     let intrinsic = |node: NodeId| {
-        env.sizes.get(&node).copied().or_else(|| {
-            let el = doc.element(node).filter(|el| el.is_html("img"))?;
-            let target = image_target(el, &env.base)?;
-            env.known_sizes.get(target.as_str()).copied()
-        })
+        env.sizes
+            .get(&node)
+            .copied()
+            .or_else(|| {
+                let el = doc.element(node).filter(|el| el.is_html("img"))?;
+                let target = image_target(el, &env.base)?;
+                env.known_sizes.get(target.as_str()).copied()
+            })
+            .or_else(|| svg::is_outer_root(doc, node).then(|| svg::intrinsic_size(doc, node)))
     };
     let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
     (styles, tree, time)
@@ -2736,7 +2740,7 @@ impl Page {
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         let frame_lists = self.paint_frames(&tree, text);
-        self.render_svgs(&tree, &svg_sizes);
+        self.render_svgs(&tree, &svg_sizes, text);
         let images = &self.images;
         let canvases = &self.canvas_images;
         let svgs = &self.svg_images;
@@ -2774,6 +2778,7 @@ impl Page {
         &mut self,
         tree: &oxyde_layout::LayoutTree,
         roots: &HashMap<NodeId, (f32, f32)>,
+        text: &mut TextContext,
     ) {
         if roots.is_empty() {
             self.svg_images.clear();
@@ -2790,9 +2795,9 @@ impl Page {
                     &self.styles,
                     &index,
                     node,
-                    rect.w,
-                    rect.h,
+                    (rect.w, rect.h),
                     svg::PAGE_SCALE,
+                    Some(&mut *text),
                 ),
             };
             if let Some(image) = image {
@@ -6659,7 +6664,7 @@ mod tests {
         use oxyde_paint::DisplayItem;
         let mut text = TextContext::new();
         let mut p = page(
-            "<body style='margin:0;color:rgb(0,128,0)'>             <svg id=a viewBox='0 0 10 5' style='display:block;width:100px'>               <title>pas de texte</title><rect width='5' height='5' fill='currentColor'/></svg>             <svg id=b width='30' height='20' style='display:block'><circle r='5'/></svg>",
+            "<body style='margin:0;color:rgb(0,128,0)'>             <svg id=a viewBox='0 0 10 5' style='display:block;width:100px'>               <title>pas de texte</title><rect width='5' height='5' fill='currentColor'/>\n               <text y='4' font-size='1'>ni ici</text></svg>             <svg id=b width='30' height='20' style='display:block'><circle r='5'/></svg>",
         );
         p.update(&mut text, VIEWPORT);
         let images: Vec<(f32, f32, f32, f32, u32, u32)> = p

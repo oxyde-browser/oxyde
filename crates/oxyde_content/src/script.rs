@@ -27,7 +27,7 @@ use url::Url;
 
 mod animations;
 mod attrs;
-mod canvas;
+pub(crate) mod canvas;
 mod crypto;
 mod documents;
 mod dom_ops;

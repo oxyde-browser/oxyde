@@ -1598,7 +1598,10 @@ pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<
 static UA_SHEET: LazyLock<Stylesheet> = LazyLock::new(|| parse_stylesheet(include_str!("ua.css")));
 
 /// Attributs de présentation SVG repris tels quels comme déclarations.
-const SVG_PRESENTATION: [&str; 15] = [
+const SVG_PRESENTATION: [&str; 18] = [
+    "font-family",
+    "font-weight",
+    "font-style",
     "fill",
     "stroke",
     "stroke-width",
@@ -1644,6 +1647,15 @@ fn presentational_hints(el: &ElementData, table: Option<&ElementData>) -> Vec<De
         for name in SVG_PRESENTATION {
             if let Some(v) = el.attr(name) {
                 push(name, v.trim());
+            }
+        }
+        // Un corps sans unité compte en pixels.
+        if let Some(v) = el.attr("font-size") {
+            let v = v.trim();
+            if v.parse::<f32>().is_ok() {
+                push("font-size", &format!("{v}px"));
+            } else {
+                push("font-size", v);
             }
         }
         if el.name == "svg" {
