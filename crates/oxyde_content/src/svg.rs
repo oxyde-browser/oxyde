@@ -12,8 +12,13 @@
 //! Le texte (`text`, `tspan`) est mis en forme sur une ligne et dessiné
 //! par le contour de ses glyphes.
 //!
-//! LIMITES CONNUES : pas d'image (`image`), de découpe (`clipPath`), de
-//! masque, de motif, de marqueur ni de filtre ; pour le texte, ni
+//! Une découpe (`clip-path` vers un `clipPath`) ou un masque (`mask`)
+//! s'appliquent au contenu dessiné à part, comme l'opacité de groupe.
+//!
+//! LIMITES CONNUES : pas d'image (`image`), de motif, de marqueur ni de
+//! filtre ; une découpe ou un masque exprimés dans la boîte englobante
+//! (`objectBoundingBox`) sont ignorés, de même que la zone d'un masque et
+//! le texte dans une découpe ; pour le texte, ni
 //! `textPath`, ni positions glyphe par glyphe, ni `textLength`, ni
 //! écriture de droite à gauche soignée, et pas de texte du tout dans une
 //! image SVG chargée par `<img>` ; un
@@ -25,7 +30,7 @@
 //! deux pixels par pixel CSS, quel que soit l'écran ; une image SVG chargée
 //! par `<img>` est rendue une fois, à sa taille propre.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -38,9 +43,9 @@ use oxyde_dom::{Document, ElementData, Namespace, NodeId};
 use oxyde_paint::Image;
 use oxyde_text::TextContext;
 use tiny_skia::{
-    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Paint, Path, PathBuilder,
-    Pixmap, PixmapPaint, Point, RadialGradient, Rect, Shader, SpreadMode, Stroke, StrokeDash,
-    Transform,
+    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Mask, MaskType, Paint, Path,
+    PathBuilder, Pixmap, PixmapPaint, Point, RadialGradient, Rect, Shader, SpreadMode, Stroke,
+    StrokeDash, Transform,
 };
 
 /// Côté maximal de la surface de rendu, en pixels.
@@ -49,6 +54,9 @@ const MAX_SIDE: f32 = 4096.0;
 const MAX_DEPTH: usize = 48;
 /// Nombre maximal de dégradés suivis par `href`.
 const MAX_CHAIN: usize = 8;
+/// Nombre maximal de surfaces intermédiaires ouvertes à la fois (opacité de
+/// groupe, découpe, masque) : chacune a la taille du rendu.
+const MAX_LAYERS: usize = 6;
 /// Pixels de rendu par pixel CSS pour un `<svg>` de la page.
 pub(crate) const PAGE_SCALE: f32 = 2.0;
 /// Taille d'un `<svg>` sans dimensions ni `viewBox`.
@@ -774,6 +782,8 @@ struct Scene<'a> {
     index: &'a Index<'a>,
     /// De quoi mettre le texte en forme ; sans cela, il n'est pas dessiné.
     text: Option<RefCell<&'a mut TextContext>>,
+    /// Surfaces intermédiaires ouvertes en ce moment.
+    layers: Cell<usize>,
 }
 
 impl Scene<'_> {
@@ -1072,24 +1082,141 @@ impl Scene<'_> {
             return;
         }
         let transform = transform.pre_concat(own_transform(el, style));
-        // Une opacité de groupe se compose d'un bloc : le contenu est dessiné
-        // à part, puis fondu dans la cible.
-        if style.opacity < 1.0 {
-            if style.opacity <= 0.0 {
-                return;
-            }
-            let Some(mut layer) = Pixmap::new(target.width(), target.height()) else {
-                return;
-            };
-            self.draw_content(&mut layer, node, el, style, transform, port, rebase, depth);
-            let paint = PixmapPaint {
-                opacity: style.opacity,
-                ..PixmapPaint::default()
-            };
-            target.draw_pixmap(0, 0, layer.as_ref(), &paint, Transform::identity(), None);
-        } else {
+        // Une opacité de groupe, une découpe ou un masque valent pour le
+        // contenu pris d'un bloc : il est dessiné à part, puis fondu dans la
+        // cible.
+        let clip = self.referenced(el, "clip-path", "clipPath");
+        let mask = self.referenced(el, "mask", "mask");
+        let layered = style.opacity < 1.0 || clip.is_some() || mask.is_some();
+        if !layered || self.layers.get() >= MAX_LAYERS {
             self.draw_content(target, node, el, style, transform, port, rebase, depth);
+            return;
         }
+        if style.opacity <= 0.0 {
+            return;
+        }
+        let Some(mut layer) = Pixmap::new(target.width(), target.height()) else {
+            return;
+        };
+        self.layers.set(self.layers.get() + 1);
+        self.draw_content(&mut layer, node, el, style, transform, port, rebase, depth);
+        if let Some(clip) = clip
+            && let Some(mask) = self.clip_mask(clip, &layer, transform, port, depth)
+        {
+            layer.apply_mask(&mask);
+        }
+        if let Some(mask) = mask
+            && let Some(mask) = self.luminance_mask(mask, &layer, transform, port, depth)
+        {
+            layer.apply_mask(&mask);
+        }
+        self.layers.set(self.layers.get().saturating_sub(1));
+        let paint = PixmapPaint {
+            opacity: style.opacity,
+            ..PixmapPaint::default()
+        };
+        target.draw_pixmap(0, 0, layer.as_ref(), &paint, Transform::identity(), None);
+    }
+
+    /// Élément `kind` que désigne la propriété `name` de `el` (`url(#id)`).
+    fn referenced(&self, el: &ElementData, name: &str, kind: &str) -> Option<NodeId> {
+        let value = declared(el, name)?.trim();
+        let address = value
+            .strip_prefix("url(")?
+            .split(')')
+            .next()?
+            .trim()
+            .trim_matches(['"', '\'']);
+        let node = self.index.target(address)?;
+        is_svg(self.doc, node, kind).then_some(node)
+    }
+
+    /// Masque de la découpe `clip`, dans le repère `transform` de l'élément
+    /// découpé. `None` si elle ne s'applique pas (unités non gérées).
+    fn clip_mask(
+        &self,
+        clip: NodeId,
+        like: &Pixmap,
+        transform: Transform,
+        port: Port,
+        depth: usize,
+    ) -> Option<Mask> {
+        let el = self.doc.element(clip)?;
+        let style = self.styles.get(clip)?;
+        if el.attr("clipPathUnits") == Some("objectBoundingBox") {
+            return None;
+        }
+        let transform = transform.pre_concat(own_transform(el, style));
+        let mut mask = Mask::new(like.width(), like.height())?;
+        for child in self.doc.children(clip) {
+            self.clip_shape(&mut mask, child, transform, port, depth + 1);
+        }
+        Some(mask)
+    }
+
+    /// Ajoute au masque la forme `node` d'une découpe (ou celle que vise un
+    /// `use`).
+    fn clip_shape(
+        &self,
+        mask: &mut Mask,
+        node: NodeId,
+        transform: Transform,
+        port: Port,
+        depth: usize,
+    ) {
+        if depth > MAX_DEPTH {
+            return;
+        }
+        let (Some(el), Some(style)) = (self.doc.element(node), self.styles.get(node)) else {
+            return;
+        };
+        if el.ns != Namespace::Svg || style.display == Display::None {
+            return;
+        }
+        let transform = transform.pre_concat(own_transform(el, style));
+        if el.name == "use" {
+            if let Some(target) = href(el).and_then(|target| self.index.target(target)) {
+                let x = attr_length(el, "x", port.width, style.font_size, 0.0);
+                let y = attr_length(el, "y", port.height, style.font_size, 0.0);
+                let transform = transform.pre_concat(Transform::from_translate(x, y));
+                self.clip_shape(mask, target, transform, port, depth + 1);
+            }
+            return;
+        }
+        if let Some(path) = shape_path(el, port, style.font_size) {
+            let rule = match self.inherited(node, "clip-rule") {
+                Some("evenodd") => FillRule::EvenOdd,
+                _ => FillRule::Winding,
+            };
+            mask.fill_path(&path, rule, true, transform);
+        }
+    }
+
+    /// Masque que dessine l'élément `mask`, dans le repère `transform` de
+    /// l'élément masqué : la luminance de son contenu (ou son opacité avec
+    /// `mask-type: alpha`).
+    fn luminance_mask(
+        &self,
+        mask: NodeId,
+        like: &Pixmap,
+        transform: Transform,
+        port: Port,
+        depth: usize,
+    ) -> Option<Mask> {
+        let el = self.doc.element(mask)?;
+        if el.attr("maskContentUnits") == Some("objectBoundingBox") {
+            return None;
+        }
+        let mut content = Pixmap::new(like.width(), like.height())?;
+        self.layers.set(self.layers.get() + 1);
+        self.draw_children(&mut content, mask, transform, port, None, depth + 1);
+        self.layers.set(self.layers.get().saturating_sub(1));
+        let kind = if declared(el, "mask-type") == Some("alpha") {
+            MaskType::Alpha
+        } else {
+            MaskType::Luminance
+        };
+        Some(Mask::from_pixmap(content.as_ref(), kind))
     }
 
     /// Dessine `node`, sa transformation et son opacité déjà prises en compte.
@@ -1516,6 +1643,7 @@ pub(crate) fn render(
         styles,
         index,
         text: text.map(RefCell::new),
+        layers: Cell::new(0),
     };
     scene.draw_children(&mut pixmap, root, inner, port, None, 0);
     // `tiny-skia` garde des couleurs prémultipliées ; l'image ne l'est pas.
@@ -1605,6 +1733,10 @@ mod tests {
                    <symbol id="s" viewBox="0 0 4 4"><rect width="4" height="2"/>
                      <rect y="2" width="4" height="2" fill="#0ff"/></symbol>
                    <use href="#s" x="10" y="0" width="2" height="2" fill="#f0f"/>
+                   <clipPath id="c"><rect x="18.5" width="0.5" height="5"/></clipPath>
+                   <mask id="m"><rect x="19" width="0.5" height="5" fill="#fff"/></mask>
+                   <rect x="18" width="2" height="1" fill="#f00" clip-path="url(#c)"/>
+                   <g mask="url(#m)"><rect x="18" y="3" width="2" height="1" fill="#f00"/></g>
                  </svg>"##,
         )
         .expect("image");
@@ -1625,6 +1757,12 @@ mod tests {
         assert_eq!(pixel(&image, 22, 0), [255, 0, 255, 255]);
         assert_eq!(pixel(&image, 22, 3), [0, 255, 255, 255]);
         assert_eq!(pixel(&image, 30, 8)[3], 0, "le reste est transparent");
+        // La découpe et le masque ne laissent passer qu'une colonne chacun.
+        assert_eq!(pixel(&image, 37, 1), [255, 0, 0, 255]);
+        assert_eq!(pixel(&image, 36, 1)[3], 0);
+        assert_eq!(pixel(&image, 39, 1)[3], 0);
+        assert_eq!(pixel(&image, 38, 7), [255, 0, 0, 255]);
+        assert_eq!(pixel(&image, 36, 7)[3], 0);
         assert!(decode(b"pas du SVG").is_none());
     }
 }
