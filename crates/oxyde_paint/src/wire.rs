@@ -127,6 +127,16 @@ enum WireItem {
         id: u32,
     },
     PushFixed,
+    PushSticky {
+        scroller: u32,
+        rect: [f32; 4],
+        limits: [f32; 4],
+        port: [f32; 4],
+        top: Option<f32>,
+        right: Option<f32>,
+        bottom: Option<f32>,
+        left: Option<f32>,
+    },
     Scrollbar {
         id: u32,
         track: [f32; 4],
@@ -153,6 +163,7 @@ ipc_enum!(WireItem {
     10 => PushFixed,
     11 => Scrollbar { id, track, vertical, visible, total },
     12 => Image { rect, image },
+    13 => PushSticky { scroller, rect, limits, port, top, right, bottom, left },
 });
 
 /// Liste d'affichage sur le fil, avec les ressources que le destinataire ne
@@ -313,6 +324,16 @@ impl ResourceSender {
                 DisplayItem::PopTransform => WireItem::PopTransform,
                 DisplayItem::PushScroll { id } => WireItem::PushScroll { id: *id },
                 DisplayItem::PushFixed => WireItem::PushFixed,
+                DisplayItem::PushSticky(sticky) => WireItem::PushSticky {
+                    scroller: sticky.scroller,
+                    rect: rect_out(sticky.rect),
+                    limits: rect_out(sticky.limits),
+                    port: rect_out(sticky.port),
+                    top: sticky.top,
+                    right: sticky.right,
+                    bottom: sticky.bottom,
+                    left: sticky.left,
+                },
                 DisplayItem::Scrollbar {
                     id,
                     track,
@@ -492,6 +513,25 @@ impl ResourceStore {
                 WireItem::PopTransform => DisplayItem::PopTransform,
                 WireItem::PushScroll { id } => DisplayItem::PushScroll { id },
                 WireItem::PushFixed => DisplayItem::PushFixed,
+                WireItem::PushSticky {
+                    scroller,
+                    rect,
+                    limits,
+                    port,
+                    top,
+                    right,
+                    bottom,
+                    left,
+                } => DisplayItem::PushSticky(crate::Sticky {
+                    scroller,
+                    rect: rect_in(rect),
+                    limits: rect_in(limits),
+                    port: rect_in(port),
+                    top,
+                    right,
+                    bottom,
+                    left,
+                }),
                 WireItem::Scrollbar {
                     id,
                     track,

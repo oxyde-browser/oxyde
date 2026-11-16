@@ -408,6 +408,11 @@ pub fn append_scrolled(
                 outer_transforms.push(transform);
                 transform *= Affine::translate((-f64::from(x), -f64::from(y)));
             }
+            DisplayItem::PushSticky(sticky) => {
+                let (x, y) = sticky.offset(scroll(sticky.scroller));
+                outer_transforms.push(transform);
+                transform *= Affine::translate((f64::from(x), f64::from(y)));
+            }
             DisplayItem::PushFixed => {
                 let (x, y) = scroll(oxyde_paint::ROOT_SCROLLER);
                 outer_transforms.push(transform);

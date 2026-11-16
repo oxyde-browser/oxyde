@@ -121,6 +121,10 @@ pub enum DisplayItem {
         /// Identifiant de la zone (voir [`Scroller::id`]).
         id: u32,
     },
+    /// Début d'une boîte collante (`position: sticky`) : tout ce qui suit,
+    /// jusqu'au [`DisplayItem::PopTransform`] correspondant, est décalé de
+    /// [`Sticky::offset`], connu à la composition seulement.
+    PushSticky(Sticky),
     /// Début d'un groupe fixe (`position: fixed`) : son contenu ne suit pas
     /// le défilement de la fenêtre.
     PushFixed,
@@ -203,6 +207,80 @@ pub type FrameSource<'a> = &'a dyn Fn(NodeId) -> Option<&'a DisplayList>;
 /// Identifiant du défilement de la fenêtre.
 pub const ROOT_SCROLLER: u32 = u32::MAX;
 
+/// Boîte collante (`position: sticky`) : de quoi calculer, à la composition,
+/// le décalage qui la retient dans la partie visible de sa zone défilante.
+/// Les rectangles sont en coordonnées de la page, défilement nul.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Sticky {
+    /// Zone défilante dont le défilement compte ([`ROOT_SCROLLER`] pour la
+    /// fenêtre).
+    pub scroller: u32,
+    /// Boîte de bordure de l'élément, à sa place dans le flux.
+    pub rect: Rect,
+    /// Boîte de contenu du bloc conteneur : l'élément n'en sort pas.
+    pub limits: Rect,
+    /// Partie visible de la zone défilante.
+    pub port: Rect,
+    /// Distance à tenir du bord haut de la partie visible (`top`) ; `None`
+    /// pour `auto`.
+    pub top: Option<f32>,
+    /// De même pour `right`.
+    pub right: Option<f32>,
+    /// De même pour `bottom`.
+    pub bottom: Option<f32>,
+    /// De même pour `left`.
+    pub left: Option<f32>,
+}
+
+impl Sticky {
+    /// Décalage de la boîte quand sa zone défilante a défilé de `scroll`.
+    #[must_use]
+    pub fn offset(&self, scroll: (f32, f32)) -> (f32, f32) {
+        /// Sur un axe : `start` et `end` sont les distances à tenir, `pos` et
+        /// `len` la boîte, `limit` le bloc conteneur, `port` la partie
+        /// visible une fois défilée. Le bord de départ l'emporte.
+        fn axis(
+            start: Option<f32>,
+            end: Option<f32>,
+            (pos, len): (f32, f32),
+            limit: (f32, f32),
+            port: (f32, f32),
+        ) -> f32 {
+            let mut offset = 0.0;
+            if let Some(end) = end {
+                let over = (pos + len) - (port.0 + port.1 - end);
+                if over > 0.0 {
+                    offset = -over.min((pos - limit.0).max(0.0));
+                }
+            }
+            if let Some(start) = start {
+                let under = (port.0 + start) - (pos + offset);
+                if under > 0.0 {
+                    let room = (limit.0 + limit.1) - (pos + offset + len);
+                    offset += under.min(room.max(0.0));
+                }
+            }
+            offset
+        }
+        (
+            axis(
+                self.left,
+                self.right,
+                (self.rect.x, self.rect.w),
+                (self.limits.x, self.limits.w),
+                (self.port.x + scroll.0, self.port.w),
+            ),
+            axis(
+                self.top,
+                self.bottom,
+                (self.rect.y, self.rect.h),
+                (self.limits.y, self.limits.h),
+                (self.port.y + scroll.1, self.port.h),
+            ),
+        )
+    }
+}
+
 /// Zone défilante relevée à la peinture.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Scroller {
@@ -233,6 +311,15 @@ pub struct DisplayList {
     pub scrollers: Vec<Scroller>,
     /// Zones défilantes ouvertes pendant la peinture.
     open_scrollers: Vec<usize>,
+    /// Boîtes de contenu des boîtes ouvertes pendant la peinture.
+    open_blocks: Vec<Rect>,
+    /// Taille de la fenêtre pendant la peinture.
+    viewport: (f32, f32),
+    /// Nombre de boîtes en cours de peinture.
+    depth: usize,
+    /// Rang des nœuds dans l'ordre du document pendant la peinture (voir
+    /// `LayoutTree::order`).
+    order: Vec<u32>,
 }
 
 impl DisplayList {
@@ -376,7 +463,11 @@ fn paint_canvas(
     images: ImageSource<'_>,
     frames: FrameSource<'_>,
 ) -> DisplayList {
-    let mut list = DisplayList::default();
+    let mut list = DisplayList {
+        viewport: (viewport.width, viewport.height),
+        order: tree.order.clone(),
+        ..DisplayList::default()
+    };
     if let Some(color) = background {
         list.rect(
             Rect {
@@ -392,6 +483,7 @@ fn paint_canvas(
     if let Some(root) = &tree.root {
         paint_fragment(&mut list, root, images, frames);
     }
+    list.order = Vec::new();
     list
 }
 
@@ -453,7 +545,9 @@ fn embed_frame(list: &mut DisplayList, frame: &DisplayList, rect: Rect) {
     for item in &frame.items {
         match item {
             // Leur fin est un `PopTransform`, qui reste en place.
-            DisplayItem::PushScroll { .. } | DisplayItem::PushFixed => {
+            DisplayItem::PushScroll { .. }
+            | DisplayItem::PushFixed
+            | DisplayItem::PushSticky(_) => {
                 list.items
                     .push(DisplayItem::PushTransform { matrix: IDENTITY });
             }
@@ -477,6 +571,136 @@ fn paint_fragment(
     }
 }
 
+/// Vrai si la boîte se peint dans la couche des boîtes positionnées du
+/// contexte d'empilement qui la contient, et non à sa place dans le flux :
+/// une boîte positionnée, ou transformée.
+fn hoistable(fragment: &Fragment) -> bool {
+    matches!(fragment, Fragment::Box(b) if b.style.is_positioned() || transformed(b))
+}
+
+/// Vrai si la boîte porte une transformation, même sans effet (`transform`,
+/// `rotate`, `scale`, `translate`) : elle forme un contexte d'empilement.
+fn transformed(b: &BoxFragment) -> bool {
+    b.style
+        .transform_matrix(b.border_box.w, b.border_box.h)
+        .is_some()
+}
+
+/// Vrai si une rangée ou un groupe de rangées : le bloc conteneur d'une
+/// partie de tableau est le tableau, pas eux.
+fn bounds_children(style: &oxyde_css::ComputedStyle) -> bool {
+    !matches!(
+        style.display,
+        oxyde_css::Display::TableRow | oxyde_css::Display::TableRowGroup
+    )
+}
+
+/// Découpe et défilement que la boîte `b` impose à son contenu : la zone de
+/// découpe, et l'identifiant de sa zone défilante.
+fn content_wrappers(b: &BoxFragment) -> (Option<DisplayItem>, Option<u32>) {
+    let style = &b.style;
+    let clips = oxyde_layout::clips_content(style);
+    if !clips {
+        return (None, None);
+    }
+    let bw = style.border_widths();
+    let clip = DisplayItem::PushClip {
+        rect: oxyde_layout::padding_box(b),
+        radius: (style.border_radius - bw.top).max(0.0),
+    };
+    // Zone défilante : `overflow: clip` découpe sans défiler.
+    let scrollable = |overflow: Overflow| !matches!(overflow, Overflow::Visible | Overflow::Clip);
+    let scroller = b
+        .node
+        .filter(|_| scrollable(style.overflow_x) || scrollable(style.overflow_y))
+        .map(|node| u32::try_from(node.index()).unwrap_or(ROOT_SCROLLER - 1));
+    (Some(clip), scroller)
+}
+
+/// Boîte positionnée relevée dans un contexte d'empilement, avec ce qu'il
+/// faut pour la peindre hors de sa place dans l'arbre.
+struct Hoisted<'a> {
+    /// `z-index`, zéro pour `auto`.
+    z: i32,
+    /// La boîte.
+    fragment: &'a BoxFragment,
+    /// Découpes et défilements des boîtes traversées jusqu'à elle.
+    wrappers: Vec<DisplayItem>,
+    /// Zones défilantes traversées, de la plus large à la plus proche.
+    scrollers: Vec<u32>,
+    /// Boîte de contenu de son bloc conteneur dans le flux.
+    block: Rect,
+}
+
+/// Relève les boîtes positionnées du contexte d'empilement dont `children`
+/// est le contenu, dans l'ordre du document. La descente s'arrête à chaque
+/// boîte positionnée ou translucide : elle ordonne elle-même son contenu.
+fn collect_hoisted<'a>(
+    children: &'a [Fragment],
+    wrappers: &mut Vec<DisplayItem>,
+    scrollers: &mut Vec<u32>,
+    block: Rect,
+    out: &mut Vec<Hoisted<'a>>,
+) {
+    for child in children {
+        match child {
+            Fragment::Box(b) if hoistable(child) => out.push(Hoisted {
+                z: b.style.z_index.unwrap_or(0),
+                fragment: b,
+                wrappers: wrappers.clone(),
+                scrollers: scrollers.clone(),
+                block,
+            }),
+            Fragment::Box(b) if b.style.opacity < 1.0 => {}
+            Fragment::Box(b) => {
+                let (clip, scroller) = content_wrappers(b);
+                let (open, scrolled) = (wrappers.len(), scrollers.len());
+                wrappers.extend(clip);
+                if let Some(id) = scroller {
+                    wrappers.push(DisplayItem::PushScroll { id });
+                    scrollers.push(id);
+                }
+                let inner = if bounds_children(&b.style) {
+                    content_rect(b)
+                } else {
+                    block
+                };
+                collect_hoisted(&b.children, wrappers, scrollers, inner, out);
+                wrappers.truncate(open);
+                scrollers.truncate(scrolled);
+            }
+            Fragment::Text(t) => collect_hoisted(&t.boxes, wrappers, scrollers, block, out),
+        }
+    }
+}
+
+/// Peint une boîte positionnée relevée par [`collect_hoisted`], sous les
+/// découpes et les défilements des boîtes qui la contiennent.
+fn paint_hoisted(
+    list: &mut DisplayList,
+    hoisted: &Hoisted<'_>,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) {
+    list.items.extend(hoisted.wrappers.iter().cloned());
+    let open = list.open_scrollers.len();
+    for id in &hoisted.scrollers {
+        if let Some(index) = list.scrollers.iter().position(|s| s.id == *id) {
+            list.open_scrollers.push(index);
+        }
+    }
+    list.open_blocks.push(hoisted.block);
+    paint_box(list, hoisted.fragment, images, frames);
+    list.open_blocks.pop();
+    list.open_scrollers.truncate(open);
+    for wrapper in hoisted.wrappers.iter().rev() {
+        list.items.push(match wrapper {
+            DisplayItem::PushClip { .. } => DisplayItem::PopClip,
+            _ => DisplayItem::PopTransform,
+        });
+    }
+}
+
 /// Peint une boîte : son fond et ses bordures si elle est visible, puis ses
 /// enfants dans l'ordre d'empilement, découpés si elle ne laisse pas
 /// déborder son contenu ; le tout dans un calque si elle est translucide,
@@ -494,6 +718,12 @@ fn paint_box(
     let fixed = style.position == Position::Fixed;
     if fixed {
         list.items.push(DisplayItem::PushFixed);
+    }
+    let sticky = (style.position == Position::Sticky)
+        .then(|| sticky_of(list, b))
+        .flatten();
+    if let Some(sticky) = sticky {
+        list.items.push(DisplayItem::PushSticky(sticky));
     }
     let transform = oxyde_layout::box_transform(b);
     if let Some(matrix) = transform {
@@ -551,8 +781,49 @@ fn paint_box(
         list.open_scrollers.push(index);
         list.items.push(DisplayItem::PushScroll { id });
     }
-    for child in oxyde_layout::paint_order(&b.children) {
+    let bounds = bounds_children(style);
+    if bounds {
+        list.open_blocks.push(content_rect(b));
+    }
+    // Ordre d'empilement (CSS 2, annexe E, simplifiée) : une boîte
+    // positionnée, transformée ou translucide — et la racine — ordonne
+    // tout son contenu : les boîtes positionnées d'indice négatif, puis le
+    // contenu dans le flux, puis les autres boîtes positionnées, où
+    // qu'elles soient dans l'arbre ; à indice égal, l'ordre du document.
+    let orders = list.depth == 0 || style.is_positioned() || transformed(b) || style.opacity < 1.0;
+    list.depth += 1;
+    let mut hoisted = Vec::new();
+    if orders {
+        let block = list.open_blocks.last().copied().unwrap_or(b.border_box);
+        collect_hoisted(
+            &b.children,
+            &mut Vec::new(),
+            &mut Vec::new(),
+            block,
+            &mut hoisted,
+        );
+        // À indice égal, l'ordre du document : la mise en page range une
+        // boîte hors flux sous son bloc conteneur, pas à sa place.
+        let rank = |h: &Hoisted<'_>| {
+            h.fragment
+                .node
+                .and_then(|node| list.order.get(node.index()).copied())
+                .unwrap_or(u32::MAX)
+        };
+        hoisted.sort_by_key(|h| (h.z, rank(h)));
+    }
+    for below in hoisted.iter().filter(|h| h.z < 0) {
+        paint_hoisted(list, below, images, frames);
+    }
+    for child in b.children.iter().filter(|child| !hoistable(child)) {
         paint_fragment(list, child, images, frames);
+    }
+    for above in hoisted.iter().filter(|h| h.z >= 0) {
+        paint_hoisted(list, above, images, frames);
+    }
+    list.depth -= 1;
+    if bounds {
+        list.open_blocks.pop();
     }
     if let Some(id) = scroller {
         list.items.push(DisplayItem::PopTransform);
@@ -598,9 +869,58 @@ fn paint_box(
     if transform.is_some() {
         list.items.push(DisplayItem::PopTransform);
     }
+    if sticky.is_some() {
+        list.items.push(DisplayItem::PopTransform);
+    }
     if fixed {
         list.items.push(DisplayItem::PopTransform);
     }
+}
+
+/// Ce qui retient la boîte collante `b`, ou `None` si aucun de ses quatre
+/// décalages n'est fixé.
+///
+/// LIMITES : les marges de la boîte ne comptent pas dans la place qui lui
+/// reste dans son bloc conteneur ; le clic et les mesures des scripts voient
+/// la boîte à sa place dans le flux.
+fn sticky_of(list: &DisplayList, b: &BoxFragment) -> Option<Sticky> {
+    let (scroller, port) = match list
+        .open_scrollers
+        .last()
+        .and_then(|i| list.scrollers.get(*i))
+    {
+        Some(scroller) => (scroller.id, scroller.port),
+        None => (
+            ROOT_SCROLLER,
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                w: list.viewport.0,
+                h: list.viewport.1,
+            },
+        ),
+    };
+    let inset = |size: Size, whole: f32| match size {
+        Size::Px(v) => Some(v),
+        Size::Percent(p) => Some(whole * p / 100.0),
+        Size::Calc { px, percent } => Some(px + whole * percent / 100.0),
+        _ => None,
+    };
+    let edges = &b.style.inset;
+    let sticky = Sticky {
+        scroller,
+        rect: b.border_box,
+        limits: list.open_blocks.last().copied().unwrap_or(b.border_box),
+        port,
+        top: inset(edges.top, port.h),
+        right: inset(edges.right, port.w),
+        bottom: inset(edges.bottom, port.h),
+        left: inset(edges.left, port.w),
+    };
+    [sticky.top, sticky.right, sticky.bottom, sticky.left]
+        .iter()
+        .any(Option::is_some)
+        .then_some(sticky)
 }
 
 /// Fond, bordures et image d'une boîte.
@@ -701,7 +1021,8 @@ fn paint_text(
     frames: FrameSource<'_>,
 ) {
     list.text(&t.layout, t.x, t.y);
-    for child in &t.boxes {
+    // Les boîtes positionnées sont peintes par leur contexte d'empilement.
+    for child in t.boxes.iter().filter(|child| !hoistable(child)) {
         paint_fragment(list, child, images, frames);
     }
 }
@@ -721,6 +1042,113 @@ mod tests {
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
         paint(&tree, viewport, &|_| None, &|_| None)
+    }
+
+    #[test]
+    fn positioned_boxes_are_ordered_across_the_stacking_context() {
+        let list = paint_html(
+            "<style>body{margin:0} div{width:10px; height:10px}
+               #tot{position:absolute; background:#010101}
+               #flux{background:#020202}
+               #profond{position:relative; background:#030303}
+               #zone{overflow:hidden; width:20px; height:20px}
+               #dessous{position:relative; z-index:-1; background:#040404}
+               #apres{background:#050505}
+             </style>
+             <div id=tot></div>
+             <div id=zone><div id=flux></div><div><div id=profond></div></div></div>
+             <div id=dessous></div>
+             <div id=apres></div>",
+        );
+        let grey = |item: &DisplayItem| match item {
+            DisplayItem::Rect { color, .. } if color.r == color.g && color.r < 10 => Some(color.r),
+            _ => None,
+        };
+        // Le premier rectangle est le fond du canevas.
+        let order: Vec<u8> = list.items.iter().skip(1).filter_map(grey).collect();
+        // Indice négatif, puis le flux, puis les boîtes positionnées dans
+        // l'ordre du document, même enfouies dans une boîte du flux.
+        assert_eq!(order, [4, 2, 5, 1, 3], "{:?}", list.items);
+        // La boîte enfouie reste découpée par la zone qui la contient.
+        let deep = list
+            .items
+            .iter()
+            .position(|item| grey(item) == Some(3))
+            .expect("boîte enfouie");
+        let clips = list.items[..deep]
+            .iter()
+            .filter(|item| matches!(item, DisplayItem::PushClip { rect, .. } if rect.w == 20.0))
+            .count();
+        assert_eq!(clips, 2, "{:?}", list.items);
+        let pushes = list
+            .items
+            .iter()
+            .filter(|item| {
+                matches!(
+                    item,
+                    DisplayItem::PushClip { .. } | DisplayItem::PushOpacity { .. }
+                )
+            })
+            .count();
+        let pops = list
+            .items
+            .iter()
+            .filter(|item| matches!(item, DisplayItem::PopClip))
+            .count();
+        assert_eq!(pushes, pops);
+    }
+
+    #[test]
+    fn sticky_boxes_are_held_in_the_visible_part() {
+        let list = paint_html(
+            "<style>body{margin:0}
+               #bloc{height:500px; margin-top:40px}
+               #haut{position:sticky; top:10px; height:20px}
+               #bas{position:sticky; bottom:0; height:20px; margin-top:800px}
+               #libre{position:sticky; height:20px}
+               #zone{overflow:auto; height:100px; margin-top:50px}
+               #dedans{position:sticky; top:0; height:10px; margin-top:30px}
+             </style>
+             <div id=bloc><div id=haut></div><div id=libre></div></div>
+             <div id=zone><div id=dedans></div><div style='height:400px'></div></div>
+             <div id=bas></div>",
+        );
+        let stickies: Vec<Sticky> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::PushSticky(sticky) => Some(*sticky),
+                _ => None,
+            })
+            .collect();
+        // Sans décalage fixé, rien ne retient la boîte.
+        assert_eq!(stickies.len(), 3, "{stickies:?}");
+        let (top, inner, bottom) = (stickies[0], stickies[1], stickies[2]);
+
+        // `top` : la boîte suit le haut de la fenêtre, sans sortir de son bloc.
+        assert_eq!(top.scroller, ROOT_SCROLLER);
+        assert_eq!(
+            (top.rect.y, top.limits.y, top.limits.h),
+            (40.0, 40.0, 500.0)
+        );
+        assert_eq!(top.offset((0.0, 0.0)), (0.0, 0.0));
+        assert_eq!(top.offset((0.0, 100.0)), (0.0, 70.0));
+        assert_eq!(top.offset((0.0, 5000.0)), (0.0, 480.0));
+
+        // Dans une zone défilante, c'est son défilement et sa partie visible
+        // qui comptent.
+        assert_ne!(inner.scroller, ROOT_SCROLLER);
+        assert_eq!(
+            (inner.port.y, inner.port.h, inner.rect.y),
+            (590.0, 100.0, 620.0)
+        );
+        assert_eq!(inner.offset((0.0, 0.0)), (0.0, 0.0));
+        assert_eq!(inner.offset((0.0, 50.0)), (0.0, 20.0));
+
+        // `bottom` : la boîte, plus bas que la fenêtre, remonte à son bord.
+        let (_, lifted) = bottom.offset((0.0, 0.0));
+        assert_eq!(bottom.rect.y + lifted + bottom.rect.h, 300.0);
+        assert_eq!(bottom.offset((0.0, 5000.0)), (0.0, 0.0));
     }
 
     #[test]

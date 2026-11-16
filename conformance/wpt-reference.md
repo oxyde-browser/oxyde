@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --ref --publier css`, sur la su
 fenêtre de 800 × 600 points, puis comparé point par point à la page qu'il désigne
 par `<link rel="match">` (ou `mismatch` : elles doivent alors différer).
 
-**Tests réussis : 3355 / 7210 (46,5 %)**, dont 94 sur une page d'une seule couleur.
+**Tests réussis : 3393 / 7210 (47,1 %)**, dont 94 sur une page d'une seule couleur.
 
 Une réussite dit que le test et sa référence sont dessinés de la même façon, pas que
 ce dessin est juste : deux pages vides sont identiques. Les réussites « sur une page
@@ -20,9 +20,9 @@ locale de la suite.
 | `css/CSS2` | 8 / 13 (61,5 %) | 0 |
 | `css/CSS2/box-display` | 81 / 120 (67,5 %) | 0 |
 | `css/CSS2/floats` | 47 / 125 (37,6 %) | 0 |
-| `css/CSS2/margin-padding-clear` | 556 / 684 (81,3 %) | 0 |
+| `css/CSS2/margin-padding-clear` | 557 / 684 (81,4 %) | 0 |
 | `css/CSS2/normal-flow` | 466 / 793 (58,8 %) | 0 |
-| `css/CSS2/positioning` | 286 / 520 (55,0 %) | 0 |
+| `css/CSS2/positioning` | 304 / 520 (58,5 %) | 0 |
 | `css/css-align` | 0 / 3 (0,0 %) | 0 |
 | `css/css-align/abspos` | 6 / 19 (31,6 %) | 0 |
 | `css/css-align/baseline-rules` | 2 / 8 (25,0 %) | 0 |
@@ -36,7 +36,7 @@ locale de la suite.
 | `css/css-box/margin-trim` | 1 / 42 (2,4 %) | 0 |
 | `css/css-display` | 34 / 90 (37,8 %) | 0 |
 | `css/css-display/run-in` | 53 / 133 (39,8 %) | 0 |
-| `css/css-flexbox` | 472 / 908 (52,0 %) | 9 |
+| `css/css-flexbox` | 473 / 908 (52,1 %) | 9 |
 | `css/css-flexbox/abspos` | 18 / 32 (56,3 %) | 0 |
 | `css/css-flexbox/alignment` | 5 / 8 (62,5 %) | 0 |
 | `css/css-flexbox/balance` | 5 / 40 (12,5 %) | 0 |
@@ -95,24 +95,24 @@ locale de la suite.
 | `css/css-position/multicol/static-position` | 0 / 8 (0,0 %) | 0 |
 | `css/css-position/overlay` | 4 / 9 (44,4 %) | 2 |
 | `css/css-position/static-position` | 3 / 36 (8,3 %) | 0 |
-| `css/css-position/sticky` | 20 / 75 (26,7 %) | 1 |
+| `css/css-position/sticky` | 37 / 75 (49,3 %) | 1 |
 | `css/css-sizing` | 81 / 229 (35,4 %) | 5 |
 | `css/css-sizing/aspect-ratio` | 105 / 269 (39,0 %) | 2 |
 | `css/css-sizing/contain-intrinsic-size` | 2 / 28 (7,1 %) | 0 |
 | `css/css-sizing/responsive-iframe` | 7 / 16 (43,8 %) | 0 |
 | `css/css-sizing/stretch` | 0 / 29 (0,0 %) | 0 |
-| `css/css-tables` | 66 / 126 (52,4 %) | 0 |
+| `css/css-tables` | 67 / 126 (53,2 %) | 0 |
 | `css/css-tables/height-distribution` | 1 / 12 (8,3 %) | 0 |
 | `css/css-tables/paint` | 2 / 6 (33,3 %) | 0 |
 | `css/css-tables/tentative` | 2 / 20 (10,0 %) | 0 |
 | `css/css-tables/tentative/paint` | 3 / 6 (50,0 %) | 2 |
-| `css/css-transforms` | 198 / 410 (48,3 %) | 35 |
+| `css/css-transforms` | 201 / 410 (49,0 %) | 35 |
 | `css/css-transforms/animation` | 9 / 27 (33,3 %) | 5 |
 | `css/css-transforms/document-styles` | 14 / 14 (100,0 %) | 0 |
 | `css/css-transforms/external-styles` | 13 / 13 (100,0 %) | 0 |
 | `css/css-transforms/gradientTransform` | 3 / 3 (100,0 %) | 0 |
 | `css/css-transforms/group` | 32 / 40 (80,0 %) | 0 |
-| `css/css-transforms/individual-transform` | 6 / 16 (37,5 %) | 0 |
+| `css/css-transforms/individual-transform` | 3 / 16 (18,8 %) | 0 |
 | `css/css-transforms/individual-transform/animation` | 0 / 2 (0,0 %) | 0 |
 | `css/css-transforms/inline-styles` | 14 / 14 (100,0 %) | 0 |
 | `css/css-transforms/matrix` | 69 / 69 (100,0 %) | 0 |

@@ -8,7 +8,8 @@
 //! LIMITES CONNUES (suivies dans `conformance/`) :
 //! - pour `flex` et `grid`, voir les modules [`flex`] et [`grid`] ;
 //! - tableaux : cellules de largeur égale, pas d'algorithme de tableau automatique ;
-//! - pas de flottants (`float`) ; `position: sticky` vaut `relative` sans décalage ;
+//! - pas de flottants (`float`) ; `position: sticky` est mis en page comme `relative` sans décalage, et retenu dans la
+//!   partie visible à la composition (`oxyde_paint::Sticky`) ;
 //! - une boîte positionnée est peinte après le contenu de son bloc conteneur,
 //!   sans tenir compte de `z-index` ;
 //! - les marges verticales ne fusionnent qu'entre frères, pas entre parent et enfant ;
@@ -178,6 +179,11 @@ pub struct LayoutTree {
     pub width: f32,
     /// Hauteur du contenu.
     pub height: f32,
+    /// Rang de chaque nœud dans l'ordre du document (arbre aplati), par
+    /// index de nœud ; `u32::MAX` pour un nœud hors du document. La peinture
+    /// s'en sert pour ordonner les boîtes positionnées, que la mise en page
+    /// range sous leur bloc conteneur et non à leur place dans l'arbre.
+    pub order: Vec<u32>,
 }
 
 /// Taille intrinsèque d'un élément remplacé (image), si elle est connue.
@@ -247,12 +253,44 @@ pub fn layout_document(
     let height = root.as_ref().map_or(0.0, |b| {
         b.border_box.y + b.border_box.h + px(b.style.margin.bottom, viewport.width)
     });
+    let order = document_order(doc, styles);
     LayoutTree {
+        order,
         grids: engine.grids,
         root: root.map(Fragment::Box),
         width: viewport.width,
         height,
     }
+}
+
+/// Rang de chaque nœud dans l'ordre du document, par index de nœud : l'arbre
+/// aplati, les enfants d'un conteneur flexible ou en grille étant pris dans
+/// l'ordre que leur donne `order`.
+fn document_order(doc: &Document, styles: &StyleMap) -> Vec<u32> {
+    let mut order = vec![u32::MAX; doc.len()];
+    let flat = doc.has_shadow_roots();
+    let mut rank = 0u32;
+    let mut pending = vec![doc.root()];
+    while let Some(node) = pending.pop() {
+        if let Some(slot) = order.get_mut(node.index()) {
+            *slot = rank;
+        }
+        rank = rank.saturating_add(1);
+        let mut children: Vec<NodeId> = if flat {
+            doc.flat_children(node)
+        } else {
+            doc.children(node).collect()
+        };
+        let reorders = styles
+            .get(node)
+            .is_some_and(|style| matches!(style.display, Display::Flex | Display::Grid));
+        if reorders {
+            // Tri stable : à `order` égal, l'ordre du source.
+            children.sort_by_key(|child| styles.get(*child).map_or(0, |style| style.order));
+        }
+        pending.extend(children.into_iter().rev());
+    }
+    order
 }
 
 /// Enfants d'une boîte dans l'ordre où ils se peignent (CSS 2, annexe E,
@@ -261,7 +299,10 @@ pub fn layout_document(
 /// nul ou positif ; à indice égal, l'ordre du document.
 ///
 /// LIMITE : l'ordre est établi entre les enfants directs d'une boîte, pas à
-/// l'échelle de tout un contexte d'empilement.
+/// l'échelle de tout un contexte d'empilement. La peinture, elle, ordonne
+/// le contexte entier (`oxyde_paint`) ; cette fonction ne sert plus qu'à
+/// chercher la boîte sous un point, qui peut donc différer de la boîte
+/// peinte au-dessus quand des boîtes positionnées se recouvrent.
 #[must_use]
 pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
     // Une boîte transformée s'empile comme une boîte positionnée.
