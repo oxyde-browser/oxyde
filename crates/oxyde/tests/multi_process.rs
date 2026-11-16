@@ -128,6 +128,54 @@ fn renderer_process_paints_the_same_page() {
     }
 }
 
+/// Une page très imbriquée ne fait pas déborder la pile : le fil principal
+/// de chaque processus a de quoi descendre aussi profond que la mise en
+/// page l'accepte.
+#[test]
+fn deeply_nested_pages_do_not_overflow_the_stack() {
+    let source =
+        std::env::temp_dir().join(format!("oxyde-{}-imbrication.html", std::process::id()));
+    std::fs::write(
+        &source,
+        format!("<!DOCTYPE html><body>{}x", "<div>".repeat(5000)),
+    )
+    .expect("page de test");
+    let url = url::Url::from_file_path(&source)
+        .expect("chemin absolu")
+        .to_string();
+    let mut rendered = false;
+    for multi_process in [false, true] {
+        let output = output_path("imbrication");
+        let mut args = vec![
+            "--screenshot",
+            output.to_str().expect("chemin UTF-8"),
+            "--size",
+            "200x100",
+            "--page-only",
+        ];
+        if multi_process {
+            args.push("--multi-process");
+        }
+        args.push(&url);
+        let run = oxyde(&args);
+        let log = String::from_utf8_lossy(&run.stderr);
+        assert!(!log.contains("overflowed its stack"), "{log}");
+        let _ = std::fs::remove_file(&output);
+        if run.status.success() {
+            rendered = true;
+        } else {
+            // Sans carte graphique, rien ne se rend ; mais si le rendu
+            // simple a marché, celui par processus de rendu le doit aussi.
+            assert!(
+                !rendered,
+                "le rendu par processus de rendu a échoué : {log}"
+            );
+            eprintln!("rendu impossible sur cette machine, test sauté : {log}");
+        }
+    }
+    let _ = std::fs::remove_file(&source);
+}
+
 #[test]
 fn renderer_crash_is_reported_not_fatal() {
     let output = output_path("plantage");
