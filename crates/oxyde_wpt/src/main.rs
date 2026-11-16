@@ -10,7 +10,14 @@
 //! oxyde_wpt [--suite vendor/wpt] [--filtre texte] [--publier] [--echecs N]
 //!           [--journal fichier] [dossier…]
 //! oxyde_wpt --un dom/nodes/Node-appendChild.html
+//! oxyde_wpt --ref [--publier] css/CSS2
+//! oxyde_wpt --un-ref css/CSS2/floats/floats-001.xht
 //! ```
+//!
+//! Avec `--ref`, ce sont les tests de référence (comparaison d'images)
+//! qui sont exécutés : voir [`reftest`].
+
+mod reftest;
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -80,6 +87,8 @@ fn main() -> ExitCode {
     let mut filter: Option<String> = None;
     let mut single: Option<String> = None;
     let mut publish = false;
+    let mut reference = false;
+    let mut single_ref: Option<String> = None;
     let mut shown = 40usize;
     let mut journal: Option<PathBuf> = None;
     let mut dirs: Vec<String> = Vec::new();
@@ -90,6 +99,8 @@ fn main() -> ExitCode {
             "--filtre" => filter = args.next(),
             "--un" => single = args.next(),
             "--publier" => publish = true,
+            "--ref" => reference = true,
+            "--un-ref" => single_ref = args.next(),
             "--journal" => journal = args.next().map(PathBuf::from),
             "--echecs" => shown = args.next().and_then(|n| n.parse().ok()).unwrap_or(shown),
             _ => dirs.push(arg),
@@ -97,6 +108,9 @@ fn main() -> ExitCode {
     }
     if let Some(path) = single {
         return run_child(&suite, &path);
+    }
+    if let Some(path) = single_ref {
+        return reftest::run_child(&suite, &path);
     }
     if !suite.join("resources/testharness.js").is_file() {
         eprintln!(
@@ -110,19 +124,19 @@ fn main() -> ExitCode {
     }
     let mut tests = Vec::new();
     for dir in &dirs {
-        collect(&suite, &suite.join(dir), &mut tests);
+        collect(&suite, &suite.join(dir), reference, &mut tests);
     }
     tests.sort();
     if let Some(f) = &filter {
         tests.retain(|t| t.contains(f.as_str()));
     }
-    let results = run_all(&suite, &tests);
+    let results = run_all(&suite, &tests, if reference { "--un-ref" } else { "--un" });
     if let Some(path) = journal
         && let Err(e) = std::fs::write(&path, journal_text(&results))
     {
         eprintln!("journal non écrit dans {} : {e}", path.display());
     }
-    print!("{}", render(&dirs, &results, publish, shown));
+    print!("{}", render(&dirs, &results, publish, shown, reference));
     ExitCode::SUCCESS
 }
 
@@ -130,9 +144,10 @@ fn main() -> ExitCode {
 // Recensement des tests
 // ---------------------------------------------------------------------------
 
-/// Ajoute à `out` les tests `testharness` trouvés sous `dir`, en chemins
-/// relatifs à la suite, séparés par `/`.
-fn collect(suite: &Path, dir: &Path, out: &mut Vec<String>) {
+/// Ajoute à `out` les tests trouvés sous `dir` (`testharness`, ou de
+/// référence si `reference`), en chemins relatifs à la suite, séparés
+/// par `/`.
+fn collect(suite: &Path, dir: &Path, reference: bool, out: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -144,7 +159,7 @@ fn collect(suite: &Path, dir: &Path, out: &mut Vec<String>) {
                 name.as_str(),
                 "support" | "resources" | "crashtests" | "tools" | "reference"
             ) {
-                collect(suite, &path, out);
+                collect(suite, &path, reference, out);
             }
             continue;
         }
@@ -152,7 +167,12 @@ fn collect(suite: &Path, dir: &Path, out: &mut Vec<String>) {
             continue;
         };
         let rel = rel.to_string_lossy().replace('\\', "/");
-        if is_test(&path, &name) {
+        let wanted = if reference {
+            std::fs::read(&path).is_ok_and(|bytes| reftest::is_reftest(&name, &bytes))
+        } else {
+            is_test(&path, &name)
+        };
+        if wanted {
             out.push(rel);
         }
     }
@@ -385,45 +405,10 @@ fn drain_console(page: &mut Page, driver: &mut Driver) -> bool {
 
 /// Exécute le test `rel` et écrit ses lignes de résultat sur la sortie.
 fn run_child(suite: &Path, rel: &str) -> ExitCode {
-    let Some((url, html, encoding)) = load_test(suite, rel) else {
+    let Some((mut page, encoding)) = open(suite, rel) else {
         println!("WPT-X\tfichier illisible");
         return ExitCode::FAILURE;
     };
-    let mut page = Page::from_source(url, &html, Some(content_type(rel)));
-    page.set_task_budget(TASK_BUDGET);
-    page.set_viewport(VIEWPORT);
-    for url in page.pending_stylesheets() {
-        let css = read_url(suite, &url).unwrap_or_default();
-        page.set_stylesheet(&url, &css);
-    }
-    for url in page.pending_fonts() {
-        let data = read_url_bytes(suite, &url);
-        page.set_font(&url, data);
-    }
-    for url in page.pending_images() {
-        let image = read_url_bytes(suite, &url).and_then(|bytes| decode_image(&bytes));
-        page.set_image(&url, image);
-    }
-    for url in page.pending_frames() {
-        let html = read_document(suite, &url, encoding);
-        page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
-    }
-    for url in page.pending_scripts() {
-        let source = read_url(suite, &url);
-        page.set_script(&url, source);
-    }
-    // Les modules importés se découvrent de proche en proche.
-    for _ in 0..64 {
-        let pending = page.pending_modules();
-        if pending.is_empty() {
-            break;
-        }
-        for url in pending {
-            let source = read_url(suite, &url);
-            page.set_module(&url, source);
-        }
-    }
-    page.run_scripts();
 
     let started = Instant::now();
     let mut finished = false;
@@ -432,36 +417,7 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         // Les gestes demandés d'abord : les scripts servis ensuite peuvent
         // en annoncer la fin.
         finished |= drain_console(&mut page, &mut driver);
-        for request in page.take_fetches() {
-            let result = match read_url_bytes(suite, &request.url) {
-                Some(body) => Ok(FetchResponse {
-                    url: request.url.clone(),
-                    status: 200,
-                    headers: vec![(
-                        "content-type".to_owned(),
-                        content_type(request.url.path()).to_owned(),
-                    )],
-                    body,
-                }),
-                None => Ok(FetchResponse {
-                    url: request.url.clone(),
-                    status: 404,
-                    headers: Vec::new(),
-                    body: Vec::new(),
-                }),
-            };
-            page.complete_fetch(request.id, result);
-        }
-        // Cadres créés par les scripts : documents et scripts servis de même.
-        for url in page.pending_frames() {
-            let html = read_document(suite, &url, encoding);
-            page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
-        }
-        for url in page.pending_scripts() {
-            let source = read_url(suite, &url);
-            page.set_script(&url, source);
-        }
-        let loaded = page.load_ready_frames();
+        let loaded = serve(suite, &mut page, encoding);
         finished |= drain_console(&mut page, &mut driver);
         let spent = oxyde_platform::thread_cpu_time().unwrap_or_else(|| started.elapsed());
         if finished || spent > CHILD_BUDGET {
@@ -486,6 +442,94 @@ fn run_child(suite: &Path, rel: &str) -> ExitCode {
         println!("WPT-X\tle harnais n'a pas terminé");
         ExitCode::FAILURE
     }
+}
+
+/// Sert à la page les feuilles de style, les polices et les images qu'elle
+/// attend. Renvoie `true` si quelque chose a été servi.
+fn serve_resources(suite: &Path, page: &mut Page) -> bool {
+    let mut served = false;
+    for url in page.pending_stylesheets() {
+        let css = read_url(suite, &url).unwrap_or_default();
+        page.set_stylesheet(&url, &css);
+        served = true;
+    }
+    for url in page.pending_fonts() {
+        let data = read_url_bytes(suite, &url);
+        page.set_font(&url, data);
+        served = true;
+    }
+    for url in page.pending_images() {
+        let image = read_url_bytes(suite, &url).and_then(|bytes| decode_image(&bytes));
+        page.set_image(&url, image);
+        served = true;
+    }
+    served
+}
+
+/// Charge la page du test `rel` : ses ressources sont servies depuis la
+/// suite et ses scripts exécutés. Renvoie la page et son encodage.
+fn open(suite: &Path, rel: &str) -> Option<(Page, Encoding)> {
+    let (url, html, encoding) = load_test(suite, rel)?;
+    let mut page = Page::from_source(url, &html, Some(content_type(rel)));
+    page.set_task_budget(TASK_BUDGET);
+    page.set_viewport(VIEWPORT);
+    serve_resources(suite, &mut page);
+    for url in page.pending_frames() {
+        let html = read_document(suite, &url, encoding);
+        page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
+    }
+    for url in page.pending_scripts() {
+        let source = read_url(suite, &url);
+        page.set_script(&url, source);
+    }
+    // Les modules importés se découvrent de proche en proche.
+    for _ in 0..64 {
+        let pending = page.pending_modules();
+        if pending.is_empty() {
+            break;
+        }
+        for url in pending {
+            let source = read_url(suite, &url);
+            page.set_module(&url, source);
+        }
+    }
+    page.run_scripts();
+    Some((page, encoding))
+}
+
+/// Sert à la page les requêtes, les cadres et les scripts qu'elle demande.
+/// Renvoie `true` si un cadre vient d'être chargé.
+fn serve(suite: &Path, page: &mut Page, encoding: Encoding) -> bool {
+    for request in page.take_fetches() {
+        let result = match read_url_bytes(suite, &request.url) {
+            Some(body) => Ok(FetchResponse {
+                url: request.url.clone(),
+                status: 200,
+                headers: vec![(
+                    "content-type".to_owned(),
+                    content_type(request.url.path()).to_owned(),
+                )],
+                body,
+            }),
+            None => Ok(FetchResponse {
+                url: request.url.clone(),
+                status: 404,
+                headers: Vec::new(),
+                body: Vec::new(),
+            }),
+        };
+        page.complete_fetch(request.id, result);
+    }
+    // Cadres créés par les scripts : documents et scripts servis de même.
+    for url in page.pending_frames() {
+        let html = read_document(suite, &url, encoding);
+        page.set_frame_typed(&url, html.as_deref(), Some(content_type(url.path())));
+    }
+    for url in page.pending_scripts() {
+        let source = read_url(suite, &url);
+        page.set_script(&url, source);
+    }
+    page.load_ready_frames()
 }
 
 /// Adresse et source HTML du test `rel` ; les tests `.any.js` et
@@ -625,7 +669,7 @@ fn content_type(path: &str) -> &'static str {
 // ---------------------------------------------------------------------------
 
 /// Exécute tous les tests, plusieurs à la fois, chacun dans un processus fils.
-fn run_all(suite: &Path, tests: &[String]) -> Vec<(String, Outcome)> {
+fn run_all(suite: &Path, tests: &[String], mode: &str) -> Vec<(String, Outcome)> {
     let exe = match std::env::current_exe() {
         Ok(exe) => exe,
         Err(e) => {
@@ -644,7 +688,7 @@ fn run_all(suite: &Path, tests: &[String]) -> Vec<(String, Outcome)> {
                     let Some(test) = tests.get(i) else {
                         break;
                     };
-                    let outcome = run_one(&exe, suite, test);
+                    let outcome = run_one(&exe, suite, test, mode);
                     if let Ok(mut all) = results.lock() {
                         all.push((i, outcome));
                     }
@@ -659,12 +703,13 @@ fn run_all(suite: &Path, tests: &[String]) -> Vec<(String, Outcome)> {
         .collect()
 }
 
-/// Lance le processus fils d'un test et interprète sa sortie.
-fn run_one(exe: &Path, suite: &Path, test: &str) -> Outcome {
+/// Lance le processus fils d'un test (`mode` : `--un` ou `--un-ref`) et
+/// interprète sa sortie.
+fn run_one(exe: &Path, suite: &Path, test: &str, mode: &str) -> Outcome {
     let child = Command::new(exe)
         .arg("--suite")
         .arg(suite)
-        .arg("--un")
+        .arg(mode)
         .arg(test)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -776,7 +821,16 @@ fn percent(part: usize, whole: usize) -> String {
 
 /// Rapport en Markdown. `publish` donne la forme stable, destinée à
 /// `conformance/wpt.md` ; sinon les `shown` premiers échecs sont détaillés.
-fn render(dirs: &[String], results: &[(String, Outcome)], publish: bool, shown: usize) -> String {
+fn render(
+    dirs: &[String],
+    results: &[(String, Outcome)],
+    publish: bool,
+    shown: usize,
+    reference: bool,
+) -> String {
+    if reference {
+        return render_reference(dirs, results, publish, shown);
+    }
     let mut total = Tally::default();
     let mut by_dir: BTreeMap<String, Tally> = BTreeMap::new();
     for (test, outcome) in results {
@@ -852,6 +906,110 @@ fn render(dirs: &[String], results: &[(String, Outcome)], publish: bool, shown: 
     }
     if !publish && !details.is_empty() {
         let _ = writeln!(out, "\n## Premiers échecs\n\n{details}");
+    }
+    out
+}
+
+/// Rapport des tests de référence, en Markdown : un test par fichier.
+fn render_reference(
+    dirs: &[String],
+    results: &[(String, Outcome)],
+    publish: bool,
+    shown: usize,
+) -> String {
+    /// Compteurs d'un dossier : fichiers, réussis, réussis sur une page unie,
+    /// références absentes.
+    #[derive(Default)]
+    struct Count {
+        files: usize,
+        passed: usize,
+        uniform: usize,
+        missing: usize,
+    }
+    /// `Ok(page unie ?)` pour une réussite, `Err(cause)` sinon.
+    fn status(outcome: &Outcome) -> Result<bool, String> {
+        match outcome {
+            Outcome::Done(s) | Outcome::HarnessError(s, _) => match s.first() {
+                Some(t) if t.pass => Ok(t.message == reftest::UNIFORM),
+                Some(t) => Err(t.message.clone()),
+                None => Err("aucun résultat".to_owned()),
+            },
+            Outcome::NoResult(m) => Err(m.clone()),
+        }
+    }
+    let mut total = Count::default();
+    let mut by_dir: BTreeMap<String, Count> = BTreeMap::new();
+    for (test, outcome) in results {
+        let dir = test.rsplit_once('/').map_or("", |(d, _)| d).to_owned();
+        let entry = by_dir.entry(dir).or_default();
+        let result = status(outcome);
+        for count in [&mut total, entry] {
+            count.files += 1;
+            match &result {
+                Ok(uniform) => {
+                    count.passed += 1;
+                    count.uniform += usize::from(*uniform);
+                }
+                Err(cause) => {
+                    count.missing += usize::from(cause.ends_with(reftest::UNREADABLE));
+                }
+            }
+        }
+    }
+    let mut out = String::new();
+    let _ = writeln!(out, "# Web Platform Tests : tests de référence\n");
+    let _ = writeln!(
+        out,
+        "Produit par `cargo run --release -p oxyde_wpt -- --ref --publier {}`, sur la suite\n\
+         `web-platform-tests/wpt` déposée dans `vendor/wpt`. Chaque test est dessiné dans une\n\
+         fenêtre de 800 × 600 points, puis comparé point par point à la page qu'il désigne\n\
+         par `<link rel=\"match\">` (ou `mismatch` : elles doivent alors différer).\n",
+        dirs.join(" ")
+    );
+    let _ = writeln!(
+        out,
+        "**Tests réussis : {} / {} ({})**, dont {} sur une page d'une seule couleur.\n",
+        total.passed,
+        total.files,
+        percent(total.passed, total.files),
+        total.uniform
+    );
+    let _ = writeln!(
+        out,
+        "Une réussite dit que le test et sa référence sont dessinés de la même façon, pas que\n\
+         ce dessin est juste : deux pages vides sont identiques. Les réussites « sur une page\n\
+         d'une seule couleur » sont comptées à part pour cette raison ; certaines sont\n\
+         légitimes (le test attend une page blanche), d'autres non.\n"
+    );
+    if total.missing > 0 {
+        let _ = writeln!(
+            out,
+            "{} tests échouent sans avoir été comparés : leur référence n'est pas dans la copie\n\
+             locale de la suite.\n",
+            total.missing
+        );
+    }
+    let _ = writeln!(out, "| Dossier | Tests réussis | dont page unie |");
+    let _ = writeln!(out, "|---|---:|---:|");
+    for (dir, count) in &by_dir {
+        let _ = writeln!(
+            out,
+            "| `{dir}` | {} / {} ({}) | {} |",
+            count.passed,
+            count.files,
+            percent(count.passed, count.files),
+            count.uniform
+        );
+    }
+    if !publish {
+        let _ = writeln!(out, "\n## Premiers échecs\n");
+        for (test, cause) in results
+            .iter()
+            .filter_map(|(test, outcome)| Some((test, status(outcome).err()?)))
+            .take(shown)
+        {
+            let _ = writeln!(out, "- `{test}` — {}", cell(&cause));
+        }
     }
     out
 }
