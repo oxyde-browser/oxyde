@@ -589,7 +589,11 @@ pub(crate) fn layout_snapshot(
                 let target = image_target(el, &env.base)?;
                 env.known_sizes.get(target.as_str()).copied()
             })
-            .or_else(|| svg::is_outer_root(doc, node).then(|| svg::intrinsic_size(doc, node)))
+            .or_else(|| {
+                svg::is_outer_root(doc, node)
+                    .then(|| svg::layout_size(doc, node, styles.get(node).map(|s| &**s)))
+                    .flatten()
+            })
     };
     let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
     (styles, tree, time)
@@ -2725,9 +2729,14 @@ impl Page {
         let images = &self.images;
         // Les `<svg>` sont des éléments remplacés : leur taille propre vient
         // de leurs attributs.
-        let svg_sizes: HashMap<NodeId, (f32, f32)> = svg::outer_roots(&self.doc)
-            .into_iter()
-            .map(|node| (node, svg::intrinsic_size(&self.doc, node)))
+        let svg_roots: std::collections::HashSet<NodeId> =
+            svg::outer_roots(&self.doc).into_iter().collect();
+        let svg_sizes: HashMap<NodeId, (f32, f32)> = svg_roots
+            .iter()
+            .filter_map(|node| {
+                let style = self.styles.get(*node).map(|s| &**s);
+                Some((*node, svg::layout_size(&self.doc, *node, style)?))
+            })
             .collect();
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
         let intrinsic = |node: NodeId| {
@@ -2740,7 +2749,7 @@ impl Page {
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         let frame_lists = self.paint_frames(&tree, text);
-        self.render_svgs(&tree, &svg_sizes, text);
+        self.render_svgs(&tree, &svg_roots, text);
         let images = &self.images;
         let canvases = &self.canvas_images;
         let svgs = &self.svg_images;
@@ -2777,7 +2786,7 @@ impl Page {
     fn render_svgs(
         &mut self,
         tree: &oxyde_layout::LayoutTree,
-        roots: &HashMap<NodeId, (f32, f32)>,
+        roots: &std::collections::HashSet<NodeId>,
         text: &mut TextContext,
     ) {
         if roots.is_empty() {
@@ -2786,7 +2795,7 @@ impl Page {
         }
         let index = svg::Index::new(&self.doc);
         let mut kept = HashMap::new();
-        for (node, rect) in oxyde_paint::content_boxes(tree, &|node| roots.contains_key(&node)) {
+        for (node, rect) in oxyde_paint::content_boxes(tree, &|node| roots.contains(&node)) {
             let signature = svg::signature(&self.doc, &self.styles, node, rect.w, rect.h);
             let image = match self.svg_images.remove(&node) {
                 Some((known, image)) if known == signature => Some(image),

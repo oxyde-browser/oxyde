@@ -114,6 +114,7 @@ pub enum Longhand {
     TransitionDuration,
     TransitionDelay,
     TransitionTimingFunction,
+    TransformBox,
     Fill,
     Stroke,
     StrokeWidth,
@@ -1040,6 +1041,19 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "transform" | "-webkit-transform" => single(
             Longhand::Transform,
             crate::transform::parse_transform(tokens).map(Value::Transform),
+        ),
+        "transform-box" => single(
+            Longhand::TransformBox,
+            keyword(
+                tokens,
+                &[
+                    "view-box",
+                    "fill-box",
+                    "stroke-box",
+                    "content-box",
+                    "border-box",
+                ],
+            ),
         ),
         "fill" => single(
             Longhand::Fill,

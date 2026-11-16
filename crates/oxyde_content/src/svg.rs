@@ -15,8 +15,13 @@
 //! Une découpe (`clip-path` vers un `clipPath`) ou un masque (`mask`)
 //! s'appliquent au contenu dessiné à part, comme l'opacité de groupe.
 //!
-//! LIMITES CONNUES : pas d'image (`image`), de motif, de marqueur ni de
-//! filtre ; une découpe ou un masque exprimés dans la boîte englobante
+//! Un motif (`pattern`) est dessiné une fois dans une tuile, répétée par
+//! le remplissage.
+//!
+//! LIMITES CONNUES : pas d'image (`image`), de marqueur ni de filtre ;
+//! `transform-box` ne vaut que pour une forme (un groupe se rapporte
+//! toujours à la fenêtre) ; une découpe ou un masque
+//! exprimés dans la boîte englobante
 //! (`objectBoundingBox`) sont ignorés, de même que la zone d'un masque et
 //! le texte dans une découpe ; pour le texte, ni
 //! `textPath`, ni positions glyphe par glyphe, ni `textLength`, ni
@@ -43,9 +48,9 @@ use oxyde_dom::{Document, ElementData, Namespace, NodeId};
 use oxyde_paint::Image;
 use oxyde_text::TextContext;
 use tiny_skia::{
-    Color, FillRule, GradientStop, LineCap, LineJoin, LinearGradient, Mask, MaskType, Paint, Path,
-    PathBuilder, Pixmap, PixmapPaint, Point, RadialGradient, Rect, Shader, SpreadMode, Stroke,
-    StrokeDash, Transform,
+    Color, FillRule, FilterQuality, GradientStop, LineCap, LineJoin, LinearGradient, Mask,
+    MaskType, Paint, Path, PathBuilder, Pattern, Pixmap, PixmapPaint, Point, RadialGradient, Rect,
+    Shader, SpreadMode, Stroke, StrokeDash, Transform,
 };
 
 /// Côté maximal de la surface de rendu, en pixels.
@@ -57,6 +62,8 @@ const MAX_CHAIN: usize = 8;
 /// Nombre maximal de surfaces intermédiaires ouvertes à la fois (opacité de
 /// groupe, découpe, masque) : chacune a la taille du rendu.
 const MAX_LAYERS: usize = 6;
+/// Côté maximal de la tuile d'un motif, en pixels.
+const MAX_TILE_SIDE: f32 = 2048.0;
 /// Nombre maximal d'éléments dessinés par rendu : des `use` imbriqués
 /// peuvent multiplier un petit document sans fin.
 const MAX_ELEMENTS: u32 = 200_000;
@@ -294,6 +301,44 @@ fn fit(view: [f32; 4], ratio: Option<&str>, width: f32, height: f32) -> Transfor
     Transform::from_row(scale, 0.0, 0.0, scale, dx - x * scale, dy - y * scale)
 }
 
+/// Arguments d'une fonction de l'attribut `transform` : des nombres sans
+/// unité, séparés par des blancs ou par une virgule. `None` s'il y a autre
+/// chose.
+fn arguments(text: &str) -> Option<Vec<f32>> {
+    let mut scanner = Scanner::new(text);
+    let mut out = Vec::new();
+    let blanks = |scanner: &mut Scanner<'_>| {
+        while scanner.peek().is_some_and(|b| b.is_ascii_whitespace()) {
+            scanner.at += 1;
+        }
+    };
+    loop {
+        blanks(&mut scanner);
+        if scanner.peek().is_none() {
+            return Some(out);
+        }
+        // `number` passerait les virgules : elles sont comptées ici.
+        if scanner.peek() == Some(b',') {
+            return None;
+        }
+        out.push(scanner.number()?);
+        blanks(&mut scanner);
+        match scanner.peek() {
+            None => return Some(out),
+            Some(b',') => {
+                scanner.at += 1;
+                blanks(&mut scanner);
+                // Une virgule annonce un nombre.
+                if scanner.peek().is_none() || scanner.peek() == Some(b',') {
+                    return None;
+                }
+            }
+            Some(b) if b.is_ascii_digit() || matches!(b, b'+' | b'-' | b'.') => {}
+            Some(_) => return None,
+        }
+    }
+}
+
 /// Valeur de l'attribut `transform` (ou `gradientTransform`).
 fn parse_transform(text: &str) -> Transform {
     let mut out = Transform::identity();
@@ -303,7 +348,10 @@ fn parse_transform(text: &str) -> Transform {
             break;
         };
         let name = rest[..open].trim_matches(|c: char| c.is_whitespace() || c == ',');
-        let args = numbers(&rest[open + 1..close]);
+        // Des unités ou une virgule en trop : la valeur entière est invalide.
+        let Some(args) = arguments(&rest[open + 1..close]) else {
+            return Transform::identity();
+        };
         let step = match (name, args.as_slice()) {
             ("matrix", [a, b, c, d, e, f]) => Transform::from_row(*a, *b, *c, *d, *e, *f),
             ("translate", [x]) => Transform::from_translate(*x, 0.0),
@@ -323,19 +371,61 @@ fn parse_transform(text: &str) -> Transform {
     out
 }
 
-/// Transformation propre à un élément : son attribut `transform`, à défaut
-/// la propriété CSS du même nom.
-fn own_transform(el: &ElementData, style: &ComputedStyle) -> Transform {
-    if let Some(text) = el.attr("transform") {
-        return parse_transform(text);
+/// Transformation propre à un élément : `translate`, `rotate`, `scale`,
+/// puis la propriété `transform` (à défaut l'attribut du même nom, qui n'est
+/// qu'un attribut de présentation), autour de `transform-origin`. L'origine
+/// et les pourcentages se rapportent à la boîte que désigne
+/// `transform-box` : la fenêtre SVG `port`, ou la boîte englobante `bounds`
+/// de la forme quand elle est connue.
+fn own_transform(
+    el: &ElementData,
+    style: &ComputedStyle,
+    port: Port,
+    bounds: Option<Rect>,
+) -> Transform {
+    let attribute = el.attr("transform").map(parse_transform);
+    if attribute.is_none() && !style.is_transformed() {
+        return Transform::identity();
     }
-    match style.transform_matrix(0.0, 0.0) {
-        Some(matrix) => {
-            let [a, b, c, d, e, f] = matrix.0;
-            Transform::from_row(a, b, c, d, e, f)
+    // Boîte de référence : (x, y, largeur, hauteur).
+    let reference = match (style.transform_box, bounds) {
+        (oxyde_css::TransformBox::FillBox, Some(b)) => (b.x(), b.y(), b.width(), b.height()),
+        (oxyde_css::TransformBox::StrokeBox, Some(b)) => {
+            // Le contour déborde d'une demi-épaisseur de chaque côté.
+            let half = if style.svg.stroke == SvgPaint::None {
+                0.0
+            } else {
+                style.svg.stroke_width / 2.0
+            };
+            (
+                b.x() - half,
+                b.y() - half,
+                b.width() + half * 2.0,
+                b.height() + half * 2.0,
+            )
         }
-        None => Transform::identity(),
-    }
+        _ => (0.0, 0.0, port.width, port.height),
+    };
+    let port = Port {
+        width: reference.2,
+        height: reference.3,
+    };
+    let skia = |matrix: oxyde_css::Affine| {
+        let [a, b, c, d, e, f] = matrix.0;
+        Transform::from_row(a, b, c, d, e, f)
+    };
+    let main = style
+        .transform_functions_matrix(port.width, port.height)
+        .map(skia)
+        .or(attribute)
+        .unwrap_or_else(Transform::identity);
+    let individual = skia(style.individual_matrix(port.width, port.height));
+    let x = reference.0 + style.transform_origin.0.resolve(port.width).unwrap_or(0.0);
+    let y = reference.1 + style.transform_origin.1.resolve(port.height).unwrap_or(0.0);
+    Transform::from_translate(x, y)
+        .pre_concat(individual)
+        .pre_concat(main)
+        .pre_concat(Transform::from_translate(-x, -y))
 }
 
 // ---- Tracés -----------------------------------------------------------------------------------
@@ -750,6 +840,44 @@ fn href(el: &ElementData) -> Option<&str> {
     })
 }
 
+/// De quoi remplir ou tracer une forme.
+enum Brush {
+    /// Couleur unie ou dégradé.
+    Shader(Shader<'static>),
+    /// Motif : une tuile de pixels, répétée ; `place` la pose dans le
+    /// repère de la forme.
+    Pattern {
+        tile: Pixmap,
+        place: Transform,
+        opacity: f32,
+    },
+}
+
+impl Brush {
+    /// Peinture `tiny-skia` de ce pinceau.
+    fn paint(&self) -> Paint<'_> {
+        let shader = match self {
+            Self::Shader(shader) => shader.clone(),
+            Self::Pattern {
+                tile,
+                place,
+                opacity,
+            } => Pattern::new(
+                tile.as_ref(),
+                SpreadMode::Repeat,
+                FilterQuality::Bilinear,
+                *opacity,
+                *place,
+            ),
+        };
+        Paint {
+            shader,
+            anti_alias: true,
+            ..Paint::default()
+        }
+    }
+}
+
 /// Héritage du contenu d'un `<use>` : ce qui vaut encore la valeur du
 /// contexte où le modèle est rangé (`from`) prend celle du `use` (`onto`).
 struct Rebase {
@@ -961,17 +1089,140 @@ impl Scene<'_> {
         }
     }
 
-    /// Peinture `paint` pour une forme de boîte englobante `bounds`.
-    fn shader(
+    /// Motif `node` et ceux dont il hérite par `href`, du plus proche au
+    /// plus lointain.
+    fn pattern_chain(&self, node: NodeId) -> Vec<(NodeId, &ElementData)> {
+        let mut chain = Vec::new();
+        let mut at = Some(node);
+        while let Some(node) = at
+            && chain.len() < MAX_CHAIN
+        {
+            let Some(el) = self.doc.element(node) else {
+                break;
+            };
+            if el.ns != Namespace::Svg || el.name != "pattern" {
+                break;
+            }
+            chain.push((node, el));
+            at = href(el).and_then(|target| self.index.target(target));
+        }
+        chain
+    }
+
+    /// Pinceau du motif `node` pour une forme de boîte englobante `bounds`,
+    /// dessinée avec la transformation `transform` (elle fixe la finesse de
+    /// la tuile). `None` s'il ne peint rien.
+    fn pattern(
+        &self,
+        node: NodeId,
+        bounds: Rect,
+        port: Port,
+        opacity: f32,
+        transform: Transform,
+    ) -> Option<Brush> {
+        if self.layers.get() >= MAX_LAYERS {
+            return None;
+        }
+        let chain = self.pattern_chain(node);
+        let attr = |name: &str| chain.iter().find_map(|(_, el)| el.attr(name));
+        // Le contenu : celui du premier motif de la chaîne qui en a.
+        let content = chain.iter().map(|(node, _)| *node).find(|node| {
+            self.doc
+                .children(*node)
+                .any(|child| self.doc.element(child).is_some())
+        })?;
+        let user_space = attr("patternUnits") == Some("userSpaceOnUse");
+        // Dans la boîte englobante, les longueurs en sont des fractions.
+        let measure = |name: &str, base: f32, side: f32| -> f32 {
+            let Some(text) = attr(name) else { return 0.0 };
+            let text = text.trim();
+            if user_space {
+                length(text, base, 16.0).unwrap_or(0.0)
+            } else {
+                let fraction = match text.strip_suffix('%') {
+                    Some(percent) => percent.trim().parse::<f32>().map_or(0.0, |v| v / 100.0),
+                    None => text.parse::<f32>().unwrap_or(0.0),
+                };
+                fraction * side
+            }
+        };
+        let (mut x, mut y) = (
+            measure("x", port.width, bounds.width()),
+            measure("y", port.height, bounds.height()),
+        );
+        if !user_space {
+            x += bounds.x();
+            y += bounds.y();
+        }
+        let width = measure("width", port.width, bounds.width());
+        let height = measure("height", port.height, bounds.height());
+        if !(width > 0.0 && height > 0.0) {
+            return None;
+        }
+        let mut place = Transform::from_translate(x, y);
+        if let Some(text) = attr("patternTransform") {
+            place = parse_transform(text).pre_concat(place);
+        }
+        // Finesse de la tuile : celle du dessin final, bornée.
+        let total = transform.pre_concat(place);
+        // Par axe : un motif étiré dans un sens garde des bords nets.
+        let scale_x = total.sx.hypot(total.ky).clamp(0.01, 64.0);
+        let scale_y = total.kx.hypot(total.sy).clamp(0.01, 64.0);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "côtés entre 1 et MAX_TILE_SIDE"
+        )]
+        let side =
+            |length: f32, scale: f32| (length * scale).ceil().clamp(1.0, MAX_TILE_SIDE) as u32;
+        let mut tile = Pixmap::new(side(width, scale_x), side(height, scale_y))?;
+        #[expect(clippy::cast_precision_loss, reason = "côtés d'au plus MAX_TILE_SIDE")]
+        let (pixels_x, pixels_y) = (tile.width() as f32 / width, tile.height() as f32 / height);
+        // Repère du contenu : celui du motif, son `viewBox`, ou la boîte
+        // englobante de la forme.
+        let mut inner = Transform::from_scale(pixels_x, pixels_y);
+        let mut inner_port = Port { width, height };
+        let view = attr("viewBox").map(numbers);
+        if let Some([vx, vy, vw, vh]) = view.as_deref().and_then(|v| <[f32; 4]>::try_from(v).ok())
+            && vw > 0.0
+            && vh > 0.0
+        {
+            inner = inner.pre_concat(fit(
+                [vx, vy, vw, vh],
+                attr("preserveAspectRatio"),
+                width,
+                height,
+            ));
+            inner_port = Port {
+                width: vw,
+                height: vh,
+            };
+        } else if attr("patternContentUnits") == Some("objectBoundingBox") {
+            inner = inner.pre_concat(Transform::from_scale(bounds.width(), bounds.height()));
+        }
+        self.layers.set(self.layers.get() + 1);
+        self.draw_children(&mut tile, content, inner, inner_port, None, 0);
+        self.layers.set(self.layers.get().saturating_sub(1));
+        Some(Brush::Pattern {
+            tile,
+            place: place.pre_concat(Transform::from_scale(1.0 / pixels_x, 1.0 / pixels_y)),
+            opacity,
+        })
+    }
+
+    /// Pinceau de la peinture `paint` pour une forme de boîte englobante
+    /// `bounds`, dessinée avec la transformation `transform`.
+    fn brush(
         &self,
         paint: &SvgPaint,
         opacity: f32,
         current: oxyde_css::values::Color,
         bounds: Rect,
-        port: Port,
-    ) -> Option<Shader<'static>> {
+        (port, transform): (Port, Transform),
+    ) -> Option<Brush> {
         let solid = |color: oxyde_css::values::Color| {
-            (color.a > 0 && opacity > 0.0).then(|| Shader::SolidColor(skia_color(color, opacity)))
+            (color.a > 0 && opacity > 0.0)
+                .then(|| Brush::Shader(Shader::SolidColor(skia_color(color, opacity))))
         };
         match paint {
             SvgPaint::None => None,
@@ -984,6 +1235,10 @@ impl Scene<'_> {
                     }) =>
                 {
                     self.gradient(*node, bounds, port, opacity, current)
+                        .map(Brush::Shader)
+                }
+                Some(node) if is_svg(self.doc, *node, "pattern") => {
+                    self.pattern(*node, bounds, port, opacity, transform)
                 }
                 // Serveur absent ou d'un genre non géré : la couleur de repli.
                 _ => solid((*fallback)?),
@@ -1002,12 +1257,9 @@ impl Scene<'_> {
         port: Port,
     ) {
         let bounds = path.bounds();
-        if let Some(shader) = self.shader(&svg.fill, svg.fill_opacity, current, bounds, port) {
-            let paint = Paint {
-                shader,
-                anti_alias: true,
-                ..Paint::default()
-            };
+        let place = (port, transform);
+        if let Some(brush) = self.brush(&svg.fill, svg.fill_opacity, current, bounds, place) {
+            let paint = brush.paint();
             let rule = if svg.even_odd {
                 FillRule::EvenOdd
             } else {
@@ -1016,14 +1268,9 @@ impl Scene<'_> {
             target.fill_path(path, &paint, rule, transform, None);
         }
         if svg.stroke_width > 0.0
-            && let Some(shader) =
-                self.shader(&svg.stroke, svg.stroke_opacity, current, bounds, port)
+            && let Some(brush) = self.brush(&svg.stroke, svg.stroke_opacity, current, bounds, place)
         {
-            let paint = Paint {
-                shader,
-                anti_alias: true,
-                ..Paint::default()
-            };
+            let paint = brush.paint();
             let stroke = Stroke {
                 width: svg.stroke_width,
                 miter_limit: svg.miter_limit,
@@ -1090,7 +1337,11 @@ impl Scene<'_> {
         if !group && !shape && el.name != "text" {
             return;
         }
-        let transform = transform.pre_concat(own_transform(el, style));
+        let bounds = (shape && style.transform_box != oxyde_css::TransformBox::ViewBox)
+            .then(|| shape_path(el, port, style.font_size))
+            .flatten()
+            .map(|path| path.bounds());
+        let transform = transform.pre_concat(own_transform(el, style, port, bounds));
         // Une opacité de groupe, une découpe ou un masque valent pour le
         // contenu pris d'un bloc : il est dessiné à part, puis fondu dans la
         // cible.
@@ -1155,7 +1406,7 @@ impl Scene<'_> {
         if el.attr("clipPathUnits") == Some("objectBoundingBox") {
             return None;
         }
-        let transform = transform.pre_concat(own_transform(el, style));
+        let transform = transform.pre_concat(own_transform(el, style, port, None));
         let mut mask = Mask::new(like.width(), like.height())?;
         for child in self.doc.children(clip) {
             self.clip_shape(&mut mask, child, transform, port, depth + 1);
@@ -1182,7 +1433,7 @@ impl Scene<'_> {
         if el.ns != Namespace::Svg || style.display == Display::None {
             return;
         }
-        let transform = transform.pre_concat(own_transform(el, style));
+        let transform = transform.pre_concat(own_transform(el, style, port, None));
         if el.name == "use" {
             if let Some(target) = href(el).and_then(|target| self.index.target(target)) {
                 let x = attr_length(el, "x", port.width, style.font_size, 0.0);
@@ -1562,11 +1813,12 @@ impl Scene<'_> {
 // ---- Entrées ----------------------------------------------------------------------------------
 
 /// Taille propre de l'élément `<svg>` `node`, en pixels CSS : ses attributs
-/// `width` et `height`, à défaut ceux que donne son `viewBox`.
-pub(crate) fn intrinsic_size(doc: &Document, node: NodeId) -> (f32, f32) {
-    let Some(el) = doc.element(node) else {
-        return DEFAULT_SIZE;
-    };
+/// `width` et `height`, l'un déduit de l'autre par le `viewBox` au besoin.
+/// `None` s'il n'a qu'un `viewBox` : il n'a alors que des proportions (que
+/// le moteur de style lui donne par `aspect-ratio`) et prend la place qu'on
+/// lui laisse.
+pub(crate) fn intrinsic_size(doc: &Document, node: NodeId) -> Option<(f32, f32)> {
+    let el = doc.element(node)?;
     // Un pourcentage n'est pas une taille propre.
     let absolute = |name: &str| {
         el.attr(name)
@@ -1576,14 +1828,31 @@ pub(crate) fn intrinsic_size(doc: &Document, node: NodeId) -> (f32, f32) {
     };
     let view = view_box(el);
     match (absolute("width"), absolute("height"), view) {
-        (Some(w), Some(h), _) => (w, h),
-        (Some(w), None, Some([_, _, vw, vh])) => (w, w * vh / vw),
-        (None, Some(h), Some([_, _, vw, vh])) => (h * vw / vh, h),
-        (None, None, Some([_, _, vw, vh])) => (vw, vh),
-        (Some(w), None, None) => (w, DEFAULT_SIZE.1),
-        (None, Some(h), None) => (DEFAULT_SIZE.0, h),
-        (None, None, None) => DEFAULT_SIZE,
+        (Some(w), Some(h), _) => Some((w, h)),
+        (Some(w), None, Some([_, _, vw, vh])) => Some((w, w * vh / vw)),
+        (None, Some(h), Some([_, _, vw, vh])) => Some((h * vw / vh, h)),
+        (None, None, Some(_)) => None,
+        (Some(w), None, None) => Some((w, DEFAULT_SIZE.1)),
+        (None, Some(h), None) => Some((DEFAULT_SIZE.0, h)),
+        (None, None, None) => Some(DEFAULT_SIZE),
     }
+}
+
+/// Taille à donner à la mise en page pour l'élément `<svg>` `node` de style
+/// `style` : sa taille propre. La taille par défaut d'un `<svg>` sans
+/// dimensions ni `viewBox` n'est qu'un repli : elle cède devant
+/// `aspect-ratio`.
+pub(crate) fn layout_size(
+    doc: &Document,
+    node: NodeId,
+    style: Option<&ComputedStyle>,
+) -> Option<(f32, f32)> {
+    let size = intrinsic_size(doc, node)?;
+    let el = doc.element(node)?;
+    let declared = ["width", "height", "viewBox"]
+        .iter()
+        .any(|name| el.attr(name).is_some());
+    (declared || style.is_none_or(|style| style.aspect_ratio.is_none())).then_some(size)
 }
 
 /// Empreinte de ce dont dépend le rendu de `root` à la taille `width` ×
@@ -1676,7 +1945,9 @@ pub(crate) fn decode(bytes: &[u8]) -> Option<Image> {
     let root = doc
         .children(doc.root())
         .find(|node| is_svg(&doc, *node, "svg"))?;
-    let (width, height) = intrinsic_size(&doc, root);
+    // Un fichier sans dimensions prend celles de son `viewBox`.
+    let (width, height) = intrinsic_size(&doc, root)
+        .or_else(|| view_box(doc.element(root)?).map(|view| (view[2], view[3])))?;
     let sheets = oxyde_css::collect_style_elements(&doc);
     let styles = oxyde_css::compute_styles(&doc, &sheets, Viewport { width, height });
     render(
@@ -1698,6 +1969,22 @@ mod tests {
         let at = ((y * image.width() + x) * 4) as usize;
         let data = image.data().data.data();
         [data[at], data[at + 1], data[at + 2], data[at + 3]]
+    }
+
+    #[test]
+    fn transform_attributes_take_plain_numbers_only() {
+        let at = |text: &str| {
+            let t = parse_transform(text);
+            (t.tx, t.ty)
+        };
+        assert_eq!(at("translate(10 20)"), (10.0, 20.0));
+        assert_eq!(at("translate(10,20) translate(1)"), (11.0, 20.0));
+        assert_eq!(at("translate(1e1-5)"), (10.0, -5.0));
+        // Unités, virgule en trop ou nombre d'arguments faux : rien ne s'applique.
+        assert_eq!(at("translate(10px 20px)"), (0.0, 0.0));
+        assert_eq!(at("translate(10,)"), (0.0, 0.0));
+        assert_eq!(at("translate(10 20) rotate(90,)"), (0.0, 0.0));
+        assert_eq!(at("translate(1 2 3)"), (0.0, 0.0));
     }
 
     #[test]
@@ -1747,6 +2034,11 @@ mod tests {
                    <mask id="m"><rect x="19" width="0.5" height="5" fill="#fff"/></mask>
                    <rect x="18" width="2" height="1" fill="#f00" clip-path="url(#c)"/>
                    <g mask="url(#m)"><rect x="18" y="3" width="2" height="1" fill="#f00"/></g>
+                   <pattern id="p" patternUnits="userSpaceOnUse" width="1" height="1">
+                     <rect width="0.5" height="1" fill="#0f0"/></pattern>
+                   <rect x="16" y="4" width="2" height="1" fill="url(#p)"/>
+                   <rect x="18" y="4" width="1" height="1" fill="#00f"
+                         transform="rotate(90)" transform-origin="19 5"/>
                  </svg>"##,
         )
         .expect("image");
@@ -1773,6 +2065,14 @@ mod tests {
         assert_eq!(pixel(&image, 39, 1)[3], 0);
         assert_eq!(pixel(&image, 38, 7), [255, 0, 0, 255]);
         assert_eq!(pixel(&image, 36, 7)[3], 0);
+        // Le motif alterne une bande verte et une bande vide, tous les deux pixels.
+        assert_eq!(pixel(&image, 32, 9), [0, 255, 0, 255]);
+        assert_eq!(pixel(&image, 33, 9)[3], 0);
+        assert_eq!(pixel(&image, 34, 9), [0, 255, 0, 255]);
+        // Un quart de tour autour de `transform-origin` : le carré bleu
+        // passe de (18, 4) à (19, 4).
+        assert_eq!(pixel(&image, 39, 9), [0, 0, 255, 255]);
+        assert_eq!(pixel(&image, 37, 9)[3], 0);
         assert!(decode(b"pas du SVG").is_none());
     }
 }

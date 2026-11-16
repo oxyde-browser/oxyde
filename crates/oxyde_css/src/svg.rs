@@ -51,6 +51,19 @@ pub enum SvgLineJoin {
     Bevel,
 }
 
+/// `transform-box` : la boîte à laquelle se rapportent `transform-origin`
+/// et les pourcentages d'une transformation, pour un élément SVG.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TransformBox {
+    /// `view-box` : la fenêtre SVG la plus proche.
+    #[default]
+    ViewBox,
+    /// `fill-box` (et `content-box`) : la boîte englobante de la forme.
+    FillBox,
+    /// `stroke-box` (et `border-box`) : la même, contour compris.
+    StrokeBox,
+}
+
 /// Valeurs calculées des propriétés de peinture SVG.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SvgStyle {

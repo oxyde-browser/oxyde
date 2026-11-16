@@ -540,6 +540,8 @@ pub struct ComputedStyle {
     pub animation: Option<Arc<AnimationStyle>>,
     /// Propriétés `transition-*` ; `None` : aucune n'est déclarée.
     pub transition: Option<Arc<TransitionStyle>>,
+    /// `transform-box`
+    pub transform_box: crate::svg::TransformBox,
     /// Propriétés de peinture SVG (`fill`, `stroke`…), toutes héritées.
     pub svg: Arc<SvgStyle>,
 }
@@ -650,6 +652,7 @@ impl ComputedStyle {
             transform_origin: (Size::Percent(50.0), Size::Percent(50.0)),
             animation: None,
             transition: None,
+            transform_box: crate::svg::TransformBox::ViewBox,
             svg: Arc::clone(&NO_SVG),
         }
     }
@@ -673,6 +676,20 @@ impl ComputedStyle {
         Some(matrix)
     }
 
+    /// Produit de `translate`, `rotate` et `scale`, dans cet ordre, sans
+    /// égard pour `transform-origin` ; l'identité si aucune n'est donnée.
+    #[must_use]
+    pub fn individual_matrix(&self, width: f32, height: f32) -> Affine {
+        let mut matrix = Affine::IDENTITY;
+        for function in [self.translate, self.rotate, self.scale]
+            .into_iter()
+            .flatten()
+        {
+            matrix = matrix.then_inner(function_matrix(function, width, height));
+        }
+        matrix
+    }
+
     /// Vrai si la boîte porte une transformation, même sans effet :
     /// `transform`, `translate`, `rotate` ou `scale` autre que `none`.
     #[must_use]
@@ -692,13 +709,7 @@ impl ComputedStyle {
         if !self.is_transformed() {
             return None;
         }
-        let mut matrix = Affine::IDENTITY;
-        for function in [self.translate, self.rotate, self.scale]
-            .into_iter()
-            .flatten()
-        {
-            matrix = matrix.then_inner(function_matrix(function, width, height));
-        }
+        let mut matrix = self.individual_matrix(width, height);
         if let Some(list) = self.transform_functions_matrix(width, height) {
             matrix = matrix.then_inner(list);
         }
@@ -916,6 +927,7 @@ pub(crate) fn copy_property(style: &mut ComputedStyle, from: &ComputedStyle, pro
         Longhand::AspectRatio => style.aspect_ratio = from.aspect_ratio,
         Longhand::Transform => style.transform = from.transform.clone(),
         Longhand::Translate => style.translate = from.translate,
+        Longhand::TransformBox => style.transform_box = from.transform_box,
         Longhand::Fill => Arc::make_mut(&mut style.svg).fill = from.svg.fill.clone(),
         Longhand::Stroke => Arc::make_mut(&mut style.svg).stroke = from.svg.stroke.clone(),
         Longhand::StrokeWidth => {
@@ -1293,6 +1305,13 @@ pub(crate) fn apply(style: &mut ComputedStyle, decl: &Declaration, cx: &Context<
                 };
             }
         }
+        Longhand::TransformBox => {
+            style.transform_box = match ident {
+                "fill-box" | "content-box" => crate::svg::TransformBox::FillBox,
+                "stroke-box" | "border-box" => crate::svg::TransformBox::StrokeBox,
+                _ => crate::svg::TransformBox::ViewBox,
+            };
+        }
         Longhand::Fill | Longhand::Stroke => {
             if let Value::Paint(paint) = &decl.value {
                 let svg = Arc::make_mut(&mut style.svg);
@@ -1656,6 +1675,43 @@ fn presentational_hints(el: &ElementData, table: Option<&ElementData>) -> Vec<De
                 push("font-size", &format!("{v}px"));
             } else {
                 push("font-size", v);
+            }
+        }
+        // L'origine des transformations d'un élément SVG est celle de son
+        // repère, pas son centre.
+        if el.name != "svg" {
+            push("transform-origin", "0 0");
+        }
+        if let Some(v) = el.attr("transform-origin") {
+            // Un nombre sans unité compte en unités de l'utilisateur.
+            let value: Vec<String> = v
+                .split_whitespace()
+                .map(|part| {
+                    if part.parse::<f32>().is_ok() {
+                        format!("{part}px")
+                    } else {
+                        part.to_owned()
+                    }
+                })
+                .collect();
+            push("transform-origin", &value.join(" "));
+        }
+        // Un `<svg>` sans largeur ni hauteur n'a pas de taille propre,
+        // mais son `viewBox` lui donne des proportions.
+        if el.name == "svg"
+            && !(el.attr("width").is_some() && el.attr("height").is_some())
+            && let Some(v) = el.attr("viewBox")
+        {
+            let numbers: Vec<f32> = v
+                .split(|c: char| c == ',' || c.is_whitespace())
+                .filter(|part| !part.is_empty())
+                .filter_map(|part| part.parse().ok())
+                .collect();
+            if let [_, _, w, h] = numbers[..]
+                && w > 0.0
+                && h > 0.0
+            {
+                push("aspect-ratio", &format!("{w} / {h}"));
             }
         }
         if el.name == "svg" {

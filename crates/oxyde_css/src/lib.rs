@@ -41,7 +41,7 @@ pub use style::{
     compute_styles_at, is_style_element,
 };
 pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
-pub use svg::{SvgLineCap, SvgLineJoin, SvgPaint, SvgStyle};
+pub use svg::{SvgLineCap, SvgLineJoin, SvgPaint, SvgStyle, TransformBox};
 pub use transform::{Affine, TransformFunction};
 
 /// Vrai si le moteur de style accepte la déclaration `property: value`
