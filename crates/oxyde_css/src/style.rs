@@ -1489,7 +1489,8 @@ fn presentational_hints(el: &ElementData, table: Option<&ElementData>) -> Vec<De
                 push("color", v);
             }
         }
-        "img" | "table" | "td" | "th" | "canvas" | "video" | "iframe" | "hr" => {
+        "img" | "table" | "td" | "th" | "canvas" | "video" | "iframe" | "hr" | "col"
+        | "colgroup" => {
             if let Some(v) = el.attr("width") {
                 push("width", &dimension(v));
             }

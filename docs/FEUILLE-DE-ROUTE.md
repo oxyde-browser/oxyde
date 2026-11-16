@@ -1068,10 +1068,17 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
 - [ ] Propriétés `rotate`, `scale` et `translate` (trois tests de référence qui
       passaient par accident les attendent) ; la recherche de la boîte sous un point
       suit encore l'ancien ordre, et voit une boîte collante à sa place dans le flux.
-- [ ] Modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
+- [x] Tableaux : `<col>` et `<colgroup>` (largeur, `span`, attribut `width` ; une
+      colonne déclarée sans cellule ni largeur disparaît en disposition automatique) ;
+      `vertical-align: baseline` aligne les cellules sur la ligne de base de leur
+      rangée. Tests `testharness.js` de mise en page : 579 → 582 fichiers, `css-tables`
+      481 → 507 sous-tests. Restent : fond et bordures d'une colonne,
+      `visibility: collapse`.
+- [ ] Modes d'écriture verticaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
       fil principal ; calques mis en cache.
-- [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers.
+- [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers (25,7 % au
+      16 novembre 2026).
 - [ ] SVG (formes, tracés, texte, dégradés) : presque tous les sites en affichent.
 - [ ] Polices : repli par écriture, emoji en couleur, `font-display`, `unicode-range`.
 - [ ] Images : GIF animé, AVIF, `srcset` et `<picture>`, chargement paresseux.

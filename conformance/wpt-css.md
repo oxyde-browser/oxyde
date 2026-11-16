@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9046 / 27914 (32,4 %)** — fichiers entièrement réussis : 579 / 2269 (25,5 %).
+**Sous-tests réussis : 9078 / 27915 (32,5 %)** — fichiers entièrement réussis : 582 / 2269 (25,7 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -19,7 +19,7 @@ est le plus honnête des deux.
 | `css/css-align` | 0 / 3 | 4 / 27 (14,8 %) |
 | `css/css-align/abspos` | 0 / 69 | 132 / 1142 (11,6 %) |
 | `css/css-align/animation` | 0 / 6 | 0 / 0 (—) |
-| `css/css-align/baseline-rules` | 1 / 4 | 9 / 20 (45,0 %) |
+| `css/css-align/baseline-rules` | 1 / 4 | 10 / 20 (50,0 %) |
 | `css/css-align/blocks` | 0 / 37 | 136 / 556 (24,5 %) |
 | `css/css-align/content-distribution` | 2 / 17 | 145 / 573 (25,3 %) |
 | `css/css-align/default-alignment` | 1 / 19 | 140 / 747 (18,7 %) |
@@ -92,13 +92,13 @@ est le plus honnête des deux.
 | `css/css-sizing/responsive-iframe` | 1 / 7 | 1 / 7 (14,3 %) |
 | `css/css-sizing/responsive-iframe/parsing` | 1 / 2 | 5 / 10 (50,0 %) |
 | `css/css-sizing/stretch` | 13 / 50 | 198 / 1015 (19,5 %) |
-| `css/css-tables` | 31 / 82 | 254 / 390 (65,1 %) |
+| `css/css-tables` | 32 / 82 | 259 / 390 (66,4 %) |
 | `css/css-tables/animations` | 0 / 1 | 0 / 0 (—) |
-| `css/css-tables/height-distribution` | 2 / 5 | 12 / 20 (60,0 %) |
+| `css/css-tables/height-distribution` | 2 / 5 | 14 / 20 (70,0 %) |
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
-| `css/css-tables/tentative` | 3 / 23 | 190 / 333 (57,1 %) |
-| `css/css-tables/width-distribution` | 7 / 15 | 21 / 35 (60,0 %) |
-| `css/cssom-view` | 72 / 235 | 905 / 1840 (49,2 %) |
+| `css/css-tables/tentative` | 4 / 23 | 207 / 333 (62,2 %) |
+| `css/css-tables/width-distribution` | 8 / 15 | 23 / 35 (65,7 %) |
+| `css/cssom-view` | 72 / 235 | 910 / 1841 (49,4 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -194,7 +194,7 @@ est le plus honnête des deux.
 | `css/css-align/animation/row-gap-composition.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-align/animation/row-gap-interpolation.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-align/baseline-of-single-axis-scroll-container.html` | 0 / 2 |  |
-| `css/css-align/baseline-rules/first-baseline-block-in-inline-001.html` | 0 / 3 |  |
+| `css/css-align/baseline-rules/first-baseline-block-in-inline-001.html` | 1 / 3 |  |
 | `css/css-align/baseline-rules/synthesized-baseline-flexbox-001.html` | 3 / 7 |  |
 | `css/css-align/baseline-rules/synthesized-baseline-grid-001.html` | 3 / 7 |  |
 | `css/css-align/blocks/align-content-block-002.html` | 0 / 17 |  |
@@ -1547,13 +1547,12 @@ est le plus honnête des deux.
 | `css/css-tables/caption-orthogonal-margin-in-table-block-axis.html` | 0 / 2 |  |
 | `css/css-tables/caption-writing-mode-001.html` | 0 / 2 |  |
 | `css/css-tables/col_removal.html` | 0 / 1 |  |
-| `css/css-tables/column-track-merging.html` | 7 / 13 |  |
-| `css/css-tables/dynamic-rowspan-change.html` | 1 / 2 |  |
+| `css/css-tables/column-track-merging.html` | 11 / 13 |  |
 | `css/css-tables/fixed-layout-1.html` | 4 / 5 |  |
 | `css/css-tables/fixed-layout-2.html` | 0 / 7 |  |
 | `css/css-tables/fixed-layout-excess-width-distribution-001.html` | 0 / 1 |  |
 | `css/css-tables/height-distribution/computing-row-measure-0.html` | 2 / 4 |  |
-| `css/css-tables/height-distribution/computing-row-measure-1.html` | 1 / 4 |  |
+| `css/css-tables/height-distribution/computing-row-measure-1.html` | 3 / 4 |  |
 | `css/css-tables/height-distribution/percentage-sizing-of-table-cell-children.html` | 7 / 10 | harnais : 1 duplicate test name: "Unresolvable percentage heights are resolved as 0px in first pass (scrollable overflow)" |
 | `css/css-tables/html-to-css-mapping-1.html` | 3 / 4 |  |
 | `css/css-tables/html-to-css-mapping-2.html` | 16 / 25 |  |
@@ -1582,9 +1581,8 @@ est le plus honnête des deux.
 | `css/css-tables/tentative/baseline-table.html` | 3 / 15 |  |
 | `css/css-tables/tentative/baseline-td.html` | 2 / 5 |  |
 | `css/css-tables/tentative/caption.html` | 10 / 13 |  |
-| `css/css-tables/tentative/colgroup-col.html` | 1 / 6 |  |
-| `css/css-tables/tentative/colspan-redistribution.html` | 16 / 31 |  |
-| `css/css-tables/tentative/column-widths.html` | 22 / 33 |  |
+| `css/css-tables/tentative/colspan-redistribution.html` | 18 / 31 |  |
+| `css/css-tables/tentative/column-widths.html` | 32 / 33 |  |
 | `css/css-tables/tentative/position-sticky-container.html` | 0 / 3 |  |
 | `css/css-tables/tentative/rowspan-height-redistribution.html` | 4 / 24 |  |
 | `css/css-tables/tentative/table-fixed-minmax.html` | 4 / 8 |  |
@@ -1622,7 +1620,6 @@ est le plus honnête des deux.
 | `css/css-tables/visibility-collapse-rowspan-004-dynamic.html` | 14 / 18 |  |
 | `css/css-tables/visibility-hidden-row-001.html` | 2 / 3 |  |
 | `css/css-tables/visibility-hidden-row-002.html` | 2 / 3 |  |
-| `css/css-tables/width-distribution/computing-column-measure-0.html` | 2 / 4 |  |
 | `css/css-tables/width-distribution/computing-column-measure-1.html` | 0 / 4 |  |
 | `css/css-tables/width-distribution/computing-column-measure-2.html` | 0 / 1 |  |
 | `css/css-tables/width-distribution/computing-table-width-0.html` | 0 / 1 |  |
@@ -1751,7 +1748,7 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollIntoView-fixed.html` | 0 / 4 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode-and-rtl-direction.html` | 0 / 9 |  |
 | `css/cssom-view/scrollIntoView-horizontal-tb-writing-mode.html` | 3 / 9 |  |
-| `css/cssom-view/scrollIntoView-iframes.html` | 0 / 4 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scrollIntoView-iframes.html` | 1 / 4 |  |
 | `css/cssom-view/scrollIntoView-nearest-oversized-element.html` | 0 / 1 |  |
 | `css/cssom-view/scrollIntoView-root-overflow-clip.html` | 1 / 2 |  |
 | `css/cssom-view/scrollIntoView-scrollMargin.html` | 0 / 3 |  |
@@ -1777,8 +1774,8 @@ est le plus honnête des deux.
 | `css/cssom-view/scrollWidthHeight-negative-margin-002.html` | 80 / 200 |  |
 | `css/cssom-view/scrollWidthHeight.xht` | 10 / 12 |  |
 | `css/cssom-view/scrollWidthHeightWhenNotScrollable.xht` | 10 / 12 |  |
-| `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 1 | harnais : délai du harnais dépassé |
-| `css/cssom-view/scrollingElement.html` | 0 / 8 |  |
+| `css/cssom-view/scrolling-quirks-vs-nonquirks.html` | 0 / 2 | harnais : délai du harnais dépassé |
+| `css/cssom-view/scrollingElement.html` | 4 / 8 |  |
 | `css/cssom-view/scrollintoview-containingblock-chain.html` | 0 / 1 |  |
 | `css/cssom-view/scrollintoview-zero-height-item.html` | 0 / 1 |  |
 | `css/cssom-view/scrollintoview.html` | 0 / 40 |  |

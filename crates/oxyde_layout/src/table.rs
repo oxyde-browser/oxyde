@@ -5,11 +5,13 @@
 //! en page : cellules, hauteur des rangées, alignement vertical.
 //!
 //! LIMITES CONNUES : la légende est placée dans la boîte du tableau et non
-//! dans une boîte englobante ; `<col>` et `<colgroup>` sont ignorés ; les
+//! dans une boîte englobante ; de `<col>` et `<colgroup>` seules la largeur et
+//! l'étendue (`span`) comptent, pas le fond, les bordures ni `visibility` ; les
 //! bordures fusionnées (`border-collapse: collapse`) sont approchées en
 //! retirant la bordure en double de chaque arête, sans arbitrage de style ni
-//! de largeur ; l'alignement sur la ligne de base revient à un alignement en
-//! haut ; un pourcentage porté par une cellule fusionnée est ignoré ; le
+//! de largeur ; seul `vertical-align: baseline` aligne sur la ligne de base de
+//! la rangée (`sub`, `super` et les longueurs valent un alignement en haut) ;
+//! un pourcentage porté par une cellule fusionnée est ignoré ; le
 //! texte et les boîtes hors flux placés directement dans un tableau ou une
 //! rangée ne sont pas mis en page.
 
@@ -89,6 +91,18 @@ struct ColumnSizes {
     percent: Vec<f32>,
     /// Vrai si une cellule de la colonne impose une largeur en pixels.
     fixed: Vec<bool>,
+}
+
+/// Ordonnée de la ligne de base de la première ligne de texte de `fragments`.
+fn first_baseline(fragments: &[Fragment]) -> Option<f32> {
+    fragments.iter().find_map(|fragment| match fragment {
+        Fragment::Text(t) => t
+            .layout
+            .lines()
+            .next()
+            .map(|line| t.y + line.metrics().baseline),
+        Fragment::Box(b) => first_baseline(&b.children),
+    })
 }
 
 /// Répartit `extra` sur `values`, au prorata de `weights` (à parts égales si
@@ -349,6 +363,49 @@ impl Engine<'_> {
         TableSource { captions, groups }
     }
 
+    /// Largeur demandée pour chaque colonne par les éléments `<col>` et
+    /// `<colgroup>` du tableau `node`, dans l'ordre des colonnes ; `Auto`
+    /// pour une colonne déclarée sans largeur.
+    fn table_column_widths(&self, node: NodeId) -> Vec<Size> {
+        let width_of = |element: NodeId| self.style(element).map_or(Size::Auto, |s| s.width);
+        let named = |element: NodeId, name: &str| {
+            self.doc.element(element).is_some_and(|e| e.is_html(name))
+        };
+        let mut widths: Vec<Size> = Vec::new();
+        let declare = |element: NodeId, width: Size, widths: &mut Vec<Size>| {
+            let span = self
+                .span_attribute(element, "span")
+                .clamp(1, MAX_COLUMNS.saturating_sub(widths.len()).max(1));
+            if widths.len() + span <= MAX_COLUMNS {
+                widths.extend(std::iter::repeat_n(width, span));
+            }
+        };
+        for child in self.doc.children(node) {
+            if named(child, "col") {
+                declare(child, width_of(child), &mut widths);
+            } else if named(child, "colgroup") {
+                let columns: Vec<NodeId> = self
+                    .doc
+                    .children(child)
+                    .filter(|c| named(*c, "col"))
+                    .collect();
+                if columns.is_empty() {
+                    declare(child, width_of(child), &mut widths);
+                }
+                // Une colonne sans largeur prend celle de son groupe.
+                let group = width_of(child);
+                for column in columns {
+                    let width = match width_of(column) {
+                        Size::Auto => group,
+                        own => own,
+                    };
+                    declare(column, width, &mut widths);
+                }
+            }
+        }
+        widths
+    }
+
     /// Valeur de l'attribut `colspan` ou `rowspan` de `node` ; 1 à défaut.
     fn span_attribute(&self, node: NodeId, name: &str) -> usize {
         self.doc
@@ -496,7 +553,25 @@ impl Engine<'_> {
                 rows: start..end,
             });
         }
-        let count = owner.iter().map(Vec::len).max().unwrap_or(0);
+        // Les colonnes déclarées comptent même sans cellule. En disposition
+        // automatique, une colonne sans cellule ni largeur est fusionnée
+        // avec ses voisines : elle disparaît (CSS Tables 3 §3.5).
+        let cell_columns = owner.iter().map(Vec::len).max().unwrap_or(0);
+        let mut declared = self.table_column_widths(node);
+        let fixed_layout = wanted.is_some() && style.table_layout_fixed;
+        if !fixed_layout && declared.len() > cell_columns {
+            let kept: Vec<Size> = declared
+                .split_off(cell_columns)
+                .into_iter()
+                .filter(|width| match *width {
+                    Size::Px(v) => v > 0.0,
+                    Size::Percent(p) => p > 0.0,
+                    _ => false,
+                })
+                .collect();
+            declared.extend(kept);
+        }
+        let count = cell_columns.max(declared.len());
         let collapse = style.border_collapse;
         if collapse {
             Self::collapse_borders(style, &rows, &mut cells, &owner, count);
@@ -515,13 +590,13 @@ impl Engine<'_> {
         let (columns, width) = match wanted {
             Some(wanted) if style.table_layout_fixed => {
                 let target = (wanted - gaps).max(0.0);
-                let columns = Self::fixed_columns(&cells, count, target, spacing.0);
+                let columns = Self::fixed_columns(&cells, &declared, count, target, spacing.0);
                 let used = columns.iter().sum::<f32>() + gaps;
                 self.table_sizes.insert(node, (used, used));
                 (columns, wanted.max(used).max(floor))
             }
             _ => {
-                let sizes = self.measure_columns(&cells, count, spacing.0, depth);
+                let sizes = self.measure_columns(&cells, &declared, count, spacing.0, depth);
                 let min_total = sizes.min.iter().sum::<f32>() + gaps;
                 let max_total = sizes.max.iter().sum::<f32>() + gaps;
                 self.table_sizes.insert(node, (min_total, max_total));
@@ -619,10 +694,25 @@ impl Engine<'_> {
         }
     }
 
-    /// Colonnes d'un tableau en disposition fixe (CSS 2 §17.5.2.1) : seules
-    /// les cellules de la première rangée comptent.
-    fn fixed_columns(cells: &[Cell], count: usize, target: f32, spacing: f32) -> Vec<f32> {
+    /// Colonnes d'un tableau en disposition fixe (CSS 2 §17.5.2.1) : les
+    /// largeurs `declared` par les éléments de colonne d'abord, puis les
+    /// cellules de la première rangée pour les colonnes restantes.
+    fn fixed_columns(
+        cells: &[Cell],
+        declared: &[Size],
+        count: usize,
+        target: f32,
+        spacing: f32,
+    ) -> Vec<f32> {
         let mut widths: Vec<Option<f32>> = vec![None; count];
+        for (slot, width) in widths.iter_mut().zip(declared) {
+            *slot = match *width {
+                Size::Px(v) => Some(v.max(0.0)),
+                Size::Percent(p) => Some((target * p / 100.0).max(0.0)),
+                _ => None,
+            };
+        }
+        let from_columns: Vec<bool> = widths.iter().map(Option::is_some).collect();
         for cell in cells.iter().filter(|c| c.row == 0) {
             let extras = horizontal_extras(&cell.style);
             let width = match cell.style.width {
@@ -633,8 +723,11 @@ impl Engine<'_> {
             if let Some(width) = width {
                 let each =
                     ((width - spacing * float(cell.col_span - 1)) / float(cell.col_span)).max(0.0);
-                for slot in &mut widths[cell.col..cell.col + cell.col_span] {
-                    *slot = Some(each);
+                let range = cell.col..cell.col + cell.col_span;
+                for (slot, taken) in widths[range.clone()].iter_mut().zip(&from_columns[range]) {
+                    if !taken {
+                        *slot = Some(each);
+                    }
                 }
             }
         }
@@ -658,6 +751,7 @@ impl Engine<'_> {
     fn measure_columns(
         &mut self,
         cells: &[Cell],
+        declared: &[Size],
         count: usize,
         spacing: f32,
         depth: usize,
@@ -700,6 +794,22 @@ impl Engine<'_> {
                 sizes.fixed[c] |= fixed;
             } else {
                 spanning.push((index, min, max));
+            }
+        }
+        // Une largeur portée par un élément de colonne vaut pour la colonne
+        // comme celle d'une cellule de plus : la plus grande l'emporte.
+        for (c, width) in declared.iter().enumerate().take(count) {
+            match *width {
+                Size::Px(v) => {
+                    sizes.max[c] = if sizes.fixed[c] {
+                        sizes.max[c].max(v)
+                    } else {
+                        v.max(sizes.min[c])
+                    };
+                    sizes.fixed[c] = true;
+                }
+                Size::Percent(p) => sizes.percent[c] = sizes.percent[c].max(p.max(0.0)),
+                _ => {}
             }
         }
         // Les cellules fusionnées élargissent les colonnes qu'elles couvrent
@@ -833,6 +943,10 @@ impl Engine<'_> {
             natural: f32,
             /// Hauteur qu'elle demande à ses rangées.
             wanted: f32,
+            /// Pour une cellule alignée sur la ligne de base : distance de son
+            /// bord haut à sa ligne de base (CSS 2 §17.5.3) — celle de sa
+            /// première ligne de texte, à défaut le bas de son contenu.
+            baseline: Option<f32>,
         }
         let mut placed: Vec<Placed> = Vec::with_capacity(cells.len());
         for cell in &cells {
@@ -874,12 +988,39 @@ impl Engine<'_> {
                 waiting.static_x += dx;
             }
             let natural = fragment.border_box.h;
+            // Une cellule sans contenu dans le flux ne s'aligne pas : il n'y
+            // a rien à descendre, et la position d'une boîte hors flux
+            // qu'elle contiendrait ne doit pas bouger.
+            let content_h = natural - pad.top - pad.bottom - bw.top - bw.bottom;
+            let baseline = (cell.style.vertical_align == VerticalAlign::Baseline)
+                .then(|| {
+                    first_baseline(&fragment.children)
+                        .map(|line| line - fragment.border_box.y)
+                        .or_else(|| (content_h > 0.0).then_some(natural - pad.bottom - bw.bottom))
+                })
+                .flatten();
             placed.push(Placed {
                 fragment,
                 out_of_flow,
                 natural,
                 wanted: natural.max(wanted_h),
+                baseline,
             });
+        }
+        // Ligne de base de chaque rangée : la plus basse de ses cellules
+        // alignées sur elle. Une cellule que cet alignement descend demande
+        // d'autant plus de hauteur.
+        let mut row_baseline = vec![0.0_f32; rows.len()];
+        for (cell, item) in cells.iter().zip(&placed) {
+            if let Some(baseline) = item.baseline {
+                row_baseline[cell.row] = row_baseline[cell.row].max(baseline);
+            }
+        }
+        for (cell, item) in cells.iter().zip(&mut placed) {
+            if let Some(baseline) = item.baseline {
+                let lowered = row_baseline[cell.row] - baseline + item.natural;
+                item.wanted = item.wanted.max(lowered);
+            }
         }
 
         // Hauteur des rangées : la plus haute cellule, ou la hauteur imposée.
@@ -966,9 +1107,10 @@ impl Engine<'_> {
             let top = row_y[cell.row];
             let total = row_y[last] + row_h[last] - top;
             let free = (total - item.natural).max(0.0);
-            let offset = match cell.style.vertical_align {
-                VerticalAlign::Middle => free / 2.0,
-                VerticalAlign::Bottom => free,
+            let offset = match (cell.style.vertical_align, item.baseline) {
+                (VerticalAlign::Middle, _) => free / 2.0,
+                (VerticalAlign::Bottom, _) => free,
+                (_, Some(baseline)) => (row_baseline[cell.row] - baseline).clamp(0.0, free),
                 _ => 0.0,
             };
             shift(&mut item.fragment, 0.0, top);
