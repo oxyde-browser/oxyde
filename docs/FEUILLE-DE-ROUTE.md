@@ -1065,9 +1065,13 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
       la couche de son contexte d'empilement, où qu'elle soit dans l'arbre, dans l'ordre
       du document (celui que donne `order` dans un conteneur flexible ou en grille).
       Tests de référence : 3 355 → 3 393.
-- [ ] Propriétés `rotate`, `scale` et `translate` (trois tests de référence qui
-      passaient par accident les attendent) ; la recherche de la boîte sous un point
-      suit encore l'ancien ordre, et voit une boîte collante à sa place dans le flux.
+- [x] Propriétés `translate`, `rotate` et `scale` : appliquées dans cet ordre avant
+      `transform`, interpolées par les transitions et les animations, rendues par
+      `getComputedStyle`. Une cellule hors d'un tableau aligne son contenu
+      (`vertical-align`). Tests de référence : 3 393 → 3 406. Limite : une
+      rotation autour d'un axe autre que z est sans effet.
+- [ ] La recherche de la boîte sous un point suit encore l'ancien ordre
+      d'empilement, et voit une boîte collante à sa place dans le flux.
 - [x] Tableaux : `<col>` et `<colgroup>` (largeur, `span`, attribut `width` ; une
       colonne déclarée sans cellule ni largeur disparaît en disposition automatique) ;
       `vertical-align: baseline` aligne les cellules sur la ligne de base de leur
