@@ -267,6 +267,102 @@ pub fn parse_transform(tokens: &[Token]) -> Option<Vec<TransformFunction<Length>
     if out.is_empty() { None } else { Some(out) }
 }
 
+/// Jetons d'une valeur, les blancs retirés.
+fn words(tokens: &[Token]) -> Vec<&Token> {
+    tokens
+        .iter()
+        .filter(|token| **token != Token::Whitespace)
+        .collect()
+}
+
+/// Vrai si la valeur est le seul mot-clé `none`.
+fn is_none(words: &[&Token]) -> bool {
+    matches!(words, [Token::Ident(word)] if word.eq_ignore_ascii_case("none"))
+}
+
+/// Analyse la valeur de `translate` : `none` (liste vide) ou une à trois
+/// longueurs ; la troisième, sur l'axe z, est sans effet dans le plan.
+#[must_use]
+pub fn parse_translate(tokens: &[Token]) -> Option<Vec<TransformFunction<Length>>> {
+    let words = words(tokens);
+    if is_none(&words) {
+        return Some(Vec::new());
+    }
+    let lengths: Vec<Length> = words
+        .iter()
+        .map(|token| parse_length(token))
+        .collect::<Option<_>>()?;
+    let function = match lengths[..] {
+        [x] => TransformFunction::Translate(x, Length::Px(0.0)),
+        [x, y] => TransformFunction::Translate(x, y),
+        // Pas de pourcentage sur l'axe z.
+        [x, y, z] if !matches!(z, Length::Percent(_)) => TransformFunction::Translate(x, y),
+        _ => return None,
+    };
+    Some(vec![function])
+}
+
+/// Analyse la valeur de `scale` : `none` (liste vide) ou un à trois
+/// nombres ou pourcentages ; le troisième est sans effet dans le plan.
+#[must_use]
+pub fn parse_scale(tokens: &[Token]) -> Option<Vec<TransformFunction<Length>>> {
+    let words = words(tokens);
+    if is_none(&words) {
+        return Some(Vec::new());
+    }
+    let numbers: Vec<f32> = words
+        .iter()
+        .map(|token| number(token))
+        .collect::<Option<_>>()?;
+    let function = match numbers[..] {
+        [n] => TransformFunction::Scale(n, n),
+        [x, y] | [x, y, _] => TransformFunction::Scale(x, y),
+        _ => return None,
+    };
+    Some(vec![function])
+}
+
+/// Analyse la valeur de `rotate` : `none` (liste vide), un angle, ou un
+/// axe (`x`, `y`, `z` ou trois nombres) et un angle, dans un ordre ou
+/// l'autre. Seule la rotation autour de l'axe z agit dans le plan.
+#[must_use]
+pub fn parse_rotate(tokens: &[Token]) -> Option<Vec<TransformFunction<Length>>> {
+    let words = words(tokens);
+    if is_none(&words) {
+        return Some(Vec::new());
+    }
+    // Un zéro sans unité n'est pas un angle ici : il se confondrait avec
+    // une coordonnée de l'axe.
+    let turn = |token: &Token| match token {
+        Token::Dimension(..) => angle(token),
+        _ => None,
+    };
+    let (axis, radians) = match words[..] {
+        [only] => (&words[..0], turn(only)?),
+        [first, ..] if turn(first).is_some() => (&words[1..], turn(first)?),
+        [.., last] => (&words[..words.len() - 1], turn(last)?),
+        [] => return None,
+    };
+    // Part de la rotation qui tourne autour de l'axe z : 1, -1 ou 0.
+    let around_z = match axis {
+        [] => 1.0,
+        [Token::Ident(name)] => match name.to_ascii_lowercase().as_str() {
+            "z" => 1.0,
+            "x" | "y" => 0.0,
+            _ => return None,
+        },
+        [Token::Number(x), Token::Number(y), Token::Number(z)] => {
+            if *x == 0.0 && *y == 0.0 && *z != 0.0 {
+                z.signum()
+            } else {
+                0.0
+            }
+        }
+        _ => return None,
+    };
+    Some(vec![TransformFunction::Rotate(radians * around_z)])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,6 +383,43 @@ mod tests {
         assert_eq!(parse_transform(&tokenize("none")), Some(Vec::new()));
         assert_eq!(parse_transform(&tokenize("rotate(10px)")), None);
         assert_eq!(parse_transform(&tokenize("translate(1px 2px)")), None);
+    }
+
+    #[test]
+    fn parses_individual_properties() {
+        let quarter = std::f32::consts::FRAC_PI_2;
+        assert_eq!(
+            parse_translate(&tokenize("10px 50%")),
+            Some(vec![TransformFunction::Translate(
+                Length::Px(10.0),
+                Length::Percent(50.0)
+            )])
+        );
+        assert_eq!(parse_translate(&tokenize("none")), Some(Vec::new()));
+        assert_eq!(parse_translate(&tokenize("1px 2px 3%")), None);
+        assert_eq!(
+            parse_scale(&tokenize("2 50%")),
+            Some(vec![TransformFunction::Scale(2.0, 0.5)])
+        );
+        assert_eq!(parse_scale(&tokenize("1 2 3 4")), None);
+        assert_eq!(
+            parse_rotate(&tokenize("90deg")),
+            Some(vec![TransformFunction::Rotate(quarter)])
+        );
+        assert_eq!(
+            parse_rotate(&tokenize("0 0 -1 90deg")),
+            Some(vec![TransformFunction::Rotate(-quarter)])
+        );
+        assert_eq!(
+            parse_rotate(&tokenize("90deg z")),
+            Some(vec![TransformFunction::Rotate(quarter)])
+        );
+        assert_eq!(
+            parse_rotate(&tokenize("x 90deg")),
+            Some(vec![TransformFunction::Rotate(0.0)])
+        );
+        assert_eq!(parse_rotate(&tokenize("90")), None);
+        assert_eq!(parse_rotate(&tokenize("w 90deg")), None);
     }
 
     #[test]

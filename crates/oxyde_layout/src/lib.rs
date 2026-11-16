@@ -307,7 +307,7 @@ fn document_order(doc: &Document, styles: &StyleMap) -> Vec<u32> {
 pub fn paint_order(children: &[Fragment]) -> Vec<&Fragment> {
     // Une boîte transformée s'empile comme une boîte positionnée.
     let layer = |fragment: &Fragment| match fragment {
-        Fragment::Box(b) if b.style.is_positioned() || b.style.transform.is_some() => {
+        Fragment::Box(b) if b.style.is_positioned() || b.style.is_transformed() => {
             Some(b.style.z_index.unwrap_or(0))
         }
         _ => None,
@@ -1145,7 +1145,7 @@ impl Engine<'_> {
         // Une boîte positionnée est le bloc conteneur de ses descendants
         // absolus : sa boîte de marge intérieure (la bordure exclue). Une
         // boîte transformée l'est aussi, y compris pour les boîtes fixes.
-        let transformed = style.transform.is_some();
+        let transformed = style.is_transformed();
         if style.is_positioned() || transformed {
             let padding_box = Rect {
                 x: border_box.x + bw.left,
@@ -2605,6 +2605,26 @@ mod tests {
         let a = find(&doc, root, "a").expect("fragment");
         let matrix = box_transform(a).expect("transformation");
         assert_eq!(matrix.apply(0.0, 0.0), (200.0, 100.0));
+    }
+
+    #[test]
+    fn translate_rotate_and_scale_apply_before_transform() {
+        let (doc, tree) = layout(
+            "<style>body{margin:0}</style>             <div id=a style='width:100px;height:50px;transform-origin:0 0;                  translate:200px 100px;scale:2;transform:translate(10px,0)'></div>             <div id=b style='width:10px;height:10px;rotate:x 90deg'></div>             <div id=c style='width:10px;height:10px;rotate:none'></div>",
+            800.0,
+        );
+        let root = tree.root.as_ref().expect("racine");
+        let a = find(&doc, root, "a").expect("fragment");
+        // Translation, puis échelle, puis `transform` : (10, 0) doublé, puis déplacé.
+        let matrix = box_transform(a).expect("transformation");
+        assert_eq!(matrix.apply(0.0, 0.0), (220.0, 100.0));
+        assert_eq!(matrix.apply(100.0, 50.0), (420.0, 200.0));
+        // Une rotation hors du plan ne déplace rien, mais la boîte reste « transformée ».
+        let b = find(&doc, root, "b").expect("fragment");
+        assert!(b.style.is_transformed());
+        assert!(box_transform(b).expect("transformation").is_identity());
+        let c = find(&doc, root, "c").expect("fragment");
+        assert!(!c.style.is_transformed());
     }
 
     #[test]

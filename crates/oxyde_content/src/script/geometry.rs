@@ -963,6 +963,32 @@ fn resolved(style: &ComputedStyle, rect: Option<Rect>, base: f32, name: &str) ->
                 None => "none".to_owned(),
             }
         }
+        "translate" => match style.translate {
+            Some(oxyde_css::TransformFunction::Translate(x, y)) => {
+                let part = |value: Size| match value {
+                    Size::Percent(p) => format!("{p}%"),
+                    other => px(other.resolve(0.0).unwrap_or(0.0)),
+                };
+                if matches!(y, Size::Px(v) if v == 0.0) {
+                    part(x)
+                } else {
+                    format!("{} {}", part(x), part(y))
+                }
+            }
+            _ => "none".to_owned(),
+        },
+        "rotate" => match style.rotate {
+            Some(oxyde_css::TransformFunction::Rotate(radians)) => {
+                let degrees = (f64::from(radians.to_degrees()) * 1000.0).round() / 1000.0;
+                format!("{degrees}deg")
+            }
+            _ => "none".to_owned(),
+        },
+        "scale" => match style.scale {
+            Some(oxyde_css::TransformFunction::Scale(x, y)) if x == y => format!("{x}"),
+            Some(oxyde_css::TransformFunction::Scale(x, y)) => format!("{x} {y}"),
+            _ => "none".to_owned(),
+        },
         "transform-origin" => {
             let (w, h) = rect.map_or((0.0, 0.0), |r| (r.w, r.h));
             format!(

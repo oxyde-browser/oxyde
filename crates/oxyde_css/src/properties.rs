@@ -97,6 +97,9 @@ pub enum Longhand {
     VerticalAlign,
     AspectRatio,
     Transform,
+    Translate,
+    Rotate,
+    Scale,
     TransformOriginX,
     TransformOriginY,
     AnimationName,
@@ -979,6 +982,18 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
         "transform" | "-webkit-transform" => single(
             Longhand::Transform,
             crate::transform::parse_transform(tokens).map(Value::Transform),
+        ),
+        "translate" => single(
+            Longhand::Translate,
+            crate::transform::parse_translate(tokens).map(Value::Transform),
+        ),
+        "rotate" => single(
+            Longhand::Rotate,
+            crate::transform::parse_rotate(tokens).map(Value::Transform),
+        ),
+        "scale" => single(
+            Longhand::Scale,
+            crate::transform::parse_scale(tokens).map(Value::Transform),
         ),
         "transform-origin" | "-webkit-transform-origin" => {
             if let Some(w) = wide {
