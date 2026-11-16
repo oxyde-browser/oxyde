@@ -3164,6 +3164,22 @@ impl ScriptEngine {
         host(&mut self.vm).and_then(|h| h.copied.take())
     }
 
+    /// Cadres chargés : l'élément `<iframe>` et le nœud de son document.
+    pub(crate) fn frame_documents(&mut self, doc: &Document) -> Vec<(NodeId, NodeId)> {
+        let Some(h) = host(&mut self.vm) else {
+            return Vec::new();
+        };
+        let mut frames: Vec<(NodeId, NodeId)> = h
+            .frames
+            .iter()
+            .filter_map(|(element, context)| {
+                Some((doc.id_from_index(*element as usize)?, context.document))
+            })
+            .collect();
+        frames.sort_by_key(|(element, _)| element.index());
+        frames
+    }
+
     /// Canevas redessinés depuis le dernier appel : index du nœud, largeur,
     /// hauteur et pixels RGBA non prémultipliés.
     pub(crate) fn take_canvas_frames(&mut self) -> Vec<(u32, u32, u32, Vec<u8>)> {

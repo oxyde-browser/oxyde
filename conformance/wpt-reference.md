@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --ref --publier css`, sur la su
 fenêtre de 800 × 600 points, puis comparé point par point à la page qu'il désigne
 par `<link rel="match">` (ou `mismatch` : elles doivent alors différer).
 
-**Tests réussis : 3356 / 7210 (46,5 %)**, dont 94 sur une page d'une seule couleur.
+**Tests réussis : 3355 / 7210 (46,5 %)**, dont 94 sur une page d'une seule couleur.
 
 Une réussite dit que le test et sa référence sont dessinés de la même façon, pas que
 ce dessin est juste : deux pages vides sont identiques. Les réussites « sur une page
@@ -34,7 +34,7 @@ locale de la suite.
 | `css/css-animations` | 14 / 35 (40,0 %) | 3 |
 | `css/css-animations/parsing` | 0 / 1 (0,0 %) | 0 |
 | `css/css-box/margin-trim` | 1 / 42 (2,4 %) | 0 |
-| `css/css-display` | 33 / 90 (36,7 %) | 0 |
+| `css/css-display` | 34 / 90 (37,8 %) | 0 |
 | `css/css-display/run-in` | 53 / 133 (39,8 %) | 0 |
 | `css/css-flexbox` | 472 / 908 (52,0 %) | 9 |
 | `css/css-flexbox/abspos` | 18 / 32 (56,3 %) | 0 |
@@ -49,7 +49,7 @@ locale de la suite.
 | `css/css-grid/alignment/self-baseline` | 0 / 42 (0,0 %) | 0 |
 | `css/css-grid/animation` | 0 / 2 (0,0 %) | 0 |
 | `css/css-grid/grid-definition` | 18 / 42 (42,9 %) | 0 |
-| `css/css-grid/grid-items` | 68 / 190 (35,8 %) | 0 |
+| `css/css-grid/grid-items` | 66 / 190 (34,7 %) | 0 |
 | `css/css-grid/grid-lanes` | 7 / 10 (70,0 %) | 0 |
 | `css/css-grid/grid-lanes/abspos` | 5 / 34 (14,7 %) | 0 |
 | `css/css-grid/grid-lanes/alignment` | 22 / 138 (15,9 %) | 0 |
@@ -85,7 +85,7 @@ locale de la suite.
 | `css/css-grid/grid-lanes/track-sizing` | 1 / 22 (4,5 %) | 0 |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat` | 6 / 40 (15,0 %) | 2 |
 | `css/css-grid/grid-lanes/track-sizing/auto-repeat/intrinsic-auto-repeat` | 15 / 98 (15,3 %) | 3 |
-| `css/css-grid/grid-model` | 27 / 55 (49,1 %) | 0 |
+| `css/css-grid/grid-model` | 26 / 55 (47,3 %) | 0 |
 | `css/css-grid/implicit-grids` | 3 / 3 (100,0 %) | 0 |
 | `css/css-grid/layout-algorithm` | 21 / 42 (50,0 %) | 0 |
 | `css/css-grid/placement` | 14 / 17 (82,4 %) | 0 |
@@ -96,7 +96,7 @@ locale de la suite.
 | `css/css-position/overlay` | 4 / 9 (44,4 %) | 2 |
 | `css/css-position/static-position` | 3 / 36 (8,3 %) | 0 |
 | `css/css-position/sticky` | 20 / 75 (26,7 %) | 1 |
-| `css/css-sizing` | 80 / 229 (34,9 %) | 5 |
+| `css/css-sizing` | 81 / 229 (35,4 %) | 5 |
 | `css/css-sizing/aspect-ratio` | 105 / 269 (39,0 %) | 2 |
 | `css/css-sizing/contain-intrinsic-size` | 2 / 28 (7,1 %) | 0 |
 | `css/css-sizing/responsive-iframe` | 7 / 16 (43,8 %) | 0 |

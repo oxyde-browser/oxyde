@@ -1050,7 +1050,13 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
       **3 356 tests réussis sur 7 210 (46,5 %)**, le même à deux exécutions de suite
       (2 448 avant que les références partagées `css/reference/` et
       `css/CSS2/reference/` ne soient déposées dans la copie locale).
-- [ ] Dessin des cadres (`<iframe>`), et cadres d'un autre site dans leur propre processus.
+- [x] Dessin des cadres (`<iframe>`) : le document du cadre est mis en page à la taille
+      de sa boîte de contenu et peint à sa place dans la page, découpé à cette boîte ;
+      une page sans script charge aussi ses cadres. Tests de référence : 3 356 → 3 355
+      (trois gagnés ; quatre perdus, qui ne passaient que parce qu'aucun cadre n'était
+      dessiné, ni dans le test ni dans sa référence). Restent : feuilles de style liées,
+      images et cadres imbriqués dans un cadre ; clic et défilement dans un cadre.
+- [ ] Cadres d'un autre site dans leur propre processus.
 - [ ] `position: sticky`, modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
       fil principal ; calques mis en cache.
