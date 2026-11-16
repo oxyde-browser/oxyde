@@ -1039,9 +1039,17 @@ principale.
 
 ### I — La page est fidèle (alpha)
 
-Fin du jalon 6. Mesure : les tests de référence WPT (comparaison d'images), à brancher.
+Commencée le 16 novembre 2026 alors que l'étape H reste ouverte : 19 pages lisibles sur
+50, pour 40 demandées ; ses blocages sont listés dans
+[conformance/sites.md](../conformance/sites.md).
 
-- [ ] Lanceur des tests de référence WPT ; point de départ publié dans `conformance/`.
+Fin du jalon 6. Mesure : les tests de référence WPT (comparaison d'images) de `css/`,
+publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
+
+- [x] Lanceur des tests de référence WPT (`oxyde_wpt --ref`) ; point de départ :
+      **2 448 tests réussis sur 7 210 (34,0 %)**, le même à deux exécutions de suite.
+      2 008 tests ne sont pas comparés, leur référence partagée (`css/reference/`,
+      `css/CSS2/reference/`) n'étant pas dans la copie locale : à télécharger.
 - [ ] Dessin des cadres (`<iframe>`), et cadres d'un autre site dans leur propre processus.
 - [ ] `position: sticky`, modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du

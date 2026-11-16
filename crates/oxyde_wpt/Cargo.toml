@@ -1,6 +1,6 @@
 [package]
 name = "oxyde_wpt"
-description = "Lanceur de la suite Web Platform Tests (testharness.js) pour oxyde_content."
+description = "Lanceur de la suite Web Platform Tests (testharness.js et tests de référence) pour oxyde_content."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 oxyde_content.workspace = true
+oxyde_gpu.workspace = true
 oxyde_platform.workspace = true
 oxyde_text.workspace = true
 

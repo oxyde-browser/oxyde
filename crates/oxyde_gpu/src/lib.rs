@@ -49,6 +49,9 @@ pub struct Gpu {
     context: RenderContext,
     /// Un moteur de rendu par périphérique (même index que `context.devices`).
     renderers: Vec<Option<Renderer>>,
+    /// Étapes de calcul de Vello faites par le processeur : voir
+    /// [`Gpu::reproducible`].
+    cpu_stages: bool,
 }
 
 impl std::fmt::Debug for Gpu {
@@ -62,8 +65,9 @@ impl std::fmt::Debug for Gpu {
 /// Options du moteur Vello : seul l'anticrénelage par aire est compilé, car
 /// c'est le seul employé ; les variantes MSAA doubleraient le temps de
 /// compilation des shaders au démarrage.
-fn renderer_options() -> RendererOptions {
+fn renderer_options(cpu_stages: bool) -> RendererOptions {
     RendererOptions {
+        use_cpu: cpu_stages,
         antialiasing_support: vello::AaSupport::area_only(),
         ..RendererOptions::default()
     }
@@ -82,6 +86,20 @@ impl Gpu {
         Self {
             context: RenderContext::new(),
             renderers: Vec::new(),
+            cpu_stages: false,
+        }
+    }
+
+    /// Comme [`Gpu::new`], les étapes de calcul de Vello (aplatissement des
+    /// tracés, répartition en tuiles) étant faites par le processeur. C'est
+    /// plus lent, mais la même scène donne alors la même image d'un rendu à
+    /// l'autre : sur la carte graphique, l'ordre de ces calculs varie et
+    /// déplace quelques points d'un niveau. Sert aux tests de référence.
+    #[must_use]
+    pub fn reproducible() -> Self {
+        Self {
+            cpu_stages: true,
+            ..Self::new()
         }
     }
 
@@ -118,7 +136,7 @@ impl Gpu {
         if slot.is_none() {
             let device = &self.context.devices.get(dev_id).ok_or_else(unknown)?.device;
             *slot = Some(
-                Renderer::new(device, renderer_options())
+                Renderer::new(device, renderer_options(self.cpu_stages))
                     .map_err(|e| GpuError::Init(e.to_string()))?,
             );
         }

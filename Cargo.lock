@@ -2764,6 +2764,7 @@ name = "oxyde_wpt"
 version = "0.1.0"
 dependencies = [
  "oxyde_content",
+ "oxyde_gpu",
  "oxyde_platform",
  "oxyde_text",
 ]
