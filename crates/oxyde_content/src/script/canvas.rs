@@ -1068,13 +1068,15 @@ pub(super) fn parse_css_color(vm: &mut Vm, _this: &Value, args: &[Value]) -> JsR
 }
 
 /// Police que décrit la valeur de `ctx.font` (`italic bold 20px Arial`).
-struct FontSpec {
+pub(crate) struct FontSpec {
     /// Corps, en pixels.
-    size: f32,
+    pub(crate) size: f32,
     /// Liste de familles, écrite comme en CSS.
-    family: String,
-    weight: f32,
-    italic: bool,
+    pub(crate) family: String,
+    /// Graisse (1–1000).
+    pub(crate) weight: f32,
+    /// Italique.
+    pub(crate) italic: bool,
 }
 
 /// Lit une valeur de `font` ; `None` si elle n'a pas de corps lisible.
@@ -1130,13 +1132,17 @@ fn parse_font(text: &str) -> Option<FontSpec> {
 /// Texte mis en forme sur une ligne : le contour de ses glyphes, dans un
 /// repère dont l'origine est le coin supérieur gauche de la ligne, et ses
 /// mesures.
-struct Shaped {
-    outline: Option<Path>,
-    width: f32,
+pub(crate) struct Shaped {
+    /// Contour des glyphes ; `None` s'il n'y en a pas (texte vide, blancs).
+    pub(crate) outline: Option<Path>,
+    /// Largeur de la ligne.
+    pub(crate) width: f32,
     /// Distance du haut de la ligne à la ligne de base.
-    baseline: f32,
-    ascent: f32,
-    descent: f32,
+    pub(crate) baseline: f32,
+    /// Montée de la police.
+    pub(crate) ascent: f32,
+    /// Descente de la police.
+    pub(crate) descent: f32,
 }
 
 /// Plume qui recopie le contour d'un glyphe dans un tracé, à l'origine
@@ -1179,7 +1185,11 @@ impl skrifa::outline::OutlinePen for GlyphPen<'_> {
 }
 
 /// Met en forme `text` dans la police `font`.
-fn shape_text(context: &mut oxyde_text::TextContext, text: &str, font: &FontSpec) -> Shaped {
+pub(crate) fn shape_text(
+    context: &mut oxyde_text::TextContext,
+    text: &str,
+    font: &FontSpec,
+) -> Shaped {
     use oxyde_text::parley::{
         Alignment, AlignmentOptions, FontFamily, FontStyle, FontWeight, PositionedLayoutItem,
         StyleProperty,

@@ -114,6 +114,18 @@ pub enum Longhand {
     TransitionDuration,
     TransitionDelay,
     TransitionTimingFunction,
+    TransformBox,
+    Fill,
+    Stroke,
+    StrokeWidth,
+    FillOpacity,
+    StrokeOpacity,
+    FillRule,
+    StrokeLinecap,
+    StrokeLinejoin,
+    StrokeMiterlimit,
+    StrokeDasharray,
+    StrokeDashoffset,
 }
 
 /// Valeur d'une déclaration, déjà validée pour sa propriété.
@@ -139,6 +151,8 @@ pub enum Value {
     Line(crate::grid::GridLine),
     /// Zones nommées d'une grille.
     Areas(crate::grid::GridAreas),
+    /// Peinture SVG (`fill`, `stroke`).
+    Paint(crate::svg::SvgPaint),
     /// Fonctions de transformation ; liste vide pour `none`.
     Transform(Vec<crate::transform::TransformFunction<Length>>),
     /// Liste de noms ou de mots-clés (`animation-name`, `transition-property`…).
@@ -299,9 +313,15 @@ fn transform_origin(tokens: &[Token]) -> Option<(Length, Length)> {
             }
             let (a, a_axis) = position(first)?;
             let (b, b_axis) = position(second)?;
+            // Un mot-clé, par opposition à une longueur ou à un pourcentage.
+            let keyword = |token: &Token| ident_of(token).is_some();
             match (a_axis, b_axis) {
                 (Some(false), Some(false)) | (Some(true), Some(true)) => None,
-                (Some(false), _) | (_, Some(true)) => Some((b, a)),
+                // L'ordre inverse (vertical d'abord) n'est permis qu'entre
+                // deux mots-clés.
+                (Some(false), _) | (_, Some(true)) => {
+                    (keyword(first) && keyword(second)).then_some((b, a))
+                }
                 _ => Some((a, b)),
             }
         }
@@ -520,6 +540,51 @@ fn integer_or_auto(token: &Token) -> Option<Value> {
         Some(_) => None,
         None => integer(token),
     }
+}
+
+/// Longueur SVG : un nombre sans unité compte en unités de l'utilisateur
+/// (des pixels).
+fn user_length(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) => Some(Value::Length(Length::Px(*v))),
+        other => parse_length(other).map(Value::Length),
+    }
+}
+
+/// Opacité : un nombre ou un pourcentage, ramené entre 0 et 1.
+fn alpha_value(token: &Token) -> Option<Value> {
+    match token {
+        Token::Number(v) => Some(Value::Number(v.clamp(0.0, 1.0))),
+        Token::Percentage(v) => Some(Value::Number((v / 100.0).clamp(0.0, 1.0))),
+        _ => None,
+    }
+}
+
+/// `stroke-dasharray` : `none` (liste vide) ou des longueurs positives,
+/// séparées par des blancs ou des virgules. Seules les longueurs en
+/// pixels (ou sans unité) sont gardées ; les autres valent zéro.
+fn dash_array(tokens: &[Token]) -> Option<Value> {
+    if let [Token::Ident(word)] = tokens
+        && word.eq_ignore_ascii_case("none")
+    {
+        return Some(Value::Numbers(Vec::new()));
+    }
+    let mut out = Vec::new();
+    for token in tokens {
+        let value = match token {
+            Token::Whitespace | Token::Comma => continue,
+            Token::Number(v) => *v,
+            other => match parse_length(other)? {
+                Length::Px(v) => v,
+                _ => 0.0,
+            },
+        };
+        if value < 0.0 {
+            return None;
+        }
+        out.push(value);
+    }
+    (!out.is_empty()).then_some(Value::Numbers(out))
 }
 
 fn non_negative_number(token: &Token) -> Option<Value> {
@@ -983,6 +1048,48 @@ fn parse_property(name: &str, tokens: &[Token]) -> Option<Pairs> {
             Longhand::Transform,
             crate::transform::parse_transform(tokens).map(Value::Transform),
         ),
+        "transform-box" => single(
+            Longhand::TransformBox,
+            keyword(
+                tokens,
+                &[
+                    "view-box",
+                    "fill-box",
+                    "stroke-box",
+                    "content-box",
+                    "border-box",
+                ],
+            ),
+        ),
+        "fill" => single(
+            Longhand::Fill,
+            crate::svg::parse_paint(tokens).map(Value::Paint),
+        ),
+        "stroke" => single(
+            Longhand::Stroke,
+            crate::svg::parse_paint(tokens).map(Value::Paint),
+        ),
+        "stroke-width" => single(Longhand::StrokeWidth, one().and_then(user_length)),
+        "stroke-dashoffset" => single(Longhand::StrokeDashoffset, one().and_then(user_length)),
+        "fill-opacity" => single(Longhand::FillOpacity, one().and_then(alpha_value)),
+        "stroke-opacity" => single(Longhand::StrokeOpacity, one().and_then(alpha_value)),
+        "fill-rule" => single(Longhand::FillRule, keyword(tokens, &["nonzero", "evenodd"])),
+        "stroke-linecap" => single(
+            Longhand::StrokeLinecap,
+            keyword(tokens, &["butt", "round", "square"]),
+        ),
+        "stroke-linejoin" => single(
+            Longhand::StrokeLinejoin,
+            keyword(tokens, &["miter", "round", "bevel", "miter-clip", "arcs"]),
+        ),
+        "stroke-miterlimit" => single(
+            Longhand::StrokeMiterlimit,
+            one().and_then(|t| match t {
+                Token::Number(v) if *v >= 1.0 => Some(Value::Number(*v)),
+                _ => None,
+            }),
+        ),
+        "stroke-dasharray" => single(Longhand::StrokeDasharray, dash_array(tokens)),
         "translate" => single(
             Longhand::Translate,
             crate::transform::parse_translate(tokens).map(Value::Transform),

@@ -24,6 +24,7 @@ pub mod properties;
 pub mod selector;
 pub mod style;
 pub mod stylesheet;
+pub mod svg;
 pub mod syntax;
 pub mod transform;
 pub mod values;
@@ -37,9 +38,10 @@ pub use style::{
     Alignment, BorderStyle, Clear, ComputedStyle, Display, Edges, FlexDirection, FlexWrap, Float,
     LineHeight, ListStyle, Overflow, Overscroll, Position, Size, SizeKeyword, StyleMap, TextAlign,
     VerticalAlign, Visibility, WhiteSpace, collect_style_elements, compute_styles,
-    compute_styles_at,
+    compute_styles_at, is_style_element,
 };
 pub use stylesheet::{FontFace, Stylesheet, Viewport, parse_stylesheet};
+pub use svg::{SvgLineCap, SvgLineJoin, SvgPaint, SvgStyle, TransformBox};
 pub use transform::{Affine, TransformFunction};
 
 /// Vrai si le moteur de style accepte la déclaration `property: value`

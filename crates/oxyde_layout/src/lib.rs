@@ -787,6 +787,13 @@ impl Engine<'_> {
         if self.doc.element(node).is_some_and(|e| e.is_html("select")) {
             return;
         }
+        // Un `<svg>` est dessiné d'un bloc lui aussi, et le contenu d'un
+        // `<canvas>` n'est qu'un repli pour qui ne sait pas le dessiner.
+        if self.doc.element(node).is_some_and(|e| {
+            e.is_html("canvas") || (e.ns == oxyde_dom::Namespace::Svg && e.name == "svg")
+        }) {
+            return;
+        }
         // L'arbre affiché est l'arbre aplati (arbres fantômes, emplacements).
         for child in self.doc.flat_children(node) {
             match &self.doc.node(child).data {

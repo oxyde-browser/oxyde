@@ -14,6 +14,7 @@ mod cors;
 #[path = "generated/dom.rs"]
 mod dom_idl;
 mod script;
+mod svg;
 pub mod wire;
 
 pub use cors::preflight_allows;
@@ -287,13 +288,19 @@ const MAX_IMAGES: usize = 500;
 /// Nombre maximal de scripts exécutés par page.
 const MAX_SCRIPTS: usize = 500;
 
-/// Décode une image PNG, JPEG, WebP, GIF, BMP ou ICO.
+/// Décode une image PNG, JPEG, WebP, GIF, BMP ou ICO, ou rend une image
+/// SVG à sa taille propre.
 ///
 /// Les dimensions et la mémoire sont bornées : une image hostile (« bombe de
 /// décompression ») est refusée plutôt que décodée. Renvoie `None` si le
 /// format est inconnu, les données invalides ou les limites dépassées.
 #[must_use]
 pub fn decode_image(bytes: &[u8]) -> Option<Image> {
+    decode_raster(bytes).or_else(|| svg::decode(bytes))
+}
+
+/// Décode une image en pixels (tout format sauf SVG).
+fn decode_raster(bytes: &[u8]) -> Option<Image> {
     let mut reader = image::ImageReader::new(Cursor::new(bytes))
         .with_guessed_format()
         .ok()?;
@@ -574,11 +581,19 @@ pub(crate) fn layout_snapshot(
     };
     let (styles, time) = env.animations.styles(doc, &usable_sheets(&slots), viewport);
     let intrinsic = |node: NodeId| {
-        env.sizes.get(&node).copied().or_else(|| {
-            let el = doc.element(node).filter(|el| el.is_html("img"))?;
-            let target = image_target(el, &env.base)?;
-            env.known_sizes.get(target.as_str()).copied()
-        })
+        env.sizes
+            .get(&node)
+            .copied()
+            .or_else(|| {
+                let el = doc.element(node).filter(|el| el.is_html("img"))?;
+                let target = image_target(el, &env.base)?;
+                env.known_sizes.get(target.as_str()).copied()
+            })
+            .or_else(|| {
+                svg::is_outer_root(doc, node)
+                    .then(|| svg::layout_size(doc, node, styles.get(node).map(|s| &**s)))
+                    .flatten()
+            })
     };
     let tree = oxyde_layout::layout_document(doc, &styles, text, viewport, &intrinsic);
     (styles, tree, time)
@@ -833,6 +848,9 @@ pub struct Page {
     url: Url,
     /// Image de chaque canevas dessiné par un script, par élément.
     canvas_images: HashMap<NodeId, Image>,
+    /// Rendu des éléments `<svg>` de la page, avec l'empreinte de ce dont il
+    /// dépend : il n'est refait que si elle change.
+    svg_images: HashMap<NodeId, (u64, Image)>,
     /// Type MIME du document s'il est en XML ; `None` pour du HTML.
     xml: Option<&'static str>,
     /// Adresse de base de résolution des liens (`<base href>` ou l'adresse de la page).
@@ -1196,7 +1214,7 @@ fn collect_sheets(doc: &Document, base: &Url, previous: Vec<SheetSlot>) -> Vec<S
         if in_noscript(doc, node) {
             continue;
         }
-        if el.is_html("style") {
+        if oxyde_css::is_style_element(el) {
             sheets.push(SheetSlot::Inline(Stylesheet {
                 scope,
                 ..parse_stylesheet(&doc.text_content(node))
@@ -1342,6 +1360,7 @@ impl Page {
             script_nodes,
             xml,
             canvas_images: HashMap::new(),
+            svg_images: HashMap::new(),
             import_map: std::sync::Arc::new(import_map),
             modules: HashMap::new(),
             frames,
@@ -2708,23 +2727,38 @@ impl Page {
             }
         }
         let images = &self.images;
+        // Les `<svg>` sont des éléments remplacés : leur taille propre vient
+        // de leurs attributs.
+        let svg_roots: std::collections::HashSet<NodeId> =
+            svg::outer_roots(&self.doc).into_iter().collect();
+        let svg_sizes: HashMap<NodeId, (f32, f32)> = svg_roots
+            .iter()
+            .filter_map(|node| {
+                let style = self.styles.get(*node).map(|s| &**s);
+                Some((*node, svg::layout_size(&self.doc, *node, style)?))
+            })
+            .collect();
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
         let intrinsic = |node: NodeId| {
             images
                 .get(&node)
                 .and_then(|slot| slot.image.as_ref())
                 .map(|image| (image.width() as f32, image.height() as f32))
+                .or_else(|| svg_sizes.get(&node).copied())
         };
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
         let frame_lists = self.paint_frames(&tree, text);
+        self.render_svgs(&tree, &svg_roots, text);
         let images = &self.images;
         let canvases = &self.canvas_images;
+        let svgs = &self.svg_images;
         let image_of = |node: NodeId| {
             images
                 .get(&node)
                 .and_then(|slot| slot.image.clone())
                 .or_else(|| canvases.get(&node).cloned())
+                .or_else(|| svgs.get(&node).map(|(_, image)| image.clone()))
         };
         self.list = oxyde_paint::paint(&tree, viewport, &image_of, &|node| frame_lists.get(&node));
         self.painted = self.list.items.len();
@@ -2745,6 +2779,41 @@ impl Page {
         self.refresh_selection();
         self.paint_find();
         true
+    }
+
+    /// Rend les éléments `<svg>` de `roots` à la taille de leur boîte de
+    /// contenu dans `tree` ; un rendu dont rien n'a changé est gardé.
+    fn render_svgs(
+        &mut self,
+        tree: &oxyde_layout::LayoutTree,
+        roots: &std::collections::HashSet<NodeId>,
+        text: &mut TextContext,
+    ) {
+        if roots.is_empty() {
+            self.svg_images.clear();
+            return;
+        }
+        let index = svg::Index::new(&self.doc);
+        let mut kept = HashMap::new();
+        for (node, rect) in oxyde_paint::content_boxes(tree, &|node| roots.contains(&node)) {
+            let signature = svg::signature(&self.doc, &self.styles, node, rect.w, rect.h);
+            let image = match self.svg_images.remove(&node) {
+                Some((known, image)) if known == signature => Some(image),
+                _ => svg::render(
+                    &self.doc,
+                    &self.styles,
+                    &index,
+                    node,
+                    (rect.w, rect.h),
+                    svg::PAGE_SCALE,
+                    Some(&mut *text),
+                ),
+            };
+            if let Some(image) = image {
+                kept.insert(node, (signature, image));
+            }
+        }
+        self.svg_images = kept;
     }
 
     /// Met en page et peint le document de chaque cadre (`<iframe>`) chargé
@@ -6597,6 +6666,84 @@ mod tests {
             }
             let _ = p.tick(Instant::now() + Duration::from_secs(round));
         }
+    }
+
+    #[test]
+    fn inline_svg_is_a_replaced_element_painted_as_an_image() {
+        use oxyde_paint::DisplayItem;
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0;color:rgb(0,128,0)'>             <svg id=a viewBox='0 0 10 5' style='display:block;width:100px'>               <title>pas de texte</title><rect width='5' height='5' fill='currentColor'/>\n               <text y='4' font-size='1'>ni ici</text></svg>             <svg id=b width='30' height='20' style='display:block'><circle r='5'/></svg>",
+        );
+        p.update(&mut text, VIEWPORT);
+        let images: Vec<(f32, f32, f32, f32, u32, u32)> = p
+            .display_list()
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                DisplayItem::Image { rect, image } => Some((
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
+                    image.width(),
+                    image.height(),
+                )),
+                _ => None,
+            })
+            .collect();
+        // La hauteur suit les proportions du `viewBox` ; le rendu se fait à
+        // deux pixels par pixel CSS.
+        assert_eq!(
+            images,
+            vec![
+                (0.0, 0.0, 100.0, 50.0, 200, 100),
+                (0.0, 50.0, 30.0, 20.0, 60, 40)
+            ]
+        );
+        // Le contenu d'un `<svg>` n'est pas mis en page comme du texte.
+        assert!(
+            !p.display_list()
+                .items
+                .iter()
+                .any(|item| matches!(item, DisplayItem::Glyphs(_))),
+            "{:?}",
+            p.display_list().items
+        );
+        let first = doc_node(&p, "a");
+        let (_, image) = p.svg_images.get(&first).expect("rendu gardé");
+        let data = image.data().data.data();
+        assert_eq!(&data[..4], &[0, 128, 0, 255], "couleur courante");
+        let far = (199 * 4) as usize;
+        assert_eq!(data[far + 3], 0, "le reste est transparent");
+        // Rien n'a changé : le rendu est gardé tel quel.
+        let before = data.as_ptr();
+        p.update(&mut text, VIEWPORT);
+        let (_, image) = p.svg_images.get(&first).expect("rendu gardé");
+        assert_eq!(image.data().data.data().as_ptr(), before);
+    }
+
+    #[test]
+    fn svg_paint_properties_cascade_and_are_read_back() {
+        let mut p = page(
+            "<body><style>.i { fill: currentColor; stroke: url(#g) red; stroke-width: 2px }</style>
+             <svg id=s class=i style='color:rgb(1,2,3)' width=30 height=20>
+               <rect id=r width=5 height=5 stroke-dasharray='4 2' fill-rule=evenodd /></svg>
+             <script>
+               const cs = getComputedStyle(document.getElementById('r'));
+               const box = document.getElementById('s').getBoundingClientRect();
+               document.body.setAttribute('data-out', [cs.fill, cs.stroke, cs.strokeWidth,
+                 cs.strokeDasharray, cs.fillRule, cs.strokeLinecap, cs.fillOpacity,
+                 box.width, box.height].join('|'));
+             </script>",
+        );
+        p.run_scripts();
+        let doc = p.document();
+        let body = doc.find_html_element(doc.root(), "body").expect("body");
+        assert_eq!(
+            doc.element(body).and_then(|e| e.attr("data-out")),
+            Some("rgb(1, 2, 3)|url(\"#g\") rgb(255, 0, 0)|2px|4px, 2px|evenodd|butt|1|30|20")
+        );
     }
 
     #[test]
