@@ -11,7 +11,7 @@ identique à Chromium ; l'avancement se mesure avec les suites publiques, pas à
 | css-parsing-tests | `oxyde_css` | pas encore branchée |
 | Web Platform Tests, dossier `dom/` | `oxyde_dom`, `oxyde_content` | **branchée** : 533 fichiers de test entièrement réussis sur 736 (72,4 %) ; détail dans [wpt.md](wpt.md) |
 | Web Platform Tests, mise en page (flex, grille, positionnement, tableaux, tailles, CSS 2, CSSOM View) | `oxyde_css`, `oxyde_layout` | **branchée** pour les tests `testharness.js` : 579 fichiers entièrement réussis sur 2 269 (25,5 %) ; détail dans [wpt-css.md](wpt-css.md) |
-| Web Platform Tests, tests de référence de `css/` (comparaison d'images) | `oxyde_css`, `oxyde_layout`, `oxyde_paint`, `oxyde_gpu` | **branchée** : 2 448 tests réussis sur 7 210 (34,0 %), dont 84 sur une page d'une seule couleur ; 2 008 échouent sans avoir été comparés, leur référence (`css/reference/`, `css/CSS2/reference/`) n'étant pas dans la copie locale ; détail dans [wpt-reference.md](wpt-reference.md) |
+| Web Platform Tests, tests de référence de `css/` (comparaison d'images) | `oxyde_css`, `oxyde_layout`, `oxyde_paint`, `oxyde_gpu` | **branchée** : 3 356 tests réussis sur 7 210 (46,5 %), dont 94 sur une page d'une seule couleur ; 7 échouent sans avoir été comparés, leur référence n'étant pas dans la copie locale ; détail dans [wpt-reference.md](wpt-reference.md) |
 | Web Platform Tests, transformations, transitions et animations | `oxyde_css`, `oxyde_layout`, `oxyde_content` | **branchée** pour les tests `testharness.js` : 70 fichiers entièrement réussis sur 363 (19,3 %) ; détail dans [wpt-animations.md](wpt-animations.md) |
 | Web Platform Tests, dossier `url/` | `oxyde_content` | **branchée** : 16 fichiers entièrement réussis sur 34 ; détail dans [wpt-url.md](wpt-url.md) |
 | Web Platform Tests, dossier `encoding/` | `oxyde_html`, `oxyde_content` | **branchée** : 44 fichiers entièrement réussis sur 153 (tous les encodages sont lus ; les encodeurs autres qu'UTF-8 manquent) ; détail dans [wpt-encoding.md](wpt-encoding.md) |
@@ -28,7 +28,8 @@ mesurée par `cargo run -p oxyde -- --dom-coverage` et publiée dans [dom.md](do
 
 Les Web Platform Tests se lancent avec `cargo run -p oxyde_wpt --release -- --publier dom` après
 avoir cloné `web-platform-tests/wpt` dans `vendor/wpt` (non versionné ; les dossiers `resources`,
-`common` et `dom` suffisent). `--journal fichier` écrit une ligne par sous-test, pour comparer
+`common` et `dom` suffisent ; les tests de référence de `css/` demandent aussi
+`css/reference` et `css/CSS2/reference`). `--journal fichier` écrit une ligne par sous-test, pour comparer
 deux exécutions : aucun sous-test réussi ne doit être perdu. Les tests de référence se lancent
 avec `--ref` (`cargo run -p oxyde_wpt --release -- --ref --publier css`) : chaque page est
 dessinée par le chemin des captures d'écran, les étapes de calcul de Vello faites par le

@@ -1047,9 +1047,9 @@ Fin du jalon 6. Mesure : les tests de référence WPT (comparaison d'images) de 
 publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
 
 - [x] Lanceur des tests de référence WPT (`oxyde_wpt --ref`) ; point de départ :
-      **2 448 tests réussis sur 7 210 (34,0 %)**, le même à deux exécutions de suite.
-      2 008 tests ne sont pas comparés, leur référence partagée (`css/reference/`,
-      `css/CSS2/reference/`) n'étant pas dans la copie locale : à télécharger.
+      **3 356 tests réussis sur 7 210 (46,5 %)**, le même à deux exécutions de suite
+      (2 448 avant que les références partagées `css/reference/` et
+      `css/CSS2/reference/` ne soient déposées dans la copie locale).
 - [ ] Dessin des cadres (`<iframe>`), et cadres d'un autre site dans leur propre processus.
 - [ ] `position: sticky`, modes d'écriture verticaux, `<col>`, ligne de base des tableaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
