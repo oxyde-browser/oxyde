@@ -2290,6 +2290,57 @@ mod tests {
     }
 
     #[test]
+    fn table_columns_follow_col_elements() {
+        // Disposition automatique : largeur en pixels (attribut ou style),
+        // `span`, largeur du groupe pour ses colonnes, pourcentage.
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table id=t style='width:400px'>                 <col width=50><colgroup style='width:60px'><col span=2></colgroup>                 <col style='width:25%'>                 <tr><td id=a></td><td id=b></td><td id=c></td><td id=d></td><td id=e></td></tr>                 </table>"
+            ),
+            800.0,
+        );
+        let widths: Vec<f32> = ["a", "b", "c", "d", "e"]
+            .iter()
+            .map(|id| rect(&doc, &tree, id).w)
+            .collect();
+        assert_eq!(widths, [50.0, 60.0, 60.0, 100.0, 130.0]);
+
+        // Disposition fixe : la colonne déclarée passe avant la cellule de
+        // la première rangée, et une colonne sans cellule compte.
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<table id=t style='width:300px;table-layout:fixed'>                 <col style='width:40px'><col><col style='width:60px'>                 <tr><td id=a style='width:90px'></td><td id=b style='width:100px'></td></tr>                 </table>"
+            ),
+            800.0,
+        );
+        // 40, 100 et 60 demandés pour 300 : les colonnes s'élargissent au
+        // prorata.
+        assert_eq!(rect(&doc, &tree, "a").w, 60.0);
+        assert_eq!(rect(&doc, &tree, "b").w, 150.0);
+        assert_eq!(rect(&doc, &tree, "t").w, 300.0);
+    }
+
+    #[test]
+    fn table_cells_align_on_the_row_baseline() {
+        let (doc, tree) = layout(
+            &format!(
+                "{TABLE}<style>td{{vertical-align:baseline; font:20px/20px monospace}}</style>                 <table><tr>                 <td><div id=a>a</div></td>                 <td style='padding-top:30px'><div id=b>b</div></td>                 <td style='font-size:10px; line-height:10px'><div id=c>c</div></td>                 <td id=vide style='height:5px'></td>                 <td id=haut style='vertical-align:top'><div id=d>d</div></td>                 </tr></table>"
+            ),
+            800.0,
+        );
+        let top = |id: &str| rect(&doc, &tree, id).y;
+        // Même police : la cellule sans marge descend à la hauteur de celle
+        // qui en a une. Le texte plus petit descend davantage, sa ligne de
+        // base étant plus près de son bord haut.
+        assert_eq!((top("a"), top("b")), (30.0, 30.0));
+        assert!(top("c") > 30.0 && top("c") < 50.0, "{}", top("c"));
+        // `top` reste en haut ; la rangée a grandi pour loger les cellules
+        // descendues.
+        assert_eq!(top("d"), 0.0);
+        assert_eq!(rect(&doc, &tree, "haut").h, 50.0);
+    }
+
+    #[test]
     fn table_spans_and_row_heights() {
         let (doc, tree) = layout(
             &format!(
