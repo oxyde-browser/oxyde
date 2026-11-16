@@ -560,7 +560,7 @@ mod tests {
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
         let image = Image::from_rgba(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 255]).expect("image");
-        let mut list = crate::paint(&tree, viewport, &|_| None);
+        let mut list = crate::paint(&tree, viewport, &|_| None, &|_| None);
         list.items.push(DisplayItem::Image {
             rect: Rect {
                 x: 1.0,

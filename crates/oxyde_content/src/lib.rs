@@ -1703,7 +1703,9 @@ impl Page {
     /// `load`. À appeler une fois, après avoir fourni les scripts externes et
     /// les modules importés. Les exceptions vont dans la console.
     pub fn run_scripts(&mut self) {
-        if self.scripts.is_empty() {
+        // Sans script, le moteur n'est créé que pour porter les documents des
+        // cadres, qui se dessinent.
+        if self.scripts.is_empty() && self.frames.iter().all(|frame| frame.document.is_none()) {
             self.autofocus();
             return;
         }
@@ -2706,13 +2708,6 @@ impl Page {
             }
         }
         let images = &self.images;
-        let canvases = &self.canvas_images;
-        let image_of = |node: NodeId| {
-            images
-                .get(&node)
-                .and_then(|slot| slot.image.clone())
-                .or_else(|| canvases.get(&node).cloned())
-        };
         #[expect(clippy::cast_precision_loss, reason = "côtés d'image bornés à 16 384")]
         let intrinsic = |node: NodeId| {
             images
@@ -2722,7 +2717,16 @@ impl Page {
         };
         let tree =
             oxyde_layout::layout_document(&self.doc, &self.styles, text, viewport, &intrinsic);
-        self.list = oxyde_paint::paint(&tree, viewport, &image_of);
+        let frame_lists = self.paint_frames(&tree, text);
+        let images = &self.images;
+        let canvases = &self.canvas_images;
+        let image_of = |node: NodeId| {
+            images
+                .get(&node)
+                .and_then(|slot| slot.image.clone())
+                .or_else(|| canvases.get(&node).cloned())
+        };
+        self.list = oxyde_paint::paint(&tree, viewport, &image_of, &|node| frame_lists.get(&node));
         self.painted = self.list.items.len();
         // Les décalages de défilement sont ramenés dans les bornes du
         // nouveau contenu.
@@ -2741,6 +2745,63 @@ impl Page {
         self.refresh_selection();
         self.paint_find();
         true
+    }
+
+    /// Met en page et peint le document de chaque cadre (`<iframe>`) chargé
+    /// qui occupe une place dans `tree`, à la taille de sa boîte de contenu.
+    ///
+    /// LIMITES : le document du cadre est recopié et remis en page à chaque
+    /// peinture de la page ; ses feuilles de style liées, ses images, ses
+    /// animations et les cadres qu'il contient ne sont pas dessinés ; on ne
+    /// peut ni y cliquer ni le faire défiler.
+    fn paint_frames(
+        &mut self,
+        tree: &oxyde_layout::LayoutTree,
+        text: &mut TextContext,
+    ) -> HashMap<NodeId, DisplayList> {
+        let mut lists = HashMap::new();
+        let Some(engine) = self.engine.as_mut() else {
+            return lists;
+        };
+        let documents: HashMap<NodeId, NodeId> =
+            engine.frame_documents(&self.doc).into_iter().collect();
+        if documents.is_empty() {
+            return lists;
+        }
+        let boxes = oxyde_paint::content_boxes(tree, &|node| documents.contains_key(&node));
+        for (element, rect) in boxes {
+            let Some(document) = documents.get(&element) else {
+                continue;
+            };
+            if rect.w <= 0.0 || rect.h <= 0.0 {
+                continue;
+            }
+            let mut copy = Document::new();
+            let children: Vec<NodeId> = self.doc.children(*document).collect();
+            for child in children {
+                let imported = copy.import(&self.doc, child);
+                let root = copy.root();
+                copy.append_child(root, imported);
+            }
+            let base = self
+                .frames
+                .iter()
+                .find(|frame| frame.element == element)
+                .map_or(&self.url, |frame| &frame.url);
+            let sheets = usable_sheets(&collect_sheets(&copy, base, Vec::new()));
+            let viewport = Viewport {
+                width: rect.w,
+                height: rect.h,
+            };
+            let styles = oxyde_css::compute_styles(&copy, &sheets, viewport);
+            let frame_tree =
+                oxyde_layout::layout_document(&copy, &styles, text, viewport, &|_| None);
+            lists.insert(
+                element,
+                oxyde_paint::paint_frame(&frame_tree, viewport, &|_| None),
+            );
+        }
+        lists
     }
 
     /// Cherche `query` dans le texte de la page, sans tenir compte de la
@@ -6536,6 +6597,54 @@ mod tests {
             }
             let _ = p.tick(Instant::now() + Duration::from_secs(round));
         }
+    }
+
+    #[test]
+    fn frames_are_painted_inside_their_content_box() {
+        use oxyde_paint::DisplayItem;
+        let mut text = TextContext::new();
+        let mut p = page(
+            "<body style='margin:0'><div style='height:20px'></div>
+             <iframe style='border:5px solid black;margin-left:30px;width:100px;height:60px;display:block'
+               srcdoc=\"<body style='margin:0'><div style='width:40px;height:10px;background:rgb(1,2,3)'></div>
+                 <script>document.body.firstChild.style.height = '25px';</script>\"></iframe>
+             <iframe style='display:none' srcdoc=\"<p style='background:rgb(9,9,9)'>caché</p>\"></iframe>",
+        );
+        p.run_scripts();
+        p.load_ready_frames();
+        p.update(&mut text, VIEWPORT);
+        let items = &p.display_list().items;
+        // Le contenu du cadre est découpé à sa boîte de contenu et décalé
+        // jusqu'à elle ; sa mise en page est celle du document après ses
+        // scripts.
+        let clip = items
+            .iter()
+            .position(|item| {
+                matches!(item, DisplayItem::PushClip { rect, .. }
+                    if (rect.x, rect.y, rect.w, rect.h) == (35.0, 25.0, 100.0, 60.0))
+            })
+            .expect("découpe du cadre");
+        assert!(
+            matches!(items.get(clip + 1), Some(DisplayItem::PushTransform { matrix })
+                if matrix[4..] == [35.0, 25.0]),
+            "{:?}",
+            items.get(clip + 1)
+        );
+        let inner = Color::rgb(1, 2, 3);
+        assert!(
+            items[clip..].iter().any(|item| {
+                matches!(item, DisplayItem::Rect { rect, color, .. }
+                    if *color == inner && (rect.x, rect.y, rect.w, rect.h) == (0.0, 0.0, 40.0, 25.0))
+            }),
+            "{items:?}"
+        );
+        // Un cadre sans boîte n'est pas dessiné.
+        let hidden = Color::rgb(9, 9, 9);
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, DisplayItem::Rect { color, .. } if *color == hidden))
+        );
     }
 
     #[test]

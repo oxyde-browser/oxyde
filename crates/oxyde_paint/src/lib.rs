@@ -195,6 +195,11 @@ impl Image {
 /// Image associée à un élément remplacé (`<img>`), si elle est chargée.
 pub type ImageSource<'a> = &'a dyn Fn(NodeId) -> Option<Image>;
 
+/// Liste d'affichage du document que contient un cadre (`<iframe>`), dans
+/// le repère de ce document ; `None` pour un élément qui n'est pas un
+/// cadre chargé.
+pub type FrameSource<'a> = &'a dyn Fn(NodeId) -> Option<&'a DisplayList>;
+
 /// Identifiant du défilement de la fenêtre.
 pub const ROOT_SCROLLER: u32 = u32::MAX;
 
@@ -326,46 +331,149 @@ impl DisplayList {
 /// de `<body>` (propagation prévue par CSS Backgrounds §2.11.2), sinon blanc.
 #[must_use]
 pub fn canvas_color(tree: &LayoutTree) -> Color {
+    canvas_background(tree).unwrap_or(Color::WHITE)
+}
+
+/// Fond que le document donne au canevas, s'il en donne un.
+fn canvas_background(tree: &LayoutTree) -> Option<Color> {
     let Some(Fragment::Box(root)) = &tree.root else {
-        return Color::WHITE;
+        return None;
     };
     if root.style.background_color.a > 0 {
-        return root.style.background_color;
+        return Some(root.style.background_color);
     }
-    root.children
-        .iter()
-        .find_map(|c| match c {
-            Fragment::Box(b) if b.style.background_color.a > 0 => Some(b.style.background_color),
-            _ => None,
-        })
-        .unwrap_or(Color::WHITE)
+    root.children.iter().find_map(|c| match c {
+        Fragment::Box(b) if b.style.background_color.a > 0 => Some(b.style.background_color),
+        _ => None,
+    })
 }
 
 /// Peint la page. Les coordonnées de la liste sont celles de la page (le
 /// défilement est appliqué au rendu).
 #[must_use]
-pub fn paint(tree: &LayoutTree, viewport: Viewport, images: ImageSource<'_>) -> DisplayList {
+pub fn paint(
+    tree: &LayoutTree,
+    viewport: Viewport,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) -> DisplayList {
+    paint_canvas(tree, viewport, Some(canvas_color(tree)), images, frames)
+}
+
+/// Peint le document d'un cadre (`<iframe>`) : comme [`paint`], mais le
+/// canevas reste transparent si le document ne lui donne pas de fond, et
+/// laisse voir la page qui contient le cadre. Les cadres imbriqués ne sont
+/// pas dessinés.
+#[must_use]
+pub fn paint_frame(tree: &LayoutTree, viewport: Viewport, images: ImageSource<'_>) -> DisplayList {
+    paint_canvas(tree, viewport, canvas_background(tree), images, &|_| None)
+}
+
+fn paint_canvas(
+    tree: &LayoutTree,
+    viewport: Viewport,
+    background: Option<Color>,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) -> DisplayList {
     let mut list = DisplayList::default();
-    list.rect(
-        Rect {
-            x: 0.0,
-            y: 0.0,
-            w: tree.width.max(viewport.width),
-            h: tree.height.max(viewport.height),
-        },
-        canvas_color(tree),
-        0.0,
-    );
+    if let Some(color) = background {
+        list.rect(
+            Rect {
+                x: 0.0,
+                y: 0.0,
+                w: tree.width.max(viewport.width),
+                h: tree.height.max(viewport.height),
+            },
+            color,
+            0.0,
+        );
+    }
     if let Some(root) = &tree.root {
-        paint_fragment(&mut list, root, images);
+        paint_fragment(&mut list, root, images, frames);
     }
     list
 }
 
-fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSource<'_>) {
+/// Boîte de contenu de `b` : bordures et marges internes en pixels retirées.
+fn content_rect(b: &BoxFragment) -> Rect {
+    let (r, style) = (b.border_box, &b.style);
+    let bw = style.border_widths();
+    let pad = |s: Size| match s {
+        Size::Px(v) => v,
+        _ => 0.0,
+    };
+    let (left, top) = (
+        bw.left + pad(style.padding.left),
+        bw.top + pad(style.padding.top),
+    );
+    Rect {
+        x: r.x + left,
+        y: r.y + top,
+        w: (r.w - left - bw.right - pad(style.padding.right)).max(0.0),
+        h: (r.h - top - bw.bottom - pad(style.padding.bottom)).max(0.0),
+    }
+}
+
+/// Boîtes de contenu des éléments de `tree` que `wanted` retient, dans
+/// l'ordre de peinture : la taille à laquelle mettre en page le document
+/// d'un cadre avant de peindre la page qui le contient.
+#[must_use]
+pub fn content_boxes(tree: &LayoutTree, wanted: &dyn Fn(NodeId) -> bool) -> Vec<(NodeId, Rect)> {
+    let mut found = Vec::new();
+    let mut pending: Vec<&Fragment> = tree.root.iter().collect();
+    while let Some(fragment) = pending.pop() {
+        match fragment {
+            Fragment::Box(b) => {
+                if let Some(node) = b.node.filter(|node| wanted(*node)) {
+                    found.push((node, content_rect(b)));
+                }
+                pending.extend(b.children.iter().rev());
+            }
+            Fragment::Text(t) => pending.extend(t.boxes.iter().rev()),
+        }
+    }
+    found
+}
+
+/// Insère dans `list` la liste d'affichage `frame` d'un cadre, décalée et
+/// découpée à sa boîte de contenu `rect`.
+///
+/// LIMITE : le contenu d'un cadre ne défile pas ; ses zones défilantes et
+/// ses éléments fixes sont dessinés à leur position de départ.
+fn embed_frame(list: &mut DisplayList, frame: &DisplayList, rect: Rect) {
+    const IDENTITY: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    if rect.w <= 0.0 || rect.h <= 0.0 || frame.items.is_empty() {
+        return;
+    }
+    list.items.push(DisplayItem::PushClip { rect, radius: 0.0 });
+    list.items.push(DisplayItem::PushTransform {
+        matrix: [1.0, 0.0, 0.0, 1.0, rect.x, rect.y],
+    });
+    for item in &frame.items {
+        match item {
+            // Leur fin est un `PopTransform`, qui reste en place.
+            DisplayItem::PushScroll { .. } | DisplayItem::PushFixed => {
+                list.items
+                    .push(DisplayItem::PushTransform { matrix: IDENTITY });
+            }
+            DisplayItem::Scrollbar { .. } => {}
+            other => list.items.push(other.clone()),
+        }
+    }
+    list.items.push(DisplayItem::PopTransform);
+    list.items.push(DisplayItem::PopClip);
+}
+
+fn paint_fragment(
+    list: &mut DisplayList,
+    fragment: &Fragment,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) {
     match fragment {
-        Fragment::Box(b) => paint_box(list, b, images),
-        Fragment::Text(t) => paint_text(list, t, images),
+        Fragment::Box(b) => paint_box(list, b, images, frames),
+        Fragment::Text(t) => paint_text(list, t, images, frames),
     }
 }
 
@@ -373,7 +481,12 @@ fn paint_fragment(list: &mut DisplayList, fragment: &Fragment, images: ImageSour
 /// enfants dans l'ordre d'empilement, découpés si elle ne laisse pas
 /// déborder son contenu ; le tout dans un calque si elle est translucide,
 /// et dans un groupe transformé si elle porte un `transform`.
-fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
+fn paint_box(
+    list: &mut DisplayList,
+    b: &BoxFragment,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) {
     let style = &b.style;
     if style.opacity <= 0.0 {
         return;
@@ -402,7 +515,7 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
         });
     }
     if style.visibility == Visibility::Visible {
-        paint_decorations(list, b, images);
+        paint_decorations(list, b, images, frames);
     }
     let clips = oxyde_layout::clips_content(style);
     let port = oxyde_layout::padding_box(b);
@@ -439,7 +552,7 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
         list.items.push(DisplayItem::PushScroll { id });
     }
     for child in oxyde_layout::paint_order(&b.children) {
-        paint_fragment(list, child, images);
+        paint_fragment(list, child, images, frames);
     }
     if let Some(id) = scroller {
         list.items.push(DisplayItem::PopTransform);
@@ -491,7 +604,12 @@ fn paint_box(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
 }
 
 /// Fond, bordures et image d'une boîte.
-fn paint_decorations(list: &mut DisplayList, b: &BoxFragment, images: ImageSource<'_>) {
+fn paint_decorations(
+    list: &mut DisplayList,
+    b: &BoxFragment,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) {
     let r = b.border_box;
     let style = &b.style;
     list.rect(r, style.background_color, style.border_radius);
@@ -554,22 +672,11 @@ fn paint_decorations(list: &mut DisplayList, b: &BoxFragment, images: ImageSourc
             0.0,
         );
     }
+    if let Some(frame) = b.node.and_then(frames) {
+        embed_frame(list, frame, content_rect(b));
+    }
     if let Some(image) = b.node.and_then(images) {
-        // Boîte de contenu : bordures et marges internes en pixels retirées.
-        let pad = |s: Size| match s {
-            Size::Px(v) => v,
-            _ => 0.0,
-        };
-        let (left, top) = (
-            bw.left + pad(style.padding.left),
-            bw.top + pad(style.padding.top),
-        );
-        let rect = Rect {
-            x: r.x + left,
-            y: r.y + top,
-            w: (r.w - left - bw.right - pad(style.padding.right)).max(0.0),
-            h: (r.h - top - bw.bottom - pad(style.padding.bottom)).max(0.0),
-        };
+        let rect = content_rect(b);
         if rect.w > 0.0 && rect.h > 0.0 {
             // `border-radius` découpe aussi le contenu d'un élément remplacé.
             let rounded = style.border_radius > 0.0;
@@ -587,10 +694,15 @@ fn paint_decorations(list: &mut DisplayList, b: &BoxFragment, images: ImageSourc
     }
 }
 
-fn paint_text(list: &mut DisplayList, t: &TextFragment, images: ImageSource<'_>) {
+fn paint_text(
+    list: &mut DisplayList,
+    t: &TextFragment,
+    images: ImageSource<'_>,
+    frames: FrameSource<'_>,
+) {
     list.text(&t.layout, t.x, t.y);
     for child in &t.boxes {
-        paint_fragment(list, child, images);
+        paint_fragment(list, child, images, frames);
     }
 }
 
@@ -608,7 +720,7 @@ mod tests {
         let styles = oxyde_css::compute_styles(&doc, &sheets, viewport);
         let mut text = oxyde_text::TextContext::new();
         let tree = oxyde_layout::layout_document(&doc, &styles, &mut text, viewport, &|_| None);
-        paint(&tree, viewport, &|_| None)
+        paint(&tree, viewport, &|_| None, &|_| None)
     }
 
     #[test]
