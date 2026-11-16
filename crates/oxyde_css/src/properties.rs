@@ -313,9 +313,15 @@ fn transform_origin(tokens: &[Token]) -> Option<(Length, Length)> {
             }
             let (a, a_axis) = position(first)?;
             let (b, b_axis) = position(second)?;
+            // Un mot-clé, par opposition à une longueur ou à un pourcentage.
+            let keyword = |token: &Token| ident_of(token).is_some();
             match (a_axis, b_axis) {
                 (Some(false), Some(false)) | (Some(true), Some(true)) => None,
-                (Some(false), _) | (_, Some(true)) => Some((b, a)),
+                // L'ordre inverse (vertical d'abord) n'est permis qu'entre
+                // deux mots-clés.
+                (Some(false), _) | (_, Some(true)) => {
+                    (keyword(first) && keyword(second)).then_some((b, a))
+                }
                 _ => Some((a, b)),
             }
         }
