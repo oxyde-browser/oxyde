@@ -1084,9 +1084,22 @@ publiés dans [conformance/wpt-reference.md](../conformance/wpt-reference.md).
 - [ ] Modes d'écriture verticaux.
 - [ ] API Web Animations ; animations et défilement fluide joués par le compositeur, hors du
       fil principal ; calques mis en cache.
-- [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers (25,7 % au
+- [ ] Web Platform Tests de mise en page : de 24 % à 60 % des fichiers (25,9 % au
       16 novembre 2026).
-- [ ] SVG (formes, tracés, texte, dégradés) : presque tous les sites en affichent.
+- [x] SVG : un `<svg>` est un élément remplacé, rendu en pixels (`tiny-skia`) puis
+      peint comme une image. Formes, tracés (arcs compris), groupes, `use` et
+      `symbol`, dégradés linéaires et radiaux, motifs, `viewBox`, transformations
+      (`transform-origin`, `transform-box`), opacité de groupe, découpes
+      (`clipPath`), masques, texte (`text`, `tspan`) ; `fill`, `stroke` et leurs
+      compagnes dans le moteur de style ; un fichier SVG se charge par `<img>`.
+      Tests de référence : 3 406 → 3 485.
+- [ ] SVG, suite : `image`, marqueurs, filtres, `textPath`, unités
+      `objectBoundingBox` des découpes et des masques, `transform-box` d'un groupe,
+      héritage exact à travers `use`, image SVG sans dimensions ou avec du texte
+      chargée par `<img>`, rendu à la densité de l'écran, interfaces DOM SVG
+      (`getBBox`…).
+- [ ] `contain` et `contain-intrinsic-size` (deux sous-tests de `css-sizing` qui
+      passaient par accident les attendent).
 - [ ] Polices : repli par écriture, emoji en couleur, `font-display`, `unicode-range`.
 - [ ] Images : GIF animé, AVIF, `srcset` et `<picture>`, chargement paresseux.
 - [ ] `<canvas>` 2D.

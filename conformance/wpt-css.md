@@ -5,7 +5,7 @@ Produit par `cargo run --release -p oxyde_wpt -- --publier css/css-flexbox css/c
 destinés à une fenêtre sont exécutés ; un fichier est « entièrement réussi » quand le
 harnais va au bout et que tous ses sous-tests passent.
 
-**Sous-tests réussis : 9078 / 27915 (32,5 %)** — fichiers entièrement réussis : 582 / 2269 (25,7 %).
+**Sous-tests réussis : 9124 / 27915 (32,7 %)** — fichiers entièrement réussis : 587 / 2269 (25,9 %).
 
 Le taux en sous-tests surestime la conformité : un fichier qui plante ou que le harnais
 abandonne ne rapporte aucun sous-test, donc n'en fait échouer aucun. Le taux en fichiers
@@ -39,7 +39,7 @@ est le plus honnête des deux.
 | `css/css-display/parsing` | 0 / 3 | 49 / 275 (17,8 %) |
 | `css/css-display/parsing/tentative` | 0 / 2 | 3 / 16 (18,8 %) |
 | `css/css-display/reading-flow` | 3 / 8 | 14 / 46 (30,4 %) |
-| `css/css-flexbox` | 72 / 185 | 993 / 1804 (55,0 %) |
+| `css/css-flexbox` | 74 / 185 | 996 / 1804 (55,2 %) |
 | `css/css-flexbox/abspos` | 3 / 38 | 302 / 1389 (21,7 %) |
 | `css/css-flexbox/alignment` | 0 / 31 | 78 / 420 (18,6 %) |
 | `css/css-flexbox/animation` | 0 / 6 | 0 / 0 (—) |
@@ -81,11 +81,11 @@ est le plus honnête des deux.
 | `css/css-position/overlay/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-position/parsing` | 9 / 22 | 88 / 166 (53,0 %) |
 | `css/css-position/sticky` | 5 / 33 | 21 / 82 (25,6 %) |
-| `css/css-sizing` | 12 / 53 | 211 / 705 (29,9 %) |
+| `css/css-sizing` | 15 / 53 | 254 / 705 (36,0 %) |
 | `css/css-sizing/animation` | 0 / 20 | 2 / 12 (16,7 %) |
 | `css/css-sizing/aspect-ratio` | 9 / 24 | 104 / 291 (35,7 %) |
 | `css/css-sizing/aspect-ratio/parsing` | 0 / 3 | 11 / 38 (28,9 %) |
-| `css/css-sizing/contain-intrinsic-size` | 5 / 27 | 94 / 288 (32,6 %) |
+| `css/css-sizing/contain-intrinsic-size` | 5 / 27 | 92 / 288 (31,9 %) |
 | `css/css-sizing/contain-intrinsic-size/animation` | 0 / 1 | 0 / 0 (—) |
 | `css/css-sizing/contain-intrinsic-size/parsing` | 0 / 3 | 24 / 88 (27,3 %) |
 | `css/css-sizing/parsing` | 2 / 28 | 101 / 261 (38,7 %) |
@@ -98,7 +98,7 @@ est le plus honnête des deux.
 | `css/css-tables/parsing` | 4 / 15 | 11 / 40 (27,5 %) |
 | `css/css-tables/tentative` | 4 / 23 | 207 / 333 (62,2 %) |
 | `css/css-tables/width-distribution` | 8 / 15 | 23 / 35 (65,7 %) |
-| `css/cssom-view` | 72 / 235 | 910 / 1841 (49,4 %) |
+| `css/cssom-view` | 72 / 235 | 912 / 1841 (49,5 %) |
 | `css/cssom-view/parsing` | 1 / 3 | 2 / 7 (28,6 %) |
 
 ## Fichiers non entièrement réussis
@@ -661,8 +661,6 @@ est le plus honnête des deux.
 | `css/css-flexbox/position-relative-stretch-height-001.html` | 2 / 4 |  |
 | `css/css-flexbox/relayout-image-load.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-flexbox/select-as-flex-item-child-with-overflow.html` | 0 / 1 |  |
-| `css/css-flexbox/svg-root-as-flex-item-006.html` | 0 / 1 |  |
-| `css/css-flexbox/svg-root-as-flex-item-007.html` | 0 / 2 |  |
 | `css/css-flexbox/text-as-flexitem-size-001.html` | 13 / 18 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-containing-block-001.html` | 0 / 10 |  |
 | `css/css-grid/abspos/absolute-positioning-grid-container-parent-001.html` | 0 / 12 |  |
@@ -1426,7 +1424,7 @@ est le plus honnête des deux.
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-030.html` | 0 / 24 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-031.html` | 0 / 12 |  |
 | `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-032.html` | 1 / 9 |  |
-| `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-logical-003.html` | 4 / 48 |  |
+| `css/css-sizing/contain-intrinsic-size/contain-intrinsic-size-logical-003.html` | 2 / 48 |  |
 | `css/css-sizing/contain-intrinsic-size/forget-on-disconnect-in-iframe.html` | 0 / 1 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-computed.html` | 0 / 21 |  |
 | `css/css-sizing/contain-intrinsic-size/parsing/contain-intrinsic-size-invalid.html` | 0 / 40 |  |
@@ -1435,7 +1433,7 @@ est le plus honnête des deux.
 | `css/css-sizing/form-control-in-inline-content-intrinsic-size-001.html` | 8 / 9 |  |
 | `css/css-sizing/image-min-max-content-intrinsic-size-change-009.html` | 0 / 8 | harnais : délai du harnais dépassé |
 | `css/css-sizing/intrinsic-percent-replaced-033.html` | 0 / 9 |  |
-| `css/css-sizing/intrinsic-size-fallback-replaced.html` | 4 / 8 |  |
+| `css/css-sizing/intrinsic-size-fallback-replaced.html` | 6 / 8 |  |
 | `css/css-sizing/keyword-min-max-width-with-fixed-width-contribution.html` | 0 / 3 |  |
 | `css/css-sizing/keyword-sizes-for-intrinsic-contributions-002.html` | 0 / 8 |  |
 | `css/css-sizing/keyword-sizes-for-intrinsic-contributions.html` | 9 / 36 |  |
@@ -1523,14 +1521,11 @@ est le plus honnête des deux.
 | `css/css-sizing/stretch/stretch-min-block-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-min-inline-size-001.html` | 10 / 46 |  |
 | `css/css-sizing/stretch/stretch-table-001.html` | 6 / 7 |  |
-| `css/css-sizing/svg-intrinsic-size-001.html` | 0 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-002.html` | 0 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-003.html` | 0 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-004.html` | 1 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-008.html` | 0 / 5 |  |
-| `css/css-sizing/svg-intrinsic-size-009.html` | 2 / 12 |  |
-| `css/css-sizing/svg-intrinsic-size-010.html` | 2 / 12 |  |
-| `css/css-sizing/svg-intrinsic-size-011.html` | 0 / 4 |  |
+| `css/css-sizing/svg-intrinsic-size-001.html` | 4 / 5 |  |
+| `css/css-sizing/svg-intrinsic-size-002.html` | 4 / 5 |  |
+| `css/css-sizing/svg-intrinsic-size-003.html` | 4 / 5 |  |
+| `css/css-sizing/svg-intrinsic-size-008.html` | 4 / 5 |  |
+| `css/css-sizing/svg-intrinsic-size-011.html` | 1 / 4 |  |
 | `css/css-sizing/svg-intrinsic-size-zero-img-and-object.html` | 0 / 14 | harnais : délai du harnais dépassé |
 | `css/css-sizing/table-cell-definite-height-transferred-size.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/css-sizing/table-percentage-max-width-beside-float.html` | 0 / 1 |  |
@@ -1667,7 +1662,7 @@ est le plus honnête des deux.
 | `css/cssom-view/elementFromPoint-negative-z-index-inline-overflow-clip.html` | 0 / 1 |  |
 | `css/cssom-view/elementFromPoint-negative-z-index-inline.html` | 3 / 8 |  |
 | `css/cssom-view/elementFromPoint-visibility-hidden-resizer.html` | 0 / 1 |  |
-| `css/cssom-view/elementFromPoint.html` | 5 / 11 |  |
+| `css/cssom-view/elementFromPoint.html` | 6 / 11 |  |
 | `css/cssom-view/elementFromPosition.html` | 11 / 16 |  |
 | `css/cssom-view/elementsFromPoint-iframes.html` | 1 / 2 |  |
 | `css/cssom-view/elementsFromPoint-inline-htb-rtl.html` | 0 / 1 |  |
@@ -1681,7 +1676,7 @@ est le plus honnête des deux.
 | `css/cssom-view/elementsFromPoint-svg-text.html` | 0 / 4 |  |
 | `css/cssom-view/elementsFromPoint-svg.html` | 0 / 6 |  |
 | `css/cssom-view/elementsFromPoint-table.html` | 0 / 4 |  |
-| `css/cssom-view/elementsFromPoint.html` | 5 / 9 |  |
+| `css/cssom-view/elementsFromPoint.html` | 6 / 9 |  |
 | `css/cssom-view/getBoundingClientRect-content-visibility-hidden.html` | 0 / 0 | harnais : délai du harnais dépassé |
 | `css/cssom-view/getBoundingClientRect-empty-inline-002.html` | 2 / 4 |  |
 | `css/cssom-view/getBoundingClientRect-empty-inline.html` | 0 / 1 |  |
